@@ -1,0 +1,21 @@
+# 0001: Selection of Phoenix LiveView as Primary Framework
+
+## Status
+Accepted
+
+## Context
+Frestyl requires a highly interactive, real-time web application that supports collaborative features and media streaming.
+
+## Decision
+We have selected Phoenix LiveView as our primary framework due to its:
+- Built-in real-time capabilities via WebSockets
+- Server-rendered HTML with client-side interactivity
+- Strong performance characteristics for handling many concurrent connections
+- Seamless integration with Elixir's OTP for managing concurrent sessions
+- Reduced JavaScript complexity compared to SPA alternatives
+
+## Consequences
+- The application will have excellent real-time capabilities
+- We'll leverage Elixir's concurrency model for handling many simultaneous users
+- The learning curve might be steeper for developers not familiar with Elixir/Phoenix
+- We'll need additional libraries for WebRTC integration
