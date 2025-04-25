@@ -18,3 +18,25 @@ config :logger, level: :info
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
+
+# config/config.exs (or config/dev.exs, config/prod.exs)
+
+# Media storage configuration
+config :frestyl, :storage_type, :local
+config :frestyl, :local_storage_path, "priv/static/uploads"
+
+# Maximum file size limits (in bytes)
+config :frestyl, :max_file_sizes, %{
+  "document" => 20_971_520,  # 20MB
+  "audio" => 104_857_600,    # 100MB
+  "video" => 524_288_000,    # 500MB
+  "image" => 10_485_760      # 10MB
+}
+
+# Allowed file extensions
+config :frestyl, :allowed_extensions, %{
+  "document" => [".pdf", ".docx", ".txt", ".md", ".rtf", ".odt"],
+  "audio" => [".mp3", ".wav", ".ogg", ".flac", ".m4a"],
+  "video" => [".mp4", ".webm", ".mov", ".avi", ".mkv"],
+  "image" => [".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp"]
+}

@@ -1,0 +1,134 @@
+# lib/frestyl_web/controllers/file_html/channel_index.html.heex
+<div class="px-4 py-5 sm:px-6">
+  <h3 class="text-lg font-medium leading-6 text-gray-900">Files in <%= @channel.name %></h3>
+  <p class="mt-1 max-w-2xl text-sm text-gray-500">
+    Shared files and documents
+  </p>
+  
+  <div class="mt-4">
+    <.link
+      href={~p"/channels/#{@channel.slug}/files/new"}
+      class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+    >
+      <svg class="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+      </svg>
+      Upload File
+    </.link>
+  </div>
+</div>
+
+<div class="mt-8 flex flex-col">
+  <div class="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
+    <div class="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
+      <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+        <table class="min-w-full divide-y divide-gray-300">
+          <thead class="bg-gray-50">
+            <tr>
+              <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                File
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                Type
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                Size
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                Uploaded By
+              </th>
+              <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                Date
+              </th>
+              <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                <span class="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 bg-white">
+            <%= for file <- @files do %>
+              <tr>
+                <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm sm:pl-6">
+                  <div class="flex items-center">
+                    <div class="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-100">
+                      <%= if Frestyl.FileStorage.is_image?(file.filename) do %>
+                        <img src={file.file_url} alt={file.filename} class="h-8 w-8 rounded-full" />
+                      <% else %>
+                        <svg class="h-6 w-6 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      <% end %>
+                    </div>
+                    <div class="ml-4">
+                      <a href={file.file_url} target="_blank" class="font-medium text-indigo-600 hover:text-indigo-900">
+                        <%= file.filename %>
+                      </a>
+                      <%= if file.description && file.description != "" do %>
+                        <div class="text-gray-500"><%= file.description %></div>
+                      <% end %>
+                    </div>
+                  </div>
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                  <%= file.mime_type %>
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                  <%= Frestyl.Channels.human_readable_file_size(file.file_size) %>
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                  <%= file.user.name || "User" %>
+                </td>
+                <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                  <%= Calendar.strftime(file.inserted_at, "%B %d, %Y") %>
+                </td>
+                <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                  <a href={file.file_url} target="_blank" download={file.filename} class="text-indigo-600 hover:text-indigo-900 mr-4">
+                    Download
+                  </a>
+                  
+                  <%= if @current_user && (@current_user.id == file.user_id || Frestyl.Channels.has_permission?(@current_user, @channel, "delete_messages")) do %>
+                    <.form :let={f} for={%{}} action={~p"/channels/#{@channel.slug}/files/#{file.id}"} method="delete" class="inline">
+                      <button type="submit" class="text-red-600 hover:text-red-900" data-confirm="Are you sure you want to delete this file?">
+                        Delete
+                      </button>
+                    </.form>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%= if Enum.empty?(@files) do %>
+  <div class="text-center mt-8">
+    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+    </svg>
+    <h3 class="mt-2 text-sm font-medium text-gray-900">No files</h3>
+    <p class="mt-1 text-sm text-gray-500">Get started by uploading a new file.</p>
+    <div class="mt-6">
+      <.link
+        href={~p"/channels/#{@channel.slug}/files/new"}
+        class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+      >
+        <svg class="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+        </svg>
+        Upload File
+      </.link>
+    </div>
+  </div>
+<% end %>
+
+<div class="mt-6">
+  <.link
+    href={~p"/channels/#{@channel.slug}"}
+    class="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+  >
+    Back to channel
+  </.link>
+</div>

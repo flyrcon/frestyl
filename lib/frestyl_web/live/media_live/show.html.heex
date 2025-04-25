@@ -1,0 +1,180 @@
+# lib/frestyl_web/controllers/media_html/show.html.heex
+<div class="flex justify-between items-center mb-6">
+  <h1 class="text-2xl font-semibold"><%= @asset.name %></h1>
+  <div class="flex items-center gap-2">
+    <%= if Media.user_can_access?(@asset, @current_user.id, :edit) do %>
+      <.link navigate={~p"/media/#{@asset}/edit"} class="bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded">
+        Edit
+      </.link>
+    <% end %>
+    <.link navigate={~p"/media"} class="bg-gray-500 hover:bg-gray-600 text-white py-1 px-3 rounded">
+      Back
+    </.link>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+  <div class="md:col-span-2">
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+      <h2 class="text-xl font-semibold mb-4">Asset Details</h2>
+      <dl class="grid grid-cols-2 gap-4">
+        <dt class="font-medium text-gray-600">Type</dt>
+        <dd><%= @asset.type %></dd>
+        
+        <dt class="font-medium text-gray-600">MIME Type</dt>
+        <dd><%= @asset.mime_type || "N/A" %></dd>
+        
+        <dt class="font-medium text-gray-600">Created</dt>
+        <dd><%= Calendar.strftime(@asset.inserted_at, "%Y-%m-%d %H:%M") %></dd>
+        
+        <dt class="font-medium text-gray-600">Status</dt>
+        <dd><%= @asset.status %></dd>
+      </dl>
+    </div>
+
+    <%= if @asset.type in ["audio", "video"] do %>
+      <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+        <h2 class="text-xl font-semibold mb-4">Media Player</h2>
+        <%= if Enum.any?(@versions) do %>
+          <% latest_version = List.first(@versions) %>
+          <%= if @asset.type == "video" do %>
+            <video controls class="w-full">
+              <source src={~p"/media/stream/#{@asset.id}/#{latest_version.id}"} type={@asset.mime_type}>
+              Your browser does not support the video tag.
+            </video>
+          <% else %>
+            <audio controls class="w-full">
+              <source src={~p"/media/stream/#{@asset.id}/#{latest_version.id}"} type={@asset.mime_type}>
+              Your browser does not support the audio tag.
+            </audio>
+          <% end %>
+        <% else %>
+          <p class="text-gray-600">No media versions available yet.</p>
+        <% end %>
+      </div>
+    <% end %>
+
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+      <h2 class="text-xl font-semibold mb-4">Versions</h2>
+      <%= if Enum.any?(@versions) do %>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead>
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              <%= for {version, index} <- Enum.with_index(@versions) do %>
+                <tr>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <%= version.version_number || (Enum.count(@versions) - index) %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <%= Calendar.strftime(version.inserted_at, "%Y-%m-%d %H:%M") %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <%= format_bytes(version.file_size) %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <div class="flex items-center space-x-2">
+                      <.link href={~p"/media/stream/#{@asset.id}/#{version.id}"} target="_blank" class="text-blue-600 hover:text-blue-800">
+                        Download
+                      </.link>
+                    </div>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% else %>
+        <p class="text-gray-600">No versions available yet.</p>
+      <% end %>
+
+      <%= if Media.user_can_access?(@asset, @current_user.id, :edit) do %>
+        <div class="mt-4">
+          <.form for={%{}} action={~p"/media/#{@asset.id}/version"} multipart={true}>
+            <div class="flex items-end gap-4">
+              <div class="flex-grow">
+                <.input type="file" name="version[file]" label="Upload New Version" required />
+              </div>
+              <div>
+                <.button type="submit">Upload</.button>
+              </div>
+            </div>
+          </.form>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="md:col-span-1">
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+      <h2 class="text-xl font-semibold mb-4">Editing Status</h2>
+      <%= case @lock_status do %>
+        <% {:locked, user_id, expires_at} -> %>
+          <div class="bg-yellow-100 p-4 rounded mb-4">
+            <p class="text-sm text-yellow-800">
+              <%= if user_id == @current_user.id do %>
+                You have this asset locked for editing until <%= Calendar.strftime(expires_at, "%H:%M") %>.
+              <% else %>
+                This asset is currently locked for editing by another user.
+              <% end %>
+            </p>
+          </div>
+          <%= if user_id == @current_user.id do %>
+            <.link phx-click="release_lock" class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded inline-block">
+              Release Lock
+            </.link>
+          <% end %>
+        <% {:unlocked, _} -> %>
+          <p class="text-gray-600 mb-4">This asset is not currently locked for editing.</p>
+          <%= if Media.user_can_access?(@asset, @current_user.id, :edit) do %>
+            <.link phx-click="lock_for_editing" class="bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded inline-block">
+              Lock for Editing
+            </.link>
+          <% end %>
+      <% end %>
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <h2 class="text-xl font-semibold mb-4">Comments</h2>
+      
+      <div class="space-y-4 mb-6 max-h-96 overflow-y-auto">
+        <%= if Enum.any?(@comments) do %>
+          <%= for comment <- @comments do %>
+            <div class="border border-gray-200 rounded p-3">
+              <div class="flex justify-between items-start">
+                <div class="font-medium text-sm"><%= comment.user.name || "User #{comment.user_id}" %></div>
+                <div class="text-xs text-gray-500"><%= Calendar.strftime(comment.inserted_at, "%Y-%m-%d %H:%M") %></div>
+              </div>
+              <div class="mt-2 text-sm text-gray-800"><%= comment.content %></div>
+              <%= if comment.user_id == @current_user.id do %>
+                <div class="mt-2 text-right">
+                  <.link phx-click="delete_comment" phx-value-id={comment.id} class="text-red-600 hover:text-red-800 text-xs">
+                    Delete
+                  </.link>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        <% else %>
+          <p class="text-gray-600">No comments yet.</p>
+        <% end %>
+      </div>
+
+      <%= if Media.user_can_access?(@asset, @current_user.id, :comment) do %>
+        <.simple_form :let={f} for={@comment_changeset} phx-submit="add_comment">
+          <.input field={f[:content]} type="textarea" label="Add Comment" rows="3" />
+          <:actions>
+            <.button type="submit">Post Comment</.button>
+          </:actions>
+        </.simple_form>
+     <% end %>
+    </div>
+  </div>
+</div>

@@ -11,13 +11,21 @@ defmodule Frestyl.Application do
       FrestylWeb.Telemetry,
       Frestyl.Repo,
       {DNSCluster, query: Application.get_env(:frestyl, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Frestyl.PubSub},
+      {Phoenix.PubSub, name: Frestyl.PubSub, pool_size: 5},
+      FrestylWeb.Presence,
+      Frestyl.Presence,
+      Frestyl.Scheduler,
       # Start the Finch HTTP client for sending emails
       {Finch, name: Frestyl.Finch},
+      # Supervisor for WebRTC connections
+      Frestyl.Streaming.ConnectionSupervisor,
+      # Analytics for streaming
+      Frestyl.Streaming.Analytics,
       # Start a worker by calling: Frestyl.Worker.start_link(arg)
       # {Frestyl.Worker, arg},
       # Start to serve requests, typically the last entry
-      FrestylWeb.Endpoint
+      FrestylWeb.Endpoint,
+      {Frestyl.EventScheduler, []}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

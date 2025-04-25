@@ -1,0 +1,255 @@
+# lib/frestyl_web/live/event_live/show.html.heex
+<.header>
+  <%= @event.title %>
+  <:actions>
+    <div class="flex space-x-4">
+      <%= if @is_host do %>
+        <.link navigate={~p"/events/#{@event}/edit"}>
+          <.button>Edit</.button>
+        </.link>
+        
+        <%= if @event.status == :scheduled do %>
+          <.button phx-click="start_event">Start Event</.button>
+        <% end %>
+        
+        <%= if @event.status == :live do %>
+          <.button phx-click="end_event">End Event</.button>
+        <% end %>
+        
+        <%= if @event.status in [:scheduled, :live] do %>
+          <.button phx-click="cancel_event" class="bg-red-600 hover:bg-red-500">
+            Cancel Event
+          </.button>
+        <% end %>
+      <% end %>
+      
+      <%= unless @attendee do %>
+        <.button phx-click="register">Register</.button>
+      <% end %>
+      
+      <%= if @attendee && @attendee.status == :admitted && !@attendee.joined_at && @event.status == :live do %>
+        <.button phx-click="join">Join Event</.button>
+      <% end %>
+      
+      <%= if @attendee && @attendee.joined_at && !@attendee.left_at do %>
+        <.button phx-click="leave">Leave Event</.button>
+      <% end %>
+    </div>
+  </:actions>
+</.header>
+
+<div class="mt-6">
+  <div class="flex border-b mb-6">
+    
+    <button 
+      phx-click="change-tab" 
+      phx-value-tab="details"
+      class={"px-4 py-2 font-semibold #{@current_tab == "details" && "border-b-2 border-zinc-900"}"}>
+      Details
+      <%= if @event.admission_type == :paid && @attendee && @attendee.status == :waiting && @attendee.payment_status != :completed do %>
+      <div class="mt-6 mb-6">
+        <.live_component 
+          module={FrestylWeb.EventLive.PaymentComponent} 
+          id={"payment-#{@event.id}"} 
+          event={@event}
+          attendee={@attendee}
+        />
+      </div>
+    <% end %>
+    </button>
+    
+    <%= if @is_host || (@attendee && @attendee.status == :admitted) do %>
+      <button 
+        phx-click="change-tab" 
+        phx-value-tab="attendees"
+        class={"px-4 py-2 font-semibold #{@current_tab == "attendees" && "border-b-2 border-zinc-900"}"}>
+        Attendees
+      </button>
+    <% end %>
+    
+    <%= if @is_host do %>
+      <button 
+        phx-click="change-tab" 
+        phx-value-tab="manage"
+        class={"px-4 py-2 font-semibold #{@current_tab == "manage" && "border-b-2 border-zinc-900"}"}>
+        Manage
+      </button>
+    <% end %>
+    
+    <%= if @event.status == :live && (@is_host || (@attendee && @attendee.joined_at && !@attendee.left_at)) do %>
+      <button 
+        phx-click="change-tab" 
+        phx-value-tab="event_room"
+        class={"px-4 py-2 font-semibold #{@current_tab == "event_room" && "border-b-2 border-zinc-900"}"}>
+        Event Room
+        <%= if @event.status == :scheduled && @attendee && @attendee.status == :admitted do %>
+          <div class="mb-8">
+            <.live_component
+              module={FrestylWeb.EventLive.WaitingRoomComponent}
+              id="waiting-room"
+              event={@event}
+            />
+          </div>
+        <% end %>
+        <%= if @event.status == :live && @sound_check_needed do %>
+        <div class="mb-8">
+          <.live_component
+            module={FrestylWeb.EventLive.SoundCheckComponent}
+            id="sound-check"
+          />
+        </div>
+        <% end %>
+      </button>
+    <% end %>
+    
+    <%= if @event.status == :completed do %>
+      <button 
+        phx-click="change-tab" 
+        phx-value-tab="results"
+        class={"px-4 py-2 font-semibold #{@current_tab == "results" && "border-b-2 border-zinc-900"}"}>
+        Results
+      </button>
+    <% end %>
+  </div>
+  
+  <div class={@current_tab == "details" && "block" || "hidden"}>
+    <.list>
+      <:item title="Description"><%= @event.description %></:item>
+      <:item title="Status"><%= format_status(@event.status) %></:item>
+      <:item title="Starts At"><%= format_datetime(@event.starts_at) %></:item>
+      <:item title="Ends At"><%= @event.ends_at && format_datetime(@event.ends_at) || "Not specified" %></:item>
+      <:item title="Admission Type"><%= format_admission(@event.admission_type) %></:item>
+      <:item title="Host"><%= @event.host.email %></:item>
+      
+      {# Replace the if statements with inline conditional rendering #}
+      <:item :if={@event.admission_type == :paid} title="Price">
+        <%= format_price(@event.price_in_cents) %>
+      </:item>
+      
+      <:item :if={@event.max_attendees} title="Maximum Attendees">
+        <%= @event.max_attendees %>
+      </:item>
+      
+      <:item :if={@event.waiting_room_opens_at} title="Waiting Room Opens">
+        <%= format_datetime(@event.waiting_room_opens_at) %>
+      </:item>
+      
+      <:item :if={@attendee} title="Your Status">
+        <%= format_attendee_status(@attendee.status) %>
+      </:item>
+    </.list>
+  </div>
+  
+  <div class={@current_tab == "attendees" && "block" || "hidden"}>
+    <h2 class="text-lg font-semibold mb-4">Event Attendees</h2>
+    
+    <.table id="attendees" rows={@event.attendees}>
+      <:col :let={attendee} label="Email"><%= attendee.email %></:col>
+      <:col :let={attendee} label="Status">
+        <%= 
+          case Events.get_attendee_by_event_and_user(@event.id, attendee.id) do
+            nil -> "Not Registered"
+            a -> format_attendee_status(a.status)
+          end
+        %>
+      </:col>
+    </.table>
+  </div>
+  
+  <div class={@current_tab == "manage" && @is_host && "block" || "hidden"}>
+    <div class="mb-8">
+      <h2 class="text-lg font-semibold mb-4">Manage Attendees</h2>
+      
+      <.table id="manage-attendees" rows={Events.list_attendees(@event)}>
+        <:col :let={attendee} label="Email"><%= attendee.user.email %></:col>
+        <:col :let={attendee} label="Status"><%= format_attendee_status(attendee.status) %></:col>
+        <:col :let={attendee} label="Joined At">
+          <%= attendee.joined_at && format_datetime(attendee.joined_at) || "Not joined" %>
+        </:col>
+        <:action :let={attendee}>
+          <%= if attendee.status == :waiting || attendee.status == :registered do %>
+            <.button phx-click="admit_attendee" phx-value-id={attendee.id} class="text-sm">
+              Admit
+            </.button>
+          <% end %>
+        </:action>
+        <:action :let={attendee}>
+          <%= if attendee.status != :rejected do %>
+            <.button phx-click="reject_attendee" phx-value-id={attendee.id} class="text-sm bg-red-600 hover:bg-red-500">
+              Reject
+            </.button>
+          <% end %>
+        </:action>
+      </.table>
+    </div>
+    
+    <%= if @event.admission_type == :lottery && @event.status == :scheduled do %>
+      <div class="mb-8">
+        <h2 class="text-lg font-semibold mb-4">Lottery Management</h2>
+        <.button phx-click="run_lottery">Run Admission Lottery</.button>
+      </div>
+    <% end %>
+    
+    <%= if @event.admission_type == :invite_only do %>
+      <div class="mb-8">
+        <h2 class="text-lg font-semibold mb-4">Send Invitations</h2>
+        
+        <.simple_form for={%{}} phx-submit="invite">
+          <.input name="email" type="email" label="Email Address" required />
+          <:actions>
+            <.button>Send Invitation</.button>
+          </:actions>
+        </.simple_form>
+      </div>
+    <% end %>
+  </div>
+  
+  <div class={@current_tab == "event_room" && @event.status == :live && "block" || "hidden"}>
+    <%= if @is_host do %>
+      <div class="mb-8">
+        <h2 class="text-lg font-semibold mb-4">Host Controls</h2>
+        <p>This is where you would add host-specific controls for managing the live event.</p>
+        <!-- Add host controls here -->
+      </div>
+    <% end %>
+    
+    <div class="mb-8">
+      <h2 class="text-lg font-semibold mb-4">Event Room</h2>
+      <p>This is where the live event content would be displayed.</p>
+      <!-- Add event room interface here -->
+    </div>
+    
+    <%= if @event.status == :live && !@is_host do %>
+      <div class="mb-8">
+        <h2 class="text-lg font-semibold mb-4">Voting</h2>
+        
+        <.simple_form for={%{}} phx-submit="cast_vote">
+          <.input 
+            name="creator_id" 
+            type="select" 
+            label="Creator" 
+            options={@event.attendees |> Enum.map(fn a -> {a.email, a.id} end)}
+            required
+          />
+          <.input name="score" type="number" label="Score (1-10)" min="1" max="10" required />
+          <.input name="comment" type="textarea" label="Comment (optional)" />
+          <:actions>
+            <.button>Submit Vote</.button>
+          </:actions>
+        </.simple_form>
+      </div>
+    <% end %>
+  </div>
+  
+  <div class={@current_tab == "results" && @event.status == :completed && "block" || "hidden"}>
+    <h2 class="text-lg font-semibold mb-4">Event Results</h2>
+    
+    <.table id="results" rows={Events.get_event_results(@event)}>
+      <:col :let={result} label="Creator"><%= result.creator.email %></:col>
+      <:col :let={result} label="Average Score"><%= Float.round(result.average_score, 2) %></:col>
+      <:col :let={result} label="Number of Votes"><%= result.votes_count %></:col>
+    </.table>
+  </div>
+</div>
+
+<.back navigate={~p"/events"}>Back to events</.back>

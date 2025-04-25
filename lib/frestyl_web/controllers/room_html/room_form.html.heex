@@ -1,0 +1,94 @@
+# lib/frestyl_web/controllers/room_html/form.html.heex
+<.simple_form :let={f} for={@changeset} action={@action}>
+  <.error :if={@changeset.action}>
+    Oops, something went wrong! Please check the errors below.
+  </.error>
+  
+  <div class="space-y-6">
+    <div>
+      <.input field={f[:name]} type="text" label="Room Name" required />
+    </div>
+    
+    <div>
+      <.input field={f[:description]} type="textarea" label="Description" />
+    </div>
+    
+    <div>
+      <.input field={f[:is_public]} type="checkbox" label="Make this room public" />
+      <p class="mt-1 text-sm text-gray-500">
+        Public rooms are visible to everyone who can access the channel. Private rooms are only visible to channel members.
+      </p>
+    </div>
+    
+    <div>
+      <.input field={f[:override_branding]} type="checkbox" label="Override channel branding" />
+      <p class="mt-1 text-sm text-gray-500">
+        By default, rooms inherit the branding from their parent channel. Enable this to customize colors for this room.
+      </p>
+    </div>
+    
+    <div id="branding-section" class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+      <div class="sm:col-span-3">
+        <.input field={f[:primary_color]} type="color" label="Primary Color" />
+      </div>
+      
+      <div class="sm:col-span-3">
+        <.input field={f[:secondary_color]} type="color" label="Secondary Color" />
+      </div>
+    </div>
+  </div>
+  
+  <:actions>
+    <.button type="submit" class="w-full">
+      <%= @button_label %>
+    </.button>
+  </:actions>
+</.simple_form>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    const overrideBrandingCheckbox = document.querySelector('[name="room[override_branding]"]');
+    const brandingSection = document.getElementById("branding-section");
+    
+    // Function to toggle branding section visibility
+    function toggleBrandingSection() {
+      if (overrideBrandingCheckbox.checked) {
+        brandingSection.classList.remove("hidden");
+      } else {
+        brandingSection.classList.add("hidden");
+      }
+    }
+    
+    // Initial setup
+    toggleBrandingSection();
+    
+    // Add event listener
+    overrideBrandingCheckbox.addEventListener("change", toggleBrandingSection);
+    
+    // Add color preview functionality
+    const primaryColorInput = document.querySelector('[name="room[primary_color]"]');
+    const secondaryColorInput = document.querySelector('[name="room[secondary_color]"]');
+    
+    if (primaryColorInput) {
+      const previewDiv = document.createElement("div");
+      previewDiv.className = "mt-1 h-8 w-full rounded border";
+      previewDiv.style.backgroundColor = primaryColorInput.value;
+      primaryColorInput.parentNode.insertBefore(previewDiv, primaryColorInput.nextSibling);
+      
+      primaryColorInput.addEventListener("input", function() {
+        previewDiv.style.backgroundColor = primaryColorInput.value;
+      });
+    }
+    
+    if (secondaryColorInput) {
+      const previewDiv = document.createElement("div");
+      previewDiv.className = "mt-1 h-8 w-full rounded border";
+      previewDiv.style.backgroundColor = secondaryColorInput.value;
+      secondaryColorInput.parentNode.insertBefore(previewDiv, secondaryColorInput.nextSibling);
+      
+      secondaryColorInput.addEventListener("input", function() {
+        previewDiv.style.backgroundColor = secondaryColorInput.value;
+      });
+    }
+  });
+</script>

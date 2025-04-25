@@ -15,6 +15,15 @@ defmodule FrestylWeb.Endpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 
+  socket "/socket", FrestylWeb.UserSocket,
+    websocket: [
+      timeout: 60000,
+      compress: true,
+      check_origin: false,  # You should implement your own CORS policy
+      transport_log: false  # Disable in production for performance
+    ],
+    longpoll: false
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # You should set gzip to true if you are running phx.digest
@@ -23,7 +32,8 @@ defmodule FrestylWeb.Endpoint do
     at: "/",
     from: :frestyl,
     gzip: false,
-    only: FrestylWeb.static_paths()
+    only: FrestylWeb.static_paths(),
+    only_matching: ["uploads", ~r/^(?!(?:uploads))/]
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.

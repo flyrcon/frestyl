@@ -1,0 +1,110 @@
+# lib/frestyl_web/controllers/membership_html/index.html.heex
+<div class="px-4 py-5 sm:px-6">
+  <h3 class="text-lg font-medium leading-6 text-gray-900">Channel Members</h3>
+  <p class="mt-1 max-w-2xl text-sm text-gray-500">
+    Manage members of <%= @channel.name %>
+  </p>
+</div>
+
+<div class="border-t border-gray-200 px-4 py-5 sm:p-0">
+  <dl class="sm:divide-y sm:divide-gray-200">
+    <div class="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+      <dt class="text-sm font-medium text-gray-500">Add new member</dt>
+      <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+        <.form :let={f} for={%{}} action={~p"/channels/#{@channel.slug}/members"} method="post">
+          <div class="mt-1 flex rounded-md shadow-sm">
+            <div class="relative flex items-stretch flex-grow focus-within:z-10">
+              <input
+                type="email"
+                name="email"
+                id="email"
+                class="block w-full rounded-none rounded-l-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                placeholder="Enter email address"
+                required
+              />
+            </div>
+            <select
+              name="role"
+              id="role"
+              class="rounded-none border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            >
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+              <option value="owner">Owner</option>
+            </select>
+            <button
+              type="submit"
+              class="relative -ml-px inline-flex items-center rounded-r-md border border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              Add
+            </button>
+          </div>
+        </.form>
+      </dd>
+    </div>
+  </dl>
+</div>
+
+<div class="mt-8">
+  <div class="flex flex-col">
+    <div class="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
+      <div class="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
+        <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+          <table class="min-w-full divide-y divide-gray-300">
+            <thead class="bg-gray-50">
+              <tr>
+                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                  User
+                </th>
+                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  Email
+                </th>
+                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                  Role
+                </th>
+                <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                  <span class="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 bg-white">
+              <%= for member <- @members do %>
+                <tr>
+                  <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                    <%= member.user.name || "User" %>
+                  </td>
+                  <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                    <%= member.user.email %>
+                  </td>
+                  <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                    <%= member.role %>
+                  </td>
+                  <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                    <.form :let={f} for={%{}} action={~p"/channels/#{@channel.slug}/members/#{member.user.id}"} method="delete">
+                      <button
+                        type="submit"
+                        class="text-indigo-600 hover:text-indigo-900"
+                        data-confirm="Are you sure you want to remove this member from the channel?"
+                      >
+                        Remove
+                      </button>
+                    </.form>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mt-6">
+  <.link
+    href={~p"/channels/#{@channel.slug}"}
+    class="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+  >
+    Back to channel
+  </.link>
+</div>

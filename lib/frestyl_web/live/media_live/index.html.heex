@@ -1,0 +1,37 @@
+# lib/frestyl_web/controllers/media_html/index.html.heex
+<div class="flex justify-between items-center mb-6">
+  <h1 class="text-2xl font-semibold">Media Library</h1>
+  <.link href={~p"/media/new"} class="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded">
+    New Asset
+  </.link>
+</div>
+
+<.table id="assets" rows={@assets}>
+  <:col :let={asset} label="Name">
+    <.link navigate={~p"/media/#{asset.id}"}><%= asset.name %></.link>
+  </:col>
+  <:col :let={asset} label="Type"><%= asset.type %></:col>
+  <:col :let={asset} label="Created"><%= Calendar.strftime(asset.inserted_at, "%Y-%m-%d %H:%M") %></:col>
+  <:action :let={asset}>
+    <div class="flex items-center gap-2">
+      <.link navigate={~p"/media/#{asset}/edit"} class="text-blue-600 hover:text-blue-800">
+        Edit
+      </.link>
+      <.link phx-click={JS.push("delete", value: %{id: asset.id})} data-confirm="Are you sure?" class="text-red-600 hover:text-red-800">
+        Delete
+      </.link>
+    </div>
+  </:action>
+</.table>
+
+<.modal :if={@live_action in [:new, :edit]} id="asset-modal" show on_cancel={JS.navigate(~p"/media")}>
+  <.live_component
+    module={FrestylWeb.MediaLive.FormComponent}
+    id={@asset.id || :new}
+    title={@page_title}
+    action={@live_action}
+    asset={@asset}
+    current_user={@current_user}
+    navigate={~p"/media"}
+  />
+</.modal>

@@ -1,0 +1,25 @@
+# lib/frestyl_web/controllers/room_html/new.html.heex
+<div class="mx-auto max-w-2xl">
+  <.header>
+    Create a New Room in <%= @channel.name %>
+    <:subtitle>Add a sub-channel for specific topics or teams</:subtitle>
+    <:actions>
+      <.link
+        href={~p"/channels/#{@channel.slug}"}
+        class="text-sm font-semibold leading-6 text-zinc-900 hover:text-zinc-700"
+      >
+        Back to Channel
+      </.link>
+    </:actions>
+  </.header>
+
+  <div class="mt-8">
+    <.form :let={f} for={@changeset} action={~p"/channels/#{@channel.slug}/rooms"} id="room-form">
+      <.room_form f={f} changeset={@changeset} action={@action} categories={@categories} button_label={@button_label} />
+      <div class="mt-8 flex justify-end">
+        <.link href={~p"/channels/#{@channel.slug}"} class="mr-4 text-sm font-medium text-gray-700">Cancel</.link>
+        <.button type="submit" phx-disable-with="Creating...">Create Room</.button>
+      </div>
+    </.form>
+  </div>
+</div>

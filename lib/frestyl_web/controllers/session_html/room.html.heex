@@ -1,0 +1,29 @@
+# lib/frestyl_web/controllers/session_html/room.html.heex
+<div 
+  id="session-room" 
+  data-session-id={@session.id} 
+  data-current-user-id={@current_user.id}
+  data-current-user-name={@current_user.username}
+  phx-hook="SessionRoom"
+  class="h-full"
+>
+  <div class="flex items-center justify-center h-64">
+    <div class="text-center">
+      <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+      <p class="mt-4 text-gray-600">Loading session room...</p>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+  // This data will be available to our React component
+  window.sessionData = {
+    id: "<%= @session.id %>",
+    title: "<%= @session.title %>",
+    type: "<%= @session.session_type %>",
+    currentUser: {
+      id: "<%= @current_user.id %>",
+      username: "<%= @current_user.username %>"
+    }
+  };
+</script>

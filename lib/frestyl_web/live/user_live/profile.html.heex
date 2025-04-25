@@ -1,0 +1,77 @@
+# lib/frestyl_web/live/user_live/profile.html.heex
+<div class="max-w-2xl mx-auto mt-8">
+  <.header>
+    Live Profile
+    <:subtitle>Real-time profile management</:subtitle>
+  </.header>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+    <div class="md:col-span-2">
+      <div class="bg-white p-6 rounded-lg shadow">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Your Profile</h3>
+        
+        <.form
+          :let={f}
+          for={@changeset}
+          phx-submit="save_profile"
+        >
+          <div class="space-y-4">
+            <.input field={f[:full_name]} type="text" label="Full name" />
+            <.input field={f[:bio]} type="textarea" label="Bio" />
+            <.input field={f[:website]} type="url" label="Website" />
+            <.input field={f[:avatar_url]} type="url" label="Avatar URL" />
+          </div>
+          
+          <div class="mt-6">
+            <.button type="submit">Save Profile</.button>
+          </div>
+        </.form>
+      </div>
+    </div>
+
+    <div class="md:col-span-1">
+      <div class="bg-white p-6 rounded-lg shadow">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Account Info</h3>
+        
+        <dl class="divide-y divide-gray-100">
+          <div class="py-3 flex justify-between">
+            <dt class="text-sm font-medium text-gray-500">Email</dt>
+            <dd class="text-sm text-gray-900"><%= @user.email %></dd>
+          </div>
+          
+          <div class="py-3 flex justify-between">
+            <dt class="text-sm font-medium text-gray-500">Role</dt>
+            <dd>
+              <span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                <%= String.capitalize(@user.role) %>
+              </span>
+            </dd>
+          </div>
+          
+          <div class="py-3 flex justify-between">
+            <dt class="text-sm font-medium text-gray-500">Subscription</dt>
+            <dd>
+              <span class="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
+                <%= String.capitalize(@user.subscription_tier) %>
+              </span>
+            </dd>
+          </div>
+        </dl>
+      </div>
+      
+      <div class="bg-white p-6 rounded-lg shadow mt-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Online Users</h3>
+        
+        <ul class="divide-y divide-gray-100">
+          <%= for user <- @online_users do %>
+            <li class="py-2 flex items-center">
+              <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+              <span class="text-sm text-gray-800"><%= user.name %></span>
+              <span class="ml-2 text-xs text-gray-500"><%= user.role %></span>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>

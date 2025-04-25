@@ -1,0 +1,18 @@
+# lib/frestyl_web/templates/user_profile/edit.html.heex
+<div class="max-w-2xl mx-auto mt-8">
+  <.header>
+    Edit Profile
+    <:subtitle>Update your personal information</:subtitle>
+  </.header>
+
+  <.simple_form :let={f} for={@changeset} action={~p"/profile"} method="put">
+    <.input field={f[:full_name]} type="text" label="Full name" />
+    <.input field={f[:bio]} type="textarea" label="Bio" />
+    <.input field={f[:website]} type="url" label="Website" />
+    <.input field={f[:avatar_url]} type="url" label="Avatar URL" />
+    
+    <:actions>
+      <.button>Save Profile</.button>
+    </:actions>
+  </.simple_form>
+</div>

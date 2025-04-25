@@ -89,12 +89,35 @@ defmodule FrestylWeb do
       import Phoenix.HTML
       # Core UI components
       import FrestylWeb.CoreComponents
+      # Events
+      import FrestylWeb.EventHelpers
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())
+
+      def format_bytes(bytes), do: Frestyl.Media.FileHelpers.format_bytes(bytes)
+
+      def media_icon(type) do
+        case type do
+          "document" -> "hero-document-text"
+          "audio" -> "hero-musical-note"
+          "video" -> "hero-video-camera"
+          "image" -> "hero-photo"
+          _ -> "hero-document"
+        end
+      end
+
+      def can_play_in_browser?(mime_type) do
+        playable_types = [
+          "audio/mpeg", "audio/mp3", "audio/wav", "audio/ogg",
+          "video/mp4", "video/webm", "video/ogg"
+        ]
+
+        Enum.member?(playable_types, mime_type)
+      end
     end
   end
 

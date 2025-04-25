@@ -1,0 +1,11 @@
+# lib/frestyl_web/controllers/session_html/new.html.heex
+<.header>
+  New Session
+  <:subtitle>Create a new collaborative session</:subtitle>
+</.header>
+
+<div class="mt-6">
+  <.session_form changeset={@changeset} action={~p"/sessions"} />
+</div>
+
+<.back navigate={~p"/sessions"}>Back to sessions</.back>

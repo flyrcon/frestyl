@@ -1,0 +1,26 @@
+# lib/frestyl_web/controllers/session_html/session_form.html.heex
+<.simple_form :let={f} for={@changeset} action={@action}>
+  <.error :if={@changeset.action}>
+    Oops, something went wrong! Please check the errors below.
+  </.error>
+  
+  <.input field={f[:title]} type="text" label="Title" />
+  <.input field={f[:description]} type="textarea" label="Description" />
+  <.input field={f[:start_time]} type="datetime-local" label="Start Time" />
+  <.input field={f[:end_time]} type="datetime-local" label="End Time" />
+  <.input 
+    field={f[:session_type]} 
+    type="select" 
+    label="Session Type" 
+    options={[
+      {"Co-working", :co_working},
+      {"Music Creation", :music_creation},
+      {"Meeting", :meeting},
+      {"Other", :other}
+    ]} 
+  />
+  
+  <:actions>
+    <.button>Save Session</.button>
+  </:actions>
+</.simple_form>

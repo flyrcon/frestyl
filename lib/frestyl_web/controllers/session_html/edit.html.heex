@@ -1,0 +1,11 @@
+# lib/frestyl_web/controllers/session_html/edit.html.heex
+<.header>
+  Edit Session
+  <:subtitle>Edit your session details</:subtitle>
+</.header>
+
+<div class="mt-6">
+  <.session_form changeset={@changeset} action={~p"/sessions/#{@session}"} />
+</div>
+
+<.back navigate={~p"/sessions/#{@session}"}>Back to session</.back>

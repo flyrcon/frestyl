@@ -65,6 +65,49 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+    # Configure clustering
+  app_name =
+    System.get_env("FLY_APP_NAME") ||
+      raise "FLY_APP_NAME not available"
+
+  config :libcluster,
+    topologies: [
+      fly6pn: [
+        strategy: Cluster.Strategy.DNSPoll,
+        config: [
+          polling_interval: 5_000,
+          query: "#{app_name}.internal",
+          node_basename: app_name
+        ]
+      ]
+    ]
+
+  # Configure PubSub for distributed nodes
+  config :frestyl, Frestyl.PubSub,
+    name: Frestyl.PubSub,
+    adapter: Phoenix.PubSub.PG2,
+    pool_size: 5
+
+  # Configure WebRTC connection limits
+  config :frestyl, Frestyl.Streaming.ConnectionSupervisor,
+    max_children: 10000,
+    max_restarts: 10,
+    max_seconds: 10
+
+  # Configure Presence supervision
+  config :frestyl, Frestyl.Presence,
+    pubsub_server: Frestyl.PubSub,
+    broadcast_period: 5000
+
+  # Security
+  config :frestyl,
+  stripe_public_key: System.get_env("STRIPE_PUBLIC_KEY"),
+  stripe_webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET")
+
+  config :stripity_stripe,
+  api_key: System.get_env("STRIPE_SECRET_KEY")
+
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

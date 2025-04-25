@@ -1,0 +1,41 @@
+# lib/frestyl_web/controllers/channel_html/edit.html.heex
+<div class="mx-auto max-w-2xl">
+  <.header>
+    Edit Channel: <%= @channel.name %>
+    <:subtitle>Update your channel settings</:subtitle>
+    <:actions>
+      <.link
+        href={~p"/channels/#{@channel.slug}"}
+        class="text-sm font-semibold leading-6 text-zinc-900 hover:text-zinc-700"
+      >
+        Back to Channel
+      </.link>
+    </:actions>
+  </.header>
+
+  <div class="mt-8">
+    <.form :let={f} for={@changeset} action={~p"/channels/#{@channel.slug}"} method="put" id="channel-form" multipart={true}>
+      <.channel_form f={f} changeset={@changeset} action={@action} categories={@categories} button_label={@button_label} />
+      <div class="mt-8 flex justify-end">
+        <.link href={~p"/channels/#{@channel.slug}"} class="mr-4 text-sm font-medium text-gray-700">Cancel</.link>
+        <.button type="submit" phx-disable-with="Saving...">Save Changes</.button>
+      </div>
+    </.form>
+  </div>
+  
+  <div class="mt-12 border-t border-gray-200 pt-6">
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-medium text-gray-900">Danger Zone</h3>
+    </div>
+    <div class="mt-2 max-w-xl text-sm text-gray-500">
+      <p>Once you delete a channel, there is no going back. Please be certain.</p>
+    </div>
+    <div class="mt-5">
+      <.form :let={_f} for={%{}} action={~p"/channels/#{@channel.slug}"} method="delete">
+        <.button type="submit" class="bg-red-600 hover:bg-red-700" phx-disable-with="Deleting...">
+          Delete Channel
+        </.button>
+      </.form>
+    </div>
+  </div>
+</div>

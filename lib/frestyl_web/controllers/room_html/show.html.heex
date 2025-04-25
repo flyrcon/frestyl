@@ -1,0 +1,135 @@
+# lib/frestyl_web/controllers/room_html/show.html.heex
+<.flash_group flash={@flash} />
+
+<div class="bg-white shadow overflow-hidden sm:rounded-lg">
+  <div class="px-4 py-5 sm:px-6" style={
+    @room.override_branding && @room.primary_color && 
+    "background-color: #{@room.primary_color}; color: #{@room.secondary_color};" || 
+    "background-color: #{@channel.primary_color}; color: #{@channel.secondary_color};"
+  }>
+    <div class="flex items-center">
+      <div class="h-12 w-12 rounded-full flex items-center justify-center mr-4 bg-white text-black">
+        <span class="font-medium text-lg"><%= String.first(@room.name) %></span>
+      </div>
+      <div>
+        <h3 class="text-lg leading-6 font-medium">
+          <%= @room.name %>
+        </h3>
+        <p class="mt-1 max-w-2xl text-sm">
+            <.link href={~p"/channels/#{@channel.slug}"} class="underline">
+                <%= @channel.name %>
+            </.link>
+            <%= if @room.is_public do %>
+                <span class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2."></span>
+            <% else %>
+                <span class="ml-2 inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">Private</span>
+            <% end %>
+            </p>
+        </div>
+        <div class="mt-6">
+          <.link href={~p"/channels/#{@channel.slug}/files"} class="inline-flex items-center rounded-md border border-transparent bg-white/20 px-4 py-2 text-sm font-medium shadow-sm hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2">
+            Files
+          </.link>
+        </div>
+        </div>
+    
+        <%= if @current_user && Frestyl.Channels.get_member_role(@channel, @current_user) in ["owner", "admin"] do %>
+        <div class="mt-4 flex space-x-3">
+            <.link
+            href={~p"/channels/#{@channel.slug}/rooms/#{@room.slug}/edit"}
+            class="inline-flex items-center rounded-md border border-transparent bg-white/20 px-4 py-2 text-sm font-medium shadow-sm hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"
+            >
+            Edit Room
+            </.link>
+         </div>
+        <% end %>
+    </div>
+  
+    <div class="border-t border-gray-200 px-4 py-5 sm:p-0">
+        <dl class="sm:divide-y sm:divide-gray-200">
+         <div class="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+            <dt class="text-sm font-medium text-gray-500">Description</dt>
+            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                <%= @room.description || "No description provided" %>
+            </dd>
+        </div>
+        </dl>
+    </div>
+</div>
+
+<div class="mt-8">
+    <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-lg font-medium leading-6 text-gray-900">Room Content</h3>
+            <div class="mt-2 max-w-xl text-sm text-gray-500">
+              <p><!-- Add this to the room show template -->
+                <div class="mt-8 bg-white shadow sm:rounded-lg">
+                  <div class="px-4 py-5 sm:p-6">
+                    <h3 class="text-lg font-medium leading-6 text-gray-900">Room Chat</h3>
+                    
+                    <div id="chat-container" class="mt-4 border rounded-lg h-96 flex flex-col">
+                      <div id="chat-messages" class="flex-1 overflow-y-auto p-4 flex flex-col">
+                        <!-- Messages will be inserted here by JavaScript -->
+                      </div>
+                      
+                      <div class="border-t p-4 flex">
+                        <textarea 
+                          id="message-input" 
+                          class="flex-1 border rounded-lg p-2" 
+                          placeholder="Type a message..."
+                          rows="2"
+                        ></textarea>
+                        <div class="ml-2 flex flex-col justify-between">
+                          <button 
+                            id="send-message" 
+                            class="bg-indigo-600 text-white rounded-lg px-4 py-2"
+                          >
+                            Send
+                          </button>
+                          <label class="cursor-pointer bg-gray-200 text-gray-800 rounded-lg px-4 py-2 text-center">
+                            File
+                            <input type="file" id="file-upload" class="hidden" />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <script>
+                  document.addEventListener("DOMContentLoaded", function() {
+                    const roomId = "<%= @room.id %>";
+                    const userId = "<%= @current_user && @current_user.id %>";
+                    const token = "<%= Phoenix.Token.sign(FrestylWeb.Endpoint, "user socket", @current_user && @current_user.id) %>";
+                    
+                    // Only initialize chat if user is logged in
+                    if (userId) {
+                      import("/assets/js/room_chat.js")
+                        .then(module => {
+                          const RoomChat = module.default;
+                          RoomChat.init(roomId, userId, token);
+                        })
+                        .catch(error => {
+                          console.error("Error loading chat module:", error);
+                        });
+                    } else {
+                      // Show login prompt for non-authenticated users
+                      const chatContainer = document.getElementById("chat-container");
+                      chatContainer.innerHTML = `
+                        <div class="flex items-center justify-center h-full">
+                          <div class="text-center">
+                            <p class="text-gray-600 mb-4">You need to be logged in to participate in chat</p>
+                            <a href="/login?redirect_to=/channels/<%= @channel.slug %>/rooms/<%= @room.slug %>" 
+                               class="bg-indigo-600 text-white rounded-lg px-4 py-2">
+                              Log In
+                            </a>
+                          </div>
+                        </div>
+                      `;
+                    }
+                  });
+                </script></p>
+            </div>
+        </div>
+    </div>
+</div>    

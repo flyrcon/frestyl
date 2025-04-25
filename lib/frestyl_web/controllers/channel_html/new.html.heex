@@ -1,0 +1,116 @@
+# lib/frestyl_web/controllers/channel_html/new.html.heex
+<div class="mx-auto max-w-2xl">
+  <.header>
+    Create a New Channel
+    <:subtitle>Build a community space for your team or audience</:subtitle>
+  </.header>
+
+  <div class="mt-8">
+    <.form :let={f} for={@changeset} action={~p"/channels"} id="channel-form" multipart={true}>
+      <.channel_form f={f} changeset={@changeset} action={@action} categories={@categories} button_label={@button_label} />
+      <div class="mt-8 flex justify-end">
+        <.link href={~p"/channels"} class="mr-4 text-sm font-medium text-gray-700">Cancel</.link>
+        <.button type="submit" phx-disable-with="Creating...">Create Channel</.button>
+      </div>
+    </.form>
+  </div>
+  
+  <div class="mt-12 py-6 border-t border-gray-200">
+    <h3 class="text-lg font-medium text-gray-900">AI-Powered Categorization</h3>
+    <p class="mt-1 text-sm text-gray-500">
+      Let us help you categorize your channel based on its name and description.
+    </p>
+    
+    <div class="mt-4">
+      <button type="button" id="suggest-category-btn" class="inline-flex items-center rounded-md border border-transparent bg-indigo-100 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+        Suggest Category
+      </button>
+    </div>
+    
+    <div id="category-suggestions" class="mt-4 hidden">
+      <div class="rounded-md bg-blue-50 p-4">
+        <div class="flex">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <div class="ml-3 flex-1">
+            <h3 class="text-sm font-medium text-blue-800">Our suggestion</h3>
+            <div class="mt-2 text-sm text-blue-700">
+              <p>Based on your channel name and description, we suggest the category: <strong id="suggested-category"></strong></p>
+            </div>
+            <div class="mt-4">
+              <div class="-mx-2 -my-1.5 flex">
+                <button type="button" id="apply-suggestion-btn" class="rounded-md bg-blue-50 px-2 py-1.5 text-sm font-medium text-blue-800 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 focus:ring-offset-blue-50">
+                  Apply Suggestion
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    const suggestBtn = document.getElementById("suggest-category-btn");
+    const suggestionsDiv = document.getElementById("category-suggestions");
+    const suggestedCategory = document.getElementById("suggested-category");
+    const applySuggestionBtn = document.getElementById("apply-suggestion-btn");
+    const categorySelect = document.querySelector('select[name="channel[category]"]');
+    const nameInput = document.querySelector('input[name="channel[name]"]');
+    const descriptionInput = document.querySelector('textarea[name="channel[description]"]');
+    
+    suggestBtn.addEventListener("click", function() {
+      const name = nameInput.value.trim();
+      const description = descriptionInput.value.trim();
+      
+      if (!name) {
+        alert("Please enter a channel name first.");
+        return;
+      }
+      
+      // Make the API call to get suggestions
+      fetch(`/api/channels/suggest-categories?name=${encodeURIComponent(name)}&description=${encodeURIComponent(description)}`)
+        .then(response => response.json())
+        .then(data => {
+          suggestedCategory.textContent = data.suggested_category;
+          suggestionsDiv.classList.remove("hidden");
+          
+          // Update the categories dropdown if new options are available
+          if (data.available_categories && data.available_categories.length > 0) {
+            // Clear existing options except the prompt
+            while (categorySelect.options.length > 1) {
+              categorySelect.remove(1);
+            }
+            
+            // Add new categories
+            data.available_categories.forEach(category => {
+              const option = new Option(category, category);
+              categorySelect.add(option);
+            });
+          }
+        })
+        .catch(error => {
+          console.error("Error getting category suggestions:", error);
+          alert("Failed to get category suggestions. Please try again.");
+        });
+    });
+    
+    applySuggestionBtn.addEventListener("click", function() {
+      const category = suggestedCategory.textContent;
+      if (category) {
+        // Find the option in the select dropdown
+        for (let i = 0; i < categorySelect.options.length; i++) {
+          if (categorySelect.options[i].value === category) {
+            categorySelect.selectedIndex = i;
+            break;
+          }
+        }
+      }
+    });
+  });
+</script>

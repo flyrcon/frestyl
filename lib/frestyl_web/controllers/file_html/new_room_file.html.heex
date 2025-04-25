@@ -1,0 +1,213 @@
+# lib/frestyl_web/controllers/file_html/new_room_file.html.heex
+<div class="px-4 py-5 sm:px-6">
+  <h3 class="text-lg font-medium leading-6 text-gray-900">Upload File to Room: <%= @room.name %></h3>
+  <p class="mt-1 max-w-2xl text-sm text-gray-500">
+    Share a file with room members
+  </p>
+</div>
+
+<div class="mt-6 max-w-2xl mx-auto">
+  <.form :let={f} for={%{}} action={~p"/channels/#{@channel.slug}/rooms/#{@room.slug}/files"} method="post" enctype="multipart/form-data">
+    <div class="space-y-6">
+      <div>
+        <label class="block text-sm font-medium text-gray-700">File</label>
+        <div class="mt-2 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+          <div class="space-y-1 text-center">
+            <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <div class="flex text-sm text-gray-600">
+              <label for="file-upload" class="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+                <span>Upload a file</span>
+                <input 
+                  id="file-upload" 
+                  name="file" 
+                  type="file" 
+                  class="sr-only"
+                  onchange="handleFileUpload(this)"
+                >
+              </label>
+              <p class="pl-1">or drag and drop</p>
+            </div>
+            <p class="text-xs text-gray-500">
+              Supported file types: <%= Enum.join(Frestyl.FileStorage.allowed_extensions(), ", ") %>
+            </p>
+            <p class="text-xs text-gray-500">
+              Max file size: 10 MB
+            </p>
+          </div>
+        </div>
+        
+        <div id="file-preview" class="mt-4 hidden">
+          <div class="flex items-center p-4 bg-gray-50 rounded-lg">
+            <div id="file-icon" class="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-100">
+              <svg class="h-6 w-6 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div class="ml-4">
+              <div id="file-name" class="font-medium text-gray-900">filename.jpg</div>
+              <div id="file-size" class="text-sm text-gray-500">123 KB</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Hidden inputs to store file data -->
+        <input type="hidden" name="file[data]" id="file-data">
+        <input type="hidden" name="file[filename]" id="file-filename">
+      </div>
+      
+      <div>
+        <label for="description" class="block text-sm font-medium text-gray-700">Description (optional)</label>
+        <div class="mt-1">
+          <textarea
+            id="description"
+            name="file[description]"
+            rows="3"
+            class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 mt-1 block w-full sm:text-sm border border-gray-300 rounded-md"
+            placeholder="Add a description for this file"
+          ></textarea>
+        </div>
+      </div>
+      
+      <div class="flex justify-end">
+        <.link
+          href={~p"/channels/#{@channel.slug}/rooms/#{@room.slug}/files"}
+          class="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mr-3"
+        >
+          Cancel
+        </.link>
+        <button
+          id="upload-button"
+          type="submit"
+          class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+          disabled
+        >
+          Upload
+        </button>
+      </div>
+    </div>
+  </.form>
+</div>
+
+<script>
+  // The same JavaScript as in the channel file upload template
+  function handleFileUpload(input) {
+    const uploadButton = document.getElementById('upload-button');
+    const filePreview = document.getElementById('file-preview');
+    const fileName = document.getElementById('file-name');
+    const fileSize = document.getElementById('file-size');
+    const fileIcon = document.getElementById('file-icon');
+    const fileData = document.getElementById('file-data');
+    const fileFilename = document.getElementById('file-filename');
+    
+    if (input.files && input.files[0]) {
+      const file = input.files[0];
+      
+      // Check file size (10 MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File size exceeds the 10 MB limit');
+        input.value = "";
+        return;
+      }
+      
+      // Check file extension
+      const allowedExtensions = <%= Frestyl.FileStorage.allowed_extensions() |> Enum.map(&String.replace(&1, ".", "")) |> Jason.encode! %>;
+      const extension = file.name.split('.').pop().toLowerCase();
+      
+      if (!allowedExtensions.includes(extension)) {
+        alert('File type not allowed. Supported types: ' + allowedExtensions.map(ext => '.' + ext).join(', '));
+        input.value = "";
+        return;
+      }
+      
+      // Update preview
+      fileName.textContent = file.name;
+      fileSize.textContent = formatFileSize(file.size);
+      
+      // If it's an image, show preview
+      if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          fileIcon.innerHTML = `<img src="${e.target.result}" class="h-8 w-8 rounded-full" />`;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        fileIcon.innerHTML = `
+          <svg class="h-6 w-6 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        `;
+      }
+      
+      // Show preview
+      filePreview.classList.remove('hidden');
+      
+      // Convert file to base64 for submission
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        // Extract the base64 data portion
+        const base64Data = e.target.result.split(',')[1];
+        fileData.value = base64Data;
+        fileFilename.value = file.name;
+        
+        // Enable upload button
+        uploadButton.disabled = false;
+      };
+      reader.readAsDataURL(file);
+    } else {
+      filePreview.classList.add('hidden');
+      uploadButton.disabled = true;
+    }
+  }
+  
+  function formatFileSize(bytes) {
+    if (bytes >= 1024 * 1024) {
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    } else if (bytes >= 1024) {
+      return (bytes / 1024).toFixed(2) + ' KB';
+    } else {
+      return bytes + ' bytes';
+    }
+  }
+  
+  // Drag and drop functionality
+  const dropZone = document.querySelector('.border-dashed');
+  
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, preventDefaults, false);
+  });
+  
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropZone.addEventListener(eventName, highlight, false);
+  });
+  
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, unhighlight, false);
+  });
+  
+  function highlight() {
+    dropZone.classList.add('bg-indigo-50');
+  }
+  
+  function unhighlight() {
+    dropZone.classList.remove('bg-indigo-50');
+  }
+  
+  dropZone.addEventListener('drop', handleDrop, false);
+  
+  function handleDrop(e) {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    
+    if (files.length > 0) {
+      document.getElementById('file-upload').files = files;
+      handleFileUpload(document.getElementById('file-upload'));
+    }
+  }
+</script>

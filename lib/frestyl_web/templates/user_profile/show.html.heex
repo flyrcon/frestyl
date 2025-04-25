@@ -1,0 +1,56 @@
+# lib/frestyl_web/templates/user_profile/show.html.heex
+<div class="max-w-2xl mx-auto mt-8">
+  <.header>
+    Profile
+    <:actions>
+      <.link navigate={~p"/profile/edit"} class="text-sm font-semibold leading-6">
+        <.button>Edit Profile</.button>
+      </.link>
+    </:actions>
+  </.header>
+
+  <div class="mt-6 border-t border-zinc-100 pt-6">
+    <dl class="-my-4 divide-y divide-zinc-100">
+      <div class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
+        <dt class="w-1/4 flex-none text-zinc-500">Email</dt>
+        <dd class="text-zinc-700"><%= @user.email %></dd>
+      </div>
+      <div class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
+        <dt class="w-1/4 flex-none text-zinc-500">Full Name</dt>
+        <dd class="text-zinc-700"><%= @user.full_name || "-" %></dd>
+      </div>
+      <div class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
+        <dt class="w-1/4 flex-none text-zinc-500">Role</dt>
+        <dd class="text-zinc-700">
+          <span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+            <%= String.capitalize(@user.role) %>
+          </span>
+        </dd>
+      </div>
+      <div class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
+        <dt class="w-1/4 flex-none text-zinc-500">Subscription</dt>
+        <dd class="text-zinc-700">
+          <span class="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
+            <%= String.capitalize(@user.subscription_tier) %>
+          </span>
+        </dd>
+      </div>
+      <div class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
+        <dt class="w-1/4 flex-none text-zinc-500">Bio</dt>
+        <dd class="text-zinc-700"><%= @user.bio || "-" %></dd>
+      </div>
+      <div class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
+        <dt class="w-1/4 flex-none text-zinc-500">Website</dt>
+        <dd class="text-zinc-700">
+          <%= if @user.website do %>
+            <a href={@user.website} target="_blank" class="text-blue-600 hover:underline">
+              <%= @user.website %>
+            </a>
+          <% else %>
+            -
+          <% end %>
+        </dd>
+      </div>
+    </dl>
+  </div>
+</div>

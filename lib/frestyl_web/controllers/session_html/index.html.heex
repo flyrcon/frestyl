@@ -1,0 +1,46 @@
+# lib/frestyl_web/controllers/session_html/index.html.heex
+<.header>
+  Your Sessions
+  <:actions>
+    <.link href={~p"/sessions/new"}>
+      <.button>New Session</.button>
+    </.link>
+  </:actions>
+</.header>
+
+<section class="mt-6">
+  <h2 class="text-lg font-semibold mb-4">Active Sessions</h2>
+  
+  <%= if Enum.empty?(@active_sessions) do %>
+    <p class="text-gray-500">You don't have any active sessions.</p>
+  <% else %>
+    <.table id="active-sessions" rows={@active_sessions}>
+      <:col :let={session} label="Title"><%= session.title %></:col>
+      <:col :let={session} label="Type"><%= String.capitalize(to_string(session.session_type)) %></:col>
+      <:col :let={session} label="Started At"><%= Calendar.strftime(session.start_time, "%B %d, %Y at %I:%M %p") %></:col>
+      <:action :let={session}>
+        <.link navigate={~p"/sessions/#{session}/room"}>Join Room</.link>
+      </:action>
+      <:action :let={session}>
+        <.link navigate={~p"/sessions/#{session}"}>View</.link>
+      </:action>
+    </.table>
+  <% end %>
+</section>
+
+<section class="mt-10">
+  <h2 class="text-lg font-semibold mb-4">Upcoming Sessions</h2>
+  
+  <%= if Enum.empty?(@upcoming_sessions) do %>
+    <p class="text-gray-500">You don't have any upcoming sessions.</p>
+  <% else %>
+    <.table id="upcoming-sessions" rows={@upcoming_sessions}>
+      <:col :let={session} label="Title"><%= session.title %></:col>
+      <:col :let={session} label="Type"><%= String.capitalize(to_string(session.session_type)) %></:col>
+      <:col :let={session} label="Starts At"><%= Calendar.strftime(session.start_time, "%B %d, %Y at %I:%M %p") %></:col>
+      <:action :let={session}>
+        <.link navigate={~p"/sessions/#{session}"}>View</.link>
+      </:action>
+    </.table>
+  <% end %>
+</section>

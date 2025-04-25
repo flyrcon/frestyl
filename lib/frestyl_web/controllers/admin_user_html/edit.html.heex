@@ -1,0 +1,41 @@
+# lib/frestyl_web/controllers/admin_user_html/edit.html.heex
+<.header>
+  Edit User
+  <:subtitle>Update user information</:subtitle>
+  <:actions>
+    <.link navigate={~p"/admin/users"}>
+      <.button>Back to list</.button>
+    </.link>
+  </:actions>
+</.header>
+
+<div class="mt-8 max-w-3xl">
+  <.simple_form :let={f} for={@changeset} action={~p"/admin/users/#{@user}"} method="put">
+    <.input field={f[:email]} type="email" label="Email" readonly />
+    <.input field={f[:full_name]} type="text" label="Full name" />
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <.input
+        field={f[:role]}
+        type="select"
+        options={@roles |> Enum.map(&{String.capitalize(&1), &1})}
+        label="Role"
+      />
+      
+      <.input
+        field={f[:subscription_tier]}
+        type="select"
+        options={@tiers |> Enum.map(&{String.capitalize(&1), &1})}
+        label="Subscription tier"
+      />
+    </div>
+    
+    <.input field={f[:bio]} type="textarea" label="Bio" />
+    <.input field={f[:website]} type="url" label="Website" />
+    <.input field={f[:avatar_url]} type="url" label="Avatar URL" />
+    
+    <:actions>
+      <.button>Save Changes</.button>
+    </:actions>
+  </.simple_form>
+</div>

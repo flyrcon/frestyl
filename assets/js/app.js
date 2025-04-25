@@ -16,12 +16,46 @@
 //
 
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
-import "phoenix_html"
+import "phoenix_html";
 // Establish Phoenix Socket and LiveView configuration.
-import {Socket} from "phoenix"
-import {LiveSocket} from "phoenix_live_view"
-import topbar from "../vendor/topbar"
+import {Socket} from "phoenix";
+import {LiveSocket} from "phoenix_live_view";
+import topbar from "../vendor/topbar";
+import SessionRoom from "./components/SessionRoom";
+// Define a hook that will be used to mount the React component
+import React from "react";
+import ReactDOM from "react-dom";
+import Hooks from "./hooks"
 
+const Hooks = {
+  SessionRoom: {
+    mounted() {
+      const sessionId = this.el.dataset.sessionId;
+      const currentUserId = this.el.dataset.currentUserId;
+      const currentUserName = this.el.dataset.currentUserName;
+      
+      ReactDOM.render(
+        <SessionRoom 
+          sessionId={sessionId} 
+          currentUser={{ 
+            id: currentUserId,
+            username: currentUserName
+          }}
+        />,
+        this.el
+      );
+    },
+    destroyed() {
+      ReactDOM.unmountComponentAtNode(this.el);
+    }
+  }
+};
+
+// Add hooks to LiveView
+let liveSocket = new LiveSocket("/live", Socket, { 
+  params: {_csrf_token: csrfToken},
+  hooks: Hooks 
+});
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
