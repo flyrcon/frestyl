@@ -7,6 +7,18 @@ defmodule FrestylWeb.UserProfileController do
   def show(conn, _params) do
     user = conn.assigns.current_user
     render(conn, :show, user: user)
+
+    # Get personalized recommendations for the user
+    recommendations =
+      case AIAssistant.get_user_recommendations(user.id) do
+        {:ok, recs} -> recs
+        _ -> []
+      end
+
+    render(conn, :show,
+      user: user,
+      recommendations: recommendations
+    )
   end
 
   def edit(conn, _params) do

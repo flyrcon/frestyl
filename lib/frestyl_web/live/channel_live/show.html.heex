@@ -1,0 +1,694 @@
+<!-- lib/frestyl_web/live/channel_live/show.html.heex -->
+<%= if @restricted do %>
+  <!-- Restricted Access View -->
+  <div class="min-h-screen bg-gray-50 py-12">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="bg-white shadow sm:rounded-lg p-6 text-center">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
+          <svg class="h-6 w-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 class="mt-4 text-lg font-medium text-gray-900">This channel is private</h3>
+        <p class="mt-2 text-sm text-gray-500">
+          You need to be a member to access this channel.
+          <%= if @channel.visibility == "invite_only" do %>
+            This channel is invite-only.
+          <% else %>
+            You can request access to join.
+          <% end %>
+        </p>
+        <div class="mt-6">
+          <%= if @channel.visibility == "invite_only" do %>
+            <.button class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+              Request Invitation
+              <svg class="ml-2 -mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </.button>
+          <% else %>
+            <.button 
+              phx-click="request_access"
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#DD1155] hover:bg-[#C4134E]"
+            >
+              Request Access
+            </.button>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+<% else %>
+  <!-- Channel Content -->
+  <div class="min-h-screen bg-gray-50">
+    <!-- Channel Header -->
+    <div class="bg-white border-b border-gray-200">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="py-6">
+          <div class="flex items-center space-x-5">
+            <!-- Channel Icon -->
+            <%= if @channel.icon_url do %>
+              <div class="flex-shrink-0">
+                <img src={@channel.icon_url} alt="" class="h-16 w-16 rounded-lg">
+              </div>
+            <% else %>
+              <div class="flex-shrink-0">
+                <div class="h-16 w-16 rounded-lg bg-[#DD1155] flex items-center justify-center">
+                  <span class="text-2xl font-bold text-white">
+                    <%= String.first(@channel.name) %>
+                  </span>
+                </div>
+              </div>
+            <% end %>
+            
+            <div class="flex-1 min-w-0">
+              <h1 class="text-2xl font-bold text-gray-900">
+                <%= @channel.name %>
+              </h1>
+              <div class="mt-1 flex flex-col sm:flex-row sm:flex-wrap sm:mt-0 sm:space-x-6">
+                <div class="mt-2 flex items-center text-sm text-gray-500">
+                  <svg class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                  <%= length(@members) %> <%= if length(@members) == 1, do: "member", else: "members" %>
+                </div>
+                <div class="mt-2 flex items-center text-sm text-gray-500">
+                  <svg class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <%= String.capitalize(String.replace(@channel.visibility, "_", " ")) %>
+                </div>
+              </div>
+              <%= if @channel.description do %>
+                <p class="mt-1 text-sm text-gray-500"><%= @channel.description %></p>
+              <% end %>
+            </div>
+          </div>
+          
+          <!-- Action Buttons -->
+          <div class="mt-6 flex flex-wrap gap-2">
+            <%= if @is_member do %>
+              <.button 
+                phx-click="start_broadcast"
+                class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E]"
+              >
+                <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Start Broadcast
+              </.button>
+              
+              <%= if @can_edit do %>
+                <.link
+                  navigate={~p"/channels/#{@channel}/edit"}
+                  class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit Channel
+                </.link>
+                
+                <.button
+                  phx-click="show_invite_modal"
+                  class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                  Invite Members
+                </.button>
+              <% end %>
+              
+              <.button
+                phx-click="leave_channel"
+                data-confirm="Are you sure you want to leave this channel?"
+                class="inline-flex items-center px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50"
+              >
+                <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Leave Channel
+              </.button>
+            <% else %>
+              <.button
+                phx-click="join_channel"
+                class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E]"
+              >
+                <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                </svg>
+                Join Channel
+              </.button>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Channel Content Tabs -->
+    <div class="border-b border-gray-200">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <nav class="flex -mb-px">
+          <button 
+            phx-click="switch_tab" 
+            phx-value-tab="content"
+            class={[
+              "whitespace-nowrap px-6 pb-4 text-sm font-medium border-b-2",
+              @active_tab == "content" && "border-[#DD1155] text-[#DD1155]",
+              @active_tab != "content" && "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            ]}
+          >
+            Content
+          </button>
+          <button 
+            phx-click="switch_tab" 
+            phx-value-tab="chat"
+            class={[
+              "whitespace-nowrap px-6 pb-4 text-sm font-medium border-b-2",
+              @active_tab == "chat" && "border-[#DD1155] text-[#DD1155]",
+              @active_tab != "chat" && "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            ]}
+          >
+            Chat
+          </button>
+          <button 
+            phx-click="switch_tab" 
+            phx-value-tab="files"
+            class={[
+              "whitespace-nowrap px-6 pb-4 text-sm font-medium border-b-2",
+              @active_tab == "files" && "border-[#DD1155] text-[#DD1155]",
+              @active_tab != "files" && "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            ]}
+          >
+            Files
+          </button>
+          <button 
+            phx-click="switch_tab" 
+            phx-value-tab="members"
+            class={[
+              "whitespace-nowrap px-6 pb-4 text-sm font-medium border-b-2",
+              @active_tab == "members" && "border-[#DD1155] text-[#DD1155]",
+              @active_tab != "members" && "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            ]}
+          >
+            Members
+          </button>
+        </nav>
+      </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <%= if @is_member do %>
+        <%= case @active_tab do %>
+          <% "content" -> %>
+            <!-- Content Tab -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <!-- Main Content Area -->
+              <div class="lg:col-span-2">
+                <!-- Broadcast Preview or Schedule -->
+                <div class="bg-white shadow sm:rounded-lg mb-8">
+                  <div class="px-4 py-5 sm:px-6">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">
+                      Channel Broadcast
+                    </h3>
+                  </div>
+                  <div class="aspect-video bg-gray-100 flex items-center justify-center">
+                    <div class="text-center">
+                      <svg class="h-12 w-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      <p class="mt-2 text-sm text-gray-500">No broadcast is currently active</p>
+                      <.button 
+                        phx-click="start_broadcast"
+                        class="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E]"
+                      >
+                        Start Broadcast
+                      </.button>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Shared Media -->
+                <div class="bg-white shadow sm:rounded-lg mb-8">
+                  <div class="px-4 py-5 sm:px-6 flex justify-between items-center">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">
+                      Shared Media
+                    </h3>
+                    <button 
+                      phx-click="switch_tab" 
+                      phx-value-tab="files"
+                      class="text-sm text-[#DD1155] hover:text-[#C4134E]"
+                    >
+                      View all →
+                    </button>
+                  </div>
+                  <div class="border-t border-gray-200">
+                    <%= if length(@media_files) > 0 do %>
+                      <ul class="divide-y divide-gray-200">
+                        <%= for file <- Enum.take(@media_files, 5) do %>
+                          <li class="px-4 py-4 sm:px-6 hover:bg-gray-50 cursor-pointer" phx-click="view_media" phx-value-id={file.id}>
+                            <div class="flex items-center justify-between">
+                              <div class="flex items-center">
+                                <div class="flex-shrink-0">
+                                  <%= if file.media_type == "image" do %>
+                                    <svg class="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                  <% else %>
+                                    <svg class="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                  <% end %>
+                                </div>
+                                <div class="ml-4">
+                                  <div class="text-sm font-medium text-gray-900">
+                                    <%= file.title || file.filename %>
+                                  </div>
+                                  <div class="text-xs text-gray-500">
+                                    Uploaded <%= Calendar.strftime(file.inserted_at, "%B %d, %Y") %>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                        <% end %>
+                      </ul>
+                    <% else %>
+                      <div class="px-4 py-6 sm:px-6 text-center text-sm text-gray-500">
+                        No files shared yet
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Sidebar -->
+              <div class="lg:col-span-1">
+                <!-- Channel Activity Feed -->
+                <div class="bg-white shadow sm:rounded-lg mb-8">
+                  <div class="px-4 py-5 sm:px-6">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">
+                      Recent Activity
+                    </h3>
+                  </div>
+                  <div class="border-t border-gray-200">
+                    <%= if length(@chat_messages) > 0 do %>
+                      <ul class="divide-y divide-gray-200">
+                        <%= for message <- Enum.take(@chat_messages, 5) do %>
+                          <li class="px-4 py-4 sm:px-6">
+                            <div class="flex items-center">
+                              <div class="flex-shrink-0">
+                                <div class="h-6 w-6 rounded-full bg-[#DD1155] flex items-center justify-center">
+                                  <span class="text-xs font-medium text-white">
+                                    <%= String.first(Map.get(@users_map, message.user_id, %{email: "U"}).email) %>
+                                  </span>
+                                </div>
+                              </div>
+                              <div class="ml-3 flex-1">
+                                <p class="text-sm text-gray-900">
+                                  <span class="font-medium"><%= Map.get(@users_map, message.user_id, %{email: "Unknown"}).email %></span>
+                                  <%= String.slice(message.content, 0..50) %>
+                                </p>
+                                <p class="text-xs text-gray-500">
+                                  <%= Calendar.strftime(message.inserted_at, "%B %d, %Y") %>
+                                </p>
+                              </div>
+                            </div>
+                          </li>
+                        <% end %>
+                      </ul>
+                    <% else %>
+                      <div class="px-4 py-6 sm:px-6 text-center text-sm text-gray-500">
+                        No recent activity
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+                
+                <!-- Channel Members -->
+                <div class="bg-white shadow sm:rounded-lg">
+                  <div class="px-4 py-5 sm:px-6">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">
+                      Members (<%= length(@members) %>)
+                    </h3>
+                  </div>
+                  <div class="border-t border-gray-200">
+                    <ul class="divide-y divide-gray-200">
+                      <%= for member <- Enum.take(@members, 5) do %>
+                        <li class="px-4 py-4 sm:px-6">
+                          <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                              <%= if Map.get(member.user, :avatar_url) do %>
+                                <img src={member.user.avatar_url} alt="" class="h-8 w-8 rounded-full">
+                              <% else %>
+                                <div class="h-8 w-8 rounded-full bg-[#DD1155] flex items-center justify-center">
+                                  <span class="text-sm font-medium text-white">
+                                    <%= String.first(member.user.email) %>
+                                  </span>
+                                </div>
+                              <% end %>
+                            </div>
+                            <div class="ml-3">
+                              <p class="text-sm font-medium text-gray-900">
+                                <%= member.user.name || member.user.email %>
+                              </p>
+                              <p class="text-xs text-gray-500">
+                                <%= String.capitalize(member.role) %>
+                              </p>
+                            </div>
+                          </div>
+                        </li>
+                      <% end %>
+                    </ul>
+                    <%= if length(@members) > 5 do %>
+                      <div class="px-4 py-4 sm:px-6 text-center">
+                        <button 
+                          phx-click="switch_tab" 
+                          phx-value-tab="members"
+                          class="text-sm text-[#DD1155] hover:text-[#C4134E]"
+                        >
+                          View all members →
+                        </button>
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+          <% "chat" -> %>
+            <!-- Chat Tab -->
+            <div class="bg-white shadow rounded-lg overflow-hidden h-[600px]">
+              <!-- Here you would include your existing chat component -->
+              <div class="flex flex-col h-full">
+                <!-- Messages Container -->
+                <div class="flex-grow overflow-y-auto px-6 py-4" id={"messages-container-chat"} phx-hook="MessagesContainer" phx-update="append">
+                  <!-- Message List -->
+                  <div id="messages-list" class="space-y-4">
+                    <%= for message <- @chat_messages do %>
+                      <% user = Map.get(@users_map, message.user_id) %>
+                      <div id={"message-#{message.id}"} class="flex group">
+                        <div class="flex-shrink-0 mr-3">
+                          <div class="h-8 w-8 rounded-full bg-[#DD1155] flex items-center justify-center text-white">
+                            <%= if user && user.name do %>
+                              <%= String.first(user.name) %>
+                            <% else %>
+                              U
+                            <% end %>
+                          </div>
+                        </div>
+                        <div class="flex-grow">
+                          <div class="flex items-baseline">
+                            <span class="font-medium text-gray-900">
+                              <%= if user do %>
+                                <%= user.name || user.email %>
+                              <% else %>
+                                Unknown User
+                              <% end %>
+                            </span>
+                            <span class="ml-2 text-xs text-gray-500">
+                              <%= Calendar.strftime(message.inserted_at, "%H:%M") %>
+                            </span>
+                            
+                            <!-- Message Actions -->
+                            <div class="ml-2 hidden group-hover:flex space-x-1">
+                              <%= if message.user_id == @current_user.id || (@current_user.role in ["admin", "moderator", "channel_owner"]) do %>
+                                <button 
+                                  phx-click="delete_message" 
+                                  phx-value-id={message.id}
+                                  class="text-xs text-gray-400 hover:text-red-500"
+                                  title="Delete message"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              <% end %>
+                            </div>
+                          </div>
+                          
+                          <!-- Message Content -->
+                          <%= case message.message_type do %>
+                            <% "text" -> %>
+                              <div class="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
+                                <%= message.content %>
+                              </div>
+                            <% "image" -> %>
+                              <div class="mt-1">
+                                <img src={message.content} alt="Image" class="max-w-sm rounded" />
+                              </div>
+                            <% "file" -> %>
+                              <div class="mt-1 flex items-center text-sm text-gray-800">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <a href={message.content} target="_blank" class="text-[#DD1155] hover:underline">
+                                  <%= message.metadata["filename"] || "Download file" %>
+                                </a>
+                              </div>
+                            <% _ -> %>
+                              <div class="mt-1 text-sm text-gray-800">
+                                <%= message.content %>
+                              </div>
+                          <% end %>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+
+                <!-- Message Input -->
+                <div class="border-t border-gray-200 px-6 py-4">
+                  <form phx-submit="send_message" class="flex items-end space-x-2">
+                    <div class="flex-grow">
+                      <textarea
+                        id="message-input"
+                        name="message"
+                        placeholder="Type a message..."
+                        rows="1"
+                        phx-keyup="typing"
+                        phx-hook="AutoResizeTextarea"
+                        class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-[#DD1155] focus:border-[#DD1155] sm:text-sm resize-none"
+                        style="min-height: 2.5rem; max-height: 8rem;"
+                      ><%= @message_text %></textarea>
+                    </div>
+                    <div>
+                      <button
+                        type="submit"
+                        class="inline-flex items-center px-3 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+            
+            <% "files" -> %>
+            <!-- Files Tab -->
+            <div id="files-tab" class="py-6">
+              <.live_component
+                module={FrestylWeb.ChannelLive.MediaComponent}
+                id="media-component"
+                channel_id={@channel.id}
+                current_user={@current_user}
+                is_admin={@is_admin}
+              />
+            </div>
+            
+          <% "members" -> %>
+            <!-- Members Tab -->
+            <div class="bg-white shadow rounded-lg p-6">
+              <div class="flex justify-between items-center mb-6">
+                <h3 class="text-lg font-medium text-gray-900">
+                  Members (<%= length(@members) %>)
+                </h3>
+                
+                <%= if @can_edit do %>
+                  <.button
+                    phx-click="show_invite_modal"
+                    class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E]"
+                  >
+                    <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                    </svg>
+                    Invite Members
+                  </.button>
+                <% end %>
+              </div>
+              
+              <div class="space-y-4">
+                <%= for member <- @members do %>
+                  <div class="flex items-center p-3 bg-gray-50 rounded-lg">
+                    <!-- Member avatar or initial -->
+                    <div class="flex-shrink-0">
+                      <%= if Map.get(member.user, :avatar_url) do %>
+                        <img src={member.user.avatar_url} alt="" class="h-10 w-10 rounded-full">
+                      <% else %>
+                        <div class="h-10 w-10 rounded-full bg-[#DD1155] flex items-center justify-center">
+                          <span class="text-sm font-medium text-white">
+                            <%= String.first(member.user.email || "U") %>
+                          </span>
+                        </div>
+                      <% end %>
+                    </div>
+                    
+                    <!-- Member info -->
+                    <div class="ml-3 flex-grow">
+                      <p class="text-sm font-medium text-gray-900">
+                        <%= member.user.name || member.user.email %>
+                      </p>
+                      <p class="text-xs text-gray-500">
+                        <%= String.capitalize(member.role) %>
+                      </p>
+                    </div>
+                    
+                    <!-- Member actions -->
+                    <%= if @can_edit && @current_user.id != member.user_id do %>
+                      <div class="flex space-x-2">
+                        <button
+                          phx-click="promote_member"
+                          phx-value-user-id={member.user_id}
+                          class="text-xs text-[#DD1155] hover:text-[#C4134E]"
+                        >
+                          <%= if member.role == "member", do: "Promote", else: "Demote" %>
+                        </button>
+                        <button
+                          phx-click="remove_member"
+                          phx-value-user-id={member.user_id}
+                          data-confirm="Are you sure you want to remove this member?"
+                          class="text-xs text-red-600 hover:text-red-900"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          
+          <% _ -> %>
+            <!-- Default to Content Tab if something goes wrong -->
+            <div class="text-center py-8 text-gray-500">
+              No content to display
+            </div>
+        <% end %>
+      <% else %>
+        <!-- Content for non-members -->
+        <div class="bg-white shadow sm:rounded-lg">
+          <div class="px-4 py-5 sm:px-6 text-center">
+            <p class="text-sm text-gray-500">Join the channel to access content</p>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </div>
+  
+  <!-- Invite Modal -->
+  <%= if @show_invite_modal do %>
+    <div class="fixed z-50 inset-0 overflow-y-auto">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+          <div class="absolute inset-0 bg-gray-500 opacity-75" style="backdrop-filter: blur(4px);"></div>
+        </div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale">
+          <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <div class="sm:flex sm:items-start">
+              <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-[#DD1155] bg-opacity-20 sm:mx-0 sm:h-10 sm:w-10">
+                <svg class="h-6 w-6 text-[#DD1155]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+              </div>
+              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">Invite to Channel</h3>
+                <div class="mt-2">
+                  <p class="text-sm text-gray-500">
+                    Invite someone to join <%= @channel.name %>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <form phx-submit="invite_to_channel" class="px-4 py-3 bg-gray-50 sm:px-6">
+            <div>
+              <label for="email" class="block text-sm font-medium text-gray-700">Email address</label>
+              <div class="mt-1">
+                <input type="email" name="email" id="email"
+                  class="shadow-sm focus:ring-[#DD1155] focus:border-[#DD1155] block w-full sm:text-sm border-gray-300 rounded-lg"
+                  placeholder="email@example.com" required>
+              </div>
+            </div>
+            <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+              <button type="submit"
+                class="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-[#DD1155] text-base font-medium text-white hover:bg-[#C4134E] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155] sm:col-start-2 sm:text-sm">
+                Send Invitation
+              </button>
+              <button type="button" phx-click="hide_invite_modal"
+                class="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155] sm:mt-0 sm:col-start-1 sm:text-sm">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  <% end %>
+  
+  <!-- Media Upload Modal -->
+  <%= if @show_media_upload do %>
+    <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+        
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+          <div class="bg-white">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 sm:px-6">
+              <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                Upload Media
+              </h3>
+              <button 
+                type="button"
+                phx-click="hide_media_upload"
+                class="bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
+              >
+                <span class="sr-only">Close</span>
+                <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div class="px-4 py-5 sm:p-6">
+              <.live_component
+                module={FrestylWeb.ChannelLive.MediaUploadComponent}
+                id="media-upload"
+                channel_id={@channel.id}
+                current_user={@current_user}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+  
+  <!-- Media Viewer Modal -->
+  <%= if @viewing_media do %>
+    <.live_component
+      module={FrestylWeb.ChannelLive.MediaViewerComponent}
+      id="media-viewer"
+      file_id={@viewing_media}
+      current_user={@current_user}
+      is_admin={@is_admin}
+    />
+  <% end %>
+<% end %>

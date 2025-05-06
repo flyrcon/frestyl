@@ -81,4 +81,191 @@ Hooks.ShowHideMaxAttendees = {
   }
 }
 
-export default Hooks
+// Auto-scroll for chat messages
+Hooks.AutoScroll = {
+  mounted() {
+    this.scrollToBottom();
+    this.observe();
+    
+    // Scroll to bottom when a new message is sent
+    this.handleEvent("chat-message-sent", () => {
+      this.scrollToBottom();
+    });
+  },
+  
+  observe() {
+    // Observe when new messages are added
+    this.observer = new MutationObserver(mutations => {
+      // Only auto-scroll if already at the bottom or if the new message is from the current user
+      if (this.isAtBottom() || this.isNewMessageFromCurrentUser(mutations)) {
+        this.scrollToBottom();
+      }
+    });
+    
+    this.observer.observe(this.el, {
+      childList: true,
+      subtree: true
+    });
+  },
+  
+  isNewMessageFromCurrentUser(mutations) {
+    const currentUserId = document.body.getAttribute('data-user-id');
+    if (!currentUserId) return false;
+    
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType === Node.ELEMENT_NODE && node.dataset && node.dataset.userId === currentUserId) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  },
+  
+  updated() {
+    if (this.isAtBottom()) {
+      this.scrollToBottom();
+    }
+  },
+  
+  beforeDestroy() {
+    if (this.observer) {
+      this.observer.disconnect();
+    }
+  },
+  
+  scrollToBottom() {
+    this.el.scrollTop = this.el.scrollHeight;
+  },
+  
+  isAtBottom() {
+    const threshold = 50; // pixels from bottom to consider "at bottom"
+    return this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < threshold;
+  }
+};
+
+// Auto-resize textarea as user types
+Hooks.AutoResizeTextarea = {
+  mounted() {
+    this.resize();
+    this.el.addEventListener('input', () => this.resize());
+  },
+
+  resize() {
+    this.el.style.height = 'auto';
+    const newHeight = Math.min(Math.max(this.el.scrollHeight, 40), 200); // Min 40px, max 200px
+    this.el.style.height = `${newHeight}px`;
+  }
+};
+
+// Type indicator with debouncing
+Hooks.TypingIndicator = {
+  mounted() {
+    this.typingTimeout = null;
+    this.lastTypingState = false;
+    
+    this.el.addEventListener('input', () => {
+      const isTyping = this.el.value.trim().length > 0;
+      
+      // Only send typing events when the state changes
+      if (isTyping !== this.lastTypingState) {
+        this.pushEvent('typing', { typing: isTyping ? "true" : "false" });
+        this.lastTypingState = isTyping;
+      }
+      
+      // Reset timeout if user is typing
+      if (isTyping) {
+        clearTimeout(this.typingTimeout);
+        
+        // Set timeout to stop typing indicator after 3 seconds of inactivity
+        this.typingTimeout = setTimeout(() => {
+          this.pushEvent('typing', { typing: "false" });
+          this.lastTypingState = false;
+        }, 3000);
+      }
+    });
+    
+    // When form is submitted, immediately stop typing
+    const form = this.el.closest('form');
+    if (form) {
+      form.addEventListener('submit', () => {
+        clearTimeout(this.typingTimeout);
+        this.pushEvent('typing', { typing: "false" });
+        this.lastTypingState = false;
+      });
+    }
+  },
+  
+  beforeDestroy() {
+    clearTimeout(this.typingTimeout);
+  }
+};
+
+// File upload handling
+Hooks.FileUpload = {
+  mounted() {
+    this.el.addEventListener('change', (e) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      
+      // Show loading state
+      this.pushEvent('upload-started', {});
+      
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files[]', files[i]);
+      }
+      
+      // Get CSRF token
+      const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
+      
+      // Upload files
+      fetch('/api/media/upload', {
+        method: 'POST',
+        headers: {
+          'X-CSRF-Token': csrfToken
+        },
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        // Reset input
+        this.el.value = '';
+        
+        // Send files to LiveView
+        this.pushEvent('files-uploaded', { files: data.files });
+      })
+      .catch(error => {
+        console.error('Upload error:', error);
+        this.pushEvent('upload-error', { error: 'Failed to upload files' });
+        this.el.value = '';
+      });
+    });
+  }
+};
+
+// Toggle dropdown menu
+Hooks.DropdownMenu = {
+  mounted() {
+    this.el.addEventListener('click', (e) => {
+      const target = document.getElementById(this.el.dataset.target);
+      if (target) {
+        target.classList.toggle('hidden');
+      }
+      
+      // Close when clicking outside
+      const closeMenu = (event) => {
+        if (!target.contains(event.target) && !this.el.contains(event.target)) {
+          target.classList.add('hidden');
+          document.removeEventListener('click', closeMenu);
+        }
+      };
+      
+      document.addEventListener('click', closeMenu);
+    });
+  }
+};
+
+
+export default Hooks;

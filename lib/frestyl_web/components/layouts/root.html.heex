@@ -4,58 +4,30 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <%= if @current_user do %>
-      <meta name="user-token" content={Phoenix.Token.sign(@conn, "user socket", @current_user.id)} />
-    <% end %>
+    
     <.live_title default="Frestyl" suffix=" · Phoenix Framework">
-      {assigns[:page_title]}
+      <%= assigns[:page_title] %>
     </.live_title>
+
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
-    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
+
+    <!-- Include Chart.js for analytics visualizations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-date-fns/2.0.0/chartjs-adapter-date-fns.min.js" 
+            integrity="sha512-nTI4j+8XHbzlEvggQCYF3QES/ZCG+lDHN/uu6xRyIijh/IbAUKLc44b2ikhGKbOmjMSkcCcvZVRsrygdrr/+bA==" 
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer">
     </script>
+
+    <!-- Analytics configuration data -->
+    <%= if assigns[:current_user] && assigns[:analytics_config] do %>
+      <script id="analytics-config" type="application/json">
+        <%= raw(assigns[:analytics_config]) %>
+      </script>
+    <% end %>
   </head>
-  <body class="bg-white">
-    <ul class="relative z-10 flex items-center gap-4 px-4 sm:px-6 lg:px-8 justify-end">
-      <%= if @current_user do %>
-        <li class="text-[0.8125rem] leading-6 text-zinc-900">
-          {@current_user.email}
-        </li>
-        <li>
-          <.link
-            href={~p"/users/settings"}
-            class="text-[0.8125rem] leading-6 text-zinc-900 font-semibold hover:text-zinc-700"
-          >
-            Settings
-          </.link>
-        </li>
-        <li>
-          <.link
-            href={~p"/users/log_out"}
-            method="delete"
-            class="text-[0.8125rem] leading-6 text-zinc-900 font-semibold hover:text-zinc-700"
-          >
-            Log out
-          </.link>
-        </li>
-      <% else %>
-        <li>
-          <.link
-            href={~p"/users/register"}
-            class="text-[0.8125rem] leading-6 text-zinc-900 font-semibold hover:text-zinc-700"
-          >
-            Register
-          </.link>
-        </li>
-        <li>
-          <.link
-            href={~p"/users/log_in"}
-            class="text-[0.8125rem] leading-6 text-zinc-900 font-semibold hover:text-zinc-700"
-          >
-            Log in
-          </.link>
-        </li>
-      <% end %>
-    </ul>
-    {@inner_content}
+
+  <body class="bg-white antialiased">
+    <%= @inner_content %>
   </body>
 </html>

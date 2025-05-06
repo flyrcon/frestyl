@@ -18,20 +18,31 @@ defmodule FrestylWeb.SessionController do
     render(conn, :new, changeset: changeset)
   end
 
-  def create(conn, %{"session" => session_params}) do
-    user_id = conn.assigns.current_user.id
-    session_params = Map.put(session_params, "creator_id", user_id)
+def create(conn, %{"session" => session_params}) do
+  case Sessions.create_session(session_params) do
+    {:ok, session} ->
+      # If this is one of the user's first few sessions, offer setup assistance
+      current_user = conn.assigns.current_user
+      session_count = Sessions.count_user_sessions(current_user.id)
 
-    case Sessions.create_session(session_params) do
-      {:ok, session} ->
-        conn
-        |> put_flash(:info, "Session created successfully.")
-        |> redirect(to: ~p"/sessions/#{session}")
+      if session_count <= 3 do
+        Task.start(fn ->
+          AIAssistant.assist_with_setup(current_user.id, "session", %{
+            session_id: session.id,
+            name: session.name,
+            type: session.type
+          })
+        end)
+      end
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :new, changeset: changeset)
-    end
+      conn
+      |> put_flash(:info, "Session created successfully.")
+      |> redirect(to: ~p"/sessions/#{session}")
+
+    {:error, %Ecto.Changeset{} = changeset} ->
+      render(conn, :new, changeset: changeset)
   end
+end
 
   def show(conn, %{"id" => id}) do
     user_id = conn.assigns.current_user.id

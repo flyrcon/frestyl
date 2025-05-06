@@ -1,286 +1,261 @@
 defmodule FrestylWeb.Router do
   use FrestylWeb, :router
+  require Logger
 
+  import Phoenix.LiveView.Router
   import FrestylWeb.UserAuth
-  alias FrestylWeb.Plugs.RoleAuth
+  alias FrestylWeb.Plugs.{RoleAuth, RateLimiter}
+
+  # ----------------
+  # PIPELINES
+  # ----------------
 
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
-    plug :put_root_layout, html: {FrestylWeb.Layouts, :root}
+    plug :put_root_layout, {FrestylWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
-    plug :fetch_current_user
+    plug :fetch_current_user # This plug assigns the current_user
+  end
+
+  # Authentication pipelines
+  pipeline :require_auth do
+    plug :debug_request
+    # This plug redirects unauthenticated users to login
+    plug :require_authenticated_user
+  end
+
+  # This pipeline redirects authenticated users away from public auth pages
+  pipeline :redirect_auth do
+    plug :redirect_if_user_is_authenticated
+  end
+
+
+  # Role-specific pipelines
+  pipeline :require_creator do
+    plug :require_authenticated_user
+    plug RoleAuth, ["creator", "host", "channel_owner", "admin"]
+  end
+
+  pipeline :require_host do
+    plug :require_authenticated_user
+    plug RoleAuth, ["host", "channel_owner", "admin"]
+  end
+
+  pipeline :require_channel_owner do
+    plug :require_authenticated_user
+    plug RoleAuth, ["host", "channel_owner", "admin"]
+  end
+
+  pipeline :require_admin do
+    plug :require_authenticated_user
+    plug RoleAuth, ["admin"]
   end
 
   pipeline :api do
     plug :accepts, ["json"]
   end
 
-  # Define new pipelines for roles
-  pipeline :require_creator do
-    plug RoleAuth, ["creator", "host", "channel_owner", "admin"]
+  pipeline :rate_limited do
+    plug RateLimiter, limit: 5, period: 60_000
   end
 
-  pipeline :require_host do
-    plug RoleAuth, ["host", "channel_owner", "admin"]
-  end
+  # ----------------
+  # SCOPES
+  # ----------------
 
-  pipeline :require_channel_owner do
-    plug RoleAuth, ["channel_owner", "admin"]
-  end
-
-  pipeline :require_admin do
-    plug RoleAuth, ["admin"]
-  end
-
+  # Public routes
   scope "/", FrestylWeb do
-    pipe_through :browser
+    pipe_through [:browser]
 
+    # Home page
     get "/", PageController, :home
 
-    # LiveView routes
-    live "/dashboard", DashboardLive, :index
-    live "/collaborations", CollaborationLive, :index
-    live "/channels/:id/customize", ChannelCustomizationLive, :edit
-    live "/events/:id", EventAttendanceLive, :show
-    live "/studio", StudioLive, :index
+    # LiveView auth session for unauthenticated users
+    # This session uses the on_mount hook to redirect authenticated users
+    live_session :redirect_auth, on_mount: [{FrestylWeb.UserAuth, :redirect_if_user_is_authenticated}] do
+      live "/register", UserRegistrationLive, :new
+      live "/login", UserLoginLive, :new
+      live "/users/log_in", UserLoginLive, :new
+      live "/users/register", UserRegistrationLive, :new
+      live "/users/confirm", UserConfirmationInstructionsLive, :new
+      live "/users/confirm/:token", UserConfirmationLive, :edit
+      live "/users/reset_password", UserForgotPasswordLive, :new
+      live "/users/reset_password/:token", UserResetPasswordLive, :edit
+    end
 
-    # Channel routes
-    resources "/channels", ChannelController, param: "slug", except: [:show]
-    get "/channels/:slug", ChannelController, :show
+    # Auth submission endpoints (controller-based)
+    # These typically don't need the redirect_auth plug as they handle redirects internally
+    # Applying :redirect_auth to the GET requests for forms
+    get "/users/register", UserRegistrationController, :new, pipeline_through: [:redirect_auth]
+    post "/users/register", UserRegistrationController, :create
+    get "/users/log_in", UserSessionController, :new, pipeline_through: [:redirect_auth]
+    post "/users/log_in", UserSessionController, :create
+    post "/login", UserSessionController, :create
 
-    # Room routes (nested under channels)
-    resources "/channels/:channel_slug/rooms", RoomController, param: "slug", except: [:index]
-
-    # Message routes
-    delete "/channels/:channel_slug/rooms/:room_slug/messages/:id", MessageController, :delete
-
-    # Channel membership management
-    resources "/channels/:channel_slug/members", MembershipController, only: [:index, :create, :delete]
-    put "/channels/:channel_slug/members/:id/role", MembershipController, :update
-
-    # File routes for channels
-    get "/channels/:channel_slug/files", FileController, :index
-    get "/channels/:channel_slug/files/new", FileController, :new
-    post "/channels/:channel_slug/files", FileController, :create
-    delete "/channels/:channel_slug/files/:id", FileController, :delete
-
-    # File routes for rooms
-    get "/channels/:channel_slug/rooms/:room_slug/files", FileController, :index
-    get "/channels/:channel_slug/rooms/:room_slug/files/new", FileController, :new
-    post "/channels/:channel_slug/rooms/:room_slug/files", FileController, :create
-    delete "/channels/:channel_slug/rooms/:room_slug/files/:id", FileController, :delete
-
-    # Invitation routes
-    resources "/channels/:channel_slug/invitations", InvitationController, only: [:index, :create]
-    post "/channels/:channel_slug/invitations/:id/cancel", InvitationController, :cancel
-
-    # Session routes
-    resources "/sessions", SessionController
-    post "/sessions/:id/join", SessionController, :join
-    post "/sessions/:id/leave", SessionController, :leave
-    post "/sessions/:id/start", SessionController, :start
-    post "/sessions/:id/end", SessionController, :end
-    get "/sessions/:id/room", SessionController, :room
-
-    # Public invitation routes (no channel_slug needed)
+    # Event invitations (public routes)
     get "/invitations/:token", InvitationController, :show
     get "/invitations/:token/accept", InvitationController, :accept
-
-    # Search routes
-    get "/search", SearchController, :index
-
-    # API routes for AI-powered categorization
-    get "/api/channels/suggest-categories", ChannelController, :suggest_categories
+    get "/invitations/:token/decline", InvitationController, :decline
   end
 
-  # Media routes
-  resources "/media", MediaController, only: [:create, :delete]
+  # User invitations (public routes)
+  scope "/users", FrestylWeb do
+    pipe_through [:browser]
 
-  # User profile routes (require authenticated user)
+    # User account invitations - these don't require auth
+    get "/invitations/:token", UserInvitationController, :show
+    get "/invitations/:token/accept", UserInvitationController, :accept
+    get "/invitations/:token/decline", UserInvitationController, :decline
+  end
+
+  # Routes available to everyone (no auth check)
   scope "/", FrestylWeb do
-    pipe_through [:browser, :require_authenticated_user]
+    pipe_through [:browser]
 
-    # Event routes
-    live "/events", EventLive.Index, :index
-    live "/events/new", EventLive.Index, :new
-    live "/events/:id", EventLive.Show, :show
-    live "/events/:id/edit", EventLive.Index, :edit
+    # Logout route
+    delete "/users/log_out", UserSessionController, :delete
+    delete "/logout", UserSessionController, :delete
 
-    # Invitation routes
-    get "/invitations/:token/accept", InvitationController, :accept
-    get "/invitations/:token/decline", InvitationController, :decline
+    # Legacy controller routes - consider moving to authenticated if needed
+    get "/users/new", UserController, :new
+    post "/users", UserController, :create
+    resources "/users", UserController, except: [:new, :create, :show]
+  end
 
-    # Media handling
-    resources "/media", MediaController
-    post "/media/:asset_id/version", MediaController, :upload_version
-    get "/media/stream/:asset_id/:version_id", MediaController, :stream
+  # All authenticated routes
+  scope "/", FrestylWeb do
+    # This pipeline ensures only authenticated users can access routes within this scope
+    pipe_through [:browser, :require_auth]
 
-    live "/media", MediaLive.Index, :index
-    live "/media/new", MediaLive.Index, :new
-    live "/media/:id/edit", MediaLive.Index, :edit
-    live "/media/:id", MediaLive.Show, :show
+    # LiveView authenticated session
+    # This session uses the on_mount hook to ensure authentication
+    # IMPORTANT: Place live_session BEFORE controller routes for the same path
+    live_session :require_auth, on_mount: [{FrestylWeb.UserAuth, :ensure_authenticated}] do
+      # DASHBOARD - Primary landing page (LiveView takes precedence)
+      live "/", DashboardLive, :index
+      live "/dashboard", DashboardLive, :index # This will now be matched before the GET /dashboard below
 
-    get "/profile", UserProfileController, :show
-    get "/profile/edit", UserProfileController, :edit
-    put "/profile", UserProfileController, :update
+      # CHANNELS
+      live "/channels", ChannelLive.Index, :index
+      live "/channels/new", ChannelLive.Form, :new
+      live "/channels/:id", ChannelLive.Show, :show
+      live "/channels/:id/edit", ChannelLive.Form, :edit
 
-    # Add route for LiveView profile
-    live "/profile/live", UserLive.Profile, :show
+      # CHAT
+      live "/chat", ChatLive.Index, :index
+      live "/chat/:channel_id", ChatLive.Show, :show
 
-    # Subscription routes
-    get "/subscriptions", SubscriptionController, :index
-    get "/subscriptions/new/:plan_id", SubscriptionController, :new
-    post "/subscriptions", SubscriptionController, :create
-    delete "/subscriptions/:id", SubscriptionController, :cancel
+      # MEDIA
+      live "/media", MediaLive.Index, :index
+      live "/media/new", MediaLive.Index, :new
+      live "/media/upload", MediaLive.Upload, :index
+      live "/media/:id", MediaLive.Show, :show
+      live "/media/:id/edit", MediaLive.Index, :edit
 
-    # Ticket routes
+      # EVENTS
+      live "/events", EventLive.Index, :index
+      live "/events/new", EventLive.Index, :new
+      live "/events/:id", EventLive.Show, :show
+      live "/events/:id/edit", EventLive.Index, :edit
+      live "/events/:id/attend", EventAttendanceLive, :show
+
+      # USERS
+      live "/invite", InviteUserLive, :index
+
+      # COLLABORATIONS
+      live "/collaborations", CollaborationLive, :index
+
+      # ANALYTICS
+      live "/analytics", AnalyticsLive.Dashboard, :index
+      live "/analytics/channels/:channel_id", AnalyticsLive.Dashboard, :channel
+      live "/analytics/performance", AnalyticsLive.PerformanceDashboard, :index
+      live "/analytics/revenue", AnalyticsLive.RevenueDashboard, :index
+      live "/analytics/audience", AnalyticsLive.AudienceDashboard, :index
+
+      # PROFILE
+      live "/profile", UserLive.Profile, :show
+
+    end
+
+    # Dashboard controller endpoint (will only be reached if the LiveView route is not matched)
+    # This route is still protected by the :require_auth pipeline on the scope.
+    get "/dashboard", DashboardController, :index
+
+    # Other authenticated controller routes
+    get "/users/log_in_success", UserSessionController, :log_in_success
+    get "/session/create_from_liveview", UserSessionController, :create_from_liveview
+
+    # TICKETS
     get "/events/:event_id/tickets", TicketController, :buy
     post "/tickets/checkout", TicketController, :create_checkout
     get "/events/:event_id/tickets/success", TicketController, :success
     get "/my-tickets", TicketController, :my_tickets
 
-    # Account routes
+    # SEARCH
+    get "/search", SearchController, :index
+
+    # PROFILE
+    get "/profile/edit", UserProfileController, :edit
+    put "/profile", UserProfileController, :update
+
+    # ACCOUNT
     get "/account/subscription", AccountController, :subscription
+
+    # SUBSCRIPTIONS
+    resources "/subscriptions", SubscriptionController, except: [:new, :create]
+    get "/subscriptions/new/:plan_id", SubscriptionController, :new
+    post "/subscriptions", SubscriptionController, :create
+
+    # CHANNELS (Controller-based for backward compatibility)
+    resources "/channels", ChannelController, param: "slug", except: [:index, :show]
+    get "/channels/:slug", ChannelController, :show
+
+    # ROOMS (nested under channel)
+    resources "/channels/:channel_slug/rooms", RoomController, param: "slug", except: [:index]
+
+    # MESSAGES
+    delete "/channels/:channel_slug/rooms/:room_slug/messages/:id", MessageController, :delete
+
+    # MEMBERSHIP
+    resources "/channels/:channel_slug/members", MembershipController, only: [:index, :create, :delete]
+    put "/channels/:channel_slug/members/:id/role", MembershipController, :update
+
+    # INVITATIONS (auth-required)
+    resources "/channels/:channel_slug/invitations", InvitationController, only: [:index, :create]
+    post "/channels/:channel_slug/invitations/:id/cancel", InvitationController, :cancel
+
+    # MEDIA FILES (global + nested)
+    resources "/media", MediaController
+    post "/media/:asset_id/version", MediaController, :upload_version
+    get "/media/stream/:asset_id/:version_id", MediaController, :stream
+    get "/uploads/*path", MediaController, :serve_file
+    get "/media/:id", MediaController, :download
+
+    get "/channels/:channel_slug/files", FileController, :index
+    get "/channels/:channel_slug/files/new", FileController, :new
+    post "/channels/:channel_slug/files", FileController, :create
+    delete "/channels/:channel_slug/files/:id", FileController, :delete
+
+    get "/channels/:channel_slug/rooms/:room_slug/files", FileController, :index
+    get "/channels/:channel_slug/rooms/:room_slug/files/new", FileController, :new
+    post "/channels/:channel_slug/rooms/:room_slug/files", FileController, :create
+    delete "/channels/:channel_slug/rooms/:room_slug/files/:id", FileController, :delete
+
+    # SESSIONS (careful with naming - these aren't user sessions)
+    resources "/sessions", SessionController, except: [:new, :create, :delete]
+    post "/sessions/:id/join", SessionController, :join
+    post "/sessions/:id/leave", SessionController, :leave
+    post "/sessions/:id/start", SessionController, :start
+    post "/sessions/:id/end", SessionController, :end
+    get  "/sessions/:id/room", SessionController, :room
   end
 
-  # Creator routes
-  scope "/creator", FrestylWeb do
-    pipe_through [:browser, :require_authenticated_user, :require_creator]
-
-    # Will be implemented later (content management)
-    # resources "/content", ContentController
-  end
-
-  # Host routes
-  scope "/host", FrestylWeb do
-    pipe_through [:browser, :require_authenticated_user, :require_host]
-
-    # Will be implemented later (moderation)
-    # resources "/moderation", ModerationController, only: [:index, :show, :update, :delete]
-  end
-
-  # Channel owner routes
-  scope "/channel", FrestylWeb do
-    pipe_through [:browser, :require_authenticated_user, :require_channel_owner]
-
-    # Will be implemented later
-    # resources "/channels", ChannelController
-    # resources "/invitations", InvitationController
-  end
-
-  # Admin routes
-  scope "/admin", FrestylWeb do
-    pipe_through [:browser, :require_authenticated_user, :require_admin]
-
-    resources "/users", AdminUserController
-    # resources "/settings", AdminSettingController, only: [:index, :edit, :update]
-  end
-
-  scope "/admin", FrestylWeb.Admin do
-    pipe_through [:browser, :require_authenticated_user, :require_admin_user]
-
-    get "/dashboard", DashboardController, :index
-    get "/reports", DashboardController, :detailed_report
-
-    # Subscription plan management
-    resources "/subscription-plans", SubscriptionPlanController
-  end
-
-  # Webhook endpoints
-  scope "/webhooks", FrestylWeb do
-    post "/stripe", WebhookController, :stripe
-  end
-
-  scope "/", FrestylWeb do
-    pipe_through :browser
-
-    get "/", PageController, :home
-  end
-
-   # API scope for WebRTC signaling and real-time communication
-   scope "/api", FrestylWeb do
-    pipe_through :api
-
-    resources "/rooms", RoomController, except: [:new, :edit]
-    resources "/streams", StreamController, except: [:new, :edit]
-
-    post "/rooms/:id/join", RoomController, :join
-    post "/rooms/:id/leave", RoomController, :leave
-    post "/streams/:id/start", StreamController, :start
-    post "/streams/:id/end", StreamController, :end
-  end
-
-  # Enable LiveDashboard and Swoosh mailbox preview in development
-  if Application.compile_env(:frestyl, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
-    import Phoenix.LiveDashboard.Router
-
-    scope "/dev" do
-      pipe_through :browser
-
-      live_dashboard "/dashboard", metrics: FrestylWeb.Telemetry
-      forward "/mailbox", Plug.Swoosh.MailboxPreview
-    end
-  end
-
-  ## Authentication routes
-
-  scope "/", FrestylWeb do
-    pipe_through [:browser, :redirect_if_user_is_authenticated]
-
-    live_session :redirect_if_user_is_authenticated,
-      on_mount: [{FrestylWeb.UserAuth, :redirect_if_user_is_authenticated}] do
-      live "/users/register", UserRegistrationLive, :new
-      live "/users/log_in", UserLoginLive, :new
-      live "/users/reset_password", UserForgotPasswordLive, :new
-      live "/users/reset_password/:token", UserResetPasswordLive, :edit
-    end
-
-    post "/users/log_in", UserSessionController, :create
-  end
-
-  scope "/", FrestylWeb do
-    pipe_through [:browser, :require_authenticated_user]
-  end
-
-  scope "/", FrestylWeb do
-    pipe_through [:browser, :require_authenticated_user]
-
-    live_session :require_authenticated_user,
-      on_mount: [{FrestylWeb.UserAuth, :ensure_authenticated}] do
-      live "/users/settings", UserSettingsLive, :edit
-      live "/users/settings/confirm_email/:token", UserSettingsLive, :confirm_email
-    end
-  end
-
-  scope "/", FrestylWeb do
-    pipe_through [:browser]
-
-    delete "/users/log_out", UserSessionController, :delete
-
-    live_session :current_user,
-      on_mount: [{FrestylWeb.UserAuth, :mount_current_user}] do
-      live "/users/confirm/:token", UserConfirmationLive, :edit
-      live "/users/confirm", UserConfirmationInstructionsLive, :new
-    end
-  end
-
-  # Add to router.ex
-  pipeline :rate_limited do
-    plug FrestylWeb.Plugs.RateLimiter, limit: 5, period: 60_000
-  end
-
-  # And then use it in sensitive routes
-  scope "/tickets", FrestylWeb do
-    pipe_through [:browser, :require_authenticated_user, :rate_limited]
-
-    post "/checkout", TicketController, :create_checkout
+  defp debug_request(conn, _opts) do
+    Logger.info("Processing request: #{conn.request_path} with method #{conn.method}")
+    Logger.info("Current user: #{inspect conn.assigns[:current_user]}")
+    conn
   end
 end

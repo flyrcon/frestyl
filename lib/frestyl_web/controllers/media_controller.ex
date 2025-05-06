@@ -50,6 +50,25 @@ defmodule FrestylWeb.MediaController do
     end
   end
 
+  def serve_file(conn, %{"path" => path}) do
+    file_path = Path.join([Application.get_env(:frestyl, :upload_dir) | path])
+
+    case File.read(file_path) do
+      {:ok, content} ->
+        content_type = MIME.from_path(file_path)
+
+        conn
+        |> put_resp_content_type(content_type)
+        |> put_resp_header("content-disposition", "inline; filename=\"#{Path.basename(file_path)}\"")
+        |> send_resp(200, content)
+
+      {:error, _} ->
+        conn
+        |> put_status(:not_found)
+        |> text("File not found")
+    end
+  end
+
   def update(conn, %{"id" => id, "asset" => asset_params}) do
     asset = Media.get_asset!(id)
 

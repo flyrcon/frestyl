@@ -51,14 +51,23 @@ defmodule Frestyl.MixProject do
        app: false,
        compile: false,
        depth: 1},
+      {:mime, "~> 2.0"},
+      {:stripity_stripe, "~> 2.0"},
       {:swoosh, "~> 1.5"},
+      {:phoenix_swoosh, "~> 1.0"},
+      {:gen_smtp, "~> 1.1"},
       {:finch, "~> 0.13"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.26"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.1.1"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:ex_aws, "~> 2.4"},
+      {:ex_aws_s3, "~> 2.3"},
+      {:hackney, "~> 1.18"},
+      {:sweet_xml, "~> 0.7"},
+      {:poison, "~> 5.0"}
     ]
   end
 

@@ -6,8 +6,14 @@ defmodule Frestyl.Payments do
 
   import Ecto.Query, warn: false
   alias Frestyl.Repo
-  alias Frestyl.Payments.{SubscriptionPlan, UserSubscription, TicketType,
-                          TicketPurchase, Payout, RevenueReport}
+  alias Frestyl.Payments.{
+    SubscriptionPlan,
+    UserSubscription,
+    TicketType,
+    TicketPurchase,
+    Payout,
+    RevenueReport
+  }
   alias Frestyl.Accounts.User
   alias Frestyl.Events.Event
 

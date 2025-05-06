@@ -1,0 +1,31 @@
+<!-- lib/frestyl_web/live/user_login_live.html.heex -->
+<div class="mx-auto max-w-sm">
+  <.header class="text-center">
+    Sign in to account
+  </.header>
+
+  <.simple_form for={@form} id="login_form" action={~p"/login"} phx-update="ignore">
+    <.input field={@form[:email]} type="email" label="Email" required />
+    <.input field={@form[:password]} type="password" label="Password" required />
+
+    <:actions>
+      <.input field={@form[:remember_me]} type="checkbox" label="Keep me logged in" />
+      <.link href={~p"/users/reset_password"} class="text-sm font-semibold">
+        Forgot your password?
+      </.link>
+    </:actions>
+    <:actions>
+      <.button phx-disable-with="Signing in..." class="w-full">
+        Sign in <span aria-hidden="true">→</span>
+      </.button>
+    </:actions>
+  </.simple_form>
+</div>
+<div class="mt-6 text-center">
+  <p class="text-sm text-gray-600">
+    Don't have an account? 
+    <.link navigate={~p"/register"} class="font-semibold text-[#DD1155] hover:text-[#F53E7B]">
+      Sign up
+    </.link>
+  </p>
+</div>

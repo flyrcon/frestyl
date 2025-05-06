@@ -12,13 +12,9 @@ defmodule Frestyl.Repo.Migrations.CreateJoinTables do
       timestamps()
     end
 
-    create_if_not_exists unique_index(:channel_subscribers, [:user_id, :channel_id])
-    create_if_not_exists index(:channel_subscribers, [:channel_id])
+    create unique_index(:channel_subscribers, [:user_id, :channel_id])
+    create index(:channel_subscribers, [:channel_id])
 
-
-
-    create_if_not_exists unique_index(:session_participants, [:user_id, :session_id])
-    create_if_not_exists index(:session_participants, [:session_id])
 
     # Event attendees join table
     create table(:event_attendees, primary_key: false) do
@@ -31,7 +27,7 @@ defmodule Frestyl.Repo.Migrations.CreateJoinTables do
       timestamps()
     end
 
-    create_if_not_exists unique_index(:event_attendees, [:user_id, :event_id])
-    create_if_not_exists index(:event_attendees, [:event_id])
+    create unique_index(:event_attendees, [:user_id, :event_id])
+    create index(:event_attendees, [:event_id])
   end
 end

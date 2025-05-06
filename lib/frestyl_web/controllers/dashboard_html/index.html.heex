@@ -1,0 +1,64 @@
+<div class="min-h-full">
+  <!-- Navigation -->
+  <nav class="bg-white shadow mb-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex">
+          <div class="flex-shrink-0 flex items-center">
+            <span class="text-[#DD1155] text-xl font-bold">Frestyl</span>
+          </div>
+          <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+            <a href="/dashboard" class="inline-flex items-center px-1 pt-1 border-b-2 border-[#DD1155] text-sm font-medium text-gray-900">
+              Dashboard
+            </a>
+            <a href="/channels" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+              Channels
+            </a>
+            <a href="/chat" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+              Chat
+            </a>
+            <a href="/media" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+              Media
+            </a>
+            <a href="/profile" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+              Profile
+            </a>
+          </div>
+        </div>
+        
+        <div class="flex items-center">
+          <span class="mr-4 text-sm text-gray-700">Welcome, <%= @user.email %></span>
+          <a href="/logout" data-method="delete" class="text-sm text-gray-700 hover:text-gray-900">
+            Logout
+          </a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Dashboard Content -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="py-6">
+      <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
+      <p class="mt-2 text-sm text-gray-500">Welcome back, <%= @user.name %></p>
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="mt-8">
+      <h2 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <a href="/channels/new" class="relative block w-full border-2 border-gray-300 border-dashed rounded-lg p-8 text-center hover:border-gray-400">
+          <span class="block text-sm font-medium text-gray-900">Create Channel</span>
+        </a>
+        
+        <a href="/channels" class="relative block w-full border-2 border-gray-300 border-dashed rounded-lg p-8 text-center hover:border-gray-400">
+          <span class="block text-sm font-medium text-gray-900">View Channels</span>
+        </a>
+        
+        <a href="/profile" class="relative block w-full border-2 border-gray-300 border-dashed rounded-lg p-8 text-center hover:border-gray-400">
+          <span class="block text-sm font-medium text-gray-900">Edit Profile</span>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>

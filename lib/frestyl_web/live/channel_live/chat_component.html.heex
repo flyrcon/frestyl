@@ -1,0 +1,134 @@
+<div class="flex flex-col h-full">
+  <!-- Messages Container -->
+  <div class="flex-grow overflow-y-auto px-6 py-4" id={"messages-container-#{@id}"} phx-hook="MessagesContainer" phx-update="append">
+    <!-- Load More Button (if more messages are available) -->
+    <%= if @has_more do %>
+      <div class="text-center py-2">
+        <button 
+          phx-click="load_more" 
+          phx-target={@myself}
+          class="text-sm text-gray-500 hover:text-brand"
+          disabled={@loading_messages}
+        >
+          <%= if @loading_messages do %>
+            Loading...
+          <% else %>
+            Load previous messages
+          <% end %>
+        </button>
+      </div>
+    <% end %>
+
+    <!-- Message List -->
+    <div id="messages-list" class="space-y-4">
+      <%= for message <- @messages do %>
+        <% user = get_message_user(message, @users_map) %>
+        <div id={"message-#{message.id}"} class="flex group">
+          <div class="flex-shrink-0 mr-3">
+            <div class="h-8 w-8 rounded-full bg-[#DD1155] flex items-center justify-center text-white">
+              <%= if user && user.name do %>
+                <%= String.first(user.name) %>
+              <% else %>
+                U
+              <% end %>
+            </div>
+          </div>
+          <div class="flex-grow">
+            <div class="flex items-baseline">
+              <span class="font-medium text-gray-900">
+                <%= if user do %>
+                  <%= user.name || user.email %>
+                <% else %>
+                  Unknown User
+                <% end %>
+              </span>
+              <span class="ml-2 text-xs text-gray-500">
+                <%= format_message_time(message.inserted_at) %>
+              </span>
+              
+              <!-- Message Actions - Only visible on hover -->
+              <div class="ml-2 hidden group-hover:flex space-x-1">
+                <%= if message.user_id == @current_user.id || (@current_user.role in ["admin", "moderator", "channel_owner"]) do %>
+                  <button 
+                    phx-click="delete_message" 
+                    phx-value-id={message.id} 
+                    phx-target={@myself}
+                    class="text-xs text-gray-400 hover:text-red-500"
+                    title="Delete message"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+            
+            <!-- Message Content -->
+            <%= case message.message_type do %>
+              <% "text" -> %>
+                <div class="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
+                  <%= message.content %>
+                </div>
+              <% "image" -> %>
+                <div class="mt-1">
+                  <img src={message.content} alt="Image" class="max-w-sm rounded" />
+                </div>
+              <% "file" -> %>
+                <div class="mt-1 flex items-center text-sm text-gray-800">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <a href={message.content} target="_blank" class="text-brand hover:underline">
+                    <%= message.metadata["filename"] || "Download file" %>
+                  </a>
+                </div>
+              <% _ -> %>
+                <div class="mt-1 text-sm text-gray-800">
+                  <%= message.content %>
+                </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <!-- Typing Indicator -->
+  <%= if Enum.any?(@typing_users) do %>
+    <div class="px-6 py-2 text-xs text-gray-500 italic">
+      <%= typing_indicator_text(@typing_users, @current_user, @users_map) %>
+    </div>
+  <% end %>
+
+  <!-- Message Input -->
+  <div class="border-t border-gray-200 px-6 py-4">
+    <form phx-submit="send_message" phx-target={@myself} class="flex items-end space-x-2">
+      <div class="flex-grow">
+        <textarea
+          id={"message-input-#{@id}"}
+          name="message"
+          value={@message_text}
+          placeholder="Type a message..."
+          rows="1"
+          phx-keyup="typing"
+          phx-target={@myself}
+          phx-value-typing={if String.length(@message_text || "") > 0, do: "true", else: "false"}
+          class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm resize-none"
+          style="min-height: 2.5rem; max-height: 8rem;"
+          phx-hook="AutoResizeTextarea"
+        ><%= @message_text %></textarea>
+      </div>
+      <div>
+        <button
+          type="submit"
+          class="inline-flex items-center px-3 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+          </svg>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

@@ -32,8 +32,8 @@ defmodule FrestylWeb.Endpoint do
     at: "/",
     from: :frestyl,
     gzip: false,
-    only: FrestylWeb.static_paths(),
-    only_matching: ["uploads", ~r/^(?!(?:uploads))/]
+    only: FrestylWeb.static_paths()
+    #only_matching: ["uploads", ~r/^(?!(?:uploads))/]
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.

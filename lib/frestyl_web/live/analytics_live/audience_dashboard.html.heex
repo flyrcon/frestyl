@@ -1,0 +1,232 @@
+<!-- Audience Analytics Dashboard -->
+<div class="container mx-auto px-4 py-8">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-800 mb-4">Audience Insights</h1>
+    
+    <!-- Controls Row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <!-- Channel Selector -->
+      <div>
+        <label for="channel-select" class="block text-sm font-medium text-gray-700">Channel</label>
+        <select
+          id="channel-select"
+          class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+          phx-change="select-channel"
+          name="channel_id"
+        >
+          <option value="">Select Channel</option>
+          <%= for channel <- @channels do %>
+            <option value={channel.id} selected={@selected_channel_id == channel.id}>
+              <%= channel.name %>
+            </option>
+          <% end %>
+        </select>
+      </div>
+      
+      <!-- Event Selector -->
+      <div>
+        <label for="event-select" class="block text-sm font-medium text-gray-700">Event</label>
+        <select
+          id="event-select"
+          class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+          phx-change="select-event"
+          name="event_id"
+          disabled={Enum.empty?(@events)}
+        >
+          <option value="">Select Event</option>
+          <%= for event <- @events do %>
+            <option value={event.id} selected={@selected_event_id == event.id}>
+              <%= event.title || format_datetime(event.start_time) %>
+            </option>
+          <% end %>
+        </select>
+      </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <%= if @loading do %>
+      <div class="flex justify-center items-center h-64">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    <% else %>
+      <%= if @selected_event_id do %>
+        <!-- Audience Dashboard Content -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Audience Size Card -->
+          <div class="col-span-1 md:col-span-2 bg-white rounded-lg shadow p-6">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 class="text-xl font-semibold text-gray-800">Event Audience Overview</h2>
+                <p class="text-sm text-gray-500 mt-1">
+                  <%= if event = Enum.find(@events, fn e -> e.id == @selected_event_id end) do %>
+                    <%= event.title || "Event on #{format_date(event.start_time)}" %>
+                  <% end %>
+                </p>
+              </div>
+              <div class="mt-4 md:mt-0">
+                <span class="text-2xl font-bold text-indigo-600"><%= audience_size(@audience_insights) %></span>
+                <span class="text-sm text-gray-500 ml-2">Total Viewers</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Demographics Chart -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Audience Demographics</h2>
+            <div class="h-64">
+              <.live_component
+                module={FrestylWeb.ChartComponents.PieChart}
+                id="demographics-chart"
+                chart_data={@demographics_data}
+              />
+            </div>
+          </div>
+
+          <!-- Geography Chart -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Geographic Distribution</h2>
+            <div class="h-64">
+              <.live_component
+                module={FrestylWeb.ChartComponents.GeoChart}
+                id="geo-chart"
+                chart_data={@geography_data}
+              />
+            </div>
+          </div>
+
+          <!-- Device Distribution -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Device Types</h2>
+            <div class="h-64">
+              <.live_component
+                module={FrestylWeb.ChartComponents.PieChart}
+                id="device-chart"
+                chart_data={@device_data}
+              />
+            </div>
+          </div>
+
+          <!-- Engagement by Demographics -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Engagement by Demographics</h2>
+            <div class="h-64">
+              <.live_component
+                module={FrestylWeb.ChartComponents.StackedBarChart}
+                id="engagement-chart"
+                chart_data={@engagement_data}
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Audience Insights -->
+        <div class="bg-white rounded-lg shadow p-6 mt-6">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">Audience Insights</h2>
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Top Demographic -->
+            <%= if top_demo = top_demographic_group(@demographics) do %>
+              <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="font-medium text-gray-900 mb-2">Top Demographic</h3>
+                <p class="text-lg font-semibold text-indigo-600"><%= top_demo.demographic_group %></p>
+                <p class="text-sm text-gray-500 mt-2">
+                  <%= top_demo.count %> viewers (<%= Float.round(top_demo.count / audience_size(@audience_insights) * 100, 1) %>% of audience)
+                </p>
+              </div>
+            <% end %>
+            
+            <!-- Top Location -->
+            <%= if top_geo = top_country(@geography) do %>
+              <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="font-medium text-gray-900 mb-2">Top Location</h3>
+                <p class="text-lg font-semibold text-indigo-600"><%= top_geo.country %></p>
+                <p class="text-sm text-gray-500 mt-2">
+                  <%= top_geo.count %> viewers (<%= Float.round(top_geo.percentage, 1) %>% of audience)
+                </p>
+              </div>
+            <% end %>
+            
+            <!-- Most Engaged Demographic -->
+            <%= if most_engaged = most_engaged_demographic(@demographics) do %>
+              <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="font-medium text-gray-900 mb-2">Most Engaged Demographic</h3>
+                <p class="text-lg font-semibold text-indigo-600"><%= most_engaged.demographic_group %></p>
+                <p class="text-sm text-gray-500 mt-2">
+                  <%= Float.round(most_engaged.engagement_rate * 100, 1) %>% engagement rate, <%= Float.round(most_engaged.average_watch_time / 60, 1) %> min avg. watch time
+                </p>
+              </div>
+            <% end %>
+          </div>
+          
+          <!-- Recommendations -->
+          <div class="mt-6">
+            <h3 class="font-medium text-gray-900 mb-2">Actionable Recommendations</h3>
+            <ul class="list-disc pl-5 space-y-2 text-sm text-gray-600">
+              <%= for recommendation <- audience_recommendations(@audience_insights, @demographics, @geography) do %>
+                <li><%= recommendation %></li>
+              <% end %>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Referral Sources Table -->
+        <div class="bg-white rounded-lg shadow overflow-hidden mt-6">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-800">Referral Sources</h2>
+          </div>
+          <div class="px-6 py-4">
+            <% referral_sources = 
+              @audience_insights
+              |> Enum.filter(fn i -> i.referral_source end)
+              |> Enum.group_by(fn i -> i.referral_source end)
+              |> Enum.map(fn {source, insights} -> {source, length(insights)} end)
+              |> Enum.sort_by(fn {_source, count} -> count end, :desc)
+            %>
+            
+            <%= if Enum.empty?(referral_sources) do %>
+              <p class="text-gray-500 italic">No referral source data available</p>
+            <% else %>
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Viewers</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentage</th>
+                    </tr>
+                  </thead>
+                  <tbody class="bg-white divide-y divide-gray-200">
+                    <%= for {source, count} <- Enum.take(referral_sources, 10) do %>
+                      <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= source %>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= count %>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= Float.round(count / audience_size(@audience_insights) * 100, 1) %>%
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% else %>
+        <!-- No Event Selected -->
+        <div class="bg-white rounded-lg shadow p-6 text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          <h3 class="mt-2 text-lg font-medium text-gray-900">No Event Selected</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Please select a channel and event to view audience insights.
+          </p>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+</div>

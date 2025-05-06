@@ -1,0 +1,28 @@
+<div class="min-h-full">
+  <.navigation active_tab={@active_tab} current_user={@current_user} />
+  
+  <div class="py-10">
+    <header>
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h1 class="text-3xl font-bold leading-tight text-gray-900">Invite User</h1>
+        <p class="mt-2 text-sm text-gray-500">Invite someone to join Frestyl</p>
+      </div>
+    </header>
+    
+    <main>
+      <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <div class="mt-8 max-w-md">
+          <.simple_form for={@form} phx-submit="submit" phx-change="validate">
+            <.input field={@form[:email]} type="email" label="Email Address" required />
+            
+            <:actions>
+              <.button class="w-full" phx-disable-with="Sending invitation...">
+                Send Invitation
+              </.button>
+            </:actions>
+          </.simple_form>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>

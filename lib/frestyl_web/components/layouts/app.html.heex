@@ -1,7 +1,10 @@
+<.flash_group flash={@flash} />
+
 <header class="px-4 sm:px-6 lg:px-8">
-  <%= if @current_user do %>
+  <%= if assigns[:current_user] && assigns[:conn] do %>
     <meta name="user-token" content={Phoenix.Token.sign(@conn, "user socket", @current_user.id)} />
   <% end %>
+
   <div class="flex items-center justify-between border-b border-zinc-100 py-3 text-sm">
     <div class="flex items-center gap-4">
       <a href="/">
@@ -24,8 +27,6 @@
       >
         Get Started <span aria-hidden="true">&rarr;</span>
       </a>
-      # Update in lib/frestyl_web/components/layouts/app.html.heex
-# Add this to the header section
 
       <div class="flex-1 px-4 flex justify-center">
         <div class="w-full max-w-lg">
@@ -53,6 +54,6 @@
 <main class="px-4 py-20 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-2xl">
     <.flash_group flash={@flash} />
-    {@inner_content}
+    <%= @inner_content %>
   </div>
 </main>

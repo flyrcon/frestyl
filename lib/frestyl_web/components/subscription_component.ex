@@ -2,8 +2,6 @@ defmodule FrestylWeb.SubscriptionComponent do
   use Phoenix.Component
   alias FrestylWeb.CoreComponents
 
-  import Frestyl.Payments
-  import FrestylWeb.Auth
 
   attr :plan, :map, required: true
   attr :billing_period, :string, default: "monthly"
@@ -44,8 +42,8 @@ defmodule FrestylWeb.SubscriptionComponent do
               Current Plan
             </div>
           <% else %>
-            <a href={~p"/subscriptions/new/#{@plan.id}"} class="block w-full bg-brand hover:bg-brand-dark text-white py-2 px-4 rounded-md text-center font-medium">
-              Subscribe
+            <a href={"/subscriptions/new/#{@plan.id}"} class="block w-full bg-brand hover:bg-brand-dark text-white py-2 px-4 rounded-md text-center font-medium">
+              <%= if @is_current, do: "Manage Plan", else: "Subscribe" %>
             </a>
           <% end %>
         </div>

@@ -1,0 +1,224 @@
+<!-- Performance Analytics Dashboard -->
+<div class="container mx-auto px-4 py-8">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-800 mb-4">Streaming Performance Analytics</h1>
+    
+    <!-- Controls Row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <!-- Channel Selector -->
+      <div>
+        <label for="channel-select" class="block text-sm font-medium text-gray-700">Channel</label>
+        <select
+          id="channel-select"
+          class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+          phx-change="select-channel"
+          name="channel_id"
+        >
+          <option value="">Select Channel</option>
+          <%= for channel <- @channels do %>
+            <option value={channel.id} selected={@selected_channel_id == channel.id}>
+              <%= channel.name %>
+            </option>
+          <% end %>
+        </select>
+      </div>
+      
+      <!-- Session Selector -->
+      <div>
+        <label for="session-select" class="block text-sm font-medium text-gray-700">Session</label>
+        <select
+          id="session-select"
+          class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+          phx-change="select-session"
+          name="session_id"
+          disabled={Enum.empty?(@sessions)}
+        >
+          <option value="">Select Session</option>
+          <%= for session <- @sessions do %>
+            <option value={session.id} selected={@selected_session_id == session.id}>
+              <%= session.title || format_datetime(session.started_at) %>
+            </option>
+          <% end %>
+        </select>
+      </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <%= if @loading do %>
+      <div class="flex justify-center items-center h-64">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    <% else %>
+      <%= if @selected_session_id do %>
+        <!-- Performance Dashboard Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Bitrate Chart -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Bitrate Over Time</h2>
+            <div class="h-64">
+              <.live_component
+                module={FrestylWeb.ChartComponents.TimeSeriesChart}
+                id="bitrate-chart"
+                chart_data={@bitrate_data}
+              />
+            </div>
+          </div>
+
+          <!-- Buffer Events Chart -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Buffer Events</h2>
+            <div class="h-64">
+              <.live_component
+                module={FrestylWeb.ChartComponents.TimeSeriesChart}
+                id="buffer-chart"
+                chart_data={@buffer_events_data}
+              />
+            </div>
+          </div>
+
+          <!-- Latency Chart -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Latency</h2>
+            <div class="h-64">
+              <.live_component
+                module={FrestylWeb.ChartComponents.TimeSeriesChart}
+                id="latency-chart"
+                chart_data={@latency_data}
+              />
+            </div>
+          </div>
+
+          <!-- Resolution Distribution -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Resolution Distribution</h2>
+            <div class="h-64">
+              <.live_component
+                module={FrestylWeb.ChartComponents.PieChart}
+                id="resolution-chart"
+                chart_data={@resolution_distribution}
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Detailed Metrics Table -->
+        <div class="bg-white rounded-lg shadow overflow-hidden mt-6">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-xl font-semibold text-gray-800">Detailed Performance Metrics</h2>
+          </div>
+          <div class="px-6 py-4">
+            <%= if Enum.empty?(@performance_metrics) do %>
+              <p class="text-gray-500 italic">No performance metrics available for this session</p>
+            <% else %>
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bitrate</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buffer Events</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dropped Frames</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Latency</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resolution</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CDN Provider</th>
+                    </tr>
+                  </thead>
+                  <tbody class="bg-white divide-y divide-gray-200">
+                    <%= for metric <- Enum.sort_by(@performance_metrics, & &1.recorded_at, {:desc, DateTime}) do %>
+                      <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= format_datetime(metric.recorded_at) %>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= format_bitrate(metric.average_bitrate) %>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= metric.buffer_count %>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= metric.dropped_frames %>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= format_latency(metric.latency) %>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= metric.resolution || "N/A" %>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <%= metric.cdn_provider || "N/A" %>
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            <% end %>
+          </div>
+        </div>
+
+        <!-- Performance Analysis -->
+        <div class="bg-white rounded-lg shadow p-6 mt-6">
+          <h2 class="text-xl font-semibold text-gray-800 mb-4">Performance Analysis</h2>
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-gray-50 p-4 rounded-lg">
+              <h3 class="font-medium text-gray-900 mb-2">Bitrate Quality</h3>
+              <div class="flex items-center">
+                <div class={[
+                  "w-3 h-3 rounded-full mr-2",
+                  bitrate_quality_color(@performance_metrics)
+                ]}></div>
+                <span class="text-sm text-gray-700"><%= bitrate_quality_text(@performance_metrics) %></span>
+              </div>
+              <p class="text-sm text-gray-500 mt-2"><%= bitrate_quality_description(@performance_metrics) %></p>
+            </div>
+            
+            <div class="bg-gray-50 p-4 rounded-lg">
+              <h3 class="font-medium text-gray-900 mb-2">Buffering Issues</h3>
+              <div class="flex items-center">
+                <div class={[
+                  "w-3 h-3 rounded-full mr-2",
+                  buffer_quality_color(@performance_metrics)
+                ]}></div>
+                <span class="text-sm text-gray-700"><%= buffer_quality_text(@performance_metrics) %></span>
+              </div>
+              <p class="text-sm text-gray-500 mt-2"><%= buffer_quality_description(@performance_metrics) %></p>
+            </div>
+            
+            <div class="bg-gray-50 p-4 rounded-lg">
+              <h3 class="font-medium text-gray-900 mb-2">Latency Performance</h3>
+              <div class="flex items-center">
+                <div class={[
+                  "w-3 h-3 rounded-full mr-2",
+                  latency_quality_color(@performance_metrics)
+                ]}></div>
+                <span class="text-sm text-gray-700"><%= latency_quality_text(@performance_metrics) %></span>
+              </div>
+              <p class="text-sm text-gray-500 mt-2"><%= latency_quality_description(@performance_metrics) %></p>
+            </div>
+          </div>
+          
+          <div class="mt-6">
+            <h3 class="font-medium text-gray-900 mb-2">Recommendations</h3>
+            <ul class="list-disc pl-5 space-y-2 text-sm text-gray-600">
+              <%= for recommendation <- performance_recommendations(@performance_metrics) do %>
+                <li><%= recommendation %></li>
+              <% end %>
+            </ul>
+          </div>
+        </div>
+      <% else %>
+        <!-- No Session Selected -->
+        <div class="bg-white rounded-lg shadow p-6 text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <h3 class="mt-2 text-lg font-medium text-gray-900">No Session Selected</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Please select a channel and session to view performance metrics.
+          </p>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+</div>

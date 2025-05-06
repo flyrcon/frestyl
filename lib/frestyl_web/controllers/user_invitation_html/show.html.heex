@@ -1,0 +1,32 @@
+# File: lib/frestyl_web/controllers/user_invitation_html/show.html.heex
+<div class="mx-auto max-w-md py-16 px-4">
+  <div class="bg-white shadow-lg rounded-lg p-8 text-center">
+    <h2 class="text-2xl font-bold text-gray-900 mb-4">
+      You're invited to join Frestyl!
+    </h2>
+    
+    <p class="text-gray-600 mb-8">
+      You've been invited to join Frestyl, a collaborative media platform for content creators.
+    </p>
+    
+    <div class="space-y-4">
+      <.link 
+        href={~p"/users/invitations/#{@invitation.token}/accept"}
+        class="w-full inline-flex justify-center items-center px-4 py-3 border border-transparent text-base font-medium rounded-md text-white bg-[#DD1155] hover:bg-[#F53E7B] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
+      >
+        Accept Invitation
+      </.link>
+      
+      <.link 
+        href={~p"/users/invitations/#{@invitation.token}/decline"}
+        class="w-full inline-flex justify-center items-center px-4 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+      >
+        Decline
+      </.link>
+    </div>
+    
+    <p class="mt-6 text-sm text-gray-500">
+      This invitation expires on <%= @invitation.expires_at |> Calendar.strftime("%B %d, %Y") %>
+    </p>
+  </div>
+</div>

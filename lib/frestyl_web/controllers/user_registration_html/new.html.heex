@@ -1,0 +1,48 @@
+<div class="mx-auto max-w-md px-4 py-8 bg-white shadow-lg rounded-xl">
+  <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">Register for an account</h2>
+
+  <p class="text-center text-gray-600 mb-8">
+    Already registered?
+    <.link navigate={~p"/users/log_in"} class="font-semibold text-blue-600 hover:underline">
+      Log in
+    </.link>
+    to your account now.
+  </p>
+
+  <.simple_form
+    for={@form}
+    id="registration_form"
+    phx-submit="save"
+    phx-change="validate"
+    phx-trigger-action={@trigger_submit}
+    action={~p"/users/log_in?_action=registered"}
+    method="post"
+    class="space-y-6"
+  >
+    <.error :if={@check_errors} class="text-red-600 text-sm mb-4">
+      Oops, something went wrong! Please check the errors below.
+    </.error>
+
+    <%# Add the input field for the name %>
+    <div class="flex flex-col">
+      <.input field={@form[:name]} type="text" label="Name" required class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+      <%# <.input> component usually handles displaying field-specific errors automatically %>
+    </div>
+
+    <div class="flex flex-col">
+      <.input field={@form[:email]} type="email" label="Email" required class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+      <%# <.input> component usually handles displaying field-specific errors automatically %>
+    </div>
+
+    <div class="flex flex-col">
+      <.input field={@form[:password]} type="password" label="Password" required class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+      <%# <.input> component usually handles displaying field-specific errors automatically %>
+    </div>
+
+    <:actions>
+      <.button phx-disable-with="Creating account..." class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-150 ease-in-out">
+        Create an account
+      </.button>
+    </:actions>
+  </.simple_form>
+</div>

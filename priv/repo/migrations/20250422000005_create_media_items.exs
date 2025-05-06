@@ -4,10 +4,12 @@ defmodule Frestyl.Repo.Migrations.CreateMediaItems do
 
   def change do
     create table(:media_items) do
+      add :name, :string, null: false
+      add :content_type, :string, null: false
       add :title, :string, null: false
       add :description, :text
       add :file_path, :string, null: false
-      add :file_size, :bigint
+      add :file_size, :interger
       add :file_type, :string, null: false
       add :mime_type, :string, null: false
       add :duration, :integer
@@ -17,8 +19,8 @@ defmodule Frestyl.Repo.Migrations.CreateMediaItems do
       add :is_public, :boolean, default: false, null: false
       add :status, :string, null: false, default: "processing"
       add :media_type, :string, null: false
-      add :metadata, :map
-      add :uploader_id, references(:users, on_delete: :restrict), null: false
+      add :metadata, :map, default: "{}"
+      add :uploader_id, references(:users, on_delete: :milify_all), null: false
       add :channel_id, references(:channels, on_delete: :nilify_all)
       add :session_id, references(:sessions, on_delete: :nilify_all)
       add :event_id, references(:events, on_delete: :nilify_all)

@@ -1,0 +1,8 @@
+<.header>
+  Edit User <%= @user.id %>
+  <:subtitle>Update user information.</:subtitle>
+</.header>
+
+<.user_form changeset={@changeset} action={~p"/users/#{@user}"} />
+
+<.back navigate={~p"/users"}>Back to users</.back>

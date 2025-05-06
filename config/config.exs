@@ -7,9 +7,19 @@
 # General application configuration
 import Config
 
+config :frestyl, :"Elixir.frestyl.repo",
+  database: "frestyl_repo",
+  username: "user",
+  password: "pass",
+  hostname: "localhost"
+
 config :frestyl,
   ecto_repos: [Frestyl.Repo],
   generators: [timestamp_type: :utc_datetime]
+
+config :frestyl,
+  upload_dir: Path.join(["priv", "static", "uploads"]),
+  base_url: "http://localhost:4000"  # Change in production
 
 # Configures the endpoint
 config :frestyl, FrestylWeb.Endpoint,
@@ -22,14 +32,72 @@ config :frestyl, FrestylWeb.Endpoint,
   pubsub_server: Frestyl.PubSub,
   live_view: [signing_salt: "oI418hUt"]
 
-# Configures the mailer
-#
-# By default it uses the "Local" adapter which stores the emails
-# locally. You can see the emails in your browser, at "/dev/mailbox".
-#
-# For production it's recommended to configure a different adapter
-# at the `config/runtime.exs`.
+# Configure Swoosh mailer
 config :frestyl, Frestyl.Mailer, adapter: Swoosh.Adapters.Local
+
+config :frestyl, FrestylWeb.Endpoint,
+  url: [host: "localhost"]
+
+# Configure Swoosh mailbox preview in development
+if Mix.env() == :dev do
+  config :swoosh, :preview_port, 4002
+end
+
+# config/config.exs
+config :frestyl,
+  upload_path: "priv/static/uploads",
+  use_s3: false
+
+# config/dev.exs
+config :frestyl,
+  upload_path: "priv/static/uploads",
+  use_s3: false
+
+# config/prod.exs
+config :frestyl,
+  use_s3: {:system, "USE_S3", false}, # Optional, defaults to false
+  s3_bucket: {:system, "S3_BUCKET", nil},
+  s3_region: {:system, "S3_REGION", nil}
+
+# Optional S3 configuration, only loaded if use_s3 is true
+config :ex_aws,
+  access_key_id: {:system, "AWS_ACCESS_KEY_ID"},
+  secret_access_key: {:system, "AWS_SECRET_ACCESS_KEY"}
+
+# config/dev.exs
+config :frestyl, Frestyl.Mailer,
+  adapter: Swoosh.Adapters.Local
+
+  # For production, you might use something like:
+# config/prod.exs
+# config :frestyl, Frestyl.Mailer,
+#   adapter: Swoosh.Adapters.SMTP,
+#   relay: "smtp.sendgrid.net",
+#   username: System.get_env("SENDGRID_USERNAME"),
+#   password: System.get_env("SENDGRID_PASSWORD"),
+#   tls: :always,
+#   auth: :always,
+#   port: 587,
+#   dkim: [
+#     s: "default", d: "yourdomain.com",
+#     h: [:from, :to, :cc, :bcc, :subject, :date, :mime_version, :content_type, :reply_to],
+#     sha: :sha256,
+#     b: File.read!("priv/keys/dkim_private.pem")
+#   ],
+#   retries: 2,
+#   no_mx_lookups: false
+
+# Ensure you add Swoosh to your dependencies in mix.exs:
+# defp deps do
+#   [
+#     {:swoosh, "~> 1.0"},
+#     # Include adapter and your selected email service adapter
+#     {:finch, "~> 0.13"},  # For HTTP adapters like SendGrid
+#     {:hackney, ">= 1.15.2"},  # For SMTP adapters
+#     # For development mailbox preview
+#     {:phoenix_swoosh, "~> 1.0"}
+#   ]
+# end
 
 # Configure esbuild (the version is required)
 config :esbuild,
@@ -51,12 +119,27 @@ config :tailwind,
       --output=../priv/static/assets/app.css
     ),
     cd: Path.expand("../assets", __DIR__)
+
   ]
+
+config :frestyl, Frestyl.Repo,
+username: "postgres",
+password: "postgres",
+database: "frestyl_dev",
+hostname: "localhost",
+show_sensitive_data_on_connection_error: true,
+pool_size: 10
+
 
 # Configures Elixir's Logger
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
+
+#AI integration
+config :frestyl, :ai_provider, :openai
+config :frestyl, :openai_api_key, System.get_env("OPENAI_API_KEY")
+config :frestyl, :anthropic_api_key, System.get_env("ANTHROPIC_API_KEY")
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

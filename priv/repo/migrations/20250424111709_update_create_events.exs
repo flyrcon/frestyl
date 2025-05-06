@@ -4,15 +4,15 @@ defmodule Frestyl.Repo.Migrations.CreateEvents do
 
   def change do
     alter table(:events) do
-      add :starts_at, :utc_datetime, null: false
-      add_if_not_exists :ends_at, :utc_datetime
+      modify :starts_at, :utc_datetime, null: false
+      modify :ends_at, :utc_datetime
       modify :status, :string, null: false, default: "draft"
-      add :admission_type, :string, null: false, default: "open"
-      add :price_in_cents, :integer, default: 0
-      add :waiting_room_opens_at, :utc_datetime
+      modify :admission_type, :string, null: false, default: "open"
+      modify :price_in_cents, :integer, default: 0
+      modify :waiting_room_opens_at, :utc_datetime
 
     end
 
-    create index(:events, [:starts_at])
+    create_if_not_exists index(:events, [:starts_at])
   end
 end

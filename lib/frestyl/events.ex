@@ -1,4 +1,3 @@
-# lib/frestyl/events.ex
 defmodule Frestyl.Events do
   @moduledoc """
   The Events context.
@@ -12,6 +11,9 @@ defmodule Frestyl.Events do
   alias Frestyl.Events.EventInvitation
   alias Frestyl.Events.Vote
   alias Frestyl.Accounts.User
+  alias Frestyl.AIAssistant # Assuming AIAssistant is in the Frestyl namespace
+
+  # REMOVED: use Phoenix.Controller - this does not belong here
 
   #
   # Event Management
@@ -54,11 +56,37 @@ defmodule Frestyl.Events do
   @doc """
   Creates a event.
   """
+  # Adjusted this function to explicitly take the user, as needed for the AI task
   def create_event(attrs \\ %{}, user) do
     %Event{}
     |> Event.changeset(Map.put(attrs, "host_id", user.id))
     |> Repo.insert()
+    |> handle_create_result(user) # Delegate post-create logic
   end
+
+  # Private function to handle the result and trigger AI task
+  defp handle_create_result({:ok, event}, user) do
+    # If this is one of the user's first few events, offer setup assistance
+    # This business logic can stay within the context's domain
+    event_count = count_user_events(user.id)
+
+    if event_count <= 3 do
+      Task.start(fn ->
+        AIAssistant.assist_with_setup(user.id, "event", %{
+          event_id: event.id,
+          name: event.name,
+          type: event.type
+        })
+      end)
+    end
+
+    {:ok, event} # Return just the successful result
+  end
+
+  defp handle_create_result({:error, %Ecto.Changeset{} = changeset}, _user) do
+    {:error, changeset} # Return just the error result
+  end
+
 
   @doc """
   Updates a event.
@@ -109,6 +137,14 @@ defmodule Frestyl.Events do
   """
   def is_host?(%Event{} = event, %User{} = user) do
     event.host_id == user.id
+  end
+
+  @doc """
+  Counts events hosted by a user.
+  """
+  def count_user_events(user_id) do
+    # Qualify the count() call directly with Ecto.Query
+    Repo.aggregate(Event, Ecto.Query.count(), where: [host_id: user_id])
   end
 
   #
@@ -255,6 +291,9 @@ defmodule Frestyl.Events do
     |> EventInvitation.changeset(attrs)
     |> Repo.insert()
   end
+
+  # REMOVED: The create(conn, ...) function block - it belongs in the controller
+
 
   @doc """
   Gets an invitation by token.

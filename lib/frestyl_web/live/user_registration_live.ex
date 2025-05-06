@@ -1,3 +1,4 @@
+# lib/frestyl_web/live/user_registration_live.ex
 defmodule FrestylWeb.UserRegistrationLive do
   use FrestylWeb, :live_view
 
@@ -6,82 +7,74 @@ defmodule FrestylWeb.UserRegistrationLive do
 
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-sm">
-      <.header class="text-center">
-        Register for an account
-        <:subtitle>
-          Already registered?
-          <.link navigate={~p"/users/log_in"} class="font-semibold text-brand hover:underline">
-            Log in
-          </.link>
-          to your account now.
-        </:subtitle>
-      </.header>
+    <div class="max-w-sm mx-auto py-12">
+      <div class="bg-white shadow-sm rounded-lg p-6">
+        <h2 class="text-2xl font-bold mb-6">Create an account</h2>
 
-      <.simple_form
-        for={@form}
-        id="registration_form"
-        phx-submit="save"
-        phx-change="validate"
-        phx-trigger-action={@trigger_submit}
-        action={~p"/users/log_in?_action=registered"}
-        method="post"
-      >
-        <.error :if={@check_errors}>
-          Oops, something went wrong! Please check the errors below.
-        </.error>
+        <.simple_form
+          for={@form}
+          id="registration-form"
+          phx-submit="submit"
+          phx-change="validate"
+        >
+          <.input field={@form[:name]} type="text" label="Name" required />
+          <.input field={@form[:username]} type="text" label="Username" required />
+          <.input field={@form[:email]} type="email" label="Email" required />
+          <.input field={@form[:password]} type="password" label="Password" required />
 
-        <.input field={@form[:email]} type="email" label="Email" required />
-        <.input field={@form[:password]} type="password" label="Password" required />
+          <:actions>
+            <.button phx-disable-with="Creating account..." class="w-full">
+              Create Account
+            </.button>
+          </:actions>
+        </.simple_form>
 
-        <:actions>
-          <.button phx-disable-with="Creating account..." class="w-full">Create an account</.button>
-        </:actions>
-      </.simple_form>
+        <p class="text-sm text-center mt-6">
+          Already have an account? <.link navigate="/login" class="text-indigo-600 hover:text-indigo-500">Log in</.link>
+        </p>
+      </div>
     </div>
     """
   end
 
   def mount(_params, _session, socket) do
-    changeset = Accounts.change_user_registration(%User{})
+    changeset = Accounts.change_user_registration()
 
-    socket =
-      socket
-      |> assign(trigger_submit: false, check_errors: false)
-      |> assign_form(changeset)
-
-    {:ok, socket, temporary_assigns: [form: nil]}
+    {:ok,
+     socket
+     |> assign(:page_title, "Create Account")
+     |> assign(:changeset, changeset)
+     |> assign(:form, to_form(changeset))}
   end
 
-  def handle_event("save", %{"user" => user_params}, socket) do
+  def handle_event("submit", %{"user" => user_params}, socket) do
     case Accounts.register_user(user_params) do
       {:ok, user} ->
-        {:ok, _} =
-          Accounts.deliver_user_confirmation_instructions(
-            user,
-            &url(~p"/users/confirm/#{&1}")
-          )
+        # Send confirmation email
+        Accounts.send_confirmation_email(user)
 
-        changeset = Accounts.change_user_registration(user)
-        {:noreply, socket |> assign(trigger_submit: true) |> assign_form(changeset)}
+        info = "Account created successfully! Please check your email to confirm your account."
+
+        {:noreply,
+         socket
+         |> put_flash(:info, info)
+         |> push_navigate(to: "/login")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, socket |> assign(check_errors: true) |> assign_form(changeset)}
+        {:noreply,
+         socket
+         |> assign(:changeset, changeset)
+         |> assign(:form, to_form(changeset))}
     end
   end
 
   def handle_event("validate", %{"user" => user_params}, socket) do
-    changeset = Accounts.change_user_registration(%User{}, user_params)
-    {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
-  end
+    changeset = Accounts.change_user_registration(user_params)
+    changeset = Map.put(changeset, :action, :validate)
 
-  defp assign_form(socket, %Ecto.Changeset{} = changeset) do
-    form = to_form(changeset, as: "user")
-
-    if changeset.valid? do
-      assign(socket, form: form, check_errors: false)
-    else
-      assign(socket, form: form)
-    end
+    {:noreply,
+     socket
+     |> assign(:changeset, changeset)
+     |> assign(:form, to_form(changeset))}
   end
 end

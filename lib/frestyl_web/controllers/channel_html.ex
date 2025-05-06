@@ -1,4 +1,3 @@
-# lib/frestyl_web/controllers/channel_html.ex
 defmodule FrestylWeb.ChannelHTML do
   use FrestylWeb, :html
   import Phoenix.HTML.Form
@@ -23,6 +22,8 @@ defmodule FrestylWeb.ChannelHTML do
       "Other"
     ]
   end
+
+  # REMOVED: The create(conn, ...) function block - it belongs in the controller
 
   # Used in templates to render color styles
   def color_style(channel) do

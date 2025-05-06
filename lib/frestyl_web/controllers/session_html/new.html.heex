@@ -1,11 +1,18 @@
-# lib/frestyl_web/controllers/session_html/new.html.heex
 <.header>
   New Session
-  <:subtitle>Create a new collaborative session</:subtitle>
+  <:subtitle>Create a new session record</:subtitle>
 </.header>
 
-<div class="mt-6">
-  <.session_form changeset={@changeset} action={~p"/sessions"} />
-</div>
+<.simple_form :let={f} for={@changeset} action={~p"/sessions"}>
+  <.error :if={@changeset.action}>
+    Oops, something went wrong! Please check the errors below.
+  </.error>
+
+  <.input field={f[:name]} type="text" label="Name" />
+  
+  <:actions>
+    <.button>Create Session</.button>
+  </:actions>
+</.simple_form>
 
 <.back navigate={~p"/sessions"}>Back to sessions</.back>

@@ -36,6 +36,76 @@ defmodule FrestylWeb.CoreComponents do
       </.modal>
 
   """
+  attr :active_tab, :atom, required: true
+  attr :current_user, :any, required: true
+  attr :id, :string, required: true
+  attr :show, :boolean, default: false
+  attr :on_cancel, JS, default: %JS{}
+  slot :inner_block, required: true
+
+
+  def navigation(assigns) do
+    ~H"""
+    <nav class="bg-white shadow mb-6">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+          <div class="flex">
+            <div class="flex-shrink-0 flex items-center">
+              <span class="text-[#DD1155] text-xl font-bold">Frestyl</span>
+            </div>
+            <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+              <a href="/dashboard" class={[
+                "inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium",
+                @active_tab == :dashboard && "border-[#DD1155] text-gray-900" || "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              ]}>
+                Dashboard
+              </a>
+              <a href="/channels" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                Channels
+              </a>
+              <a href="/chat" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                Chat
+              </a>
+              <a href="/media" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                Media
+              </a>
+              <a href="/profile" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                Profile
+              </a>
+            </div>
+          </div>
+
+          <div class="flex items-center">
+            <%= if @current_user do %>
+              <span class="mr-4 text-sm text-gray-700">Welcome, <%= @current_user.email %></span>
+              <a href="/logout" data-method="delete" class="text-sm text-gray-700 hover:text-gray-900">
+                Logout
+              </a>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </nav>
+    """
+  end
+
+  @doc """
+  Renders a modal.
+
+  ## Examples
+
+      <.modal id="confirm-modal">
+        This is a modal.
+      </.modal>
+
+  JS commands may be passed to the `:on_cancel` to configure
+  the closing/cancel event, for example:
+
+      <.modal id="confirm" on_cancel={JS.navigate(~p"/posts")}>
+        This is another modal.
+      </.modal>
+
+  """
   attr :id, :string, required: true
   attr :show, :boolean, default: false
   attr :on_cancel, JS, default: %JS{}
@@ -146,9 +216,18 @@ defmodule FrestylWeb.CoreComponents do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id}>
-      <.flash kind={:info} title={gettext("Success!")} flash={@flash} />
-      <.flash kind={:error} title={gettext("Error!")} flash={@flash} />
+    <div id={@id} class="space-y-4">
+      <!-- Info flash -->
+      <%= if @flash[:info] do %>
+        <.flash kind={:info} title={gettext("Success!")} flash={@flash} />
+      <% end %>
+
+      <!-- Error flash -->
+      <%= if @flash[:error] do %>
+        <.flash kind={:error} title={gettext("Error!")} flash={@flash} />
+      <% end %>
+
+      <!-- Client (offline) error -->
       <.flash
         id="client-error"
         kind={:error}
@@ -161,6 +240,7 @@ defmodule FrestylWeb.CoreComponents do
         <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
       </.flash>
 
+      <!-- Server error -->
       <.flash
         id="server-error"
         kind={:error}

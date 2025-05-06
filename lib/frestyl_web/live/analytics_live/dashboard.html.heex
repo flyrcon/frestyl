@@ -1,0 +1,208 @@
+<!-- Analytics Dashboard -->
+<div class="container mx-auto px-4 py-8">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-800 mb-4">Analytics Dashboard</h1>
+    
+    <!-- Controls Row -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <!-- Channel Selector -->
+      <div>
+        <label for="channel-select" class="block text-sm font-medium text-gray-700">Channel</label>
+        <select
+          id="channel-select"
+          class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+          phx-change="select-channel"
+          name="channel_id"
+        >
+          <option value="">Select Channel</option>
+          <%= for channel <- @channels do %>
+            <option value={channel.id} selected={@selected_channel_id == channel.id}>
+              <%= channel.name %>
+            </option>
+          <% end %>
+        </select>
+      </div>
+      
+      <!-- Date Range Selector -->
+      <div>
+        <label for="date-range-select" class="block text-sm font-medium text-gray-700">
+          Date Range
+        </label>
+        <select
+          id="date-range-select"
+          class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+          phx-change="select-date-range"
+          name="date_range"
+        >
+          <option value="7" selected={@date_range == 7}>Last 7 days</option>
+          <option value="30" selected={@date_range == 30}>Last 30 days</option>
+          <option value="90" selected={@date_range == 90}>Last 90 days</option>
+        </select>
+      </div>
+      
+      <!-- Interval Selector -->
+      <div>
+        <label for="interval-select" class="block text-sm font-medium text-gray-700">
+          Interval
+        </label>
+        <select
+          id="interval-select"
+          class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+          phx-change="select-interval"
+          name="interval"
+        >
+          <option value="day" selected={@interval == "day"}>Daily</option>
+          <option value="week" selected={@interval == "week"}>Weekly</option>
+          <option value="month" selected={@interval == "month"}>Monthly</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <%= if @loading do %>
+      <div class="flex justify-center items-center h-64">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    <% else %>
+      <%= if @selected_channel_id do %>
+        <!-- Dashboard Content -->
+        <div class="space-y-8">
+          <!-- Overview Cards -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <.metric_card 
+              title="Total Views" 
+              value={total_views(@channel_metrics)} 
+              change={calculate_change(@channel_metrics, :views)}
+              icon="eye" 
+            />
+            <.metric_card 
+              title="Unique Viewers" 
+              value={total_unique_viewers(@channel_metrics)} 
+              change={calculate_change(@channel_metrics, :unique_viewers)}
+              icon="users" 
+            />
+            <.metric_card 
+              title="Avg. Watch Time" 
+              value={format_time(average_watch_time(@channel_metrics))} 
+              change={calculate_change(@channel_metrics, :average_watch_time)}
+              icon="clock" 
+            />
+            <.metric_card 
+              title="Total Revenue" 
+              value={format_currency(total_revenue(@revenue_metrics))} 
+              change={calculate_change(@revenue_metrics, :total_revenue)}
+              icon="currency-dollar" 
+            />
+          </div>
+
+          <!-- Views & Engagement Chart -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Views & Engagement</h2>
+            <div class="h-80">
+              <.live_component
+                module={FrestylWeb.ChartComponents.TimeSeriesChart}
+                id="views-chart"
+                chart_data={prepare_views_chart_data(@channel_metrics)}
+              />
+            </div>
+          </div>
+
+          <!-- Revenue Chart -->
+          <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Revenue Breakdown</h2>
+            <div class="h-80">
+              <.live_component
+                module={FrestylWeb.ChartComponents.StackedBarChart}
+                id="revenue-chart"
+                chart_data={prepare_revenue_chart_data(@revenue_metrics)}
+              />
+            </div>
+          </div>
+
+          <!-- Audience Demographics -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="bg-white rounded-lg shadow p-6">
+              <h2 class="text-xl font-semibold text-gray-800 mb-4">Audience Demographics</h2>
+              <div class="h-64">
+                <.live_component
+                  module={FrestylWeb.ChartComponents.PieChart}
+                  id="demographics-chart"
+                  chart_data={prepare_demographics_chart_data(@audience_insights)}
+                />
+              </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+              <h2 class="text-xl font-semibold text-gray-800 mb-4">Geographic Distribution</h2>
+              <div class="h-64">
+                <.live_component
+                  module={FrestylWeb.ChartComponents.GeoChart}
+                  id="geo-chart"
+                  chart_data={prepare_geo_chart_data(@audience_insights)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Performance Metrics Table -->
+          <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h2 class="text-xl font-semibold text-gray-800">Streaming Performance</h2>
+            </div>
+            <div class="px-6 py-4">
+              <%= if Enum.empty?(@performance_metrics) do %>
+                <p class="text-gray-500 italic">No streaming performance data available</p>
+              <% else %>
+                <div class="overflow-x-auto">
+                  <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buffer Events</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Bitrate</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dropped Frames</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Latency</th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                      <%= for metric <- @performance_metrics do %>
+                        <tr>
+                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <%= Calendar.strftime(metric.recorded_at, "%Y-%m-%d %H:%M") %>
+                          </td>
+                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <%= metric.buffer_count %>
+                          </td>
+                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <%= format_bitrate(metric.average_bitrate) %>
+                          </td>
+                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <%= metric.dropped_frames %>
+                          </td>
+                          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <%= format_latency(metric.latency) %>
+                          </td>
+                        </tr>
+                      <% end %>
+                    </tbody>
+                  </table>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      <% else %>
+        <!-- No Channel Selected -->
+        <div class="bg-white rounded-lg shadow p-6 text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <h3 class="mt-2 text-lg font-medium text-gray-900">No Channel Selected</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Please select a channel to view analytics data.
+          </p>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+</div>

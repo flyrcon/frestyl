@@ -1,0 +1,24 @@
+<.header>
+  Users
+  <:actions>
+    <.link href={~p"/users/new"}>
+      <.button>New User</.button>
+    </.link>
+  </:actions>
+</.header>
+
+<.table id="users" rows={@users}>
+  <:col :let={user} label="Name"><%= user.name %></:col>
+  <:col :let={user} label="Email"><%= user.email %></:col>
+  <:action :let={user}>
+    <.link navigate={~p"/users/#{user.id}"}>Show</.link>
+  </:action>
+  <:action :let={user}>
+    <.link navigate={~p"/users/#{user.id}/edit"}>Edit</.link>
+  </:action>
+  <:action :let={user}>
+    <.link href={~p"/users/#{user.id}"} method="delete" data-confirm="Are you sure?">
+      Delete
+    </.link>
+  </:action>
+</.table>
