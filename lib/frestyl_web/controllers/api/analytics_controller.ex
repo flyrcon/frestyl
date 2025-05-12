@@ -5,6 +5,70 @@ defmodule FrestylWeb.API.AnalyticsController do
   # API key authentication (you'll need to implement this)
   plug :authenticate_api_request
 
+  # 2FA verification for API requests
+  def verify_2fa(conn, %{"totp_code" => totp_code}) do
+    user = conn.assigns.current_user
+
+    if user && user.totp_enabled do
+      if Accounts.verify_totp(user.totp_secret, totp_code) do
+        # Mark session as 2FA verified
+        conn
+        |> put_session(:totp_verified, true)
+        |> json(%{success: true, message: "Two-factor authentication verified"})
+      else
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{error: "invalid_code", message: "Invalid verification code"})
+      end
+    else
+      conn
+      |> put_status(:bad_request)
+      |> json(%{error: "2fa_not_enabled", message: "Two-factor authentication not enabled for this user"})
+    end
+  end
+
+  def verify_backup_code(conn, %{"backup_code" => backup_code}) do
+    user = conn.assigns.current_user
+
+    if user && user.totp_enabled do
+      case Accounts.verify_backup_code(user, backup_code) do
+        {:ok, _updated_user} ->
+          # Mark session as 2FA verified
+          conn
+          |> put_session(:totp_verified, true)
+          |> json(%{success: true, message: "Backup code accepted"})
+
+        {:error, _reason} ->
+          conn
+          |> put_status(:unauthorized)
+          |> json(%{error: "invalid_code", message: "Invalid backup code"})
+      end
+    else
+      conn
+      |> put_status(:bad_request)
+      |> json(%{error: "2fa_not_enabled", message: "Two-factor authentication not enabled for this user"})
+    end
+  end
+
+  def status(conn, _params) do
+    user = conn.assigns.current_user
+
+    if user do
+      totp_verified = get_session(conn, :totp_verified) || false
+
+      conn
+      |> json(%{
+        authenticated: true,
+        totp_enabled: user.totp_enabled || false,
+        totp_verified: totp_verified
+      })
+    else
+      conn
+      |> put_status(:unauthorized)
+      |> json(%{authenticated: false})
+    end
+  end
+
   @doc """
   Returns metrics based on query parameters.
   """

@@ -1,361 +1,283 @@
 <!-- lib/frestyl_web/live/dashboard_live.html.heex -->
-<div class="min-h-full">
+<div class="min-h-full bg-gray-50">
   <.navigation active_tab={@active_tab} current_user={@current_user} />
   
-  <div class="py-10">
+  <div class="py-8">
     <header>
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 class="text-3xl font-bold leading-tight text-gray-900">Dashboard</h1>
-        <p class="mt-2 text-sm text-gray-500">Welcome back, <%= @current_user.email %></p>
+        <h1 class="text-3xl font-bold leading-tight text-gray-900">
+          <%= get_greeting(@current_user.name) %>
+        </h1>
       </div>
     </header>
     
     <main>
       <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-        <!-- Notifications Bar -->
-        <%= if @notifications != [] do %>
-          <div class="rounded-md bg-blue-50 p-4 mb-8">
-            <div class="flex">
-              <div class="flex-shrink-0">
-                <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clip-rule="evenodd" />
-                </svg>
-              </div>
-              <div class="ml-3">
-                <h3 class="text-sm font-medium text-blue-800">
-                  You have <%= length(@notifications) %> unread notifications
-                </h3>
+        <!-- Featured Content Section -->
+        <div class="mb-8 bg-white rounded-xl shadow-sm overflow-hidden">
+          <div class="p-6">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">Featured For You</h2>
+            <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg overflow-hidden relative">
+              <div class="absolute inset-0 bg-black opacity-20"></div>
+              <div class="p-8 relative z-10">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white bg-opacity-20 text-white mb-3">
+                  <%= get_channel_category(@channels) %>
+                </span>
+                <h3 class="text-2xl font-bold text-white">Discover new content</h3>
+                <p class="mt-2 text-white text-opacity-90">Explore the latest uploads and collaborations</p>
+                <button class="mt-4 bg-white text-indigo-600 font-medium text-sm px-4 py-2 rounded-md hover:bg-opacity-90 transition-all">
+                  Browse Now
+                </button>
               </div>
             </div>
           </div>
-        <% end %>
-
-        <!-- Stats Overview -->
-        <div class="mt-8">
-          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="px-4 py-5 sm:p-6">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 truncate">
-                    Total Channels
-                  </dt>
-                  <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                    <%= @stats.channels %>
-                  </dd>
-                </dl>
-                <div class="mt-3">
-                  <.link navigate={~p"/channels"} class="text-sm text-[#DD1155] hover:text-[#F53E7B]">
-                    View all channels →
-                  </.link>
+        </div>
+        
+        <!-- Stats Grid -->
+        <div class="mb-8">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white shadow-sm rounded-xl p-4">
+              <div class="flex items-center">
+                <div class="rounded-full bg-blue-100 p-2 mr-3">
+                  <svg class="h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 font-medium">Channels</p>
+                  <p class="text-xl font-bold text-gray-900"><%= @stats.channels %></p>
                 </div>
               </div>
             </div>
             
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="px-4 py-5 sm:p-6">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 truncate">
-                    Total Members
-                  </dt>
-                  <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                    <%= @stats.members %>
-                  </dd>
-                </dl>
-              </div>
-            </div>
-            
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="px-4 py-5 sm:p-6">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 truncate">
-                    Media Files
-                  </dt>
-                  <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                    <%= @stats.media_files %>
-                  </dd>
-                </dl>
-                <div class="mt-3">
-                  <.link navigate={~p"/media"} class="text-sm text-[#DD1155] hover:text-[#F53E7B]">
-                    Browse media →
-                  </.link>
+            <div class="bg-white shadow-sm rounded-xl p-4">
+              <div class="flex items-center">
+                <div class="rounded-full bg-purple-100 p-2 mr-3">
+                  <svg class="h-5 w-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 font-medium">Members</p>
+                  <p class="text-xl font-bold text-gray-900"><%= @stats.members %></p>
                 </div>
               </div>
             </div>
             
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-              <div class="px-4 py-5 sm:p-6">
-                <dl>
-                  <dt class="text-sm font-medium text-gray-500 truncate">
-                    Total Views
-                  </dt>
-                  <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                    <%= @stats.total_views %>
-                  </dd>
-                </dl>
-                <div class="mt-3">
-                  <.link navigate={~p"/analytics"} class="text-sm text-[#DD1155] hover:text-[#F53E7B]">
-                    View analytics →
-                  </.link>
+            <div class="bg-white shadow-sm rounded-xl p-4">
+              <div class="flex items-center">
+                <div class="rounded-full bg-pink-100 p-2 mr-3">
+                  <svg class="h-5 w-5 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 font-medium">Media</p>
+                  <p class="text-xl font-bold text-gray-900"><%= @stats.media_files %></p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="bg-white shadow-sm rounded-xl p-4">
+              <div class="flex items-center">
+                <div class="rounded-full bg-red-100 p-2 mr-3">
+                  <svg class="h-5 w-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-sm text-gray-500 font-medium">Views</p>
+                  <p class="text-xl font-bold text-gray-900"><%= @stats.total_views %></p>
                 </div>
               </div>
             </div>
           </div>
         </div>
         
-        <!-- Quick Actions -->
-        <div class="mt-10">
-          <h2 class="text-lg leading-6 font-medium text-gray-900">Quick Actions</h2>
-          <div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            <.link
-              navigate={~p"/channels/new"}
-              class="col-span-1 flex rounded-lg shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
-            >
-              <div class="flex-1 flex items-center justify-between border border-gray-200 rounded-lg truncate">
-                <div class="flex-1 flex items-center p-6">
-                  <div class="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#DD1155] text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                    </svg>
-                  </div>
-                  <div class="ml-4">
-                    <h3 class="text-gray-900 text-sm font-medium">Create Channel</h3>
-                    <p class="text-gray-500 text-sm">Start a new collaboration space</p>
-                  </div>
-                </div>
-                <div class="flex-shrink-0 pr-2">
-                  <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+        <!-- Quick Actions - Compact and Colorful -->
+        <div class="mb-8">
+          <h2 class="text-xl font-semibold text-gray-900 mb-4 px-2">Quick Actions</h2>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <.link navigate={~p"/channels/new"} class="block">
+              <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl py-2 px-3 flex items-center transition-all hover:shadow-md">
+                <div class="bg-white/20 rounded-full p-1.5 w-7 h-7 flex items-center justify-center">
+                  <svg class="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                   </svg>
                 </div>
+                <p class="font-medium text-white text-xs ml-2">New Channel</p>
               </div>
             </.link>
             
-            <.link
-              navigate={~p"/media/upload"}
-              class="col-span-1 flex rounded-lg shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
-            >
-              <div class="flex-1 flex items-center justify-between border border-gray-200 rounded-lg truncate">
-                <div class="flex-1 flex items-center p-6">
-                  <div class="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#DD1155] text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-                    </svg>
-                  </div>
-                  <div class="ml-4">
-                    <h3 class="text-gray-900 text-sm font-medium">Upload Media</h3>
-                    <p class="text-gray-500 text-sm">Share videos, images, or audio</p>
-                  </div>
-                </div>
-                <div class="flex-shrink-0 pr-2">
-                  <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+            <.link navigate={~p"/media/upload"} class="block">
+              <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl py-2 px-3 flex items-center transition-all hover:shadow-md">
+                <div class="bg-white/20 rounded-full p-1.5 w-7 h-7 flex items-center justify-center">
+                  <svg class="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
                   </svg>
                 </div>
+                <p class="font-medium text-white text-xs ml-2">Upload Media</p>
               </div>
             </.link>
             
-            <.link
-              navigate={~p"/events/new"}
-              class="col-span-1 flex rounded-lg shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
-            >
-              <div class="flex-1 flex items-center justify-between border border-gray-200 rounded-lg truncate">
-                <div class="flex-1 flex items-center p-6">
-                  <div class="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#DD1155] text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                    </svg>
-                  </div>
-                  <div class="ml-4">
-                    <h3 class="text-gray-900 text-sm font-medium">Schedule Event</h3>
-                    <p class="text-gray-500 text-sm">Plan a collaboration session</p>
-                  </div>
-                </div>
-                <div class="flex-shrink-0 pr-2">
-                  <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+            <.link navigate={~p"/events/new"} class="block">
+              <div class="bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl py-2 px-3 flex items-center transition-all hover:shadow-md">
+                <div class="bg-white/20 rounded-full p-1.5 w-7 h-7 flex items-center justify-center">
+                  <svg class="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                   </svg>
                 </div>
+                <p class="font-medium text-white text-xs ml-2">Schedule Event</p>
               </div>
             </.link>
 
-            <.link
-              navigate={~p"/invite"}
-              class="col-span-1 flex rounded-lg shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
-            >
-              <div class="flex-1 flex items-center justify-between border border-gray-200 rounded-lg truncate">
-                <div class="flex-1 flex items-center p-6">
-                  <div class="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#DD1155] text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
-                    </svg>
-                  </div>
-                  <div class="ml-4">
-                    <h3 class="text-gray-900 text-sm font-medium">Invite User</h3>
-                    <p class="text-gray-500 text-sm">Invite someone to join</p>
-                  </div>
-                </div>
-                <div class="flex-shrink-0 pr-2">
-                  <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+            <.link navigate={~p"/invite"} class="block">
+              <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-xl py-2 px-3 flex items-center transition-all hover:shadow-md">
+                <div class="bg-white/20 rounded-full p-1.5 w-7 h-7 flex items-center justify-center">
+                  <svg class="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
                   </svg>
                 </div>
+                <p class="font-medium text-white text-xs ml-2">Invite User</p>
               </div>
             </.link>
           </div>
         </div>
         
         <!-- Recent Channels -->
-        <div class="mt-10">
-          <div class="flex justify-between items-center">
-            <h2 class="text-lg leading-6 font-medium text-gray-900">Recent Channels</h2>
-            <.link navigate={~p"/channels"} class="text-sm text-[#DD1155] hover:text-[#F53E7B]">
-              View all →
-            </.link>
-          </div>
-          
-          <div class="mt-6 grid gap-5 lg:grid-cols-3">
+        <div class="mb-8 bg-white rounded-xl shadow-sm">
+          <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-xl font-semibold text-gray-900">Recent Channels</h2>
+              <.link navigate={~p"/channels"} class="text-sm text-indigo-600 hover:text-indigo-800">
+                View all →
+              </.link>
+            </div>
+            
             <%= if @channels == [] do %>
-              <div class="col-span-3 text-center py-8 bg-white rounded-lg shadow">
-                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              <div class="text-center py-6 bg-gray-50 rounded-lg">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
                 <h3 class="mt-2 text-sm font-medium text-gray-900">No channels yet</h3>
                 <p class="mt-1 text-sm text-gray-500">Get started by creating a new channel.</p>
                 <div class="mt-6">
                   <.link
                     navigate={~p"/channels/new"}
-                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[#DD1155] hover:bg-[#F53E7B] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
+                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
                   >
                     Create Channel
                   </.link>
                 </div>
               </div>
             <% else %>
-              <%= for channel <- @channels do %>
-                <div class="bg-white overflow-hidden shadow rounded-lg">
-                  
-                  <div class="px-4 py-5 sm:p-6">
-                    <h3 class="text-lg leading-6 font-medium text-gray-900">
-                      <%= channel.name %>
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500">
-                      <%= channel.description %>
-                    </p>
-                    <div class="mt-4">
-                      <.link 
-                        navigate={~p"/channels/#{channel.id}"} 
-                        class="text-[#DD1155] hover:text-[#F53E7B] text-sm font-medium"
-                      >
-                        View channel →
-                      </.link>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <%= for channel <- @channels do %>
+                  <.link navigate={~p"/channels/#{channel.id}"} class="block group">
+                    <div class="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all">
+                      <div class="h-20 bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black opacity-20"></div>
+                        <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                      </div>
+                      <div class="p-4">
+                        <h3 class="text-md font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
+                          <%= channel.name %>
+                        </h3>
+                        <p class="mt-1 text-sm text-gray-500 line-clamp-2">
+                          <%= channel.description %>
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              <% end %>
+                  </.link>
+                <% end %>
+              </div>
             <% end %>
           </div>
         </div>
-        `
-        <!-- Recent Media -->
-        <div class="mt-10">
-          <div class="flex justify-between items-center">
-            <h2 class="text-lg leading-6 font-medium text-gray-900">Recent Media</h2>
-            <.link navigate={~p"/media"} class="text-sm text-[#DD1155] hover:text-[#F53E7B]">
-              View all →
-            </.link>
-          </div>
-          
-          <div class="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        
+        <!-- Enhanced Recent Media Section -->
+        <div class="mb-8 bg-white rounded-xl shadow-sm">
+          <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-xl font-semibold text-gray-900">Recent Media</h2>
+              <.link navigate={~p"/media"} class="text-sm text-indigo-600 hover:text-indigo-800">
+                View all →
+              </.link>
+            </div>
+            
             <%= if @media_files == [] do %>
-              <div class="col-span-3 text-center py-8 bg-white rounded-lg shadow">
-                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              <div class="text-center py-6 bg-gray-50 rounded-lg">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
                 </svg>
                 <h3 class="mt-2 text-sm font-medium text-gray-900">No media files yet</h3>
                 <p class="mt-1 text-sm text-gray-500">Start sharing videos, images, or audio.</p>
                 <div class="mt-6">
                   <.link
                     navigate={~p"/media/upload"}
-                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[#DD1155] hover:bg-[#F53E7B] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
+                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700"
                   >
                     Upload Media
                   </.link>
                 </div>
               </div>
             <% else %>
-              <%= for media <- @media_files do %>
-                <div class="bg-white overflow-hidden shadow rounded-lg">
-                  <div class="px-4 py-5 sm:p-6">
-                    <h3 class="text-lg leading-6 font-medium text-gray-900">
-                      <%= media.name %>
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500">
-                      <%= format_media_type(media.type) %>
-                    </p>
-                    <div class="mt-4">
-                      <.link 
-                        navigate={~p"/media/#{media.id}"} 
-                        class="text-[#DD1155] hover:text-[#F53E7B] text-sm font-medium"
-                      >
-                        View media →
-                      </.link>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
-            <% end %>
-          </div>
-        </div>
-        
-        <!-- Recent Activities -->
-        <div class="mt-10">
-          <h2 class="text-lg leading-6 font-medium text-gray-900">Recent Activity</h2>
-          <div class="mt-6 bg-white shadow overflow-hidden sm:rounded-lg">
-            <ul class="divide-y divide-gray-200">
-              <%= if @recent_activities == [] do %>
-                <li class="px-4 py-4 sm:px-6">
-                  <div class="flex items-center justify-between">
-                    <p class="text-sm font-medium text-gray-900">
-                      Welcome to Frestyl!
-                    </p>
-                    <div class="ml-2 flex-shrink-0 flex">
-                      <p class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                        New
-                      </p>
-                    </div>
-                  </div>
-                  <div class="mt-2 sm:flex sm:justify-between">
-                    <div class="sm:flex">
-                      <p class="flex items-center text-sm text-gray-500">
-                        Start by creating a channel to collaborate with others.
-                      </p>
-                    </div>
-                  </div>
-                </li>
-              <% else %>
-                <%= for activity <- @recent_activities do %>
-                  <li class="px-4 py-4 sm:px-6">
-                    <div class="flex items-center justify-between">
-                      <p class="text-sm font-medium text-gray-900">
-                        <%= activity.description %>
-                      </p>
-                      <div class="ml-2 flex-shrink-0 flex">
-                        <p class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                          <%= format_activity_type(activity.type) %>
-                        </p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <%= for media <- @media_files do %>
+                  <.link navigate={~p"/media/#{media.id}"} class="block group">
+                    <div class="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all">
+                      
+                      <!-- Different gradient backgrounds and icons based on media type -->
+                      <%= cond do %>
+                        <% media.type == "video" -> %>
+                          <div class="h-24 bg-gradient-to-r from-purple-600 to-pink-500 flex items-center justify-center relative">
+                            <div class="absolute inset-0 bg-black opacity-20"></div>
+                            <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                          </div>
+                        <% media.type == "image" -> %>
+                          <div class="h-24 bg-gradient-to-r from-pink-500 to-red-500 flex items-center justify-center relative">
+                            <div class="absolute inset-0 bg-black opacity-20"></div>
+                            <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                          </div>
+                        <% media.type == "audio" -> %>
+                          <div class="h-24 bg-gradient-to-r from-red-500 to-yellow-500 flex items-center justify-center relative">
+                            <div class="absolute inset-0 bg-black opacity-20"></div>
+                            <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                            </svg>
+                          </div>
+                        <% true -> %>
+                          <div class="h-24 bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center relative">
+                            <div class="absolute inset-0 bg-black opacity-20"></div>
+                            <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                          </div>
+                      <% end %>
+                      
+                      <div class="p-4">
+                        <div class="flex justify-between items-center">
+                          <h3 class="text-sm font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
+                            <%= media.name %>
+                          </h3>
+                          <span class="text-xs bg-gray-100 px-2 py-1 rounded-full">
+                            <%= format_media_type(media.type) %>
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <div class="mt-2 sm:flex sm:justify-between">
-                      <div class="sm:flex">
-                        <p class="flex items-center text-sm text-gray-500">
-                          <%= format_activity_time(activity.inserted_at) %>
-                        </p>
-                      </div>
-                    </div>
-                  </li>
+                  </.link>
                 <% end %>
-              <% end %>
-            </ul>
+              </div>
+            <% end %>
           </div>
         </div>
       </div>

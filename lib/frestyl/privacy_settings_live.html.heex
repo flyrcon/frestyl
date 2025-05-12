@@ -1,0 +1,91 @@
+<!-- lib/frestyl_web/live/user_live/privacy_settings_live.html.heex -->
+<div class="container mx-auto max-w-3xl p-4">
+  <h1 class="text-3xl font-bold mb-6">Privacy Settings</h1>
+  
+  <div class="bg-urban-asphalt p-6 rounded-lg mb-8 text-white">
+    <h2 class="text-2xl font-bold mb-6">Control Who Can See Your Content</h2>
+    
+    <form phx-submit="update_privacy" class="space-y-8">
+      <div class="space-y-4">
+        <h3 class="text-xl font-bold">Profile Visibility</h3>
+        <p class="opacity-75 mb-3">Who can see your profile information (bio, name, social links)</p>
+        
+        <div class="space-y-2">
+          <label class="flex items-center space-x-3">
+            <input type="radio" name="privacy[profile_visibility]" value="public" 
+              <%= if @privacy_settings["profile_visibility"] == "public", do: "checked" %>>
+            <span>Public - Anyone can view</span>
+          </label>
+          
+          <label class="flex items-center space-x-3">
+            <input type="radio" name="privacy[profile_visibility]" value="friends" 
+              <%= if @privacy_settings["profile_visibility"] == "friends", do: "checked" %>>
+            <span>Friends Only - Only connected users can view</span>
+          </label>
+          
+          <label class="flex items-center space-x-3">
+            <input type="radio" name="privacy[profile_visibility]" value="private" 
+              <%= if @privacy_settings["profile_visibility"] == "private", do: "checked" %>>
+            <span>Private - Only you can view</span>
+          </label>
+        </div>
+      </div>
+      
+      <div class="space-y-4">
+        <h3 class="text-xl font-bold">Media Visibility</h3>
+        <p class="opacity-75 mb-3">Who can see your uploaded media (images, videos, audio)</p>
+        
+        <div class="space-y-2">
+          <label class="flex items-center space-x-3">
+            <input type="radio" name="privacy[media_visibility]" value="public" 
+              <%= if @privacy_settings["media_visibility"] == "public", do: "checked" %>>
+            <span>Public - Anyone can view</span>
+          </label>
+          
+          <label class="flex items-center space-x-3">
+            <input type="radio" name="privacy[media_visibility]" value="friends" 
+              <%= if @privacy_settings["media_visibility"] == "friends", do: "checked" %>>
+            <span>Friends Only - Only connected users can view</span>
+          </label>
+          
+          <label class="flex items-center space-x-3">
+            <input type="radio" name="privacy[media_visibility]" value="private" 
+              <%= if @privacy_settings["media_visibility"] == "private", do: "checked" %>>
+            <span>Private - Only you can view</span>
+          </label>
+        </div>
+      </div>
+      
+      <div class="space-y-4">
+        <h3 class="text-xl font-bold">Metrics Visibility</h3>
+        <p class="opacity-75 mb-3">Who can see your activity metrics and statistics</p>
+        
+        <div class="space-y-2">
+          <label class="flex items-center space-x-3">
+            <input type="radio" name="privacy[metrics_visibility]" value="public" 
+              <%= if @privacy_settings["metrics_visibility"] == "public", do: "checked" %>>
+            <span>Public - Anyone can view</span>
+          </label>
+          
+          <label class="flex items-center space-x-3">
+            <input type="radio" name="privacy[metrics_visibility]" value="friends" 
+              <%= if @privacy_settings["metrics_visibility"] == "friends", do: "checked" %>>
+            <span>Friends Only - Only connected users can view</span>
+          </label>
+          
+          <label class="flex items-center space-x-3">
+            <input type="radio" name="privacy[metrics_visibility]" value="private" 
+              <%= if @privacy_settings["metrics_visibility"] == "private", do: "checked" %>>
+            <span>Private - Only you can view</span>
+          </label>
+        </div>
+      </div>
+      
+      <div>
+        <button type="submit" class="bg-electric-blue py-2 px-6 rounded font-bold hover:bg-opacity-90 transition">
+          Save Privacy Settings
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

@@ -27,7 +27,10 @@ defmodule FrestylWeb.ConnCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
-      import FrestylWeb.ConnCase
+
+      alias FrestylWeb.Router.Helpers, as: Routes
+
+      @endpoint FrestylWeb.Endpoint
     end
   end
 

@@ -1,4 +1,3 @@
-# lib/frestyl_web/live/event_live/index.html.heex
 <.header>
   Upcoming Events
   <:actions>
@@ -8,24 +7,36 @@
   </:actions>
 </.header>
 
-<.table
-  id="events"
-  rows={@events}
-  row_click={fn event -> JS.navigate(~p"/events/#{event}") end}
->
-  <:col :let={event} label="Title"><%= event.title %></:col>
-  <:col :let={event} label="Starts"><%= format_datetime(event.starts_at) %></:col>
-  <:col :let={event} label="Status"><%= format_status(event.status) %></:col>
-  <:col :let={event} label="Admission"><%= format_admission(event.admission_type) %></:col>
-  <:action :let={event}>
-    <.link navigate={~p"/events/#{event}/edit"}>Edit</.link>
-  </:action>
-  <:action :let={event}>
-    <.link
-      phx-click={JS.push("delete", value: %{id: event.id}) |> hide("##{event.id}")}
-      data-confirm="Are you sure?"
-    >
-      Delete
-    </.link>
-  </:action>
-</.table>
+<%= if @live_action in [:new, :edit] do %>
+  <.live_component
+    module={FrestylWeb.EventLive.FormComponent}
+    id={@event.id || :new}
+    title={@page_title}
+    action={@live_action}
+    event={@event}
+    current_user={@current_user}
+    navigate={~p"/events"}
+  />
+<% else %>
+  <.table
+    id="events"
+    rows={@events}
+    row_click={fn event -> JS.navigate(~p"/events/#{event}") end}
+  >
+    <:col :let={event} label="Title"><%= event.title %></:col>
+    <:col :let={event} label="Starts"><%= format_datetime(event.starts_at) %></:col>
+    <:col :let={event} label="Status"><%= format_status(event.status) %></:col>
+    <:col :let={event} label="Admission"><%= format_admission(event.admission_type) %></:col>
+    <:action :let={event}>
+      <.link navigate={~p"/events/#{event}/edit"}>Edit</.link>
+    </:action>
+    <:action :let={event}>
+      <.link
+        phx-click={JS.push("delete", value: %{id: event.id}) |> hide("##{event.id}")}
+        data-confirm="Are you sure?"
+      >
+        Delete
+      </.link>
+    </:action>
+  </.table>
+<% end %>

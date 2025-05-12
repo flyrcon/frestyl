@@ -56,12 +56,43 @@ defmodule FrestylWeb.ChannelLive.FormComponent do
     end
   end
 
-  # Helper function to translate error
-  def translate_error({msg, opts}) do
-    if count = opts[:count] do
-      Gettext.dngettext(FrestylWeb.Gettext, "errors", msg, msg, count, opts)
-    else
-      Gettext.dgettext(FrestylWeb.Gettext, "errors", msg, opts)
-    end
+  # Add this to your existing form_component.ex file
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div>
+      <form phx-change="validate" phx-submit="save" phx-target={@myself} class="space-y-6">
+        <!-- Channel Name -->
+        <div>
+          <label for="channel_name" class="block text-sm font-medium text-gray-700">Channel Name</label>
+          <input
+            type="text"
+            name="channel[name]"
+            id="channel_name"
+            value={Ecto.Changeset.get_field(@changeset, :name) || ""}
+            placeholder="My awesome channel"
+            required
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          />
+          <%= if error = @changeset.errors[:name] do %>
+            <p class="mt-2 text-sm text-red-600"><%= translate_error(error) %></p>
+          <% end %>
+        </div>
+
+        <!-- Rest of your form fields... -->
+
+        <!-- Submit Button -->
+        <div class="flex justify-end">
+          <button
+            type="submit"
+            phx-disable-with="Saving..."
+            class="inline-flex justify-center py-2 px-6 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[#DD1155] hover:bg-[#C4134E] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
+          >
+            <%= if @channel.id, do: "Update Channel", else: "Create Channel" %>
+          </button>
+        </div>
+      </form>
+    </div>
+    """
   end
 end

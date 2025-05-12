@@ -8,7 +8,6 @@ defmodule FrestylWeb.EventLive.Show do
   def mount(_params, _session, socket) do
     if connected?(socket), do: Phoenix.PubSub.subscribe(Frestyl.PubSub, "event_updates")
 
-    {:ok, socket}
     {:ok, socket |> assign(:sound_check_needed, true)}
   end
 

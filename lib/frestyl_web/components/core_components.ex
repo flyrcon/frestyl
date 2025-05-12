@@ -15,6 +15,7 @@ defmodule FrestylWeb.CoreComponents do
   Icons are provided by [heroicons](https://heroicons.com). See `icon/1` for usage.
   """
   use Phoenix.Component
+  import Phoenix.VerifiedRoutes, only: [sigil_p: 2]
   use Gettext, backend: FrestylWeb.Gettext
 
   alias Phoenix.LiveView.JS
@@ -77,7 +78,7 @@ defmodule FrestylWeb.CoreComponents do
 
           <div class="flex items-center">
             <%= if @current_user do %>
-              <span class="mr-4 text-sm text-gray-700">Welcome, <%= @current_user.email %></span>
+              <span class="mr-4 text-sm text-gray-700">Hi, <%= @current_user.name %></span>
               <a href="/logout" data-method="delete" class="text-sm text-gray-700 hover:text-gray-900">
                 Logout
               </a>
@@ -672,6 +673,12 @@ defmodule FrestylWeb.CoreComponents do
   attr :class, :string, default: nil
 
   def icon(%{name: "hero-" <> _} = assigns) do
+    ~H"""
+    <span class={[@name, @class]} />
+    """
+  end
+
+  def icon(assigns) do
     ~H"""
     <span class={[@name, @class]} />
     """

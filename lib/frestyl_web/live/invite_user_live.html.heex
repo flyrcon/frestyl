@@ -1,6 +1,17 @@
 <div class="min-h-full">
   <.navigation active_tab={@active_tab} current_user={@current_user} />
-  
+    <!-- Dashboard icon - directly added to the template -->
+    <div class="fixed bottom-4 right-4 z-50">
+      <a 
+        href="/dashboard" 
+        class="flex items-center justify-center h-12 w-12 rounded-full bg-[#DD1155] text-white shadow-lg hover:bg-[#C4134E] transition-colors"
+        title="Back to Dashboard"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        </svg>
+      </a>
+    </div>
   <div class="py-10">
     <header>
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

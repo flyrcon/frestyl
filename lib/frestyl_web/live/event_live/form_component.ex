@@ -85,15 +85,47 @@ defmodule FrestylWeb.EventLive.FormComponent do
 
   @impl true
   def update(%{event: event} = assigns, socket) do
-    changeset = Events.change_event(event)
+    # For a new event, initialize any needed fields
+    event = if event.id == nil do
+      # Set defaults for new events
+      now = DateTime.utc_now()
+      tomorrow = DateTime.add(now, 1, :day)
+      next_week = DateTime.add(now, 7, :day)
 
-    sessions = list_sessions()
+      %{event |
+        status: :draft,
+        admission_type: :open,
+        # Set some reasonable defaults for dates
+        starts_at: next_week,
+        ends_at: DateTime.add(next_week, 3, :hour)
+      }
+    else
+      event
+    end
+
+    changeset = Frestyl.Events.change_event(event)
+
+    # Get current_user from assigns or provide a fallback
+    current_user = assigns[:current_user]
+
+    # Get sessions list, safely handling nil current_user
+    sessions =
+      if current_user do
+        list_sessions(current_user)
+      else
+        []
+      end
 
     {:ok,
      socket
      |> assign(assigns)
      |> assign(:sessions, sessions)
      |> assign_form(changeset)}
+  end
+
+  defp list_sessions(current_user) do
+    Frestyl.Sessions.list_user_sessions(current_user)
+    |> Enum.map(fn session -> {session.title, session.id} end)
   end
 
   @impl true
@@ -110,17 +142,24 @@ defmodule FrestylWeb.EventLive.FormComponent do
     save_event(socket, socket.assigns.action, event_params)
   end
 
-  defp save_event(socket, :edit, event_params) do
-    case Events.update_event(socket.assigns.event, event_params) do
+  defp save_event(socket, :new, event_params) do
+    current_user = socket.assigns.current_user
+
+    case Events.create_event(event_params, current_user) do
       {:ok, _event} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Event updated successfully")
+         |> put_flash(:info, "Event created successfully")
          |> push_navigate(to: socket.assigns.navigate)}
-
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
     end
+  end
+
+  defp list_sessions(nil), do: []  # Handle the case when current_user is nil
+  defp list_sessions(current_user) do
+    Frestyl.Sessions.list_user_sessions(current_user)
+    |> Enum.map(fn session -> {session.title, session.id} end)
   end
 
   defp save_event(socket, :new, event_params) do
@@ -139,21 +178,5 @@ defmodule FrestylWeb.EventLive.FormComponent do
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do
     assign(socket, :form, to_form(changeset))
-  end
-
-  def update(%{event: event} = assigns, socket) do
-    changeset = Events.change_event(event)
-    sessions = list_sessions(socket.assigns.current_user)
-
-    {:ok,
-     socket
-     |> assign(assigns)
-     |> assign(:sessions, sessions)
-     |> assign_form(changeset)}
-  end
-
-  defp list_sessions(current_user) do
-    Frestyl.Sessions.list_user_sessions(current_user)
-    |> Enum.map(fn session -> {session.title, session.id} end)
   end
 end

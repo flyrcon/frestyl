@@ -1,3 +1,4 @@
+# lib/frestyl/media/media_item.ex
 defmodule Frestyl.Media.MediaItem do
   use Ecto.Schema
   import Ecto.Changeset
@@ -19,6 +20,8 @@ defmodule Frestyl.Media.MediaItem do
     field :is_public, :boolean, default: false
     field :status, Ecto.Enum, values: [:processing, :ready, :error], default: :processing
     field :metadata, :map, default: %{}
+    # Add category field
+    field :category, Ecto.Enum, values: [:branding, :presentation, :performance, :general], default: :general
 
     belongs_to :uploader, Frestyl.Accounts.User
     belongs_to :channel, Frestyl.Channels.Channel
@@ -32,7 +35,7 @@ defmodule Frestyl.Media.MediaItem do
     media_item
     |> cast(attrs, [:name, :content_type, :title, :description, :file_path, :file_size, :file_type, :mime_type,
                    :duration, :width, :height, :thumbnail_url, :is_public, :status,
-                   :media_type, :metadata, :uploader_id, :channel_id, :session_id, :event_id])
+                   :media_type, :metadata, :uploader_id, :channel_id, :session_id, :event_id, :category])
     |> validate_required([:name, :title, :content_type, :file_path, :file_type, :mime_type, :media_type, :uploader_id])
     |> validate_length(:title, min: 2, max: 255)
     |> validate_length(:description, max: 2000)

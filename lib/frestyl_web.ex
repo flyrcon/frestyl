@@ -101,6 +101,8 @@ defmodule FrestylWeb do
       # Routes generation with the ~p sigil
       unquote(verified_routes())
 
+
+
       def format_bytes(bytes), do: Frestyl.Media.FileHelpers.format_bytes(bytes)
 
       def media_icon(type) do

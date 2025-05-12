@@ -1,10 +1,9 @@
-# lib/frestyl_web/live/media_live/index.html.heex
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
   <div class="flex justify-between items-center mb-6">
     <div>
       <h1 class="text-3xl font-bold text-gray-900">Media Library</h1>
       <p class="mt-1 text-sm text-gray-500">
-        Manage your uploaded files and assets
+        Manage your files and media
       </p>
     </div>
     
@@ -20,14 +19,16 @@
           </button>
         </div>
       <% end %>
-      
-      <.link navigate="/media/upload" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#e66859]">
-        <.icon name="upload" class="h-4 w-4 mr-2" />
-        Upload Files
-      </.link>
+    
+      <%= live_patch to: ~p"/media/upload", class: "inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[#DD1155] hover:bg-[#C4134E] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]" do %>
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M5.5 13a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 13H11V9.413l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13H5.5z" />
+        <path d="M9 13h2v5a1 1 0 11-2 0v-5z" />
+      </svg>
+      Upload Files
+    <% end %>
     </div>
   </div>
-
   <!-- Filters and Search -->
   <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
     <div class="flex flex-wrap items-center gap-4">

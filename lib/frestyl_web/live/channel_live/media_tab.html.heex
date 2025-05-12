@@ -1,0 +1,126 @@
+<!-- lib/frestyl_web/live/channel_live/media_tab.html.heex -->
+<div class="channel-media-container">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-2xl font-bold text-gray-900">
+        <%= @channel.name %> - Media Files
+      </h2>
+      
+      <button 
+        phx-click="show-upload-modal"
+        class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+      >
+        <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+        </svg>
+        Upload Files
+      </button>
+    </div>
+    
+    <!-- Filter tabs -->
+    <div class="border-b border-gray-200 mb-6">
+      <nav class="-mb-px flex space-x-8" aria-label="Media filters">
+        <button 
+          class={"whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm #{if @filter == "all", do: "border-primary-500 text-primary-600", else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"}"} 
+          phx-click="filter-media"
+          phx-value-filter="all"
+        >
+          All Files
+        </button>
+        <button 
+          class={"whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm #{if @filter == "image", do: "border-primary-500 text-primary-600", else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"}"} 
+          phx-click="filter-media"
+          phx-value-filter="image"
+        >
+          Images
+        </button>
+        <button 
+          class={"whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm #{if @filter == "video", do: "border-primary-500 text-primary-600", else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"}"} 
+          phx-click="filter-media"
+          phx-value-filter="video"
+        >
+          Videos
+        </button>
+        <button 
+          class={"whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm #{if @filter == "audio", do: "border-primary-500 text-primary-600", else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"}"} 
+          phx-click="filter-media"
+          phx-value-filter="audio"
+        >
+          Audio
+        </button>
+        <button 
+          class={"whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm #{if @filter == "document", do: "border-primary-500 text-primary-600", else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"}"} 
+          phx-click="filter-media"
+          phx-value-filter="document"
+        >
+          Documents
+        </button>
+      </nav>
+    </div>
+    
+    <!-- Media grid -->
+    <div class="media-grid grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <% filtered_files = filter_media_files(@media_files, @filter) %>
+      
+      <%= if Enum.empty?(filtered_files) do %>
+        <div class="col-span-full py-12 text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">No media files</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            <%= if @filter == "all" do %>
+              Get started by uploading your first file to this channel.
+            <% else %>
+              No <%= @filter %> files found in this channel.
+            <% end %>
+          </p>
+          <div class="mt-6">
+            <button
+              phx-click="show-upload-modal"
+              class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Upload Files
+            </button>
+          </div>
+        </div>
+      <% else %>
+        <%= for media_file <- filtered_files do %>
+          <.live_component
+            module={MediaDisplayComponent}
+            id={"media-file-#{media_file.id}"}
+            media_file={media_file}
+            current_user={@current_user}
+          />
+        <% end %>
+      <% end %>
+    </div>
+    
+    <!-- Upload modal -->
+    <%= if @show_upload_modal do %>
+      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 z-50 flex items-center justify-center" phx-window-keydown="hide-upload-modal" phx-key="escape">
+        <div class="modal relative bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" phx-click-away="hide-upload-modal">
+          <div class="absolute top-0 right-0 pt-4 pr-4">
+            <button type="button" phx-click="hide-upload-modal" class="bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none">
+              <span class="sr-only">Close</span>
+              <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <div class="p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Upload Media to <%= @channel.name %></h3>
+            
+            <!-- Insert existing upload component -->
+            <div class="mt-4">
+              <!-- We'll use your existing upload component but pre-select the channel -->
+              <iframe src={"/media/upload?channel=#{@channel_id}"} class="w-full h-[60vh] border-0"></iframe>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>

@@ -4,6 +4,7 @@ defmodule Frestyl.Media.MediaFile do
   import Ecto.Changeset
   alias Frestyl.Accounts.User
   alias Frestyl.Channels.Channel
+  alias Frestyl.Media.{Tag, Folder}
 
   schema "media_files" do
     field :filename, :string
@@ -21,9 +22,13 @@ defmodule Frestyl.Media.MediaFile do
     field :width, :integer
     field :height, :integer
     field :thumbnail_url, :string
+    field :thumbnail_status, :string, default: "pending"
+    field :thumbnails, :map, default: %{}
 
     belongs_to :user, User
     belongs_to :channel, Channel
+    belongs_to :folder, Folder
+    many_to_many :tags, Tag, join_through: "media_files_tags"
 
     timestamps()
   end
@@ -31,7 +36,8 @@ defmodule Frestyl.Media.MediaFile do
   @required_fields [:filename, :original_filename, :content_type, :file_size,
                     :media_type, :file_path, :user_id]
   @optional_fields [:channel_id, :storage_type, :status, :title, :description,
-                   :metadata, :duration, :width, :height, :thumbnail_url]
+                   :metadata, :duration, :width, :height, :thumbnail_url,
+                   :thumbnail_status, :thumbnails, :folder_id]
 
   def changeset(media_file, attrs) do
     media_file
@@ -39,8 +45,16 @@ defmodule Frestyl.Media.MediaFile do
     |> validate_required(@required_fields)
     |> foreign_key_constraint(:user_id)
     |> foreign_key_constraint(:channel_id)
-    |> validate_inclusion(:media_type, ["image", "video", "audio", "document"])
+    |> foreign_key_constraint(:folder_id)
+    |> validate_inclusion(:media_type, ["image", "video", "audio", "document", "other"])
     |> validate_inclusion(:storage_type, ["local", "s3"])
     |> validate_inclusion(:status, ["active", "processing", "error", "archived"])
+    |> validate_inclusion(:thumbnail_status, ["pending", "generating", "generated", "failed"])
+  end
+
+  def tag_changeset(media_file, tags) do
+    media_file
+    |> cast(%{}, @required_fields ++ @optional_fields)
+    |> put_assoc(:tags, tags)
   end
 end

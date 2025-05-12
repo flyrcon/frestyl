@@ -60,7 +60,7 @@ defmodule FrestylWeb.ChannelLive.MediaViewerComponent do
                     <% "video" -> %>
                       <div class="bg-black rounded-lg overflow-hidden">
                         <video controls class="w-full h-auto">
-                          <source src={Media.get_media_url(@file)} type={@file.content_type}>
+                          <source src={Media.get_media_url(@file)} type={@file.content_type} />
                           Your browser does not support the video tag.
                         </video>
                       </div>
@@ -75,7 +75,7 @@ defmodule FrestylWeb.ChannelLive.MediaViewerComponent do
                           </div>
                         </div>
                         <audio controls class="w-full">
-                          <source src={Media.get_media_url(@file)} type={@file.content_type}>
+                          <source src={Media.get_media_url(@file)} type={@file.content_type} />
                           Your browser does not support the audio tag.
                         </audio>
                       </div>
@@ -88,8 +88,8 @@ defmodule FrestylWeb.ChannelLive.MediaViewerComponent do
                           </svg>
                           <p class="mt-4 text-gray-900 font-medium"><%= @file.filename %></p>
                           <p class="text-gray-500 text-sm"><%= human_file_size(@file.file_size) %></p>
-                          <a
-                            href={Media.get_media_url(@file)}
+
+                          <a href={Media.get_media_url(@file)}
                             download={@file.filename}
                             class="mt-6 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
                           >
@@ -116,7 +116,7 @@ defmodule FrestylWeb.ChannelLive.MediaViewerComponent do
 
                 <!-- Media Info -->
                 <div class="space-y-6">
-                  <!-- File Details -->
+                  <!-- File Details Section -->
                   <div>
                     <h4 class="text-sm font-medium text-gray-500">Details</h4>
                     <dl class="mt-2 divide-y divide-gray-200">
@@ -157,8 +157,8 @@ defmodule FrestylWeb.ChannelLive.MediaViewerComponent do
                   <div class="border-t border-gray-200 pt-4">
                     <h4 class="text-sm font-medium text-gray-500">Actions</h4>
                     <div class="mt-2 flex flex-col space-y-2">
-                      <a
-                        href={Media.get_media_url(@file)}
+
+                      <a href={Media.get_media_url(@file)}
                         download={@file.filename}
                         target="_blank"
                         class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"

@@ -107,3 +107,7 @@ config :frestyl, :allowed_extensions, %{
 }
 
 config :stripity_stripe, :debug_requests, true
+
+config :frestyl, :cdn,
+  enabled: false,
+  host: "http://localhost:4000"

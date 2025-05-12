@@ -33,5 +33,11 @@ defmodule FrestylWeb.Presence do
         online_at: meta.online_at
       }
     end)
+  rescue
+    e ->
+      # Log the error and return an empty list
+      require Logger
+      Logger.error("Error listing online users: #{inspect(e)}")
+      []
   end
 end

@@ -1,76 +1,339 @@
-<div class="max-w-2xl mx-auto mt-8">
+<div class="max-w-4xl mx-auto mt-8">
   <.header>
-    Live Profile
-    <:subtitle>Real-time profile management</:subtitle>
+    Profile Settings
+    <:subtitle>Customize your profile information</:subtitle>
   </.header>
 
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-    <div class="md:col-span-2">
-      <div class="bg-white p-6 rounded-lg shadow">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Your Profile</h3>
+  <.form
+    :let={f}
+    for={@changeset}
+    phx-submit="save_profile"
+    phx-change="validate"
+    multipart={true}
+  >
+    <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3">
+      <!-- Left column: Profile text fields -->
+      <div class="md:col-span-2 space-y-6 bg-white p-6 rounded-lg shadow">
+        <h3 class="text-lg font-medium text-gray-900 mb-6">Basic Information</h3>
         
-        <.form
-          :let={f}
-          for={@changeset}
-          phx-submit="save_profile"
-        >
-          <div class="space-y-4">
-            <.input field={f[:full_name]} type="text" label="Full name" />
-            <.input field={f[:bio]} type="textarea" label="Bio" />
-            <.input field={f[:website]} type="url" label="Website" />
-            <.input field={f[:avatar_url]} type="url" label="Avatar URL" />
+        <!-- Username field with validation -->
+        <div>
+          <.input 
+            field={f[:username]} 
+            type="text" 
+            label="Username" 
+            phx-blur="check_username" 
+            phx-debounce="500"
+          />
+          <%= case @username_status do %>
+            <% :available -> %>
+              <p class="mt-1 text-sm text-green-600">✓ Username is available</p>
+            <% :taken -> %>
+              <p class="mt-1 text-sm text-red-600">✗ Username is already taken</p>
+            <% :invalid -> %>
+              <p class="mt-1 text-sm text-red-600">Username can only contain letters, numbers, underscores, and hyphens</p>
+            <% :too_short -> %>
+              <p class="mt-1 text-sm text-red-600">Username must be at least 3 characters</p>
+            <% _ -> %>
+              <p class="mt-1 text-sm text-gray-400">Choose a unique username</p>
+          <% end %>
+        </div>
+        
+        <!-- Other text fields -->
+        <.input field={f[:full_name]} type="text" label="Full name" />
+        <.input field={f[:bio]} type="textarea" label="Bio" rows={4} />
+        <.input field={f[:website]} type="url" label="Website" placeholder="https://example.com" />
+        
+        <!-- Add any other text fields here -->
+      </div>
+
+      <!-- Right column: Profile media uploads -->
+      <div class="space-y-6">
+        <!-- Account Info Section -->
+        <div class="bg-white p-6 rounded-lg shadow">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Account Info</h3>
+          
+          <dl class="divide-y divide-gray-100">
+            <div class="py-3 flex justify-between">
+              <dt class="text-sm font-medium text-gray-500">Email:&nbsp;</dt>
+              <dd class="text-sm text-gray-900"><%= @user.email %></dd>
+            </div>
+            
+            <div class="py-3 flex justify-between">
+              <dt class="text-sm font-medium text-gray-500">Role</dt>
+              <dd>
+                <span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                  <%= String.capitalize(@user.role) %>
+                </span>
+              </dd>
+            </div>
+            
+            <div class="py-3 flex justify-between">
+              <dt class="text-sm font-medium text-gray-500">Subscription</dt>
+              <dd>
+                <span class="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
+                  <%= String.capitalize(@user.subscription_tier) %>
+                </span>
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <!-- Unified Media Upload Section -->
+        <div class="bg-white p-6 rounded-lg shadow">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Profile Media</h3>
+          
+          <!-- Current Media Display -->
+          <div class="space-y-4 mb-6">
+            <%= if @user.avatar_url do %>
+              <div class="relative">
+                <img src={@user.avatar_url} class="w-full h-32 object-cover rounded-md" alt="Profile avatar" />
+                <button type="button" phx-click="remove_avatar" class="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            <% end %>
+            
+            <%= if @user.profile_video_url do %>
+              <div class="relative">
+                <video src={@user.profile_video_url} controls class="w-full rounded-md"></video>
+                <button type="button" phx-click="remove_video" class="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            <% end %>
+            
+            <%= if @user.profile_audio_url do %>
+              <div class="relative">
+                <audio src={@user.profile_audio_url} controls class="w-full"></audio>
+                <button type="button" phx-click="remove_audio" class="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            <% end %>
           </div>
           
-          <div class="mt-6">
-            <.button type="submit">Save Profile</.button>
+          <!-- Unified Media Upload -->
+          <div class="flex items-center justify-center w-full">
+            <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+              <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                <svg class="w-8 h-8 mb-4 text-gray-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
+                  <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
+                </svg>
+                <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Click to upload media</span></p>
+                <p class="text-xs text-gray-500">Image, video, or audio file</p>
+              </div>
+              
+              <!-- Hidden file inputs for all media types -->
+              <.live_file_input upload={@uploads.media} class="hidden" />
+            </label>
           </div>
-        </.form>
+          
+          <!-- Upload error messages -->
+          <%= for err <- upload_errors(@uploads.media) do %>
+            <p class="mt-2 text-sm text-red-600"><%= error_to_string(err) %></p>
+          <% end %>
+          
+          <!-- Upload entries preview -->
+          <%= for entry <- @uploads.media.entries do %>
+            <!-- Progress bar -->
+            <div class="mt-2">
+              <div class="flex items-center justify-between">
+                <div class="text-xs font-medium text-gray-500"><%= entry.client_name %></div>
+                <div class="text-xs font-medium text-gray-500"><%= entry.progress %>%</div>
+              </div>
+              <div class="mt-1 w-full bg-gray-200 rounded-full h-2.5">
+                <div class="bg-blue-600 h-2.5 rounded-full" style={"width: #{entry.progress}%"}></div>
+              </div>
+            </div>
+          <% end %>
+        </div>
       </div>
     </div>
 
-    <div class="md:col-span-1">
-      <div class="bg-white p-6 rounded-lg shadow">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Account Info</h3>
+    <!-- 2FA setup -->
+    <div class="bg-gray-50 border border-gray-200 p-6 rounded-lg mb-8 text-gray-900 shadow-sm">
+      <h2 class="text-2xl font-bold mb-4">Account Security</h2>
+      
+      <div class="mb-6">
+        <h3 class="text-xl font-bold mb-2">Two-Factor Authentication</h3>
         
-        <dl class="divide-y divide-gray-100">
-          <div class="py-3 flex justify-between">
-            <dt class="text-sm font-medium text-gray-500">Email</dt>
-            <dd class="text-sm text-gray-900"><%= @user.email %></dd>
-          </div>
+        <%= if @current_user.totp_enabled do %>
+          <p class="mb-4 flex items-center">
+            <span class="mr-2 text-green-600">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+            </span>
+            Two-factor authentication is enabled
+          </p>
           
-          <div class="py-3 flex justify-between">
-            <dt class="text-sm font-medium text-gray-500">Role</dt>
-            <dd>
-              <span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                <%= String.capitalize(@user.role) %>
-              </span>
-            </dd>
+          <div class="flex space-x-4">
+            <a href="#" phx-click="disable_2fa" class="bg-red-pantone text-white py-2 px-4 rounded font-bold hover:bg-red-light transition inline-block">
+              Disable 2FA
+            </a>
+            
+            <a href="#" phx-click="generate_new_backup_codes" class="bg-ice-blue text-indigo-dark py-2 px-4 rounded font-bold hover:bg-opacity-90 transition inline-block">
+              Generate New Backup Codes
+            </a>
           </div>
+        <% else %>
+          <p class="mb-4">Protect your account with two-factor authentication. You'll need to enter a code from your phone each time you log in.</p>
           
-          <div class="py-3 flex justify-between">
-            <dt class="text-sm font-medium text-gray-500">Subscription</dt>
-            <dd>
-              <span class="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
-                <%= String.capitalize(@user.subscription_tier) %>
-              </span>
-            </dd>
-          </div>
-        </dl>
+          <a href={~p"/users/settings/two_factor"} class="bg-indigo-dye text-[#FF6F59] py-2 px-4 rounded font-bold hover:bg-indigo-light transition inline-block">
+            Enable Two-Factor Authentication
+          </a>
+        <% end %>
+      </div>
+    </div>
+    
+    <!-- Save button at the bottom -->
+    <div class="mt-8 flex justify-end">
+      <.button type="submit" class="px-6">Save Profile</.button>
+    </div>
+  </.form>
+
+  <!-- Metrics Dashboard Section (with error handling) -->
+  <div class="mt-8 bg-white p-6 rounded-lg shadow">
+    <div class="flex justify-between items-center mb-6">
+      <h3 class="text-lg font-medium text-gray-900">Your Engagement Metrics</h3>
+      <div class="flex items-center">
+        <span class="text-sm font-medium mr-2">Heat Level:</span>
+        <div class={[
+          "px-3 py-1 rounded-full text-xs font-semibold",
+          "bg-#{Map.get(@engagement_level || %{color: "blue"}, :color, "blue")}-100 text-#{Map.get(@engagement_level || %{color: "blue"}, :color, "blue")}-800"
+        ]}>
+          <%= Map.get(@engagement_level || %{name: "Getting Started"}, :name, "Getting Started") %>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Top-level metrics with visual indicators and error handling -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-indigo-50 p-4 rounded-lg">
+        <div class="text-indigo-500 text-2xl font-bold mb-1">
+          <%= Map.get(@user_metrics || %{}, :hours_consumed, 0) %>h
+        </div>
+        <div class="text-sm text-gray-600">Content Consumed</div>
       </div>
       
-      <div class="bg-white p-6 rounded-lg shadow mt-6">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Online Users</h3>
+      <div class="bg-pink-50 p-4 rounded-lg">
+        <div class="text-pink-500 text-2xl font-bold mb-1">
+          <%= Map.get(@user_metrics || %{}, :total_engagements, 0) %>
+        </div>
+        <div class="text-sm text-gray-600">Total Engagements</div>
+      </div>
+      
+      <div class="bg-amber-50 p-4 rounded-lg">
+        <div class="text-amber-500 text-2xl font-bold mb-1">
+          <%= Map.get(@user_metrics || %{}, :days_active, 0) %>
+        </div>
+        <div class="text-sm text-gray-600">Days Active</div>
+      </div>
+      
+      <div class="bg-emerald-50 p-4 rounded-lg">
+        <div class="text-emerald-500 text-2xl font-bold mb-1">
+          Top <%= 100 - (@user_percentile || 50) %>%
+        </div>
+        <div class="text-sm text-gray-600">Activity Ranking</div>
+      </div>
+    </div>
+    
+    <!-- Engagement Heat Meter with properly mapped cool-to-hot color gradient -->
+    <div class="mb-6">
+      <p class="text-sm font-medium text-gray-700 mb-2">Engagement Meter</p>
+      <div class="w-full bg-gray-200 rounded-full h-4 relative overflow-hidden">
+        <!-- Background track with full gradient (for reference) -->
+        <div class="absolute inset-0 opacity-20"
+          style="background: linear-gradient(to right, #3b82f6, #8b5cf6, #ec4899, #ef4444);">
+        </div>
         
-        <ul class="divide-y divide-gray-100">
-          <%= for user <- @online_users do %>
-            <li class="py-2 flex items-center">
-              <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-              <span class="text-sm text-gray-800"><%= user.name %></span>
-              <span class="ml-2 text-xs text-gray-500"><%= user.role %></span>
-            </li>
-          <% end %>
+        <!-- Dynamic score indicator -->
+        <div 
+          class="h-4 rounded-full relative z-10"
+          style={
+            "width: #{min(Map.get(@engagement_level || %{score: 10}, :score, 10), 100)}%; " <>
+            get_heat_color(Map.get(@engagement_level || %{score: 10}, :score, 10))
+          }
+        ></div>
+      </div>
+      
+      <!-- Heat scale indicators -->
+      <div class="mt-1 flex justify-between text-xs text-gray-500">
+        <span>Getting Started</span>
+        <span>Active</span>
+        <span>Trending</span>
+        <span>Hot! 🔥</span>
+      </div>
+    </div>
+    
+    <!-- Detailed metrics with error handling -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <h4 class="text-sm font-medium text-gray-900 mb-3">Content Metrics</h4>
+        <ul class="space-y-2">
+          <li class="flex justify-between">
+            <span class="text-sm text-gray-600">Channels Visited</span>
+            <span class="text-sm font-medium"><%= Map.get(@user_metrics || %{}, :unique_channels_visited, 0) %></span>
+          </li>
+          <li class="flex justify-between">
+            <span class="text-sm text-gray-600">Events Attended</span>
+            <span class="text-sm font-medium"><%= Map.get(@user_metrics || %{}, :events_attended, 0) %></span>
+          </li>
+          <li class="flex justify-between">
+            <span class="text-sm text-gray-600">Creative Hours</span>
+            <span class="text-sm font-medium"><%= Map.get(@user_metrics || %{}, :content_hours_created, 0) %>h</span>
+          </li>
+        </ul>
+      </div>
+      
+      <div>
+        <h4 class="text-sm font-medium text-gray-900 mb-3">Engagement Metrics</h4>
+        <ul class="space-y-2">
+          <li class="flex justify-between">
+            <span class="text-sm text-gray-600">Comments Posted</span>
+            <span class="text-sm font-medium"><%= Map.get(@user_metrics || %{}, :comments_posted, 0) %></span>
+          </li>
+          <li class="flex justify-between">
+            <span class="text-sm text-gray-600">Likes Given</span>
+            <span class="text-sm font-medium"><%= Map.get(@user_metrics || %{}, :likes_given, 0) %></span>
+          </li>
+          <li class="flex justify-between">
+            <span class="text-sm text-gray-600">Active Streak</span>
+            <span class="text-sm font-medium">1 day</span>
+          </li>
         </ul>
       </div>
     </div>
+    
+    <!-- View detailed analytics link -->
+    <div class="mt-6 text-center">
+      <.link navigate={~p"/analytics"} class="text-sm text-indigo-600 font-medium hover:text-indigo-500">
+        View detailed analytics →
+      </.link>
+    </div>
   </div>
+  
+  <!-- Online Users Section (if needed) -->
+  <%= if length(@online_users) > 0 do %>
+    <div class="mt-8 bg-white p-6 rounded-lg shadow">
+      <h3 class="text-lg font-medium text-gray-900 mb-4">Online Users</h3>
+      
+      <ul class="divide-y divide-gray-100">
+        <%= for user <- @online_users do %>
+          <li class="py-2 flex items-center">
+            <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+            <span class="text-sm text-gray-800"><%= user.name %></span>
+            <span class="ml-2 text-xs text-gray-500"><%= user.role %></span>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
 </div>

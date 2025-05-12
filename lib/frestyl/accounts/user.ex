@@ -24,9 +24,31 @@ defmodule Frestyl.Accounts.User do
     field :social_links, :map, default: %{}
     field :last_active_at, :utc_datetime
 
+    # Update media-related fields
+    field :profile_video_url, :string
+    field :profile_audio_url, :string
+
+    # Add virtual fields for file uploads
+    field :avatar_upload, :any, virtual: true
+    field :video_upload, :any, virtual: true
+    field :audio_upload, :any, virtual: true
+
     # Add fields for email confirmation token
     field :confirmation_token, :string
     field :confirmation_sent_at, :naive_datetime
+
+    field :totp_secret, :binary
+    field :totp_enabled, :boolean, default: false
+    field :backup_codes, {:array, :string}
+
+    field :totp_code, :string, virtual: true
+
+    # Privacy
+    field :privacy_settings, :map, default: %{
+      "profile_visibility" => "public",
+      "media_visibility" => "public",
+      "metrics_visibility" => "private"
+    }
 
     timestamps()
   end
@@ -41,6 +63,47 @@ defmodule Frestyl.Accounts.User do
     |> unique_constraint(:email)
     # Apply password hashing only if password is provided
     |> put_password_hash()
+  end
+
+  # Add to lib/frestyl/accounts/user.ex
+  def privacy_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:privacy_settings])
+    |> validate_privacy_settings()
+  end
+
+  defp validate_privacy_settings(changeset) do
+    validate_change(changeset, :privacy_settings, fn _, privacy_settings ->
+      valid_visibilities = ["public", "friends", "private"]
+
+      required_settings = [
+        "profile_visibility",
+        "media_visibility",
+        "metrics_visibility"
+      ]
+
+      errors = []
+
+      # Validate that all required settings are present
+      errors = Enum.reduce(required_settings, errors, fn setting, acc ->
+        if !Map.has_key?(privacy_settings, setting) do
+          [{:privacy_settings, "missing required setting: #{setting}"} | acc]
+        else
+          acc
+        end
+      end)
+
+      # Validate that all present settings have valid values
+      errors = Enum.reduce(privacy_settings, errors, fn {setting, value}, acc ->
+        if value not in valid_visibilities do
+          [{:privacy_settings, "invalid visibility value for #{setting}: must be one of #{Enum.join(valid_visibilities, ", ")}"} | acc]
+        else
+          acc
+        end
+      end)
+
+      errors
+    end)
   end
 
   # Corrected password hashing function
@@ -65,6 +128,22 @@ defmodule Frestyl.Accounts.User do
   def valid_password?(_, _) do
     Bcrypt.no_user_verify()
     false
+  end
+
+  # Add this function to lib/frestyl/accounts/user.ex
+  def two_factor_auth_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:totp_secret, :totp_enabled, :backup_codes])
+    |> validate_required([:totp_enabled])
+  end
+
+  # Add this function for verifying TOTP codes during login
+  def totp_verification_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:totp_code])
+    |> validate_required([:totp_code])
+    |> validate_length(:totp_code, is: 6)
+    |> validate_format(:totp_code, ~r/^[0-9]+$/, message: "must contain only numbers")
   end
 
   # This changeset is specifically for registration
@@ -114,10 +193,17 @@ defmodule Frestyl.Accounts.User do
 
   def profile_changeset(user, attrs) do
     user
-    |> cast(attrs, [:full_name, :bio, :avatar_url, :website, :social_links])
+    |> cast(attrs, [:username, :full_name, :bio, :avatar_url, :website, :social_links, :profile_video_url, :profile_audio_url])
+    |> validate_required([:username])
+    |> validate_length(:username, min: 3, max: 30)
+    |> validate_format(:username, ~r/^[a-zA-Z0-9_-]+$/,
+       message: "only letters, numbers, underscores, and hyphens are allowed")
+    |> unique_constraint(:username)
     |> validate_length(:full_name, max: 255)
     |> validate_length(:bio, max: 2000)
     |> validate_length(:avatar_url, max: 1000)
+    |> validate_length(:profile_video_url, max: 1000)
+    |> validate_length(:profile_audio_url, max: 1000)
     |> validate_length(:website, max: 255)
     |> validate_website_format(:website)
   end

@@ -45,8 +45,14 @@ end
 
 # config/config.exs
 config :frestyl,
-  upload_path: "priv/static/uploads",
-  use_s3: false
+upload_path: "priv/static/uploads",
+storage_type: "local",
+max_upload_size: 100_000_000, # 100MB
+thumbnail_sizes: [
+  small: [width: 150, height: 150],
+  medium: [width: 300, height: 300],
+  large: [width: 600, height: 600]
+]
 
 # config/dev.exs
 config :frestyl,
@@ -67,6 +73,35 @@ config :ex_aws,
 # config/dev.exs
 config :frestyl, Frestyl.Mailer,
   adapter: Swoosh.Adapters.Local
+
+# media handling
+  config :ex_aws,
+json_codec: Jason,
+http_client: ExAws.Http.Hackney
+
+# config/dev.exs - local config
+config :frestyl,
+storage_type: :local,
+upload_path: "priv/static/uploads"
+
+# config/prod.exs - production config
+config :frestyl,
+storage_type: :s3,
+aws_bucket: System.get_env("AWS_BUCKET"),
+aws_region: System.get_env("AWS_REGION", "us-west-2")
+
+config :ex_aws,
+access_key_id: {:system, "AWS_ACCESS_KEY_ID"},
+secret_access_key: {:system, "AWS_SECRET_ACCESS_KEY"}
+
+config :mime, :types, %{
+  "audio/mpeg" => ["mp3"],
+  "audio/wav" => ["wav"],
+  "audio/ogg" => ["ogg"],
+  "video/mp4" => ["mp4"],
+  "video/quicktime" => ["mov"],
+  "video/webm" => ["webm"]
+}
 
   # For production, you might use something like:
 # config/prod.exs

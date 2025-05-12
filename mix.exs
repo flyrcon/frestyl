@@ -55,19 +55,24 @@ defmodule Frestyl.MixProject do
       {:stripity_stripe, "~> 2.0"},
       {:swoosh, "~> 1.5"},
       {:phoenix_swoosh, "~> 1.0"},
+      {:mogrify, "~> 0.9.3"},
       {:gen_smtp, "~> 1.1"},
       {:finch, "~> 0.13"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.26"},
-      {:jason, "~> 1.2"},
+      {:jason, "~> 1.4"},
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
+      {:waffle, "~> 1.1"},
+      {:waffle_ecto, "~> 0.0.11"},
       {:ex_aws, "~> 2.4"},
       {:ex_aws_s3, "~> 2.3"},
       {:hackney, "~> 1.18"},
       {:sweet_xml, "~> 0.7"},
-      {:poison, "~> 5.0"}
+      {:poison, "~> 5.0"},
+      {:nimble_totp, "~> 1.0.0"},
+      {:eqrcode, "~> 0.1.10"}
     ]
   end
 

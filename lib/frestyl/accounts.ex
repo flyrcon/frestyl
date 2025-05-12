@@ -5,6 +5,8 @@ defmodule Frestyl.Accounts do
   alias Frestyl.Accounts.User
   alias Frestyl.Accounts.UserToken
   alias Frestyl.Accounts.UserInvitation
+  alias NimbleTOTP
+  alias Frestyl.Accounts.UserToken
   alias Ecto.Multi
   import Bcrypt, only: [verify_pass: 2]
   require Logger
@@ -30,8 +32,116 @@ defmodule Frestyl.Accounts do
   end
 
   @doc """
-  Registers a new user.
+  Generates a new TOTP secret for a user.
   """
+  def generate_totp_secret do
+    NimbleTOTP.secret()
+  end
+
+  @doc """
+  Generates a URI for QR code generation.
+  """
+  def generate_totp_uri(user, secret) do
+    NimbleTOTP.otpauth_uri("Frestyl:#{user.email}", secret, issuer: "Frestyl")
+  end
+
+  @doc """
+  Creates QR code as SVG for a given URI.
+  """
+  def generate_totp_qr_code(uri) do
+    uri
+    |> EQRCode.encode()
+    |> EQRCode.svg(width: 300)
+  end
+
+  @doc """
+  Verifies a TOTP code against a user's secret.
+  """
+  def verify_totp(secret, code) when is_binary(secret) and is_binary(code) do
+    NimbleTOTP.valid?(secret, code)
+  end
+  def verify_totp(_, _), do: false
+
+  @doc """
+  Enables 2FA for a user after verification.
+  """
+  def enable_two_factor(user, code, secret) do
+    if verify_totp(secret, code) do
+      # Generate backup codes - 8 random 10-character alphanumeric codes
+      backup_codes = Enum.map(1..8, fn _ ->
+        :crypto.strong_rand_bytes(5)
+        |> Base.encode32(padding: false)
+        |> binary_part(0, 10)
+      end)
+
+      user
+      |> User.two_factor_auth_changeset(%{
+        totp_secret: secret,
+        totp_enabled: true,
+        backup_codes: backup_codes
+      })
+      |> Repo.update()
+      |> case do
+        {:ok, updated_user} -> {:ok, updated_user, backup_codes}
+        error -> error
+      end
+    else
+      {:error, :invalid_code}
+    end
+  end
+
+  @doc """
+  Disables 2FA for a user.
+  """
+  def disable_two_factor(user) do
+    user
+    |> User.two_factor_auth_changeset(%{
+      totp_secret: nil,
+      totp_enabled: false,
+      backup_codes: nil
+    })
+    |> Repo.update()
+  end
+
+  @doc """
+  Verifies a backup code for a user.
+  """
+  def verify_backup_code(user, code) do
+    if user.backup_codes && code in user.backup_codes do
+      # Remove the used backup code
+      remaining_codes = Enum.reject(user.backup_codes, fn c -> c == code end)
+
+      user
+      |> User.two_factor_auth_changeset(%{backup_codes: remaining_codes})
+      |> Repo.update()
+      |> case do
+        {:ok, updated_user} -> {:ok, updated_user}
+        error -> error
+      end
+    else
+      {:error, :invalid_code}
+    end
+  end
+
+  @doc """
+  Authenticates a user with 2FA.
+  """
+  def authenticate_user_with_2fa(email, password, totp_code) do
+    case authenticate_user(email, password) do
+      {:ok, user} ->
+        if user.totp_enabled do
+          if verify_totp(user.totp_secret, totp_code) do
+            {:ok, user}
+          else
+            {:error, :invalid_totp}
+          end
+        else
+          {:ok, user}
+        end
+      error -> error
+    end
+  end
+
   @doc """
   Registers a new user and sends confirmation email.
   """
@@ -107,6 +217,48 @@ defmodule Frestyl.Accounts do
     token
   end
 
+  # Add to lib/frestyl/accounts.ex
+
+  @doc """
+  Lists active sessions for a user.
+  """
+  def list_user_sessions(user_id) do
+    query =
+      from t in UserToken,
+        where: t.user_id == ^user_id and t.context == "session",
+        select: %{
+          id: t.id,
+          token: t.token,
+          inserted_at: t.inserted_at,
+          user_agent: t.metadata["user_agent"],
+          ip: t.metadata["ip"]
+        }
+
+    Repo.all(query)
+  end
+
+  @doc """
+  Revokes a specific session.
+  """
+  def revoke_session(token_id, user_id) do
+    query =
+      from t in UserToken,
+        where: t.id == ^token_id and t.user_id == ^user_id and t.context == "session"
+
+    Repo.delete_all(query)
+  end
+
+  @doc """
+  Revokes all sessions except the current one.
+  """
+  def revoke_all_sessions_except_current(current_token, user_id) do
+    query =
+      from t in UserToken,
+        where: t.user_id == ^user_id and t.context == "session" and t.token != ^current_token
+
+    Repo.delete_all(query)
+  end
+
   @doc """
   Deletes a session token.
   """
@@ -155,19 +307,73 @@ defmodule Frestyl.Accounts do
   end
 
   @doc """
-  Updates a user's profile information.
+  Prepares a changeset for updating a user's profile.
   """
-  def update_profile(user, attrs) do
+  def change_user_profile(%User{} = user, attrs \\ %{}) do
+    User.profile_changeset(user, attrs)
+  end
+
+  def update_profile(%User{} = user, attrs) do
     user
     |> User.profile_changeset(attrs)
     |> Repo.update()
   end
 
+  def username_available?(username) do
+    # Skip empty usernames
+    if username == nil || String.trim(username) == "" do
+      false
+    else
+      # Check if username exists in database
+      !Repo.exists?(from u in User, where: u.username == ^username)
+    end
+  end
+
+  # Add to lib/frestyl/accounts.ex
   @doc """
-  Prepares a changeset for updating a user's profile.
+  Updates a user's privacy settings.
   """
-  def change_user_profile(user, attrs \\ %{}) do
-    User.profile_changeset(user, attrs)
+  def update_privacy_settings(user, privacy_settings) do
+    user
+    |> User.privacy_changeset(%{privacy_settings: privacy_settings})
+    |> Repo.update()
+  end
+
+  @doc """
+  Checks if a user can view another user's content based on privacy settings.
+  """
+  def can_view_content?(viewer, owner, content_type) do
+    visibility_key = case content_type do
+      :profile -> "profile_visibility"
+      :media -> "media_visibility"
+      :metrics -> "metrics_visibility"
+      _ -> nil
+    end
+
+    if visibility_key do
+      # If viewer is the owner, always allow
+      if viewer && viewer.id == owner.id do
+        true
+      else
+        visibility = get_in(owner.privacy_settings, [visibility_key])
+
+        case visibility do
+          "public" -> true
+          "friends" -> is_friend?(viewer, owner)
+          "private" -> false
+          _ -> false
+        end
+      end
+    else
+      false
+    end
+  end
+
+  # Helper function to check if two users are friends (placeholder)
+  defp is_friend?(viewer, owner) do
+    # In a real implementation, you would check if they're friends
+    # For now, return false
+    false
   end
 
   @doc """
@@ -525,5 +731,26 @@ defmodule Frestyl.Accounts do
       user ->
         confirm_user(user)
     end
+  end
+
+  def get_user_metrics(user_id) do
+    # In a real implementation, you would query your database
+    # For now, we'll return mock data
+    %{
+      hours_consumed: Enum.random(5..150),
+      total_engagements: Enum.random(10..500),
+      content_hours_created: Enum.random(0..30),
+      days_active: Enum.random(1..90),
+      unique_channels_visited: Enum.random(3..20),
+      comments_posted: Enum.random(0..100),
+      likes_given: Enum.random(0..200),
+      events_attended: Enum.random(0..15)
+    }
+  end
+
+  def get_user_activity_percentile(user_id) do
+    # Mock implementation - would normally calculate based on all users
+    # Returns a number between 1-100 representing user percentile
+    Enum.random(1..100)
   end
 end

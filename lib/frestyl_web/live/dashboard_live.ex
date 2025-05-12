@@ -57,6 +57,44 @@ defmodule FrestylWeb.DashboardLive do
     {:noreply, assign(socket, :stats, stats)}
   end
 
+  @impl true
+  def mount(_params, _session, socket) do
+    # Existing mount logic...
+
+    if connected?(socket) do
+      # Subscribe to real-time updates
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "user:#{socket.assigns.current_user.id}")
+    end
+
+    {:ok,
+    socket
+    |> assign(:page_title, "Dashboard")
+    |> assign(:active_tab, :dashboard)
+    |> load_dashboard_data()}
+  end
+
+
+  defp get_greeting(name) do
+    hour = NaiveDateTime.utc_now().hour
+
+    greeting = cond do
+      hour >= 5 and hour < 12 -> "Morning"
+      hour >= 12 and hour < 17 -> "Afternoon"
+      hour >= 17 and hour < 22 -> "Evening"
+      true -> "Night"
+    end
+
+    "#{greeting}, #{String.split(name, " ") |> List.first}!"
+  end
+
+  defp get_channel_category(channels) do
+    categories = ["Music", "Art", "Tech", "Travel", "Gaming"]
+
+    # In a real implementation, you would extract a category from the first channel
+    # For now, we'll just return a random one
+    Enum.random(categories)
+  end
+
   defp load_dashboard_data(socket) do
     user = socket.assigns.current_user
 

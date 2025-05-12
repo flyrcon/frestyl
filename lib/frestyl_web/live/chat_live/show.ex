@@ -36,6 +36,25 @@ defmodule FrestylWeb.ChatLive.Show do
     end
   end
 
+  # Helper for formatting typing indicator messages
+  defp typing_message(typing_users) do
+    # Get user information - adjust this to match your app's user retrieval
+    typing_usernames = Enum.map(Map.keys(typing_users), fn user_id ->
+      case Frestyl.Accounts.get_user(user_id) do
+        %{username: username} when not is_nil(username) -> username
+        %{email: email} -> email |> String.split("@") |> List.first()
+        _ -> "Someone"
+      end
+    end)
+
+    case length(typing_usernames) do
+      1 -> "#{List.first(typing_usernames)} is typing..."
+      2 -> "#{List.first(typing_usernames)} and #{List.last(typing_usernames)} are typing..."
+      n when n > 2 -> "Several people are typing..."
+      _ -> ""
+    end
+  end
+
   @impl true
   def handle_info({:new_message, message}, socket) do
     messages = [message | socket.assigns.messages]

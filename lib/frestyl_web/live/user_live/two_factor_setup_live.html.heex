@@ -1,0 +1,64 @@
+<!-- lib/frestyl_web/live/user_live/two_factor_setup_live.html.heex -->
+<div class="container mx-auto max-w-3xl p-4">
+    <h1 class="text-3xl font-bold mb-6">Set Up Two-Factor Authentication</h1>
+    
+    <%= if assigns[:step] == :backup_codes do %>
+      <div class="bg-urban-asphalt p-6 rounded-lg mb-8 text-white">
+        <h2 class="text-2xl font-bold mb-4">Backup Codes</h2>
+        <p class="mb-4">
+          Store these backup codes in a secure place. You can use them to access your account if you lose your phone or can't access your authenticator app.
+          <strong>Each code can only be used once.</strong>
+        </p>
+        
+        <div class="grid grid-cols-2 gap-3 mb-6">
+          <%= for code <- @backup_codes do %>
+            <div class="bg-concrete-gray text-black py-2 px-4 rounded text-center font-mono text-lg">
+              <%= code %>
+            </div>
+          <% end %>
+        </div>
+        
+        <button phx-click="complete_setup" class="w-full bg-success py-2 px-4 rounded font-bold hover:bg-opacity-90 transition">
+          I've Saved My Backup Codes
+        </button>
+      </div>
+    <% else %>
+      <div class="flex flex-col md:flex-row gap-8">
+        <div class="bg-urban-asphalt p-6 rounded-lg mb-4 md:mb-0 md:w-1/2 text-white">
+          <h2 class="text-2xl font-bold mb-4">Step 1: Scan QR Code</h2>
+          <p class="mb-6">Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)</p>
+          
+          <div class="bg-white p-4 rounded-lg flex justify-center mb-6">
+            <%= raw @qr_code %>
+          </div>
+          
+          <h3 class="text-xl font-bold mb-2">Can't scan the code?</h3>
+          <p class="mb-2">Manually enter this code into your app:</p>
+          <div class="bg-concrete-gray text-black py-2 px-4 rounded text-center font-mono text-lg mb-6">
+            <%= @secret_base32 %>
+          </div>
+        </div>
+        
+        <div class="bg-urban-asphalt p-6 rounded-lg md:w-1/2 text-white">
+          <h2 class="text-2xl font-bold mb-4">Step 2: Verify Setup</h2>
+          <p class="mb-6">Enter the 6-digit code from your authenticator app to verify setup</p>
+          
+          <form phx-submit="verify" class="space-y-4">
+            <div>
+              <label for="totp_code" class="block mb-1">6-digit code</label>
+              <input type="text" id="totp_code" name="totp_code"
+                    class="w-full px-4 py-2 rounded bg-concrete-gray text-black text-lg tracking-wider text-center" 
+                    maxlength="6" placeholder="000000">
+              <%= if @verify_changeset && @verify_changeset.errors[:totp_code] do %>
+                <span class="text-red-500 text-sm"><%= elem(@verify_changeset.errors[:totp_code], 0) %></span>
+              <% end %>
+            </div>
+            
+            <button type="submit" class="w-full bg-electric-blue py-2 px-4 rounded font-bold hover:bg-opacity-90 transition">
+              Verify and Enable 2FA
+            </button>
+          </form>
+        </div>
+      </div>
+    <% end %>
+</div>

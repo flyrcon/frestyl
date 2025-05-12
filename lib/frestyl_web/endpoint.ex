@@ -29,10 +29,10 @@ defmodule FrestylWeb.Endpoint do
   # You should set gzip to true if you are running phx.digest
   # when deploying your static files in production.
   plug Plug.Static,
-    at: "/",
-    from: :frestyl,
-    gzip: false,
-    only: FrestylWeb.static_paths()
+  at: "/",
+  from: :frestyl,
+  gzip: false,
+  only: ~w(assets fonts images uploads favicon.ico robots.txt)
     #only_matching: ["uploads", ~r/^(?!(?:uploads))/]
 
   # Code reloading can be explicitly enabled under the

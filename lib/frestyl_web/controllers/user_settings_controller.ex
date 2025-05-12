@@ -2,7 +2,8 @@ defmodule FrestylWeb.UserSettingsController do
   use FrestylWeb, :controller
 
   alias Frestyl.Accounts
-  alias FrestylWeb.UserAuth
+  alias Frestyl.Accounts.User
+  import FrestylWeb.UserAuth
 
   plug :assign_email_and_password_changesets
 
@@ -70,5 +71,26 @@ defmodule FrestylWeb.UserSettingsController do
     conn
     |> assign(:email_changeset, Accounts.change_user_email(user))
     |> assign(:password_changeset, Accounts.change_user_password(user))
+  end
+
+  def create_from_2fa(conn, %{"token" => token}) do
+    # Verify the token is valid
+    case Accounts.get_user_by_session_token(token) do
+      %User{} = user ->
+        # Mark session as 2FA verified
+        conn
+        |> clear_session()                # Clear the existing session
+        |> configure_session(renew: true) # Configure the session to be renewed
+        |> put_session(:user_token, token)
+        |> put_session(:live_socket_id, "users_sessions:#{Base.url_encode64(token)}")
+        |> put_session(:totp_verified, true)
+        |> put_flash(:info, "Welcome back!")
+        |> redirect(to: Routes.page_path(conn, :home))
+
+      nil ->
+        conn
+        |> put_flash(:error, "Invalid session")
+        |> redirect(to: Routes.user_session_path(conn, :new))
+    end
   end
 end

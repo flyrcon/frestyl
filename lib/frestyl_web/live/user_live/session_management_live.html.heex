@@ -1,0 +1,62 @@
+<!-- lib/frestyl_web/live/user_live/session_management_live.html.heex -->
+<div class="container mx-auto max-w-3xl p-4">
+  <h1 class="text-3xl font-bold mb-6">Active Sessions</h1>
+  
+  <div class="bg-urban-asphalt p-6 rounded-lg mb-8 text-white">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-2xl font-bold">Your Devices</h2>
+      
+      <button phx-click="revoke_all_other_sessions" class="bg-danger py-2 px-4 rounded font-bold hover:bg-opacity-90 transition">
+        Sign Out All Other Devices
+      </button>
+    </div>
+    
+    <div class="space-y-4">
+      <%= for session <- @sessions do %>
+        <div class="flex items-center justify-between p-4 bg-concrete-gray bg-opacity-10 rounded">
+          <div class="flex-1">
+            <div class="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+             </svg>
+             <div>
+               <div>
+                 <%= if session.current do %>
+                   <span class="font-bold">Current Device</span>
+                 <% else %>
+                   <span>Device</span>
+                 <% end %>
+               </div>
+               <div class="text-sm opacity-75">
+                 <%= if session.user_agent do %>
+                   <%= session.user_agent %>
+                 <% else %>
+                   Unknown device
+                 <% end %>
+               </div>
+               <div class="text-sm opacity-75">
+                 <%= if session.ip do %>
+                   IP: <%= session.ip %>
+                 <% end %>
+               </div>
+               <div class="text-sm opacity-75">
+                 <%= if session.inserted_at do %>
+                   Active since: <%= Calendar.strftime(session.inserted_at, "%B %d, %Y at %I:%M %p") %>
+                 <% end %>
+               </div>
+             </div>
+           </div>
+         </div>
+         
+         <div>
+           <%= if !session.current do %>
+             <button phx-click="revoke_session" phx-value-id={session.id} class="bg-danger py-1 px-3 rounded text-sm font-bold hover:bg-opacity-90 transition">
+               Sign Out
+             </button>
+           <% end %>
+         </div>
+       </div>
+     <% end %>
+   </div>
+ </div>
+</div>

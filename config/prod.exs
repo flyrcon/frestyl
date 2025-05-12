@@ -40,3 +40,16 @@ config :frestyl, :allowed_extensions, %{
   "video" => [".mp4", ".webm", ".mov", ".avi", ".mkv"],
   "image" => [".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp"]
 }
+
+config :frestyl,
+  storage_type: "s3",
+  aws_bucket: System.get_env("AWS_BUCKET"),
+  aws_region: System.get_env("AWS_REGION", "us-west-2")
+
+config :ex_aws,
+  access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
+  secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY")
+
+config :frestyl, :cdn,
+enabled: true,
+host: "https://your-cdn-domain.com"

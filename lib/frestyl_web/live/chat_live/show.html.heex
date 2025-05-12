@@ -37,14 +37,25 @@
             <% end %>
           </div>
           
+          <!-- Typing indicator - added here -->
+          <div class="typing-indicator mt-2 mb-2 h-5">
+            <%= if is_map(@typing_users) && map_size(@typing_users) > 0 do %>
+              <div class="text-sm text-gray-500 italic">
+                <%= typing_message(@typing_users) %>
+              </div>
+            <% end %>
+          </div>
+          
           <.form for={%{}} phx-submit="send_message" class="mt-4">
             <div class="flex">
               <input 
                 type="text" 
                 name="message" 
-                value={@message}
+                value={@draft_message || ""}
                 placeholder="Type your message..."
                 class="flex-1 shadow-sm focus:ring-[#DD1155] focus:border-[#DD1155] block w-full sm:text-sm border-gray-300 rounded-md mr-2"
+                phx-keyup="typing"
+                phx-key="keyup"
               />
               <button 
                 type="submit"

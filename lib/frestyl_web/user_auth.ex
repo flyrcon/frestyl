@@ -6,6 +6,7 @@ defmodule FrestylWeb.UserAuth do
   require Logger
 
   alias Frestyl.Accounts
+  alias FrestylWeb.Router.Helpers, as: Routes
 
   @session_key :user_token
   @remember_me_cookie "_frestyl_web_user_remember_me"
@@ -185,19 +186,43 @@ defmodule FrestylWeb.UserAuth do
     end
   end
 
-  # User login/logout
-  # Modified: This function now only sets the session and cookie, it does NOT redirect.
+  # Update the login function to handle 2FA
   def log_in_user(conn, user, params \\ %{}) do
-    token = Accounts.generate_user_session_token(user)
+    # Check if user has 2FA enabled
+    if user.totp_enabled do
+      # Store user info in session but don't generate token yet
+      conn
+      |> put_session(:pending_2fa, %{
+        "user_id" => user.id,
+        "email" => user.email,
+        "remember_me" => params["remember_me"]
+      })
+      |> redirect(to: Routes.user_live_two_factor_verify_path(conn, :index))
+    else
+      # Proceed with normal login
+      token = Accounts.generate_user_session_token(user)
+      user_return_to = get_session(conn, :user_return_to)
 
-    Logger.info("Log_in_user: Setting session for user #{user.email}")
-    Logger.info("Log_in_user: Generated token: #{inspect token}")
+      conn
+      |> renew_session()
+      |> put_session(:user_token, token)
+      |> put_session(:live_socket_id, "users_sessions:#{Base.url_encode64(token)}")
+      |> maybe_write_remember_me_cookie(token, params)
+      |> redirect(to: user_return_to || "/dashboard")
+    end
+  end
+
+  # Add a function to complete login after 2FA verification
+  def complete_2fa_login(conn, user, params \\ %{}) do
+    token = Accounts.generate_user_session_token(user)
+    user_return_to = get_session(conn, :user_return_to)
 
     conn
-    |> renew_session() # Renew and clear existing session
-    |> put_session(@session_key, token) # Set the new session token
-    |> maybe_write_remember_me_cookie(token, params) # Handle remember me cookie
-    # Removed the redirect call here
+    |> renew_session()
+    |> put_session(:user_token, token)
+    |> put_session(:live_socket_id, "users_sessions:#{Base.url_encode64(token)}")
+    |> maybe_write_remember_me_cookie(token, params)
+    |> redirect(to: user_return_to || Routes.page_path(conn, :home))
   end
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}) do

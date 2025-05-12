@@ -264,4 +264,40 @@ defmodule FrestylWeb.FileController do
       redirect(conn, to: ~p"/channels/#{channel.slug}/files")
     end
   end
+
+  # In your MediaController or FileController
+  def serve_file(conn, %{"path" => path}) do
+    cache_key = "media_file:#{Enum.join(path, "/")}"
+
+    case Frestyl.Cache.get(cache_key) do
+      {:ok, {file_data, content_type, filename}} ->
+        # Serve from cache
+        conn
+        |> put_resp_content_type(content_type)
+        |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+        |> send_resp(200, file_data)
+
+      :error ->
+        # Find the file and cache it
+        full_path = Path.join([Application.app_dir(:frestyl), "priv", "uploads"] ++ path)
+
+        if File.exists?(full_path) do
+          file_data = File.read!(full_path)
+          content_type = MIME.from_path(full_path)
+          filename = Path.basename(full_path)
+
+          # Cache the file data
+          Frestyl.Cache.put(cache_key, {file_data, content_type, filename})
+
+          conn
+          |> put_resp_content_type(content_type)
+          |> put_resp_header("content-disposition", ~s(attachment; filename="#{filename}"))
+          |> send_resp(200, file_data)
+        else
+          conn
+          |> put_status(:not_found)
+          |> render(FrestylWeb.ErrorView, "404.html")
+        end
+    end
+  end
 end

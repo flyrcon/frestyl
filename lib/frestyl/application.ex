@@ -13,6 +13,7 @@ defmodule Frestyl.Application do
       {DNSCluster, query: Application.get_env(:frestyl, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Frestyl.PubSub, adapter_name: Phoenix.PubSub.PG2},
       Frestyl.Presence,
+      FrestylWeb.Presence,
       #{Absinthe.Subscription, FrestylWeb.Endpoint},
       Frestyl.Scheduler,
       # Start the Finch HTTP client for sending emails
@@ -21,6 +22,7 @@ defmodule Frestyl.Application do
       Frestyl.Streaming.ConnectionSupervisor,
       # Analytics for streaming
       Frestyl.Streaming.Analytics,
+      {Frestyl.Cache, []},
       # Start a worker by calling: Frestyl.Worker.start_link(arg)
       # {Frestyl.Worker, arg},
       # Start to serve requests, typically the last entry

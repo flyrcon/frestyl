@@ -5,96 +5,154 @@ defmodule FrestylWeb.ChannelLive.MediaUploadComponent do
   alias Frestyl.Media
 
   @impl true
+  def mount(socket) do
+    {:ok,
+      socket
+      |> allow_upload(:media,
+        accept: ~w(.jpg .jpeg .png .gif .mp4 .mov .mp3 .wav .pdf .doc .docx .xls .xlsx),
+        max_file_size: 100_000_000, # 100MB
+        max_entries: 10
+      )
+      |> assign(:uploading, false)
+    }
+  end
+
+  @impl true
   def update(assigns, socket) do
     {:ok,
-     socket
-     |> assign(assigns)
-     |> allow_upload(:media_file,
-       accept: ~w(.jpg .jpeg .png .gif .mp4 .mov .mp3 .wav .pdf .doc .docx .xls .xlsx .txt),
-       max_file_size: 100_000_000, # 100MB
-       auto_upload: true
-     )}
+      socket
+      |> assign(assigns)
+    }
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="media-upload-form">
-      <div class="border-2 border-dashed border-gray-300 rounded-lg p-6">
-        <div class="flex flex-col items-center justify-center space-y-2">
-          <.form for={%{}} id="upload-form" phx-change="validate" phx-submit="save" phx-target={@myself}>
-            <div class="flex flex-col items-center">
-              <label for={@uploads.media_file.ref} class="cursor-pointer bg-brand hover:bg-brand-dark text-white font-bold py-2 px-4 rounded">
-                Select File
-              </label>
-              <.live_file_input upload={@uploads.media_file} class="hidden" />
-              <p class="mt-2 text-sm text-gray-500">or drag and drop</p>
-              <p class="text-xs text-gray-400">Max file size: 100MB</p>
-            </div>
+    <div class="upload-component">
+      <form id="upload-form" phx-target={@myself} phx-submit="save" phx-change="validate">
+        <div class="upload-header">
+          <h3 class="text-lg font-medium text-gray-900 mb-2">Upload Media Files</h3>
+          <p class="text-sm text-gray-500 mb-4">
+            You can upload images, videos, audio, and documents. Maximum file size: 100MB.
+          </p>
+        </div>
 
-            <%= for entry <- @uploads.media_file.entries do %>
-              <div class="mt-4 bg-white p-4 rounded-md shadow-sm">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center space-x-2">
-                    <div class="text-brand">
-                      <%= if String.starts_with?(entry.client_type, "image/") do %>
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center"
+             phx-drop-target={@uploads.media.ref}
+             id="dropzone-container">
+          <div class="flex flex-col items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-400 mb-4">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <p class="text-base text-gray-600 mb-4">Drag and drop files here or click to browse</p>
+            <label class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E] cursor-pointer">
+              Browse Files
+              <.live_file_input upload={@uploads.media} class="sr-only" />
+            </label>
+          </div>
+        </div>
+
+        <%= if !Enum.empty?(@uploads.media.entries) do %>
+          <div class="mt-6">
+            <h4 class="text-base font-medium text-gray-900 mb-3">Selected Files</h4>
+
+            <div class="space-y-3">
+              <%= for entry <- @uploads.media.entries do %>
+                <div class="flex items-center bg-gray-50 p-3 rounded-lg">
+                  <div class="flex-shrink-0 mr-3">
+                    <%= if String.starts_with?(entry.client_type, "image/") do %>
+                      <.live_img_preview entry={entry} width="48" height="48" class="object-cover rounded" />
+                    <% else %>
+                      <div class="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-500" id={"preview-icon-#{entry.ref}"}>
+                        <%= cond do %>
+                          <% String.starts_with?(entry.client_type, "video/") -> %>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          <% String.starts_with?(entry.client_type, "audio/") -> %>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                            </svg>
+                          <% true -> %>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        <% end %>
+                      </div>
+                    <% end %>
+                  </div>
+
+                  <div class="flex-grow">
+                    <div class="flex items-center justify-between">
+                      <p class="text-sm font-medium text-gray-900 truncate" title={entry.client_name}>
+                        <%= entry.client_name %>
+                      </p>
+                      <button
+                        type="button"
+                        phx-click="cancel-upload"
+                        phx-value-ref={entry.ref}
+                        phx-target={@myself}
+                        class="ml-2 text-gray-400 hover:text-red-500"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                         </svg>
-                      <% else %>
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
+                      </button>
+                    </div>
+
+                    <span class="text-xs text-gray-500">
+                      <%= cond do %>
+                        <% entry.client_size < 1024 -> %>
+                          <%= entry.client_size %> B
+                        <% entry.client_size < 1024 * 1024 -> %>
+                          <%= Float.round(entry.client_size / 1024, 1) %> KB
+                        <% entry.client_size < 1024 * 1024 * 1024 -> %>
+                          <%= Float.round(entry.client_size / 1024 / 1024, 1) %> MB
+                        <% true -> %>
+                          <%= Float.round(entry.client_size / 1024 / 1024 / 1024, 1) %> GB
                       <% end %>
-                    </div>
-                    <div>
-                      <p class="text-sm font-medium text-gray-900 truncate"><%= entry.client_name %></p>
-                      <p class="text-xs text-gray-500"><%= human_file_size(entry.client_size) %></p>
-                    </div>
-                  </div>
+                    </span>
 
-                  <button type="button" phx-click="cancel-upload" phx-target={@myself} phx-value-ref={entry.ref} class="text-gray-400 hover:text-gray-500">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    <div class="mt-1 relative pt-1">
+                      <div class="overflow-hidden h-2 text-xs flex rounded bg-gray-200">
+                        <div style={"width: #{entry.progress}%"} class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-[#DD1155]"></div>
+                      </div>
+                      <span class="text-xs text-gray-500 mt-1 inline-block">
+                        <%= entry.progress %>%
+                      </span>
+                    </div>
+
+                    <%= for err <- upload_errors(@uploads.media, entry) do %>
+                      <p class="mt-1 text-xs text-red-500"><%= error_to_string(err) %></p>
+                    <% end %>
+                  </div>
+                </div>
+              <% end %>
+
+              <!-- Upload Button -->
+              <div class="mt-4 flex justify-end">
+                <button
+                  type="submit"
+                  class={"inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E] #{if @uploading, do: "opacity-50 cursor-not-allowed", else: ""}"}
+                  disabled={@uploading}
+                >
+                  <%= if @uploading do %>
+                    <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                  </button>
-                </div>
-
-                <!-- Progress bar -->
-                <div class="mt-2">
-                  <div class="bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 w-full">
-                    <div class="bg-brand h-2.5 rounded-full" style={"width: #{entry.progress}%"}></div>
-                  </div>
-                </div>
-
-                <!-- Error messages -->
-                <%= for err <- upload_errors(@uploads.media_file, entry) do %>
-                  <p class="mt-1 text-sm text-red-500"><%= error_message(err) %></p>
-                <% end %>
-              </div>
-            <% end %>
-
-            <!-- Form fields for metadata -->
-            <%= if @uploads.media_file.entries != [] do %>
-              <div class="mt-4 space-y-4">
-                <div>
-                  <label for="title" class="block text-sm font-medium text-gray-700">Title</label>
-                  <input type="text" name="title" id="title" class="mt-1 focus:ring-brand focus:border-brand block w-full sm:text-sm border-gray-300 rounded-md" />
-                </div>
-
-                <div>
-                  <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
-                  <textarea name="description" id="description" rows="3" class="mt-1 focus:ring-brand focus:border-brand block w-full sm:text-sm border-gray-300 rounded-md"></textarea>
-                </div>
-
-                <button type="submit" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2 px-4 rounded">
-                  Upload
+                    Uploading...
+                  <% else %>
+                    Upload Files
+                  <% end %>
                 </button>
               </div>
-            <% end %>
-          </.form>
-        </div>
-      </div>
+            </div>
+          </div>
+        <% end %>
+      </form>
     </div>
     """
   end
@@ -106,50 +164,48 @@ defmodule FrestylWeb.ChannelLive.MediaUploadComponent do
 
   @impl true
   def handle_event("cancel-upload", %{"ref" => ref}, socket) do
-    {:noreply, cancel_upload(socket, :media_file, ref)}
+    {:noreply, cancel_upload(socket, :media, ref)}
   end
 
   @impl true
-  def handle_event("save", %{"title" => title, "description" => description}, socket) do
+  def handle_event("save", params, socket) do
+    current_user_id = socket.assigns.current_user.id
     channel_id = socket.assigns.channel_id
-    user_id = socket.assigns.current_user.id
+
+    # Get the category from params
+    category = case params["category"] do
+      nil -> :general
+      category when category in ["branding", "presentation", "performance", "general"] ->
+        String.to_existing_atom(category)
+      _ ->
+        :general
+    end
+
+    socket = assign(socket, :uploading, true)
 
     uploaded_files =
-      consume_uploaded_entries(socket, :media_file, fn %{path: path}, entry ->
-        # Create a media file entry in the database
-        attrs = %{
-          filename: entry.client_name,
-          original_filename: entry.client_name,
-          content_type: entry.client_type,
-          file_size: entry.client_size,
-          user_id: user_id,
-          channel_id: channel_id,
-          title: if(title == "", do: nil, else: title),
-          description: if(description == "", do: nil, else: description)
-        }
-
-        # Load the file data and create the media file
-        file_data = %{path: path}
-        Media.create_media_file(attrs, file_data)
+      consume_uploaded_entries(socket, :media, fn %{path: path} = upload_entry, entry ->
+        # Process the uploaded file with category
+        case Media.process_upload(entry, socket.assigns.current_user, channel_id, %{category: category}) do
+          {:ok, media_file} -> {:ok, media_file}
+          {:error, reason} -> {:error, reason}
+        end
       end)
 
-    # Send a message to the parent LiveView to refresh media list
-    send(self(), {:media_uploaded, uploaded_files})
+    # Notify parent LiveView to refresh the files list
+    send(self(), {:media_updated})
 
-    {:noreply, socket}
+    # Update flash message to include information about the category
+    category_name = category |> Atom.to_string() |> String.capitalize()
+
+    {:noreply,
+      socket
+      |> assign(:uploading, false)
+      |> put_flash(:info, "#{length(uploaded_files)} #{category_name} files uploaded successfully.")
+    }
   end
 
-  defp human_file_size(bytes) do
-    cond do
-      bytes < 1_024 -> "#{bytes} B"
-      bytes < 1_024 * 1_024 -> "#{Float.round(bytes / 1_024, 1)} KB"
-      bytes < 1_024 * 1_024 * 1_024 -> "#{Float.round(bytes / (1_024 * 1_024), 1)} MB"
-      true -> "#{Float.round(bytes / (1_024 * 1_024 * 1_024), 1)} GB"
-    end
-  end
-
-  defp error_message(:too_large), do: "File is too large (max 100MB)"
-  defp error_message(:not_accepted), do: "File type not accepted"
-  defp error_message(:too_many_files), do: "Too many files"
-  defp error_message(_), do: "An error occurred during upload"
+  defp error_to_string(:too_large), do: "File is too large"
+  defp error_to_string(:too_many_files), do: "Too many files"
+  defp error_to_string(:not_accepted), do: "Unacceptable file type"
 end

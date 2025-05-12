@@ -9,10 +9,15 @@ defmodule FrestylWeb.MediaLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
+    # Subscribe to media updates
     if connected?(socket), do: Media.subscribe()
 
-    socket =
-      socket
+    # Get user's media files
+    media_files = Media.list_media_files(user_id: socket.assigns.current_user.id)
+
+    socket = socket
+      |> assign(:media_files, media_files)
+      |> assign(:files, media_files)
       |> assign(:page, 1)
       |> assign(:search_query, "")
       |> assign(:filter_type, "all")
@@ -22,10 +27,37 @@ defmodule FrestylWeb.MediaLive.Index do
       |> assign(:selected_files, [])
       |> assign(:view_mode, "grid")
       |> assign(:loading, false)
-      |> assign(:user_channels, get_user_channels(socket.assigns.current_user))
-      |> load_files()
+      |> assign(:has_more?, false)
+      |> assign(:user_channels, [])
 
-    {:ok, socket, temporary_assigns: [files: []]}
+    {:ok, socket}
+  end
+
+  @impl true
+  def handle_params(params, _url, socket) do
+    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+  end
+
+  defp apply_action(socket, :index, _params) do
+    socket
+    |> assign(:page_title, "My Media")
+    |> assign(:media_file, nil)
+  end
+
+  defp apply_action(socket, :show, %{"id" => id}) do
+    media_file = Media.get_media_file!(id)
+
+    socket
+    |> assign(:page_title, media_file.title || media_file.original_filename)
+    |> assign(:media_file, media_file)
+  end
+
+  @impl true
+  def handle_event("delete", %{"id" => id}, socket) do
+    media_file = Media.get_media_file!(id)
+    {:ok, _} = Media.delete_media_file(media_file)
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -214,6 +246,45 @@ defmodule FrestylWeb.MediaLive.Index do
     end
   end
 
+  # Handle PubSub messages
+  @impl true
+  def handle_info({:media_file_created, media_file}, socket) do
+    # Only add to the list if it belongs to the current user
+    if media_file.user_id == socket.assigns.current_user.id do
+      {:noreply, update(socket, :media_files, fn files -> [media_file | files] end)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:media_file_updated, media_file}, socket) do
+    # Update the file in the list if it exists
+    {:noreply, update(socket, :media_files, fn files ->
+      Enum.map(files, fn file ->
+        if file.id == media_file.id, do: media_file, else: file
+      end)
+    end)}
+  end
+
+  @impl true
+  def handle_info({:media_file_deleted, media_file}, socket) do
+    # Remove the file from the list
+    {:noreply, update(socket, :media_files, fn files ->
+      Enum.reject(files, fn file -> file.id == media_file.id end)
+    end)}
+  end
+
+  @impl true
+  def handle_info({:media_file_processed, media_file}, socket) do
+    # Update the file in the list if it exists
+    {:noreply, update(socket, :media_files, fn files ->
+      Enum.map(files, fn file ->
+        if file.id == media_file.id, do: media_file, else: file
+      end)
+    end)}
+  end
+
   def handle_info(:show_media_upload, socket) do
     {:noreply, assign(socket, :show_media_upload, true)}
   end
@@ -241,31 +312,36 @@ defmodule FrestylWeb.MediaLive.Index do
   end
 
   defp load_files(socket) do
+    socket = socket
+      |> assign_new(:search, fn -> "" end)
+      |> assign_new(:filter_type, fn -> nil end)
+      |> assign_new(:filter_channel, fn -> nil end)
+      |> assign_new(:page, fn -> 1 end)  # Ensure page has a default value
+
     filters = %{
-      search: socket.assigns.search_query,
-      file_type: file_type_filter(socket.assigns.filter_type),
+      search: socket.assigns.search,
+      file_type: socket.assigns.filter_type,
       channel_id: channel_id_filter(socket.assigns.filter_channel),
       sort_by: socket.assigns.sort_by,
       sort_direction: socket.assigns.sort_direction
     }
 
-    case Media.list_files_with_metadata(
+    result = Media.list_files_with_metadata(
       socket.assigns.current_user,
       socket.assigns.page,
       @per_page,
       filters
-    ) do
-      {files, has_more?} ->
-        socket
-        |> assign(:files, files)
-        |> assign(:has_more?, has_more?)
-        |> assign(:loading, false)
+    )
 
-      :error ->
-        socket
-        |> put_flash(:error, "Failed to load files")
-        |> assign(:loading, false)
-    end
+    # Now explicitly assign the has_more? flag
+    has_more? = result.page_number < result.total_pages
+
+    socket
+    |> assign(:files, result.files)
+    |> assign(:page, result.page_number)
+    |> assign(:total_pages, result.total_pages)
+    |> assign(:total_count, result.total_count)
+    |> assign(:has_more?, has_more?)  # Add this line
   end
 
   defp get_user_channels(user) do

@@ -1,3 +1,4 @@
+# lib/frestyl_web/router.ex
 defmodule FrestylWeb.Router do
   use FrestylWeb, :router
   require Logger
@@ -27,11 +28,15 @@ defmodule FrestylWeb.Router do
     plug :require_authenticated_user
   end
 
+  # Add this new pipeline for media caching
+  pipeline :media_cache do
+    plug FrestylWeb.Plugs.MediaCache
+  end
+
   # This pipeline redirects authenticated users away from public auth pages
   pipeline :redirect_auth do
     plug :redirect_if_user_is_authenticated
   end
-
 
   # Role-specific pipelines
   pipeline :require_creator do
@@ -58,6 +63,19 @@ defmodule FrestylWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # API Authentication pipeline - for authenticating API requests
+  pipeline :api_auth do
+    plug :fetch_session
+    plug :fetch_current_user
+    # If no current_user present, try API token auth
+    plug FrestylWeb.Plugs.ApiAuth
+  end
+
+  # API 2FA verification pipeline - ensures 2FA is verified if enabled
+  pipeline :api_2fa do
+    plug FrestylWeb.Plugs.API2FACheck
+  end
+
   pipeline :rate_limited do
     plug RateLimiter, limit: 5, period: 60_000
   end
@@ -79,6 +97,7 @@ defmodule FrestylWeb.Router do
       live "/register", UserRegistrationLive, :new
       live "/login", UserLoginLive, :new
       live "/users/log_in", UserLoginLive, :new
+      live "/users/two_factor", UserLive.TwoFactorVerifyLive, :index
       live "/users/register", UserRegistrationLive, :new
       live "/users/confirm", UserConfirmationInstructionsLive, :new
       live "/users/confirm/:token", UserConfirmationLive, :edit
@@ -97,6 +116,7 @@ defmodule FrestylWeb.Router do
 
     # Event invitations (public routes)
     get "/invitations/:token", InvitationController, :show
+    get "/invitations/:token", InvitationController, :accpet
     get "/invitations/:token/accept", InvitationController, :accept
     get "/invitations/:token/decline", InvitationController, :decline
   end
@@ -140,9 +160,10 @@ defmodule FrestylWeb.Router do
 
       # CHANNELS
       live "/channels", ChannelLive.Index, :index
-      live "/channels/new", ChannelLive.Form, :new
+      live "/channels/new", ChannelLive.Index, :new
       live "/channels/:id", ChannelLive.Show, :show
       live "/channels/:id/edit", ChannelLive.Form, :edit
+      live "/channels/:id/media", ChannelLive.MediaTab, :media
 
       # CHAT
       live "/chat", ChatLive.Index, :index
@@ -178,6 +199,10 @@ defmodule FrestylWeb.Router do
       # PROFILE
       live "/profile", UserLive.Profile, :show
 
+      # SECURITY AND PRIVACY SETTINGS
+      live "/users/settings/two_factor", UserLive.TwoFactorSetupLive, :index
+      live "/account/sessions", UserLive.SessionManagementLive, :index
+      live "/account/privacy", UserLive.PrivacySettingsLive, :index
     end
 
     # Dashboard controller endpoint (will only be reached if the LiveView route is not matched)
@@ -186,6 +211,7 @@ defmodule FrestylWeb.Router do
 
     # Other authenticated controller routes
     get "/users/log_in_success", UserSessionController, :log_in_success
+    get "/users/create_from_2fa", UserSessionController, :create_from_2fa
     get "/session/create_from_liveview", UserSessionController, :create_from_liveview
 
     # TICKETS
@@ -231,7 +257,6 @@ defmodule FrestylWeb.Router do
     resources "/media", MediaController
     post "/media/:asset_id/version", MediaController, :upload_version
     get "/media/stream/:asset_id/:version_id", MediaController, :stream
-    get "/uploads/*path", MediaController, :serve_file
     get "/media/:id", MediaController, :download
 
     get "/channels/:channel_slug/files", FileController, :index
@@ -251,6 +276,77 @@ defmodule FrestylWeb.Router do
     post "/sessions/:id/start", SessionController, :start
     post "/sessions/:id/end", SessionController, :end
     get  "/sessions/:id/room", SessionController, :room
+  end
+
+  # Public API routes - no authentication required
+  scope "/api", FrestylWeb.Api do
+    pipe_through [:api]
+
+    # Authentication
+    post "/auth/login", AuthController, :login
+    post "/auth/register", AuthController, :register
+
+    # Public content
+    get "/discover", DiscoverController, :index
+    get "/channels/public", ChannelController, :public
+  end
+
+  # API routes that require authentication but not 2FA
+  scope "/api", FrestylWeb.Api do
+    pipe_through [:api, :api_auth]
+
+    # Authentication status and 2FA verification
+    get "/auth/status", AuthController, :status
+    post "/auth/verify_2fa", AuthController, :verify_2fa
+    post "/auth/verify_backup_code", AuthController, :verify_backup_code
+    post "/auth/logout", AuthController, :logout
+
+    # Basic user data and public profiles
+    get "/users/me", UserController, :me
+    resources "/profiles", ProfileController, only: [:index, :show]
+
+    # Public content browsing
+    resources "/channels", ChannelController, only: [:index, :show]
+    get "/media/public", MediaController, :public
+  end
+
+  # API routes that require both authentication and 2FA verification
+  scope "/api", FrestylWeb.Api do
+    pipe_through [:api, :api_auth, :api_2fa]
+
+    # User account management (sensitive operations)
+    resources "/users", UserController, only: [:update, :delete]
+    post "/users/change_password", UserController, :change_password
+    post "/users/disable_2fa", UserController, :disable_2fa
+
+    # Media management
+    resources "/media", MediaController, except: [:new, :edit]
+    post "/media/:id/upload", MediaController, :upload
+    delete "/media/:id/versions/:version_id", MediaController, :delete_version
+
+    # Account settings
+    resources "/settings", SettingsController, only: [:index, :update]
+    resources "/subscriptions", SubscriptionController
+    get "/billing/history", BillingController, :history
+    post "/billing/update_payment", BillingController, :update_payment
+
+    # Channel management
+    resources "/channels", ChannelController, except: [:index, :show]
+    post "/channels/:id/members", ChannelController, :add_member
+    delete "/channels/:id/members/:user_id", ChannelController, :remove_member
+
+    # Admin operations (if user has admin role)
+    resources "/admin/users", AdminUserController
+    resources "/admin/settings", AdminSettingsController
+    resources "/admin/metrics", AdminMetricsController, only: [:index]
+  end
+
+  # IMPORTANT: Move the uploads route outside of any other scope
+  # This creates a separate scope at the root level
+  scope "/uploads", FrestylWeb do
+    pipe_through [:browser, :require_auth, :media_cache]
+
+    get "/*path", MediaController, :serve_file
   end
 
   defp debug_request(conn, _opts) do

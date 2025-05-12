@@ -1,0 +1,58 @@
+<!-- lib/frestyl_web/live/user_live/two_factor_verify_live.html.heex -->
+<div class="container mx-auto max-w-md p-4">
+    <div class="bg-urban-asphalt p-6 rounded-lg text-white">
+      <h1 class="text-3xl font-bold mb-6 text-center">Two-Factor Authentication</h1>
+      <p class="mb-6 text-center">Enter the 6-digit code from your authenticator app to complete login</p>
+      
+      <div class="text-center mb-4">
+        <div class="inline-block rounded-full bg-concrete-gray p-3 mb-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-urban-asphalt" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <div class="text-lg"><%= @email %></div>
+      </div>
+      
+      <%= if @show_backup_code_form do %>
+        <form phx-submit="verify_backup" class="space-y-4">
+          <div>
+            <label for="backup_code" class="block mb-1">Backup Code</label>
+            <input type="text" id="backup_code" name="backup_code" 
+                  class="w-full px-4 py-2 rounded bg-concrete-gray text-black text-lg" 
+                  placeholder="Enter backup code">
+          </div>
+          
+          <div class="flex space-x-2">
+            <button type="submit" class="flex-1 bg-spray-can-pink py-2 px-4 rounded font-bold hover:bg-opacity-90 transition">
+              Verify
+            </button>
+            <button type="button" phx-click="cancel_backup" class="flex-1 bg-concrete-gray text-black py-2 px-4 rounded font-bold hover:bg-opacity-90 transition">
+              Cancel
+            </button>
+          </div>
+        </form>
+      <% else %>
+        <form phx-submit="verify" class="space-y-4">
+          <div>
+            <label for="totp_code" class="block mb-1">6-digit code</label>
+            <input type="text" id="totp_code" name="totp_code"
+                  class="w-full px-4 py-2 rounded bg-concrete-gray text-black text-lg tracking-wider text-center" 
+                  maxlength="6" placeholder="000000">
+            <%= if @changeset && @changeset.errors[:totp_code] do %>
+              <span class="text-red-500 text-sm"><%= elem(@changeset.errors[:totp_code], 0) %></span>
+            <% end %>
+          </div>
+          
+          <button type="submit" class="w-full bg-electric-blue py-2 px-4 rounded font-bold hover:bg-opacity-90 transition">
+            Verify
+          </button>
+          
+          <div class="text-center mt-4">
+            <a href="#" phx-click="use_backup_code" class="text-sm text-spray-can-pink hover:underline">
+              Use a backup code
+            </a>
+          </div>
+        </form>
+      <% end %>
+    </div>
+</div>
