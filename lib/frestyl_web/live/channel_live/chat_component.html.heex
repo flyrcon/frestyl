@@ -1,132 +1,389 @@
-<div class="flex flex-col h-full">
+<!-- lib/frestyl_web/live/channel_live/chat_component.html.heex -->
+<div class="flex flex-col h-full bg-white">
   <!-- Messages Container -->
-  <div class="flex-grow overflow-y-auto px-6 py-4" id={"messages-container-#{@id}"} phx-hook="MessagesContainer" phx-update="append">
-    <!-- Load More Button (if more messages are available) -->
+  <div class="flex-1 overflow-y-auto p-4 space-y-4" id={"messages-#{@id}"}>
+    <!-- Load More Button -->
     <%= if @has_more do %>
       <div class="text-center py-2">
         <button 
           phx-click="load_more" 
           phx-target={@myself}
-          class="text-sm text-gray-500 hover:text-brand"
+          class={[
+            "text-sm px-4 py-2 rounded-md border",
+            @loading_messages && "opacity-50 cursor-not-allowed" || "hover:bg-gray-50"
+          ]}
           disabled={@loading_messages}
         >
           <%= if @loading_messages do %>
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 inline" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
             Loading...
           <% else %>
-            Load previous messages
+            Load earlier messages
           <% end %>
         </button>
       </div>
     <% end %>
 
-    <!-- Message List -->
-    <div id="messages-list" class="space-y-4">
+    <!-- Messages List -->
+    <div class="space-y-3" id="messages-list">
       <%= for message <- @messages do %>
         <% user = get_message_user(message, @users_map) %>
-        <div id={"message-#{message.id}"} class="flex group">
+        <div class="flex group" id={"message-#{message.id}"}>
+          <!-- User Avatar -->
           <div class="flex-shrink-0 mr-3">
-            <div class="h-8 w-8 rounded-full bg-[#DD1155] flex items-center justify-center text-white">
-              <%= if user && user.name do %>
-                <%= String.first(user.name) %>
-              <% else %>
-                U
-              <% end %>
-            </div>
-          </div>
-          <div class="flex-grow">
-            <div class="flex items-baseline">
-              <span class="font-medium text-gray-900">
-                <%= if user do %>
-                  <%= user.name || user.email %>
+            <div class="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center">
+              <span class="text-sm font-medium text-white">
+                <%= if user.name do %>
+                  <%= String.first(user.name) %>
                 <% else %>
-                  Unknown User
+                  <%= String.first(user.email || "U") %>
                 <% end %>
               </span>
-              <span class="ml-2 text-xs text-gray-500">
+            </div>
+          </div>
+
+          <!-- Message Content -->
+          <div class="flex-1 min-w-0">
+            <!-- Message Header -->
+            <div class="flex items-baseline space-x-2">
+              <span class="text-sm font-medium text-gray-900">
+                <%= user.name || user.email || "Unknown User" %>
+              </span>
+              <span class="text-xs text-gray-500">
                 <%= format_message_time(message.inserted_at) %>
               </span>
               
-              <!-- Message Actions - Only visible on hover -->
-              <div class="ml-2 hidden group-hover:flex space-x-1">
-                <%= if message.user_id == @current_user.id || (@current_user.role in ["admin", "moderator", "channel_owner"]) do %>
+              <!-- Message Actions (visible on hover) -->
+              <div class="opacity-0 group-hover:opacity-100 transition-opacity">
+                <%= if message.user_id == @current_user.id do %>
                   <button 
                     phx-click="delete_message" 
                     phx-value-id={message.id} 
                     phx-target={@myself}
-                    class="text-xs text-gray-400 hover:text-red-500"
+                    class="text-xs text-gray-400 hover:text-red-500 p-1"
                     title="Delete message"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                     </svg>
                   </button>
                 <% end %>
               </div>
             </div>
-            
-            <!-- Message Content -->
-            <%= case message.message_type do %>
-              <% "text" -> %>
-                <div class="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
-                  <%= message.content %>
+
+            <!-- Message Body -->
+            <div class="mt-1">
+              <%= case message.message_type do %>
+                <% "text" -> %>
+                  <div class="text-sm text-gray-800 prose prose-sm max-w-none">
+                    <%= raw(Frestyl.Chat.MessageFormatter.format(message.content)) %>
+                  </div>
+                <% "image" -> %>
+                  <div class="mt-2">
+                    <img src={message.content} alt="Shared image" class="max-w-xs rounded-lg shadow-sm" />
+                  </div>
+                <% "video" -> %>
+                  <div class="mt-2">
+                    <video controls class="max-w-xs rounded-lg shadow-sm">
+                      <source src={message.content} type={message.metadata["content_type"] || "video/mp4"} />
+                      Your browser does not support video playback.
+                    </video>
+                  </div>
+                <% "audio" -> %>
+                  <div class="mt-2">
+                    <audio controls class="w-full max-w-xs">
+                      <source src={message.content} type={message.metadata["content_type"] || "audio/mpeg"} />
+                      Your browser does not support audio playback.
+                    </audio>
+                  </div>
+                <% "pdf" -> %>
+                  <div class="mt-2 flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                    <svg class="h-8 w-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    </svg>
+                    <div>
+                      <a href={message.content} target="_blank" class="text-sm font-medium text-gray-900 hover:text-indigo-600">
+                        <%= message.metadata["filename"] || "PDF Document" %>
+                      </a>
+                      <%= if message.metadata["size"] do %>
+                        <p class="text-xs text-gray-500"><%= format_file_size(message.metadata["size"]) %></p>
+                      <% end %>
+                    </div>
+                  </div>
+                <% _ -> %>
+                  <div class="text-sm text-gray-800">
+                    <%= message.content %>
+                  </div>
+              <% end %>
+
+              <!-- Attachments (if any) -->
+              <%= if message.attachments && length(message.attachments) > 0 do %>
+                <div class="mt-2 space-y-2">
+                  <%= for attachment <- message.attachments do %>
+                    <div class="flex items-center space-x-2 p-2 bg-gray-50 rounded-lg">
+                      <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+                      </svg>
+                      <a href={attachment.path} target="_blank" class="text-sm text-gray-900 hover:text-indigo-600">
+                        <%= attachment.file_name %>
+                      </a>
+                      <span class="text-xs text-gray-500">(<%= format_file_size(attachment.size) %>)</span>
+                    </div>
+                  <% end %>
                 </div>
-              <% "image" -> %>
-                <div class="mt-1">
-                  <img src={message.content} alt="Image" class="max-w-sm rounded" />
-                </div>
-              <% "file" -> %>
-                <div class="mt-1 flex items-center text-sm text-gray-800">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <% end %>
+            </div>
+            <!-- Message Reactions -->
+            <div class="mt-2 flex flex-wrap gap-1">
+              <!-- Emoji Reactions -->
+              <%= for {emoji, user_ids} <- Map.get(@emoji_reactions, message.id, %{}) do %>
+                <button 
+                  phx-click="toggle-reaction" 
+                  phx-value-message-id={message.id} 
+                  phx-value-emoji={emoji}
+                  phx-target={@myself}
+                  class={[
+                    "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                    @current_user.id in user_ids && "bg-indigo-100 text-indigo-800" || "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                  ]}
+                >
+                  <span><%= emoji %></span>
+                  <span class="ml-1"><%= length(user_ids) %></span>
+                </button>
+              <% end %>
+
+              <!-- Custom Text Reactions -->
+              <%= for {text, user_ids} <- Map.get(@custom_reactions, message.id, %{}) do %>
+                <button 
+                  phx-click="toggle-custom-reaction" 
+                  phx-value-message-id={message.id} 
+                  phx-value-text={text}
+                  phx-target={@myself}
+                  class={[
+                    "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                    @current_user.id in user_ids && "bg-purple-100 text-purple-800" || "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                  ]}
+                >
+                  <span><%= text %></span>
+                  <span class="ml-1"><%= length(user_ids) %></span>
+                </button>
+              <% end %>
+
+              <!-- Add Reaction Button -->
+              <div class="relative inline-block" x-data="{ open: false }">
+                <button 
+                  @click="open = !open"
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 hover:bg-gray-200"
+                >
+                  <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                   </svg>
-                  <a href={message.content} target="_blank" class="text-brand hover:underline">
-                    <%= message.metadata["filename"] || "Download file" %>
-                  </a>
+                </button>
+
+                <!-- Reaction Picker -->
+                <div 
+                  x-show="open" 
+                  @click.away="open = false"
+                  x-transition
+                  class="absolute bottom-full mb-1 left-0 bg-white rounded-lg shadow-lg border border-gray-200 p-3 z-10"
+                  style="min-width: 280px;"
+                >
+                  <!-- Common Emojis -->
+                  <div class="mb-3">
+                    <h4 class="text-xs font-medium text-gray-700 mb-2">Quick Reactions</h4>
+                    <div class="grid grid-cols-6 gap-1">
+                      <%= for emoji <- ["👍", "👎", "❤️", "😂", "😮", "😢", "🔥", "👏", "🙌", "💯", "🎉", "🤔"] do %>
+                        <button 
+                          phx-click="add-reaction" 
+                          phx-value-message-id={message.id} 
+                          phx-value-emoji={emoji}
+                          phx-target={@myself}
+                          class="p-2 hover:bg-gray-100 rounded text-lg transition-colors"
+                          @click="open = false"
+                        >
+                          <%= emoji %>
+                        </button>
+                      <% end %>
+                    </div>
+                  </div>
+
+                  <!-- Hip-Hop/Slang Reactions -->
+                  <div class="border-t border-gray-200 pt-3 mb-3">
+                    <h4 class="text-xs font-medium text-gray-700 mb-2">Hip-Hop Slang</h4>
+                    <div class="grid grid-cols-2 gap-1">
+                      <%= for text <- ["🔥 Fire", "💯 Lit", "🎵 Dope", "✅ Facts", "🧢 Cap", "💯 No cap", "💪 Word", "🎯 Bet", "👑 Slay", "💎 Flex", "🚀 Vibes", "⚡ Fresh"] do %>
+                        <button 
+                          phx-click="add-custom-reaction" 
+                          phx-value-message-id={message.id} 
+                          phx-value-text={text}
+                          phx-target={@myself}
+                          class="px-3 py-1.5 text-xs hover:bg-gray-100 rounded text-left transition-colors"
+                          @click="open = false"
+                        >
+                          <%= text %>
+                        </button>
+                      <% end %>
+                    </div>
+                  </div>
+
+                  <!-- Custom Reaction Input -->
+                  <div class="border-t border-gray-200 pt-3">
+                    <h4 class="text-xs font-medium text-gray-700 mb-2">Custom Reaction</h4>
+                    <form phx-submit="add-custom-reaction" phx-target={@myself} @submit="open = false" class="flex">
+                      <input type="hidden" name="message-id" value={message.id}>
+                      <input 
+                        type="text" 
+                        name="text" 
+                        placeholder="Your reaction..." 
+                        class="flex-1 text-xs border border-gray-300 rounded-l px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        maxlength="20"
+                        required
+                      />
+                      <button 
+                        type="submit" 
+                        class="px-3 py-2 bg-indigo-600 text-white text-xs rounded-r hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        Add
+                      </button>
+                    </form>
+                  </div>
                 </div>
-              <% _ -> %>
-                <div class="mt-1 text-sm text-gray-800">
-                  <%= message.content %>
-                </div>
-            <% end %>
+              </div>
+            </div>
           </div>
+        </div>
+      <% end %>
+      <!-- Empty State -->
+      <%= if length(@messages) == 0 do %>
+        <div class="text-center py-12">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">No messages yet</h3>
+          <p class="mt-1 text-sm text-gray-500">Start the conversation by sending a message.</p>
         </div>
       <% end %>
     </div>
   </div>
 
   <!-- Typing Indicator -->
-  <%= if Enum.any?(@typing_users) do %>
-    <div class="px-6 py-2 text-xs text-gray-500 italic">
+  <%= if MapSet.size(@typing_users) > 0 do %>
+    <div class="px-4 py-2 text-xs text-gray-500 italic border-t border-gray-100">
       <%= typing_indicator_text(@typing_users, @current_user, @users_map) %>
     </div>
   <% end %>
 
-  <!-- Message Input -->
-  <div class="border-t border-gray-200 px-6 py-4">
-    <form phx-submit="send_message" phx-target={@myself} class="flex items-end space-x-2">
-      <div class="flex-grow">
+  <!-- Message Input Area -->
+  <div class="border-t border-gray-200 p-4">
+    <!-- File Upload Area (when uploading) -->
+    <%= if Enum.any?(@uploads.attachment.entries) do %>
+      <div class="mb-4">
+        <div class="border-2 border-dashed border-gray-300 rounded-lg p-4">
+          <div class="text-center">
+            <svg class="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+            </svg>
+            <p class="mt-1 text-sm text-gray-600">Files ready to upload</p>
+          </div>
+          
+          <!-- File Preview List -->
+          <div class="mt-3 space-y-2">
+            <%= for entry <- @uploads.attachment.entries do %>
+              <div class="flex items-center justify-between p-2 bg-gray-50 rounded">
+                <div class="flex items-center space-x-2">
+                  <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                  </svg>
+                  <span class="text-sm text-gray-900"><%= entry.client_name %></span>
+                  <span class="text-xs text-gray-500">(<%= format_file_size(entry.client_size) %>)</span>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                  <!-- Progress Bar -->
+                  <div class="w-24 bg-gray-200 rounded-full h-2">
+                    <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style={"width: #{entry.progress}%"}></div>
+                  </div>
+                  
+                  <!-- Cancel Button -->
+                  <button 
+                    phx-click="cancel-upload" 
+                    phx-value-ref={entry.ref} 
+                    phx-target={@myself}
+                    class="text-red-500 hover:text-red-700"
+                  >
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Upload Errors -->
+              <%= for err <- upload_errors(@uploads.attachment, entry) do %>
+                <div class="text-sm text-red-600 mt-1">
+                  <%= error_to_string(err) %>
+                </div>
+              <% end %>
+            <% end %>
+          </div>
+          
+          <!-- Global Upload Errors -->
+          <%= for err <- upload_errors(@uploads.attachment) do %>
+            <div class="text-sm text-red-600 mt-2">
+              <%= error_to_string(err) %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+
+    <!-- Message Form -->
+    <form phx-submit="send_message" phx-target={@myself} class="flex items-end space-x-3">
+      <!-- File Upload Button -->
+      <div class="flex-shrink-0">
+        <label class="cursor-pointer">
+          <.live_file_input upload={@uploads.attachment} class="hidden" />
+          <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors">
+            <svg class="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path>
+            </svg>
+          </div>
+        </label>
+      </div>
+
+      <!-- Message Input -->
+      <div class="flex-1">
         <textarea
-          id={"message-input-#{@id}"}
-          name="message"
-          value={@message_text}
-          placeholder="Type a message..."
+          name="message_text"
           rows="1"
+          class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm resize-none"
+          placeholder="Type a message... (⌘+Enter or Ctrl+Enter to send)"
+          phx-keydown="handle-key"
           phx-keyup="typing"
           phx-target={@myself}
-          phx-value-typing={if String.length(@message_text || "") > 0, do: "true", else: "false"}
-          class="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-brand focus:border-brand sm:text-sm resize-none"
+          value={@message_text || ""}
           style="min-height: 2.5rem; max-height: 8rem;"
-          phx-hook="AutoResizeTextarea"
-        ><%= @message_text %></textarea>
+        ><%= @message_text || "" %></textarea>
+        
+        <!-- Formatting Help -->
+        <div class="mt-1 text-xs text-gray-500">
+          Tip: **bold**, *italic*, ~~strikethrough~~, `code`
+        </div>
       </div>
-      <div>
+
+      <!-- Send Button -->
+      <div class="flex-shrink-0">
         <button
           type="submit"
-          class="inline-flex items-center px-3 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DD1155] hover:bg-[#C4134E] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
+          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
           </svg>
+          <span class="ml-1">Send</span>
         </button>
       </div>
     </form>

@@ -1,107 +1,430 @@
 defmodule FrestylWeb.ChannelLive.Show do
   use FrestylWeb, :live_view
 
-  # Add this line to ensure authentication
-  on_mount {FrestylWeb.UserAuth, :ensure_authenticated}
-
   alias Frestyl.Channels
+  alias Frestyl.Channels.Channel
   alias Frestyl.Accounts
-  alias Frestyl.Chat
   alias Frestyl.Media
-  alias Frestyl.Presence
-  alias Frestyl.Repo
-  import FrestylWeb.Navigation, only: [nav: 1]
 
-  @impl true
-  def mount(%{"id" => id}, _session, socket) do
-    # Fetch the channel by ID or slug
-    channel = case Integer.parse(id) do
-      {channel_id, _} -> Frestyl.Channels.get_channel!(channel_id)
-      :error -> Frestyl.Channels.get_channel_by_slug!(id)
+  # Helper functions
+  def can_edit_channel?(user_role) when is_atom(user_role) do
+    user_role in [:owner, :admin, :moderator]
+  end
+
+  def can_edit_channel?(user_role) when is_binary(user_role) do
+    user_role in ["owner", "admin", "moderator"]
+  end
+
+  def can_edit_channel?(_), do: false
+
+  def can_create_broadcast?(user_role) when is_atom(user_role) do
+    user_role in [:owner, :admin, :moderator, :content_creator]
+  end
+
+  def can_create_broadcast?(user_role) when is_binary(user_role) do
+    user_role in ["owner", "admin", "moderator", "content_creator"]
+  end
+
+  def can_create_broadcast?(_), do: false
+
+  def can_create_session?(user_role) when is_atom(user_role) do
+    user_role in [:owner, :admin, :moderator, :content_creator]
+  end
+
+  def can_create_session?(user_role) when is_binary(user_role) do
+    user_role in ["owner", "admin", "moderator", "content_creator"]
+  end
+
+  def can_create_session?(_), do: false
+
+  def error_message(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.map(fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
+    |> Enum.join("; ")
+  end
+
+  def format_channel_datetime(nil), do: "Not scheduled"
+  def format_channel_datetime(datetime) do
+    Calendar.strftime(datetime, "%B %d, %Y at %I:%M %p")
+  end
+
+  def time_ago(nil), do: ""
+  def time_ago(datetime) do
+    now = DateTime.utc_now()
+    diff = DateTime.diff(now, datetime, :second)
+
+    cond do
+      diff < 60 -> "just now"
+      diff < 3600 -> "#{div(diff, 60)} minutes ago"
+      diff < 86400 -> "#{div(diff, 3600)} hours ago"
+      diff < 2_592_000 -> "#{div(diff, 86400)} days ago"
+      diff < 31_536_000 -> "#{div(diff, 2_592_000)} months ago"
+      true -> "#{div(diff, 31_536_000)} years ago"
     end
+  end
 
-    # Get current user from socket assigns
-    current_user = socket.assigns.current_user
+  # Format date and time
+  def format_date_time(nil), do: ""
+  def format_date_time(datetime) do
+    datetime
+    |> Calendar.strftime("%b %d, %I:%M %p")
+  end
 
-    # Check if the user has access
-    is_member = Frestyl.Channels.user_member?(current_user, channel)
-    restricted = channel.visibility != "public" && !is_member
-    can_edit = Frestyl.Channels.can_edit_channel?(channel, current_user)
+  # Format date only
+  def format_date(nil), do: ""
+  def format_date(datetime) do
+    datetime
+    |> Calendar.strftime("%b %d, %Y")
+  end
 
-    # Check if user can view branding assets - ONLY ADMINS CAN VIEW NOW
-    is_admin = is_admin?(current_user)
-    can_view_branding = is_admin  # Changed to admin-only as requested
+  # Format time only
+  def format_time(nil), do: ""
+  def format_time(datetime) do
+    datetime
+    |> Calendar.strftime("%I:%M %p")
+  end
 
-    # Fetch members if not restricted
-    members = if !restricted, do: Frestyl.Channels.list_channel_members(channel.id), else: []
-    blocked_users = if is_admin || can_edit, do: Channels.list_blocked_users(channel.id), else: []
-    blocked_emails = if is_admin || can_edit, do: Channels.list_blocked_emails(channel.id), else: []
+  # Get user name from users map
+  def get_user_name(user_id, users_map) do
+    user = Map.get(users_map, user_id, %{})
+    user[:name] || user[:email] || "Unknown User"
+  end
 
-    # Fetch chat messages if member
-    chat_messages = if is_member, do: Frestyl.Chat.list_recent_channel_messages(channel.id), else: []
-    users = if is_member, do: Frestyl.Accounts.get_users_by_ids(Enum.map(chat_messages, & &1.user_id)), else: []
-    users_map = Enum.reduce(users, %{}, fn user, acc -> Map.put(acc, user.id, user) end)
+  # Check if there are active sessions
+  def has_active_sessions?(sessions) do
+    Enum.any?(sessions, fn session -> session.status == "active" end)
+  end
 
-    # Fetch media files if member
-    media_files = if is_member, do: Frestyl.Media.list_channel_files(channel.id), else: []
+  # Check if there are active broadcasts
+  def has_active_broadcasts?(broadcasts) do
+    Enum.any?(broadcasts, fn broadcast -> broadcast.status == "active" end)
+  end
 
-    # Load active media data
-    active_media = if is_member do
-      try do
-        Frestyl.Channels.get_active_media(channel)
-      rescue
-        _ -> %{}
-      end
+  # Filter active sessions
+  def active_sessions(sessions) do
+    Enum.filter(sessions, fn session -> session.status == "active" end)
+  end
+
+  # Filter active broadcasts
+  def active_broadcasts(broadcasts) do
+    Enum.filter(broadcasts, fn broadcast -> broadcast.status == "active" end)
+  end
+
+  # Get upcoming/scheduled sessions
+  def upcoming_sessions(sessions) do
+    Enum.filter(sessions, fn session ->
+      session.status == "scheduled" ||
+      (session.status == "active" && session.participants_count == 0)
+    end)
+  end
+
+  def calendar_string(datetime) do
+    Calendar.strftime(datetime, "%b %d, %Y")
+  end
+
+  def get_user_email(user) do
+    case user do
+      %{email: email} -> email
+      _ -> nil
+    end
+  end
+
+  # Helper function to get member role from channel
+  defp get_member_role(channel, user) do
+    case Channels.get_channel_membership(user, channel) do
+      %{role: role} -> role
+      _ -> "guest"
+    end
+  end
+
+  defp safe_list_channel_sessions(channel_id) do
+    if function_exported?(Channels, :list_channel_sessions, 1) do
+      Channels.list_channel_sessions(channel_id)
     else
-      %{}
+      []  # Return empty list if function doesn't exist
     end
-
-    # Setup for typing indicators
-    if is_member && connected?(socket) do
-      # Use Phoenix.PubSub directly
-      Phoenix.PubSub.subscribe(Frestyl.PubSub, "channel:#{channel.id}")
-    end
-
-    # Assign all variables to socket - keeping all your original assigns
-    socket = socket
-      |> assign(:show_media_upload, false)
-      |> assign(:viewing_media, nil)
-      |> assign(:is_admin, is_admin)
-      |> assign(:active_tab, "content")
-      |> assign(:active_media, active_media)
-      |> assign(:page_title, channel.name)
-      |> assign(:channel, channel)
-      |> assign(:is_member, is_member)
-      |> assign(:restricted, restricted)
-      |> assign(:can_edit, can_edit)
-      |> assign(:members, members)
-      |> assign(:chat_messages, chat_messages)
-      |> assign(:users_map, users_map)
-      |> assign(:message_text, "")
-      |> assign(:typing_users, [])
-      |> assign(:show_invite_modal, false)
-      |> assign(:media_files, media_files)
-      |> assign(:show_block_modal, false)
-      |> assign(:blocked_users, blocked_users)
-      |> assign(:blocked_emails, blocked_emails)
-      |> assign(:user_to_block, nil)
-      |> assign(:blocking_member, false)
-      |> assign(:active_media, active_media)
-      |> assign(:can_view_branding, is_admin)  # Only admins can view branding
-      |> assign(:show_options_panel, false)  # For toggling options panel
-      |> assign(:show_invite_button, channel.visibility == "public" && is_member && !is_admin)  # For invite button
-
-    {:ok, socket}
+  rescue
+    _ -> []  # Catch any errors and return empty list
   end
 
-  # Added this new event handler for dropdown toggle
+  defp safe_list_channel_broadcasts(channel_id) do
+    if function_exported?(Channels, :list_channel_broadcasts, 1) do
+      Channels.list_channel_broadcasts(channel_id)
+    else
+      []  # Return empty list if function doesn't exist
+    end
+  rescue
+    _ -> []  # Catch any errors and return empty list
+  end
+
+  # Helper function to get channel members
+  defp get_channel_members(channel) do
+    Channels.list_channel_members(channel.id)
+  end
+
   @impl true
-  def handle_event("toggle_options", _, socket) do
-    {:noreply, assign(socket, :show_options_panel, !socket.assigns.show_options_panel)}
+  def mount(params, session, socket) do
+    # Get current user from session
+    current_user = session["user_token"] && Accounts.get_user_by_session_token(session["user_token"])
+
+    # Get channel by id or slug
+    channel_identifier = params["slug"] || params["id"]
+
+    if is_nil(channel_identifier) do
+      socket =
+        socket
+        |> put_flash(:error, "Channel not found")
+        |> redirect(to: ~p"/dashboard")
+
+      {:ok, socket}
+    else
+      # Try to get channel by slug first, then by id if that fails
+      channel =
+        if params["slug"] do
+          Channels.get_channel_by_slug(params["slug"])
+        else
+          Channels.get_channel(params["id"])
+        end
+
+      case channel do
+        nil ->
+          socket =
+            socket
+            |> put_flash(:error, "Channel not found")
+            |> redirect(to: ~p"/dashboard")
+
+          {:ok, socket}
+
+        channel ->
+          # Check if user is restricted from this channel
+          blocked = if current_user, do: Channels.is_blocked?(channel, current_user), else: false
+
+          # Check if channel is restricted and if user has access
+          is_member = if current_user, do: Channels.user_member?(current_user, channel), else: false
+          is_admin = if current_user, do: Channels.can_edit_channel?(channel, current_user), else: false
+
+          # Get member role if they are a member
+          user_role = if is_member, do: get_member_role(channel, current_user), else: "guest"
+
+          can_edit = can_edit_channel?(user_role)
+          can_view_branding = can_edit
+          show_invite_button = can_edit
+
+          # Check if channel is restricted for this user
+          restricted = cond do
+            is_member -> false
+            is_admin -> false
+            blocked -> true
+            channel.visibility == "public" -> false
+            channel.visibility == "unlisted" -> false
+            true -> true
+          end
+
+          # Set initial tabs
+          active_tab = "content"
+          activity_tab = "happening_now"
+
+          # Only load additional data if user has access
+          socket = if !restricted do
+            # Get channel members
+            members = get_channel_members(channel)
+
+            # Get blocked users
+            blocked_users = if can_edit, do: Channels.list_blocked_users(channel.id), else: []
+            blocked_emails = if can_edit, do: Channels.list_blocked_emails(channel.id), else: []
+
+            # Get active media
+            active_media = Channels.get_active_media(channel) || %{}
+
+            # Get media files
+            media_files = Media.list_channel_files(channel.id) || []
+
+            # Get chat messages - using room_id instead of channel_id and avoiding attachment_url
+            chat_messages = list_channel_messages(channel.id, limit: 50) || []
+
+            # Load sessions and broadcasts
+            sessions = safe_list_channel_sessions(channel.id)
+            broadcasts = safe_list_channel_broadcasts(channel.id)
+            upcoming_broadcasts = Enum.filter(broadcasts, fn b ->
+              Map.get(b, :scheduled_for) && DateTime.compare(Map.get(b, :scheduled_for), DateTime.utc_now()) == :gt
+            end)
+
+            # Create users map for easier lookup
+            users = get_users_for_messages(chat_messages)
+            users_map = Enum.reduce(users, %{}, fn user, acc -> Map.put(acc, user.id, user) end)
+
+            # Add member users to the map
+            users_map = Enum.reduce(members, users_map, fn member, acc ->
+              Map.put_new(acc, member.user_id, member.user)
+            end)
+
+            can_create_session = can_create_session?(user_role)
+            can_create_broadcast = can_create_broadcast?(user_role)
+
+            socket
+            |> assign(:active_tab, active_tab)
+            |> assign(:activity_tab, activity_tab)  # Added for the tabbed Happening Now/Upcoming
+            |> assign(:members, members)
+            |> assign(:users_map, users_map)
+            |> assign(:blocked_users, blocked_users)
+            |> assign(:blocked_emails, blocked_emails)
+            |> assign(:chat_messages, chat_messages)
+            |> assign(:active_media, active_media)
+            |> assign(:media_files, media_files)
+            |> assign(:show_options_panel, false)
+            |> assign(:can_create_session, can_create_session)
+            |> assign(:can_create_broadcast, can_create_broadcast)
+            |> assign(:message_text, "")
+            |> assign(:sessions, sessions)
+            |> assign(:broadcasts, broadcasts)
+            |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+            |> assign(:show_session_form, false)
+            |> assign(:show_broadcast_form, false)
+            |> assign(:session_changeset, nil)
+            |> assign(:broadcast_changeset, nil)
+            |> assign(:viewing_session, nil)
+            |> assign(:viewing_broadcast, nil)
+            |> assign(:online_members, [])  # Added for chat section
+          else
+            socket
+          end
+
+          # Common assigns for all users
+          socket = socket
+            |> assign(:current_user, current_user)
+            |> assign(:channel, channel)
+            |> assign(:restricted, restricted)
+            |> assign(:is_member, is_member)
+            |> assign(:is_admin, is_admin)
+            |> assign(:user_role, user_role)
+            |> assign(:can_edit, can_edit)
+            |> assign(:can_view_branding, can_view_branding)
+            |> assign(:show_invite_button, show_invite_button)
+            |> assign(:show_block_modal, false)
+            |> assign(:show_invite_modal, false)
+            |> assign(:show_media_upload, false)
+            |> assign(:viewing_media, nil)
+            |> assign(:user_to_block, nil)
+            |> assign(:blocking_member, false)
+
+          # If this is a connected mount, subscribe to the channel topic
+          if connected?(socket) && !restricted do
+            Channels.subscribe(channel.id)
+          end
+
+          {:ok, socket}
+      end
+    end
   end
 
-  defp is_admin?(user) do
-    user.role in ["admin", "moderator", "channel_owner"]
+  @impl true
+  def handle_info({:session_created, session}, socket) do
+    %{sessions: sessions} = socket.assigns
+
+    # Add session to list
+    updated_sessions = [session | sessions]
+
+    {:noreply, assign(socket, :sessions, updated_sessions)}
+  end
+
+  @impl true
+  def handle_info({:session_updated, session}, socket) do
+    %{sessions: sessions} = socket.assigns
+
+    # Update session in list
+    updated_sessions = Enum.map(sessions, fn s ->
+      if s.id == session.id, do: session, else: s
+    end)
+
+    {:noreply, assign(socket, :sessions, updated_sessions)}
+  end
+
+  @impl true
+  def handle_info({:session_deleted, session_id}, socket) do
+    %{sessions: sessions} = socket.assigns
+
+    # Remove session from list
+    updated_sessions = Enum.reject(sessions, &(&1.id == session_id))
+
+    {:noreply, assign(socket, :sessions, updated_sessions)}
+  end
+
+  @impl true
+  def handle_info({:broadcast_created, broadcast}, socket) do
+    %{broadcasts: broadcasts, upcoming_broadcasts: upcoming_broadcasts} = socket.assigns
+
+    # Add broadcast to lists
+    updated_broadcasts = [broadcast | broadcasts]
+
+    # Update upcoming broadcasts if applicable
+    updated_upcoming_broadcasts =
+      if broadcast.scheduled_for && DateTime.compare(broadcast.scheduled_for, DateTime.utc_now()) == :gt do
+        [broadcast | upcoming_broadcasts]
+      else
+        upcoming_broadcasts
+      end
+
+    {:noreply,
+    socket
+    |> assign(:broadcasts, updated_broadcasts)
+    |> assign(:upcoming_broadcasts, updated_upcoming_broadcasts)}
+  end
+
+  @impl true
+  def handle_info({:broadcast_updated, broadcast}, socket) do
+    %{broadcasts: broadcasts, upcoming_broadcasts: upcoming_broadcasts} = socket.assigns
+
+    # Update broadcast in list
+    updated_broadcasts = Enum.map(broadcasts, fn b ->
+      if b.id == broadcast.id, do: broadcast, else: b
+    end)
+
+    # Update upcoming broadcasts
+    is_upcoming = broadcast.scheduled_for && DateTime.compare(broadcast.scheduled_for, DateTime.utc_now()) == :gt
+    already_in_upcoming = Enum.any?(upcoming_broadcasts, &(&1.id == broadcast.id))
+
+    updated_upcoming_broadcasts = cond do
+      is_upcoming && already_in_upcoming ->
+        # Update in the list
+        Enum.map(upcoming_broadcasts, fn b ->
+          if b.id == broadcast.id, do: broadcast, else: b
+        end)
+
+      is_upcoming && !already_in_upcoming ->
+        # Add to the list
+        [broadcast | upcoming_broadcasts]
+
+      !is_upcoming && already_in_upcoming ->
+        # Remove from the list
+        Enum.reject(upcoming_broadcasts, &(&1.id == broadcast.id))
+
+      true ->
+        # No change needed
+        upcoming_broadcasts
+    end
+
+    {:noreply,
+    socket
+    |> assign(:broadcasts, updated_broadcasts)
+    |> assign(:upcoming_broadcasts, updated_upcoming_broadcasts)}
+  end
+
+  @impl true
+  def handle_info({:broadcast_deleted, broadcast_id}, socket) do
+    %{broadcasts: broadcasts, upcoming_broadcasts: upcoming_broadcasts} = socket.assigns
+
+    # Remove broadcast from lists
+    updated_broadcasts = Enum.reject(broadcasts, &(&1.id == broadcast_id))
+    updated_upcoming_broadcasts = Enum.reject(upcoming_broadcasts, &(&1.id == broadcast_id))
+
+    {:noreply,
+    socket
+    |> assign(:broadcasts, updated_broadcasts)
+    |> assign(:upcoming_broadcasts, updated_upcoming_broadcasts)}
   end
 
   @impl true
@@ -109,979 +432,717 @@ defmodule FrestylWeb.ChannelLive.Show do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
 
+  # Fixed helper function for chat messages
+  # Fixed helper function for chat messages
+# Fixed helper function for chat messages
+defp list_channel_messages(channel_id, opts \\ []) do
+  limit = Keyword.get(opts, :limit, 50)
+
+  import Ecto.Query, warn: false
+  alias Frestyl.Channels.Message
+
+  # When using preload with select, we have two options:
+  # Option 1: Don't use preload with a customized select
+  Message
+  |> where([m], m.room_id == ^channel_id)
+  |> order_by([m], desc: m.inserted_at)
+  |> limit(^limit)
+  |> Frestyl.Repo.all()
+  |> Enum.map(fn message ->
+    # Create a map without the attachment_url field
+    %{
+      id: message.id,
+      content: message.content,
+      message_type: message.message_type,
+      user_id: message.user_id,
+      room_id: message.room_id,
+      inserted_at: message.inserted_at,
+      updated_at: message.updated_at,
+      user: Frestyl.Repo.get(Frestyl.Accounts.User, message.user_id)
+    }
+  end)
+
+  # Option 2: Use preload in a separate query
+  # query = Message
+  # |> where([m], m.room_id == ^channel_id)
+  # |> order_by([m], desc: m.inserted_at)
+  # |> limit(^limit)
+  #
+  # Frestyl.Repo.all(query)
+  # |> Frestyl.Repo.preload(:user)
+  # |> Enum.map(fn message ->
+  #   # Create a map without the attachment_url field
+  #   %{
+  #     id: message.id,
+  #     content: message.content,
+  #     message_type: message.message_type,
+  #     user_id: message.user_id,
+  #     room_id: message.room_id,
+  #     inserted_at: message.inserted_at,
+  #     updated_at: message.updated_at,
+  #     user: message.user
+  #   }
+  # end)
+end
+
+  # Helper to get users for messages
+  defp get_users_for_messages(messages) do
+    user_ids = Enum.map(messages, & &1.user_id)
+    Accounts.get_users_by_ids(user_ids)
+  end
+
+  # Apply action functions for different routes
   defp apply_action(socket, :show, _params) do
-    # Most of the work is already done in mount
     socket
+    |> assign(:page_title, "Channel - #{socket.assigns.channel.name}")
   end
 
-  # Find this function in your channel_live/show.ex file
-  defp apply_action(socket, :show, %{"id" => id}) do
-    channel = Frestyl.Channels.get_channel!(id)
+  defp apply_action(socket, :edit, _params) do
+    # Check if user can edit the channel
+    if can_edit_channel?(socket.assigns.user_role) do
+      socket
+      |> assign(:page_title, "Edit Channel - #{socket.assigns.channel.name}")
+    else
+      socket
+      |> put_flash(:error, "You don't have permission to edit this channel.")
+      |> redirect(to: ~p"/channels/#{socket.assigns.channel.slug}")
+    end
+  end
 
-    messages = Frestyl.Channels.list_channel_messages(channel.id)
-
+  # Fall back action for other routes
+  defp apply_action(socket, _action, _params) do
     socket
-    |> assign(:page_title, channel.name)
-    |> assign(:channel, channel)
-    |> assign(:messages, messages)
-    |> ensure_typing_users_is_map()
-    |> assign(:draft_message, "")
+    |> assign(:page_title, "Channel - #{socket.assigns.channel.name}")
   end
 
-  # Add this helper function to your module
-  defp ensure_typing_users_is_map(socket) do
-    # Check if typing_users exists and is a map, otherwise set it to %{}
-    case socket.assigns[:typing_users] do
-      nil -> assign(socket, :typing_users, %{})
-      map when is_map(map) -> socket
-      _not_a_map -> assign(socket, :typing_users, %{})
-    end
-  end
-
-  defp reload_media(socket) do
-    channel_id = socket.assigns.channel.id
-    media_files = Media.list_channel_files(channel_id)
-    assign(socket, :media_files, media_files)
-  end
-
-  # Mount function - make sure this integrates with your existing mount implementation
-  @impl true
-  def mount(_params, _session, socket) do
-    socket = assign(socket, :page_title, "Channel Form")
-
-    # Check if we need to fetch the current user
-    socket =
-      if is_nil(socket.assigns[:current_user]) do
-        # If the socket doesn't have current_user, we need to fetch it
-        case Frestyl.Accounts.get_user_by_session_token(socket.assigns.user_token) do
-          %Frestyl.Accounts.User{} = user -> assign(socket, :current_user, user)
-          _ -> socket
-        end
-      else
-        # Current user is already assigned
-        socket
-      end
-
-    {:ok, socket}
-  end
-
-  # Handle typing events
-  @impl true
-  def handle_event("typing", %{"key" => _key, "value" => value}, socket) do
-    # Store the current draft message
-    socket = assign(socket, :draft_message, value)
-
-    # Only broadcast typing if there's actual content
-    if String.trim(value) != "" do
-      user_id = socket.assigns.current_user.id
-      channel_id = socket.assigns.channel.id
-
-      # Broadcast that this user is typing
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "channel:#{channel_id}",
-        {:user_typing, user_id, channel_id}
-      )
-    end
-
-    {:noreply, socket}
-  end
-
-  # Handle message sending
-  @impl true
-  def handle_event("send_message", %{"message" => message}, socket) do
-    # Only process non-empty messages
-    if String.trim(message) != "" do
-      user = socket.assigns.current_user
-      channel = socket.assigns.channel
-
-      # Create the message in your database
-      case Frestyl.Channels.create_message(%{
-        content: message,
-        user_id: user.id,
-        channel_id: channel.id
-      }) do
-        {:ok, new_message} ->
-          # Broadcast the new message to all channel members
-          Phoenix.PubSub.broadcast(
-            Frestyl.PubSub,
-            "channel:#{channel.id}",
-            {:new_message, new_message}
-          )
-
-          # Clear the draft message and update messages list
-          messages = socket.assigns.messages ++ [new_message]
-          socket = socket
-            |> assign(:draft_message, "")
-            |> assign(:messages, messages)
-
-          {:noreply, socket}
-
-        {:error, changeset} ->
-          # Handle errors from message creation
-          error_msg = format_error(changeset)
-          {:noreply, put_flash(socket, :error, "Failed to send message: #{error_msg}")}
-      end
-    else
-      # Don't do anything for empty messages
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_info({:user_typing, user_id, channel_id}, socket) do
-    # Make sure the channel matches
-    if socket.assigns[:channel] && channel_id == socket.assigns.channel.id do
-      # Skip self-notifications
-      if user_id != socket.assigns.current_user.id do
-        # CRITICAL FIX: Convert typing_users to a map if it's not already
-        # This ensures we handle the case where it might be [] instead of %{}
-        typing_users = case socket.assigns[:typing_users] do
-          nil -> %{}
-          map when is_map(map) -> map
-          _ -> %{}  # Convert any non-map (like []) to %{}
-        end
-
-        # Now proceed with the typing logic
-        typing_users = Map.put(typing_users, user_id, System.os_time(:second))
-
-        # Clean up users who haven't typed in 5 seconds
-        current_time = System.os_time(:second)
-        typing_users = typing_users
-          |> Enum.filter(fn {_id, timestamp} ->
-            current_time - timestamp < 5
-          end)
-          |> Map.new()
-
-        {:noreply, assign(socket, :typing_users, typing_users)}
-      else
-        {:noreply, socket}
-      end
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Handle new messages
-  @impl true
-  def handle_info({:new_message, message}, socket) do
-    # Only process messages for the current channel
-    if socket.assigns[:channel] && message.channel_id == socket.assigns.channel.id do
-      # Add the new message to our list
-      messages = socket.assigns.messages ++ [message]
-
-      # Remove the sender from typing users
-      typing_users = Map.delete(socket.assigns[:typing_users] || %{}, message.user_id)
-
-      # Update the socket
-      socket = socket
-        |> assign(:messages, messages)
-        |> assign(:typing_users, typing_users)
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Add a catch-all handler for other messages
-  @impl true
-  def handle_info(msg, socket) do
-    IO.inspect(msg, label: "Unhandled message in ChannelLive.Show")
-    {:noreply, socket}
-  end
-
-  # Helper function for formatting error messages
-  defp format_error(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
-        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-      end)
-    end)
-    |> Enum.map(fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
-    |> Enum.join("; ")
-  end
-
-  # Helper for formatting typing indicator messages
-  defp typing_message(typing_users) do
-    # Get user information - adjust this to match your app's user retrieval
-    typing_usernames = Enum.map(Map.keys(typing_users), fn user_id ->
-      case Frestyl.Accounts.get_user(user_id) do
-        %{username: username} when not is_nil(username) -> username
-        %{email: email} -> email |> String.split("@") |> List.first()
-        _ -> "Someone"
-      end
-    end)
-
-    case length(typing_usernames) do
-      1 -> "#{List.first(typing_usernames)} is typing..."
-      2 -> "#{List.first(typing_usernames)} and #{List.last(typing_usernames)} are typing..."
-      n when n > 2 -> "Several people are typing..."
-      _ -> ""
-    end
-  end
-
-  @impl true
-  def handle_info({:media_changed, %{category: category, media_id: media_id}}, socket) do
-    if media_id do
-      # Find the media item in the existing files
-      media_item = Enum.find(socket.assigns.media_files, &(&1.id == media_id))
-      {:noreply, update(socket, :active_media, fn current -> Map.put(current, category, media_item) end)}
-    else
-      {:noreply, update(socket, :active_media, fn current -> Map.put(current, category, nil) end)}
-    end
-  end
-
-  @impl true
-  def handle_event("join_channel", _params, socket) do
-    user = socket.assigns.current_user
-    channel = socket.assigns.channel
-
-    case Channels.join_channel(user, channel) do
-      {:ok, _membership} ->
-        members = Channels.list_channel_members(channel.id)
-        chat_messages = Chat.list_recent_channel_messages(channel.id)
-
-        # Subscribe to channel messages
-        if connected?(socket) do
-          Phoenix.PubSub.subscribe(Frestyl.PubSub, "channel:#{channel.id}")
-        end
-
-        {:noreply,
-         socket
-         |> assign(:is_member, true)
-         |> assign(:restricted, false)
-         |> assign(:members, members)
-         |> assign(:chat_messages, chat_messages)
-         |> put_flash(:info, "Successfully joined #{channel.name}")}
-
-      {:error, error} ->
-        {:noreply, put_flash(socket, :error, error)}
-    end
-  end
-
-  @impl true
-  def handle_event("leave_channel", _params, socket) do
-    user = socket.assigns.current_user
-    channel = socket.assigns.channel
-    members = socket.assigns.members
-
-    # Get the admins from the members list
-    admins = Enum.filter(members, fn member ->
-      member.role in ["admin", "owner"]
-    end)
-
-    # Check if this user is an admin and if there's only one admin
-    current_user_member = Enum.find(members, fn m -> m.user_id == user.id end)
-    is_admin = current_user_member && current_user_member.role in ["admin", "owner"]
-    is_last_admin = is_admin && length(admins) == 1
-
-    if is_last_admin do
-      {:noreply,
-        socket
-        |> put_flash(:error, "You cannot leave the channel as you are the only admin. Please promote another member to admin first.")
-      }
-    else
-      case Channels.leave_channel(user, channel) do
-        {:ok, _} ->
-          # Unsubscribe from channel messages
-          if connected?(socket) do
-            Phoenix.PubSub.unsubscribe(Frestyl.PubSub, "channel:#{channel.id}")
-          end
-
-          {:noreply,
-           socket
-           |> assign(:is_member, false)
-           |> assign(:restricted, channel.visibility != "public")
-           |> assign(:members, [])
-           |> assign(:chat_messages, [])
-           |> assign(:media_files, [])
-           |> put_flash(:info, "You have left #{channel.name}")
-           |> push_navigate(to: ~p"/channels")}
-
-        {:error, error} ->
-          {:noreply, put_flash(socket, :error, error)}
-      end
-    end
-  end
-
-  @impl true
-  def handle_event("archive_channel", _params, socket) do
-    current_user = socket.assigns.current_user
-    channel = socket.assigns.channel
-
-    case Channels.archive_channel(channel, current_user) do
-      {:ok, archived_channel} ->
-        {:noreply,
-          socket
-          |> assign(:channel, archived_channel)
-          |> put_flash(:info, "Channel has been archived")
-          |> push_navigate(to: ~p"/channels")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, reason)}
-    end
-  end
-
-  @impl true
-  def handle_event("unarchive_channel", _params, socket) do
-    current_user = socket.assigns.current_user
-    channel = socket.assigns.channel
-
-    case Channels.unarchive_channel(channel, current_user) do
-      {:ok, unarchived_channel} ->
-        {:noreply,
-          socket
-          |> assign(:channel, unarchived_channel)
-          |> put_flash(:info, "Channel has been restored")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, reason)}
-    end
-  end
-
-  @impl true
-  def handle_event("delete_channel", _params, socket) do
-    user = socket.assigns.current_user
-    channel = socket.assigns.channel
-
-    # Check if user has permission to delete
-    if Channels.can_edit_channel?(channel, user) do
-      case Channels.delete_channel(channel) do
-        {:ok, _} ->
-          {:noreply,
-          socket
-          |> put_flash(:info, "Channel deleted successfully")
-          |> push_navigate(to: ~p"/channels")}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, reason)}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You don't have permission to delete this channel")}
-    end
-  end
-
-  @impl true
-  def handle_event("permanently_delete_channel", _params, socket) do
-    current_user = socket.assigns.current_user
-    channel = socket.assigns.channel
-
-    case Channels.permanently_delete_channel(channel, current_user) do
-      {:ok, _deleted_channel} ->
-        {:noreply,
-          socket
-          |> put_flash(:info, "Channel has been permanently deleted")
-          |> push_navigate(to: ~p"/channels")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, reason)}
-    end
-  end
-
-  @impl true
-  def handle_event("typing", %{"key" => _key, "value" => value}, socket) do
-    # Store the current draft message value in the socket assigns
-    # This allows you to keep track of what the user is currently typing
-    socket = assign(socket, :draft_message, value)
-
-    # Only broadcast typing events if there's a meaningful message being typed
-    if String.trim(value) != "" do
-      user_id = socket.assigns.current_user.id
-      channel_id = socket.assigns.channel.id
-
-      # Optional: Broadcast to other users that this user is typing
-      # This helps implement a "User is typing..." indicator
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "channel:#{channel_id}",
-        {:user_typing, user_id, channel_id}
-      )
-
-      # You could also use a debounced approach to avoid too many broadcasts
-      # by setting a "typing_since" timestamp and only broadcasting every few seconds
-    end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("send_message", %{"message" => message}, socket) do
-    # Skip empty messages
-    if String.trim(message) != "" do
-      user = socket.assigns.current_user
-      channel = socket.assigns.channel
-
-      # Create and save the new message
-      case Frestyl.Channels.create_message(%{
-        content: message,
-        user_id: user.id,
-        channel_id: channel.id
-      }) do
-        {:ok, new_message} ->
-          # Broadcast the new message to all channel members
-          Phoenix.PubSub.broadcast(
-            Frestyl.PubSub,
-            "channel:#{channel.id}",
-            {:new_message, new_message}
-          )
-
-          # Clear the draft message
-          socket = assign(socket, :draft_message, "")
-
-          # Optionally refresh the messages list if you're not handling new_message in handle_info
-          # socket = assign(socket, :messages, Frestyl.Channels.list_messages(channel.id))
-
-          {:noreply, socket}
-
-        {:error, changeset} ->
-          # Handle message creation error
-          {:noreply, put_flash(socket, :error, "Failed to send message: #{error_message(changeset)}")}
-      end
-    else
-      # Empty message - just return the socket unchanged
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_info({:new_message, message}, socket) do
-    # Skip if it's not for the current channel
-    if message.channel_id == socket.assigns.channel.id do
-      # Add the new message to the messages list
-      messages = socket.assigns.messages ++ [message]
-
-      # Remove the sender from typing users (they've completed typing)
-      typing_users = Map.delete(socket.assigns.typing_users, message.user_id)
-
-      socket = assign(socket, messages: messages, typing_users: typing_users)
-
-      # If this is from the current user, we can clear the draft
-      if message.user_id == socket.assigns.current_user.id do
-        socket = assign(socket, :draft_message, "")
-      end
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Helper function to format error messages
-  defp error_message(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
-        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-      end)
-    end)
-    |> Enum.map(fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
-    |> Enum.join("; ")
-  end
-
-  @impl true
-  def handle_info({:user_typing, user_id, channel_id}, socket) do
-    # Skip if it's not for the current channel
-    if channel_id == socket.assigns.channel.id do
-      # Skip if it's the current user typing (to avoid self-notifications)
-      if user_id != socket.assigns.current_user.id do
-        # Get the current map of typing users or initialize an empty map
-        typing_users = socket.assigns[:typing_users] || %{}
-
-        # Add this user to the typing users map with the current timestamp
-        typing_users = Map.put(typing_users, user_id, System.os_time(:second))
-
-        # Clean up users who haven't typed in a while (e.g., 5 seconds)
-        current_time = System.os_time(:second)
-        typing_users = Enum.filter(typing_users, fn {_id, timestamp} ->
-          current_time - timestamp < 5
-        end) |> Map.new()
-
-        # Update the socket with the new typing_users map
-        {:noreply, assign(socket, :typing_users, typing_users)}
-      else
-        # It's the current user typing, no need to update anything
-        {:noreply, socket}
-      end
-    else
-      # Not for this channel, ignore
-      {:noreply, socket}
-    end
-  end
-
-  # Make sure to initialize typing_users in your mount function
-  @impl true
-  def mount(_params, _session, socket) do
-    # Your existing mount code...
-
-    socket = assign(socket, :typing_users, %{})
-    socket = assign(socket, :draft_message, "")
-
-    # Your existing code...
-    {:ok, socket}
-  end
-
-  # You should also add a catch-all handle_info function to handle any other messages
-  @impl true
-  def handle_info(message, socket) do
-    # Log unexpected messages for debugging
-    IO.inspect(message, label: "Unexpected message in ChannelLive.Show")
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:media_changed, %{category: category, media_id: media_id}}, socket) do
-    if media_id do
-      # Find the media item in the existing files
-      media_item = Enum.find(socket.assigns.media_files, &(&1.id == media_id))
-      {:noreply, update(socket, :active_media, fn current -> Map.put(current, category, media_item) end)}
-    else
-      {:noreply, update(socket, :active_media, fn current -> Map.put(current, category, nil) end)}
-    end
-  end
-
+  # UI Navigation Event Handlers
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, :active_tab, tab)}
   end
 
   @impl true
-  def handle_event("show_invite_modal", _params, socket) do
+  def handle_event("switch_activity_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :activity_tab, tab)}
+  end
+
+  @impl true
+  def handle_event("toggle_options", _, socket) do
+    {:noreply, assign(socket, :show_options_panel, !socket.assigns.show_options_panel)}
+  end
+
+  @impl true
+  def handle_event("show_invite_modal", _, socket) do
     {:noreply, assign(socket, :show_invite_modal, true)}
   end
 
   @impl true
-  def handle_event("hide_invite_modal", _params, socket) do
+  def handle_event("hide_invite_modal", _, socket) do
     {:noreply, assign(socket, :show_invite_modal, false)}
   end
 
   @impl true
-  def handle_event("invite_to_channel", %{"email" => email}, socket) do
-    user = socket.assigns.current_user
-    channel = socket.assigns.channel
-
-    case Channels.invite_to_channel(user.id, channel.id, email) do
-      {:ok, _invitation} ->
-        {:noreply,
-         socket
-         |> assign(:show_invite_modal, false)
-         |> put_flash(:info, "Invitation sent to #{email}")}
-
-      {:error, _changeset} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to send invitation")}
-    end
-  end
-
-  # Helper function to create a channel invitation
-  defp create_channel_invitation(channel, email, current_user) do
-    # You'll need to implement this function based on your invitation system
-    # This is a placeholder assuming you have a similar function in your app
-    Channels.create_invitation(%{
-      email: email,
-      channel_id: channel.id,
-      role_id: get_member_role_id(),
-      token: generate_token(),
-      expires_at: DateTime.utc_now() |> DateTime.add(7 * 24 * 60 * 60, :second), # 7 days
-      status: "pending"
-    })
-  end
-
-  # Helper function to get the member role ID
-  defp get_member_role_id do
-    # This is a placeholder - replace with your actual implementation
-    # to get the ID of the "member" role
-    Channels.get_role_by_name("member").id
-  end
-
-  # Helper function to get user email by ID
-  defp get_user_email(user_id) when is_binary(user_id) do
-    case Accounts.get_user(user_id) do
-      %{email: email} -> email
-      _ -> ""
-    end
-  end
-  defp get_user_email(nil), do: ""
-
-  # Helper function to generate a secure token
-  defp generate_token do
-    :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-  end
-
-  @impl true
-  def handle_event("change_role", %{"member_id" => member_id, "role" => role}, socket) do
-    # Get the membership and update role
-    membership = Repo.get!(Frestyl.Channels.ChannelMembership, member_id)
-
-    if Channels.can_edit_channel?(socket.assigns.channel, socket.assigns.current_user) do
-      case Channels.update_member_role(membership, role) do
-        {:ok, _} ->
-          members = Channels.list_channel_members(socket.assigns.channel.id)
-          {:noreply,
-           socket
-           |> assign(:members, members)
-           |> put_flash(:info, "Member role updated successfully")}
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Failed to update member role")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You don't have permission to change member roles")}
-    end
-  end
-
-  @impl true
-  def handle_event("remove_member", %{"member_id" => member_id}, socket) do
-    # Get the membership and delete it
-    membership = Repo.get!(Frestyl.Channels.ChannelMembership, member_id)
-
-    if Channels.can_edit_channel?(socket.assigns.channel, socket.assigns.current_user) do
-      case Repo.delete(membership) do
-        {:ok, _} ->
-          members = Channels.list_channel_members(socket.assigns.channel.id)
-          {:noreply,
-           socket
-           |> assign(:members, members)
-           |> put_flash(:info, "Member removed successfully")}
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Failed to remove member")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You don't have permission to remove members")}
-    end
-  end
-
-  @impl true
-  def handle_event("block_member", %{"user-id" => user_id}, socket) do
-    # Instead of blocking immediately, store the user ID and show the block modal
-    {:noreply,
-     socket
-     |> assign(:user_to_block, user_id)
-     |> assign(:show_block_modal, true)
-     |> assign(:blocking_member, true)}  # Flag to indicate we're blocking an existing member
-  end
-
-  # Update the block_email handler to handle both email and member blocking
-  @impl true
-  def handle_event("block_email", %{"email" => email, "reason" => reason, "duration" => duration}, socket) do
-    channel = socket.assigns.channel
-    current_user = socket.assigns.current_user
-
-    # Calculate expires_at based on duration
-    expires_at = case duration do
-      "permanent" -> nil
-      "1d" -> DateTime.utc_now() |> DateTime.add(1 * 24 * 60 * 60, :second)
-      "7d" -> DateTime.utc_now() |> DateTime.add(7 * 24 * 60 * 60, :second)
-      "30d" -> DateTime.utc_now() |> DateTime.add(30 * 24 * 60 * 60, :second)
-      "90d" -> DateTime.utc_now() |> DateTime.add(90 * 24 * 60 * 60, :second)
-      _ -> nil # Default to permanent
-    end
-
-    if Channels.can_edit_channel?(channel, current_user) do
-      # Check if we're blocking an existing member
-      if socket.assigns[:blocking_member] && socket.assigns[:user_to_block] do
-        user_id = socket.assigns.user_to_block
-        user_to_block = Accounts.get_user!(user_id)
-
-        case Channels.block_user(channel, user_to_block, current_user, %{
-          reason: reason,
-          expires_at: expires_at,
-          block_level: "channel"
-        }) do
-          {:ok, _} ->
-            # Update members and blocked users lists
-            members = Channels.list_channel_members(channel.id)
-            blocked_users = Channels.list_blocked_users(channel.id)
-
-            {:noreply,
-             socket
-             |> assign(:members, members)
-             |> assign(:blocked_users, blocked_users)
-             |> assign(:user_to_block, nil)
-             |> assign(:blocking_member, false)
-             |> assign(:show_block_modal, false)
-             |> put_flash(:info, "User blocked successfully")}
-
-          {:error, changeset} ->
-            {:noreply,
-             socket
-             |> assign(:user_to_block, nil)
-             |> assign(:blocking_member, false)
-             |> put_flash(:error, format_error(changeset))}
-        end
-      else
-        # We're blocking by email (original functionality)
-        case Accounts.get_user_by_email(email) do
-          nil ->
-            # Just block the email
-            case Channels.block_email(channel, email, current_user, %{
-              reason: reason,
-              expires_at: expires_at,
-              block_level: "channel"
-            }) do
-              {:ok, _} ->
-                blocked_emails = Channels.list_blocked_emails(channel.id)
-
-                {:noreply,
-                 socket
-                 |> assign(:blocked_emails, blocked_emails)
-                 |> assign(:show_block_modal, false)
-                 |> put_flash(:info, "Email #{email} blocked successfully")}
-
-              {:error, changeset} ->
-                {:noreply,
-                 socket
-                 |> put_flash(:error, format_error(changeset))}
-            end
-
-          user ->
-            # Block the actual user
-            case Channels.block_user(channel, user, current_user, %{
-              reason: reason,
-              expires_at: expires_at,
-              block_level: "channel"
-            }) do
-              {:ok, _} ->
-                blocked_users = Channels.list_blocked_users(channel.id)
-
-                {:noreply,
-                 socket
-                 |> assign(:blocked_users, blocked_users)
-                 |> assign(:show_block_modal, false)
-                 |> put_flash(:info, "User #{email} blocked successfully")}
-
-              {:error, changeset} ->
-                {:noreply,
-                 socket
-                 |> put_flash(:error, format_error(changeset))}
-            end
-        end
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You don't have permission to block users")}
-    end
-  end
-
-  @impl true
-  def handle_event("unblock_user", %{"id" => blocked_id}, socket) do
-    channel = socket.assigns.channel
-    current_user = socket.assigns.current_user
-
-    if Channels.can_edit_channel?(channel, current_user) do
-      blocked = Repo.get!(Frestyl.Channels.BlockedUser, blocked_id)
-
-      case Repo.delete(blocked) do
-        {:ok, _} ->
-          # Update blocked users list
-          blocked_users = Channels.list_blocked_users(channel.id)
-
-          {:noreply,
-          socket
-          |> assign(:blocked_users, blocked_users)
-          |> put_flash(:info, "User unblocked successfully")}
-
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Failed to unblock user")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You don't have permission to unblock users")}
-    end
-  end
-
-  @impl true
-  def handle_event("show_block_modal", _params, socket) do
+  def handle_event("show_block_modal", _, socket) do
     {:noreply, assign(socket, :show_block_modal, true)}
   end
 
   @impl true
-  def handle_event("hide_block_modal", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_block_modal, false)
-     |> assign(:user_to_block, nil)
-     |> assign(:blocking_member, false)}
+  def handle_event("hide_block_modal", _, socket) do
+    {:noreply, assign(socket, :show_block_modal, false)}
   end
 
   @impl true
-  def handle_event("set_active_media", %{"category" => category, "id" => id}, socket) do
-    category_atom = String.to_existing_atom(category)
+  def handle_event("show_media_upload", _, socket) do
+    {:noreply, assign(socket, :show_media_upload, true)}
+  end
 
-    if socket.assigns.can_edit do
-      case Channels.set_active_media(socket.assigns.channel, category_atom, String.to_integer(id)) do
-        {:ok, _updated_channel} ->
-          media_item = Enum.find(socket.assigns.media_files, fn m ->
-            m.id == String.to_integer(id)
-          end)
+  @impl true
+  def handle_event("hide_media_upload", _, socket) do
+    {:noreply, assign(socket, :show_media_upload, false)}
+  end
+
+  # Channel Membership Event Handlers
+  @impl true
+  def handle_event("join_channel", _, socket) do
+    %{channel: channel, current_user: current_user} = socket.assigns
+
+    case Channels.join_channel(current_user, channel) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "You have joined the channel.")
+         |> redirect(to: ~p"/channels/#{channel.slug}")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Could not join channel: #{reason}")
+         |> redirect(to: ~p"/channels/#{channel.slug}")}
+    end
+  end
+
+  @impl true
+  def handle_event("leave_channel", _, socket) do
+    %{channel: channel, current_user: current_user} = socket.assigns
+
+    case Channels.leave_channel(current_user, channel) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "You have left the channel.")
+         |> redirect(to: ~p"/dashboard")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Could not leave channel: #{reason}")
+         |> redirect(to: ~p"/channels/#{channel.slug}")}
+    end
+  end
+
+  @impl true
+  def handle_event("request_access", _, socket) do
+    %{channel: channel, current_user: current_user} = socket.assigns
+
+    # Implement request_access function call
+    # This might need to be added to your Channels context
+    # For now, we'll just show a flash message
+    {:noreply,
+     socket
+     |> put_flash(:info, "Access request sent. You will be notified when approved.")
+     |> redirect(to: ~p"/dashboard")}
+  end
+
+  # Chat Events
+  @impl true
+  def handle_event("send_message", %{"message" => content}, socket) do
+    %{channel: channel, current_user: current_user} = socket.assigns
+
+    # Skip empty messages
+    case String.trim(content) do
+      "" -> {:noreply, socket}
+
+      message_content ->
+        # Create message with room_id instead of channel_id
+        case Frestyl.Repo.insert(%Frestyl.Channels.Message{
+          content: message_content,
+          message_type: "text",
+          user_id: current_user.id,
+          room_id: channel.id
+        }) do
+          {:ok, _message} ->
+            # Refresh messages after sending
+            chat_messages = list_channel_messages(channel.id, limit: 50)
+
+            {:noreply,
+             socket
+             |> assign(:message_text, "")
+             |> assign(:chat_messages, chat_messages)}
+
+          {:error, changeset} ->
+            {:noreply,
+             socket
+             |> put_flash(:error, "Error sending message: #{error_message(changeset)}")
+             |> assign(:message_text, content)}
+        end
+    end
+  end
+
+  @impl true
+  def handle_event("delete_message", %{"id" => id}, socket) do
+    %{current_user: current_user, is_admin: is_admin} = socket.assigns
+
+    # Convert id to integer
+    {message_id, _} = Integer.parse(id)
+
+    # Get the message
+    message = Frestyl.Repo.get(Frestyl.Channels.Message, message_id)
+
+    # Only allow deletion if user owns the message or is an admin
+    if message && (message.user_id == current_user.id || is_admin) do
+      case Frestyl.Repo.delete(message) do
+        {:ok, _} ->
+          # Refresh messages after deletion
+          chat_messages = list_channel_messages(socket.assigns.channel.id, limit: 50)
 
           {:noreply,
-          socket
-          |> put_flash(:info, "#{String.capitalize(category)} media set")
-          |> update(:active_media, fn media ->
-              Map.put(media, category_atom, media_item)
-            end)}
+           socket
+           |> assign(:chat_messages, chat_messages)}
 
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Could not set active media")}
+        {:error, _reason} ->
+          {:noreply, put_flash(socket, :error, "Could not delete message")}
       end
     else
-      {:noreply, put_flash(socket, :error, "You don't have permission to set active media")}
+      {:noreply, put_flash(socket, :error, "Not authorized to delete this message")}
     end
+  end
+
+  @impl true
+  def handle_event("typing", _params, socket) do
+    # Could implement a typing indicator here if needed
+    {:noreply, socket}
+  end
+
+  # Invitation Events
+  @impl true
+  def handle_event("invite_to_channel", %{"email" => email}, socket) do
+    %{channel: channel, current_user: current_user} = socket.assigns
+
+    case Channels.invite_to_channel(current_user.id, channel.id, email) do
+      {:ok, _invitation} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Invitation sent to #{email}.")
+         |> assign(:show_invite_modal, false)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Could not send invitation: #{reason}")
+         |> assign(:show_invite_modal, false)}
+    end
+  end
+
+  # Member Management Events
+  @impl true
+  def handle_event("promote_member", %{"user-id" => user_id}, socket) do
+    %{channel: channel} = socket.assigns
+
+    # Get member's current role
+    membership = Channels.get_channel_membership(%{id: user_id}, channel)
+
+    if membership do
+      # Determine new role based on current role
+      new_role = case membership.role do
+        "member" -> "moderator"
+        "moderator" -> "member"
+        role -> role
+      end
+
+      case Channels.update_member_role(membership, new_role) do
+        {:ok, _} ->
+          # Refresh members list
+          members = get_channel_members(channel)
+
+          {:noreply,
+           socket
+           |> put_flash(:info, "Member role updated.")
+           |> assign(:members, members)}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Could not update member role: #{reason}")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Membership not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("remove_member", %{"user-id" => user_id}, socket) do
+    %{channel: channel} = socket.assigns
+
+    # Try to get the membership
+    membership = Channels.get_channel_membership(%{id: user_id}, channel)
+
+    if membership do
+      case Frestyl.Repo.delete(membership) do
+        {:ok, _} ->
+          # Refresh members list
+          members = get_channel_members(channel)
+
+          {:noreply,
+           socket
+           |> put_flash(:info, "Member removed from channel.")
+           |> assign(:members, members)}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Could not remove member: #{reason}")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Membership not found")}
+    end
+  end
+
+  # User Blocking Events
+  @impl true
+  def handle_event("block_member", %{"user-id" => user_id}, socket) do
+    %{channel: channel} = socket.assigns
+
+    # Get the user
+    user = Accounts.get_user(user_id)
+
+    if user do
+      {:noreply,
+       socket
+       |> assign(:show_block_modal, true)
+       |> assign(:blocking_member, true)
+       |> assign(:user_to_block, user)}
+    else
+      {:noreply, put_flash(socket, :error, "User not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("block_email", %{"email" => email, "reason" => reason, "duration" => duration}, socket) do
+    %{channel: channel, current_user: current_user, blocking_member: blocking_member, user_to_block: user_to_block} = socket.assigns
+
+    block_attrs = %{reason: reason}
+    # Convert duration to an actual expiration date
+    block_attrs = case duration do
+      "permanent" -> block_attrs
+      "1d" -> Map.put(block_attrs, :expires_at, DateTime.add(DateTime.utc_now(), 1, :day))
+      "7d" -> Map.put(block_attrs, :expires_at, DateTime.add(DateTime.utc_now(), 7, :day))
+      "30d" -> Map.put(block_attrs, :expires_at, DateTime.add(DateTime.utc_now(), 30, :day))
+      "90d" -> Map.put(block_attrs, :expires_at, DateTime.add(DateTime.utc_now(), 90, :day))
+      _ -> block_attrs
+    end
+
+    block_result = if blocking_member && user_to_block do
+      Channels.block_user(channel, user_to_block, current_user, block_attrs)
+    else
+      Channels.block_email(channel, email, current_user, block_attrs)
+    end
+
+    case block_result do
+      {:ok, _} ->
+        # Refresh the blocked users list
+        blocked_users = Channels.list_blocked_users(channel.id)
+        blocked_emails = Channels.list_blocked_emails(channel.id)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "#{if blocking_member, do: user_to_block.email, else: email} has been blocked from the channel.")
+         |> assign(:show_block_modal, false)
+         |> assign(:blocking_member, false)
+         |> assign(:user_to_block, nil)
+         |> assign(:blocked_users, blocked_users)
+         |> assign(:blocked_emails, blocked_emails)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Could not block user: #{reason}")
+         |> assign(:show_block_modal, false)
+         |> assign(:blocking_member, false)
+         |> assign(:user_to_block, nil)}
+    end
+  end
+
+  @impl true
+  def handle_event("unblock_user", %{"id" => id}, socket) do
+    %{channel: channel} = socket.assigns
+
+    # Get the block record
+    block = Frestyl.Repo.get(Frestyl.Channels.BlockedUser, id)
+
+    if block do
+      case Frestyl.Repo.delete(block) do
+        {:ok, _} ->
+          # Refresh the blocked users list
+          blocked_users = Channels.list_blocked_users(channel.id)
+          blocked_emails = Channels.list_blocked_emails(channel.id)
+
+          {:noreply,
+           socket
+           |> put_flash(:info, "User has been unblocked.")
+           |> assign(:blocked_users, blocked_users)
+           |> assign(:blocked_emails, blocked_emails)}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Could not unblock user: #{reason}")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Block not found")}
+    end
+  end
+
+  # Media Management Events
+  @impl true
+  def handle_event("start_broadcast", _, socket) do
+    %{channel: channel} = socket.assigns
+
+    # Redirect to the broadcast page
+    {:noreply, redirect(socket, to: ~p"/channels/#{channel.slug}/broadcast")}
+  end
+
+  @impl true
+  def handle_event("view_media", %{"id" => id}, socket) do
+    {:noreply, assign(socket, :viewing_media, id)}
   end
 
   @impl true
   def handle_event("clear_active_media", %{"category" => category}, socket) do
+    %{channel: channel} = socket.assigns
+
+    # Convert category string to atom
     category_atom = String.to_existing_atom(category)
 
-    if socket.assigns.can_edit do
-      case Channels.clear_active_media(socket.assigns.channel, category_atom) do
-        {:ok, _updated_channel} ->
-          {:noreply,
-          socket
-          |> put_flash(:info, "#{String.capitalize(category)} media cleared")
-          |> update(:active_media, fn media ->
-              Map.put(media, category_atom, nil)
-            end)}
+    case Channels.clear_active_media(channel, category_atom) do
+      {:ok, _} ->
+        # Refresh active media
+        active_media = Channels.get_active_media(channel) || %{}
 
-        {:error, _} ->
-          {:noreply, put_flash(socket, :error, "Could not clear active media")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You don't have permission to clear active media")}
+        {:noreply, assign(socket, :active_media, active_media)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not clear media: #{reason}")}
     end
   end
 
   @impl true
-  def handle_info({:media_changed, %{category: category, media_id: media_id}}, socket) do
-    if media_id do
-      media_item = Enum.find(socket.assigns.media_files, fn m ->
-        m.id == media_id
-      end)
+  def handle_event("browse_media_for_category", %{"category" => category}, socket) do
+    # Store the category and show media browser
+    {:noreply,
+     socket
+     |> assign(:media_category, category)
+     |> assign(:show_media_browser, true)}
+  end
 
-      {:noreply, update(socket, :active_media, fn media ->
-        Map.put(media, category, media_item)
-      end)}
-    else
-      {:noreply, update(socket, :active_media, fn media ->
-        Map.put(media, category, nil)
-      end)}
+  @impl true
+  def handle_event("create_session", %{"session" => session_params}, socket) do
+    %{channel: channel, current_user: current_user} = socket.assigns
+
+    # Add channel_id and user_id to params
+    session_params = Map.merge(session_params, %{
+      "channel_id" => channel.id,
+      "user_id" => current_user.id
+    })
+
+    case Channels.create_session(session_params) do
+      {:ok, session} ->
+        {:noreply,
+        socket
+        |> put_flash(:info, "Session created successfully.")
+        |> redirect(to: ~p"/channels/#{channel.slug}")}
+
+      {:error, changeset} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Error creating session: #{error_message(changeset)}")
+        |> assign(:changeset, changeset)}
     end
   end
 
   @impl true
-  def handle_info({:media_changed, %{category: category, media_id: media_id}}, socket) do
-    media_item = if media_id, do: Media.get_media_file!(media_id), else: nil
-    {:noreply, update_active_media(socket, category, media_item)}
-  end
+  def handle_event("schedule_broadcast", %{"broadcast" => broadcast_params}, socket) do
+    %{channel: channel, current_user: current_user} = socket.assigns
 
-  # Helper function for updating active media in socket
-  defp update_active_media(socket, category, media_item) do
-    update(socket, :active_media, fn media ->
-      Map.put(media, category, media_item)
-    end)
-  end
+    # Add channel_id and user_id to params
+    broadcast_params = Map.merge(broadcast_params, %{
+      "channel_id" => channel.id,
+      "user_id" => current_user.id
+    })
 
-  @impl true
-  def handle_event("start_broadcast", _params, socket) do
-    # Placeholder for broadcast functionality
-    {:noreply, socket |> put_flash(:info, "Broadcasting functionality will be implemented soon.")}
-  end
+    case Channels.create_broadcast(broadcast_params) do
+      {:ok, broadcast} ->
+        {:noreply,
+        socket
+        |> put_flash(:info, "Broadcast scheduled successfully.")
+        |> redirect(to: ~p"/channels/#{channel.slug}")}
 
-  def handle_event("show_media_upload", _params, socket) do
-    {:noreply, assign(socket, :show_media_upload, true)}
-  end
-
-  def handle_event("hide_media_upload", _params, socket) do
-    {:noreply, assign(socket, :show_media_upload, false)}
-  end
-
-  # Add these message handlers
-  def handle_info(:show_media_upload, socket) do
-    {:noreply, assign(socket, :show_media_upload, true)}
-  end
-
-  def handle_info(:close_media_viewer, socket) do
-    {:noreply, assign(socket, :viewing_media, nil)}
-  end
-
-  def handle_info({:view_media, file_id}, socket) do
-    {:noreply, assign(socket, :viewing_media, file_id)}
-  end
-
-  def handle_info({:media_uploaded, files}, socket) do
-    {:noreply, socket
-      |> put_flash(:info, "#{length(files)} file(s) uploaded successfully")
-      |> assign(:show_media_upload, false)
-      |> reload_media()}
-  end
-
-  def handle_info({:media_deleted, _file}, socket) do
-    {:noreply, socket
-      |> put_flash(:info, "File deleted successfully")
-      |> assign(:viewing_media, nil)
-      |> reload_media()}
-  end
-
-  @impl true
-  def handle_info({:channel_updated, updated_channel}, socket) do
-    if updated_channel.id == socket.assigns.channel.id do
-      {:noreply,
-       socket
-       |> assign(:channel, updated_channel)
-       |> assign(:page_title, updated_channel.name)}
-    else
-      {:noreply, socket}
+      {:error, changeset} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Error scheduling broadcast: #{error_message(changeset)}")
+        |> assign(:changeset, changeset)}
     end
   end
 
   @impl true
-  def handle_info({:new_message, message}, socket) do
-    if message.channel_id == socket.assigns.channel.id do
-      {:noreply,
-       socket
-       |> update(:chat_messages, fn messages -> messages ++ [message] end)}
-    else
-      {:noreply, socket}
+  def handle_event("show_session_form", _, socket) do
+    # Instead of using the Session struct directly
+    changeset = Channels.change_session(nil)
+
+    {:noreply,
+    socket
+    |> assign(:show_session_form, true)
+    |> assign(:session_changeset, changeset)}
+  end
+
+  @impl true
+  def handle_event("show_broadcast_form", _, socket) do
+    # Instead of using the Broadcast struct directly
+    changeset = Channels.change_broadcast(nil)
+
+    {:noreply,
+    socket
+    |> assign(:show_broadcast_form, true)
+    |> assign(:broadcast_changeset, changeset)}
+  end
+
+  @impl true
+  def handle_event("hide_session_form", _, socket) do
+    {:noreply, assign(socket, :show_session_form, false)}
+  end
+
+  @impl true
+  def handle_event("hide_broadcast_form", _, socket) do
+    {:noreply, assign(socket, :show_broadcast_form, false)}
+  end
+
+  @impl true
+  def handle_event("view_session", %{"id" => id}, socket) do
+    session = Channels.get_session!(id)
+
+    {:noreply,
+    socket
+    |> assign(:viewing_session, session)}
+  end
+
+  @impl true
+  def handle_event("view_broadcast", %{"id" => id}, socket) do
+    broadcast = Channels.get_broadcast!(id)
+
+    {:noreply,
+    socket
+    |> assign(:viewing_broadcast, broadcast)}
+  end
+
+  @impl true
+  def handle_event("close_session_view", _, socket) do
+    {:noreply, assign(socket, :viewing_session, nil)}
+  end
+
+  @impl true
+  def handle_event("close_broadcast_view", _, socket) do
+    {:noreply, assign(socket, :viewing_broadcast, nil)}
+  end
+
+  @impl true
+  def handle_event("start_session", %{"id" => id}, socket) do
+    session = Channels.get_session!(id)
+
+    case Channels.start_session(session) do
+      {:ok, _} ->
+        {:noreply,
+        socket
+        |> put_flash(:info, "Session started successfully.")
+        |> redirect(to: ~p"/channels/#{socket.assigns.channel.slug}/sessions/#{id}")}
+
+      {:error, reason} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Error starting session: #{reason}")}
     end
+  end
+
+  @impl true
+  def handle_event("start_broadcast", %{"id" => id}, socket) do
+    broadcast = Channels.get_broadcast!(id)
+
+    case Channels.start_broadcast(broadcast) do
+      {:ok, _} ->
+        {:noreply,
+        socket
+        |> put_flash(:info, "Broadcast started successfully.")
+        |> redirect(to: ~p"/channels/#{socket.assigns.channel.slug}/broadcasts/#{id}")}
+
+      {:error, reason} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Error starting broadcast: #{reason}")}
+    end
+  end
+
+  # PubSub Handlers for Real-time Updates
+  @impl true
+  def handle_info({:message_created, message}, socket) do
+    %{chat_messages: messages, users_map: users_map} = socket.assigns
+
+    # Add user to the users map if not present
+    users_map = if Map.has_key?(users_map, message.user_id) do
+      users_map
+    else
+      user = Accounts.get_user(message.user_id)
+      Map.put(users_map, message.user_id, user)
+    end
+
+    # Add message to list
+    updated_messages = [message | messages]
+
+    {:noreply,
+     socket
+     |> assign(:chat_messages, updated_messages)
+     |> assign(:users_map, users_map)}
   end
 
   @impl true
   def handle_info({:message_deleted, message_id}, socket) do
-    updated_messages = Enum.reject(socket.assigns.chat_messages, fn msg -> msg.id == message_id end)
+    # Remove message from list
+    updated_messages = Enum.reject(socket.assigns.chat_messages, &(&1.id == message_id))
 
-    {:noreply,
-     socket
-     |> assign(:chat_messages, updated_messages)}
+    {:noreply, assign(socket, :chat_messages, updated_messages)}
   end
 
   @impl true
-  def handle_info({:presence_diff, diff}, socket) do
-    # Update presence in channel
-    {:noreply, socket}
-  end
+  def handle_info({:member_added, member}, socket) do
+    %{members: members, users_map: users_map} = socket.assigns
 
-  defp calendar_string(datetime) do
-    Calendar.strftime(datetime, "%B %d, %Y at %H:%M")
-  end
-
-    # Helper functions
-  defp reload_media(socket) do
-    channel_id = socket.assigns.channel.id
-    media_files = Media.list_channel_files(channel_id)
-    assign(socket, :media_files, media_files)
-  end
-
-  # Helper function to format relative time
-  def format_relative_time(timestamp) do
-    now = DateTime.utc_now()
-    diff = DateTime.diff(now, timestamp, :second)
-
-    cond do
-      diff < 60 -> "just now"
-      diff < 3600 -> "#{div(diff, 60)} minutes ago"
-      diff < 86400 -> "#{div(diff, 3600)} hours ago"
-      diff < 604800 -> "#{div(diff, 86400)} days ago"
-      diff < 2592000 -> "#{div(diff, 604800)} weeks ago"
-      diff < 31536000 -> "#{div(diff, 2592000)} months ago"
-      true -> "#{div(diff, 31536000)} years ago"
+    # Add user to users map if not present
+    users_map = if Map.has_key?(users_map, member.user_id) do
+      users_map
+    else
+      Map.put(users_map, member.user_id, member.user)
     end
+
+    # Add member to list (avoid duplicates)
+    updated_members = if Enum.any?(members, &(&1.id == member.id)) do
+      members
+    else
+      [member | members]
+    end
+
+    {:noreply,
+     socket
+     |> assign(:members, updated_members)
+     |> assign(:users_map, users_map)}
+  end
+
+  @impl true
+  def handle_info({:member_removed, member_id}, socket) do
+    # Remove member from list
+    updated_members = Enum.reject(socket.assigns.members, &(&1.id == member_id))
+
+    {:noreply, assign(socket, :members, updated_members)}
+  end
+
+  @impl true
+  def handle_info({:media_updated}, socket) do
+    # Refresh media files
+    media_files = Media.list_channel_files(socket.assigns.channel.id)
+
+    {:noreply, assign(socket, :media_files, media_files)}
+  end
+
+  @impl true
+  def handle_info({:close_media_viewer}, socket) do
+    {:noreply, assign(socket, :viewing_media, nil)}
+  end
+
+  @impl true
+  def handle_info({:close_media_upload}, socket) do
+    {:noreply, assign(socket, :show_media_upload, false)}
+  end
+
+  @impl true
+  def handle_info({:active_media_updated, category, media}, socket) do
+    %{active_media: active_media} = socket.assigns
+
+    # Update active media
+    updated_active_media = Map.put(active_media, category, media)
+
+    {:noreply, assign(socket, :active_media, updated_active_media)}
+  end
+
+  @impl true
+  def handle_info({:view_media, id}, socket) do
+    # Set viewing media
+    {:noreply, assign(socket, :viewing_media, id)}
+  end
+
+  # Final catch-all handle_info for any other messages
+  @impl true
+  def handle_info(_, socket) do
+    {:noreply, socket}
   end
 end

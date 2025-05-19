@@ -1,286 +1,206 @@
 defmodule FrestylWeb.ChannelLive.ChatComponent do
-  use FrestylWeb, :live_component
+  use Phoenix.LiveComponent
+
+  import Phoenix.HTML, only: [raw: 1]
 
   alias Frestyl.Chat
-  alias Frestyl.Chat.Message
-  alias Frestyl.Channels
-  alias Frestyl.Presence
-  alias Frestyl.Repo
+  alias Phoenix.LiveView.JS
+
 
   @impl true
-  def update(%{channel: channel, current_user: user} = assigns, socket) do
-    # Check if user has permission to send messages
-    has_send_permission = Channels.can_send_messages?(user, channel)
+  def update(assigns, socket) do
+    # Just assign the assigns - NO upload configuration here
+    {:ok, assign(socket, assigns)}
+  end
 
-    # Get recent messages
-    messages = Chat.list_recent_channel_messages(channel.id)
-
-    # Create a map of users for quick lookups
-    users_map = if assigns[:users_map] do
-      assigns[:users_map]
-    else
-      create_users_map(messages)
-    end
-
-    # Subscribe to channel messages and presence
+  @impl true
+  def handle_event("typing", _params, socket) do
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(Frestyl.PubSub, "channel:#{channel.id}")
-      Phoenix.PubSub.subscribe(Frestyl.PubSub, "channel:#{channel.id}:typing")
+      user_id = socket.assigns.current_user.id
+      chat_id = socket.assigns.id
 
-      # Track user presence using Presence module
-      Presence.track(self(), "channel:#{channel.id}", to_string(user.id), %{
-        online_at: inspect(System.system_time(:second)),
-        typing: false
-      })
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "chat:#{chat_id}",
+        {:user_typing, user_id}
+      )
     end
 
-    # Get initial online users
-    online_users = Presence.list_users("channel:#{channel.id}")
-
-    # Get initial typing users
-    typing_users = Presence.list_typing_users("channel:#{channel.id}")
-
-    {:ok,
-     socket
-     |> assign(assigns)
-     |> assign(:channel, channel)
-     |> assign(:current_user, user)
-     |> assign(:has_send_permission, has_send_permission)
-     |> assign(:messages, messages)
-     |> assign(:users_map, users_map)
-     |> assign(:changeset, Message.changeset(%Message{}, %{}))
-     |> assign(:typing_users, MapSet.new(typing_users))
-     |> assign(:online_users, online_users)
-     |> assign(:typing_timer, nil)
-     |> assign(:message_text, "")
-     |> assign(:loading_messages, false)
-     |> assign(:has_more, length(messages) >= 50)}
+    {:noreply, socket}
   end
 
   @impl true
-  def handle_event("send_message", %{"message" => message_params}, socket) do
-    user = socket.assigns.current_user
-    channel = socket.assigns.channel
-
-    # Extract content from params
-    content = message_params["content"] || ""
-
-    if String.trim(content) != "" do
-      case Chat.create_channel_message(%{
-        content: content,
-        channel_id: channel.id,
-        user_id: user.id,
-        message_type: "text"
-      }, user, channel) do
-        {:ok, message} ->
-          # Stop typing indicator when sending
-          broadcast_typing(socket, false)
-
-          {:noreply,
-           socket
-           |> assign(:changeset, Message.changeset(%Message{}, %{}))
-           |> assign(:message_text, "")
-           |> push_event("chat-message-sent", %{})}
-
-        {:error, %Ecto.Changeset{} = changeset} ->
-          {:noreply, assign(socket, :changeset, changeset)}
-      end
-    else
-      {:noreply, socket}
-    end
+  def handle_event("handle-key", %{"key" => "Enter", "shiftKey" => false}, socket) do
+    send(self(), :submit_message_form)
+    {:noreply, socket}
   end
 
   @impl true
-  def handle_event("typing", %{"typing" => typing}, socket) do
-    typing_boolean = typing == "true"
-    broadcast_typing(socket, typing_boolean)
-
-    # Update user's typing status in presence
-    Presence.update(self(), "channel:#{socket.assigns.channel.id}",
-      to_string(socket.assigns.current_user.id), fn meta ->
-      Map.put(meta, :typing, typing_boolean)
-    end)
-
-    # Reset typing timer
-    if socket.assigns.typing_timer do
-      Process.cancel_timer(socket.assigns.typing_timer)
-    end
-
-    # Set new timer to stop typing indicator after 3 seconds
-    timer = if typing_boolean do
-      Process.send_after(self(), {:stop_typing, socket.assigns.current_user.id}, 3000)
-    else
-      nil
-    end
-
-    {:noreply, assign(socket, :typing_timer, timer)}
-  end
-
-  @impl true
-  def handle_event("validate", %{"message" => message_params}, socket) do
-    changeset = Message.changeset(%Message{}, message_params)
-    {:noreply,
-     socket
-     |> assign(:changeset, changeset)
-     |> assign(:message_text, message_params["content"] || "")}
+  def handle_event("handle-key", _key_info, socket) do
+    {:noreply, socket}
   end
 
   @impl true
   def handle_event("load_more", _params, socket) do
-    if socket.assigns.has_more && !socket.assigns.loading_messages do
-      socket = assign(socket, loading_messages: true)
+    socket = assign(socket, :loading_messages, true)
 
-      # Get the oldest message ID we have
-      oldest_id = socket.assigns.messages
-        |> Enum.sort_by(& &1.id)
-        |> List.first()
-        |> Map.get(:id)
-
-      # Load messages before this one
-      case Chat.list_channel_messages_before(socket.assigns.channel.id, oldest_id, 50) do
-        messages when is_list(messages) ->
-          has_more = length(messages) >= 50
-          all_messages = messages ++ socket.assigns.messages
-
-          # Update users map with any new users
-          users_map = update_users_map(socket.assigns.users_map, messages)
-
-          socket = socket
-            |> assign(messages: all_messages)
-            |> assign(users_map: users_map)
-            |> assign(has_more: has_more)
-            |> assign(loading_messages: false)
-
-          {:noreply, socket}
-
-        _ ->
-          socket = socket
-            |> assign(has_more: false)
-            |> assign(loading_messages: false)
-
-          {:noreply, socket}
+    oldest_message_id =
+      case socket.assigns.messages do
+        [first | _] -> first.id
+        _ -> nil
       end
-    else
-      {:noreply, socket}
+
+    case load_earlier_messages(socket.assigns.conversation_id, oldest_message_id) do
+      {:ok, earlier_messages} ->
+        {:noreply,
+        socket
+        |> assign(:messages, earlier_messages ++ socket.assigns.messages)
+        |> assign(:loading_messages, false)
+        |> assign(:has_more, length(earlier_messages) >= 20)}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :loading_messages, false)}
     end
   end
 
   @impl true
   def handle_event("delete_message", %{"id" => id}, socket) do
     message_id = String.to_integer(id)
-    user = socket.assigns.current_user
+    message = Enum.find(socket.assigns.messages, fn m -> m.id == message_id end)
 
-    case Chat.delete_message(message_id, user) do
-      {:ok, _} ->
-        # Message is deleted on the server, we'll get a broadcast
-        {:noreply, socket}
+    if message && message.user_id == socket.assigns.current_user.id do
+      case delete_message(message_id) do
+        {:ok, _} ->
+          updated_messages = Enum.reject(socket.assigns.messages, fn m -> m.id == message_id end)
+          {:noreply, assign(socket, :messages, updated_messages)}
 
-      {:error, reason} ->
-        {:noreply, socket |> put_flash(:error, reason)}
-    end
-  end
-
-  @impl true
-  def handle_info({:new_message, message}, socket) do
-    if message.channel_id == socket.assigns.channel.id do
-      # Update users map if needed
-      users_map =
-        if Map.has_key?(socket.assigns.users_map, to_string(message.user_id)) do
-          socket.assigns.users_map
-        else
-          Map.put(socket.assigns.users_map, to_string(message.user_id), message.user)
-        end
-
-      {:noreply,
-       socket
-       |> assign(:messages, socket.assigns.messages ++ [message])
-       |> assign(:users_map, users_map)}
+        {:error, _reason} ->
+          {:noreply, socket}
+      end
     else
       {:noreply, socket}
     end
   end
 
   @impl true
-  def handle_info({:message_deleted, message_id}, socket) do
-    updated_messages = Enum.reject(socket.assigns.messages, fn msg -> msg.id == message_id end)
+  def handle_event("toggle-reaction", %{"message-id" => message_id, "emoji" => emoji}, socket) do
+    message_id = String.to_integer(message_id)
+    user_id = socket.assigns.current_user.id
 
-    {:noreply,
-     socket
-     |> assign(:messages, updated_messages)}
-  end
+    current_reactions = Map.get(socket.assigns.emoji_reactions, message_id, %{})
+    current_users = Map.get(current_reactions, emoji, [])
 
-  @impl true
-  def handle_info({:typing_status, user_id, typing}, socket) do
-    typing_users =
-      if typing do
-        MapSet.put(socket.assigns.typing_users, user_id)
+    updated_users =
+      if user_id in current_users do
+        List.delete(current_users, user_id)
       else
-        MapSet.delete(socket.assigns.typing_users, user_id)
+        [user_id | current_users]
       end
 
-    {:noreply, assign(socket, :typing_users, typing_users)}
+    updated_message_reactions =
+      if Enum.empty?(updated_users) do
+        Map.delete(current_reactions, emoji)
+      else
+        Map.put(current_reactions, emoji, updated_users)
+      end
+
+    updated_reactions =
+      if Enum.empty?(updated_message_reactions) do
+        Map.delete(socket.assigns.emoji_reactions, message_id)
+      else
+        Map.put(socket.assigns.emoji_reactions, message_id, updated_message_reactions)
+      end
+
+    save_reaction(message_id, user_id, emoji, user_id in current_users)
+
+    {:noreply, assign(socket, :emoji_reactions, updated_reactions)}
   end
 
   @impl true
-  def handle_info({:stop_typing, user_id}, socket) do
-    if socket.assigns.current_user.id == user_id do
-      broadcast_typing(socket, false)
+  def handle_event("toggle-custom-reaction", %{"message-id" => message_id, "text" => text}, socket) do
+    message_id = String.to_integer(message_id)
+    user_id = socket.assigns.current_user.id
 
-      # Update presence to stop typing
-      Presence.update(self(), "channel:#{socket.assigns.channel.id}",
-        to_string(socket.assigns.current_user.id), fn meta ->
-        Map.put(meta, :typing, false)
-      end)
+    current_reactions = Map.get(socket.assigns.custom_reactions, message_id, %{})
+    current_users = Map.get(current_reactions, text, [])
+
+    updated_users =
+      if user_id in current_users do
+        List.delete(current_users, user_id)
+      else
+        [user_id | current_users]
+      end
+
+    updated_message_reactions =
+      if Enum.empty?(updated_users) do
+        Map.delete(current_reactions, text)
+      else
+        Map.put(current_reactions, text, updated_users)
+      end
+
+    updated_reactions =
+      if Enum.empty?(updated_message_reactions) do
+        Map.delete(socket.assigns.custom_reactions, message_id)
+      else
+        Map.put(socket.assigns.custom_reactions, message_id, updated_message_reactions)
+      end
+
+    save_custom_reaction(message_id, user_id, text, user_id in current_users)
+
+    {:noreply, assign(socket, :custom_reactions, updated_reactions)}
+  end
+
+  @impl true
+  def handle_event("add-reaction", %{"message-id" => message_id, "emoji" => emoji}, socket) do
+    message_id = String.to_integer(message_id)
+    user_id = socket.assigns.current_user.id
+
+    current_reactions = Map.get(socket.assigns.emoji_reactions, message_id, %{})
+    current_users = Map.get(current_reactions, emoji, [])
+
+    unless user_id in current_users do
+      updated_users = [user_id | current_users]
+      updated_message_reactions = Map.put(current_reactions, emoji, updated_users)
+      updated_reactions = Map.put(socket.assigns.emoji_reactions, message_id, updated_message_reactions)
+
+      save_reaction(message_id, user_id, emoji, false)
+
+      {:noreply, assign(socket, :emoji_reactions, updated_reactions)}
+    else
+      {:noreply, socket}
     end
-    {:noreply, socket}
   end
 
   @impl true
-  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", payload: _diff}, socket) do
-    # Update online users list
-    online_users = Presence.list_users("channel:#{socket.assigns.channel.id}")
-    typing_users = Presence.list_typing_users("channel:#{socket.assigns.channel.id}")
+  def handle_event("add-custom-reaction", %{"message-id" => message_id, "text" => text}, socket) do
+    message_id = String.to_integer(message_id)
+    user_id = socket.assigns.current_user.id
 
-    {:noreply,
-     socket
-     |> assign(:online_users, online_users)
-     |> assign(:typing_users, MapSet.new(typing_users))}
+    current_reactions = Map.get(socket.assigns.custom_reactions, message_id, %{})
+    current_users = Map.get(current_reactions, text, [])
+
+    unless user_id in current_users do
+      updated_users = [user_id | current_users]
+      updated_message_reactions = Map.put(current_reactions, text, updated_users)
+      updated_reactions = Map.put(socket.assigns.custom_reactions, message_id, updated_message_reactions)
+
+      save_custom_reaction(message_id, user_id, text, false)
+
+      {:noreply, assign(socket, :custom_reactions, updated_reactions)}
+    else
+      {:noreply, socket}
+    end
   end
 
-  defp broadcast_typing(socket, typing) do
-    Phoenix.PubSub.broadcast(
-      Frestyl.PubSub,
-      "channel:#{socket.assigns.channel.id}:typing",
-      {:typing_status, socket.assigns.current_user.id, typing}
-    )
-  end
+  # Helper functions
 
-  # Helper function to create a map of users from messages
-  defp create_users_map(messages) do
-    messages
-    |> Enum.map(fn message -> message.user end)
-    |> Enum.uniq_by(fn user -> user.id end)
-    |> Enum.reduce(%{}, fn user, acc -> Map.put(acc, to_string(user.id), user) end)
-  end
-
-  # Helper function to update the users map with new users
-  defp update_users_map(users_map, messages) do
-    messages
-    |> Enum.reduce(users_map, fn message, acc ->
-      if Map.has_key?(acc, to_string(message.user_id)) do
-        acc
-      else
-        Map.put(acc, to_string(message.user_id), message.user)
-      end
-    end)
-  end
-
-  # Helper function to get user info for a message
   def get_message_user(message, users_map) do
-    Map.get(users_map, to_string(message.user_id))
+    Map.get(users_map, message.user_id, %{
+      name: "Unknown User",
+      email: "unknown@example.com"
+    })
   end
 
-  # Helper function to format message time
   def format_message_time(datetime) do
     now = DateTime.utc_now()
     diff = DateTime.diff(now, datetime, :second)
@@ -294,27 +214,84 @@ defmodule FrestylWeb.ChannelLive.ChatComponent do
     end
   end
 
-  # Helper function for typing indicator text
-  defp typing_indicator_text(typing_users, current_user, users_map) do
-    # Remove current user from typing list
-    other_typing =
-      typing_users
-      |> MapSet.to_list()
-      |> Enum.reject(fn id -> id == current_user.id end)
+  def format_file_size(size) when is_nil(size), do: "Unknown size"
+  def format_file_size(size) when size < 1024, do: "#{size} B"
+  def format_file_size(size) when size < 1024 * 1024, do: "#{Float.round(size / 1024, 1)} KB"
+  def format_file_size(size), do: "#{Float.round(size / 1024 / 1024, 1)} MB"
 
-    case length(other_typing) do
+  def error_to_string(:too_large), do: "File is too large"
+  def error_to_string(:too_many_files), do: "Too many files"
+  def error_to_string(:not_accepted), do: "File type not accepted"
+  def error_to_string(_), do: "Upload error"
+
+  def typing_indicator_text(typing_users, current_user, users_map) do
+    other_users = MapSet.to_list(typing_users)
+      |> Enum.reject(&(&1 == current_user.id))
+
+    case length(other_users) do
       0 -> ""
-      1 -> "Someone is typing..."
-      n when n <= 3 ->
-        typing_names = other_typing
-          |> Enum.map(fn id -> get_user_name(Map.get(users_map, to_string(id))) end)
-          |> Enum.join(", ")
-        "#{typing_names} are typing..."
+      1 ->
+        user = Map.get(users_map, to_string(hd(other_users)), %{name: "Someone"})
+        "#{user.name || "Someone"} is typing..."
+      2 ->
+        names = other_users
+          |> Enum.take(2)
+          |> Enum.map(&(Map.get(users_map, to_string(&1), %{name: "Someone"}).name || "Someone"))
+        "#{Enum.join(names, " and ")} are typing..."
       _ -> "Several people are typing..."
     end
   end
 
-  defp get_user_name(nil), do: "Someone"
-  defp get_user_name(user), do: user.name || user.email
+  # Private functions
 
+  defp create_message(socket, params) do
+    case Frestyl.Chat.create_message(params) do
+      {:ok, message} ->
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "conversation:#{params["conversation_id"]}",
+          {:new_message, message}
+        )
+
+        {:ok, message, socket}
+
+      {:error, changeset} ->
+        {:error, changeset, socket}
+    end
+  end
+
+  defp load_earlier_messages(conversation_id, before_message_id) do
+    try do
+      messages = Frestyl.Chat.list_messages_for_conversation(
+        conversation_id,
+        before: before_message_id,
+        limit: 20,
+        preload: [:user, :attachments]
+      )
+
+      {:ok, messages}
+    rescue
+      _ -> {:error, "Failed to load messages"}
+    end
+  end
+
+  defp delete_message(message_id) do
+    Frestyl.Chat.delete_message(message_id)
+  end
+
+  defp save_reaction(message_id, user_id, emoji, remove) do
+    if remove do
+      Frestyl.Chat.remove_reaction(message_id, user_id, emoji)
+    else
+      Frestyl.Chat.add_reaction(message_id, user_id, emoji)
+    end
+  end
+
+  defp save_custom_reaction(message_id, user_id, text, remove) do
+    if remove do
+      Frestyl.Chat.remove_custom_reaction(message_id, user_id, text)
+    else
+      Frestyl.Chat.add_custom_reaction(message_id, user_id, text)
+    end
+  end
 end

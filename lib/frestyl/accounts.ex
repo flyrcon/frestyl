@@ -31,6 +31,21 @@ defmodule Frestyl.Accounts do
     end
   end
 
+  # In lib/frestyl/accounts.ex
+
+  def list_users do
+    Repo.all(User)
+  end
+
+  def search_users(search_term) do
+    search_pattern = "%#{search_term}%"
+
+    User
+    |> where([u], ilike(u.name, ^search_pattern) or ilike(u.email, ^search_pattern))
+    |> limit(20)
+    |> Repo.all()
+  end
+
   @doc """
   Generates a new TOTP secret for a user.
   """

@@ -106,10 +106,18 @@ defmodule Frestyl.Media do
   end
 
   @doc """
-  List files for a channel (backward compatibility function)
+  List files for a channel with optional parameters
   """
-  def list_channel_files(channel_id) do
-    list_channel_media_by_category(channel_id)
+  def list_channel_files(channel_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit)
+
+    query = list_channel_media_by_category(channel_id, nil, opts)
+
+    if limit do
+      Enum.take(query, limit)
+    else
+      query
+    end
   end
 
   @doc """

@@ -19,6 +19,17 @@ module.exports = {
       }
     },
   },
+  extend: {
+  animation: {
+    'scale': 'scale 0.3s ease-out',
+  },
+  keyframes: {
+    scale: {
+      '0%': { transform: 'scale(0.95)', opacity: '0' },
+      '100%': { transform: 'scale(1)', opacity: '1' },
+    }
+  },
+},
   plugins: [
     require("@tailwindcss/forms"),
     // Allows prefixing tailwind classes with LiveView classes to add rules

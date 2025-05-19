@@ -9,6 +9,7 @@ defmodule Frestyl.Chat.Conversation do
     field :title, :string
     field :last_message_at, :utc_datetime
     field :is_group, :boolean, default: false
+    field :is_archived, :boolean, default: false
 
     # Add a virtual field for last message display
     field :last_message, :any, virtual: true
@@ -22,7 +23,7 @@ defmodule Frestyl.Chat.Conversation do
   @doc false
   def changeset(conversation, attrs) do
     conversation
-    |> cast(attrs, [:title, :last_message_at, :is_group])
+    |> cast(attrs, [:title, :last_message_at, :is_group, :is_archived])
     |> validate_required([:last_message_at])
   end
 end

@@ -1,34 +1,36 @@
-# lib/frestyl_web/live/chat_live/show.html.heex
 <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
   <div class="px-4 py-6 sm:px-0">
     <h1 class="text-3xl font-bold leading-tight text-gray-900">
-      <%= @channel.name %>
+      <%= if assigns[:channel], do: @channel.name, else: "Channel" %>
     </h1>
     <p class="mt-2 text-sm text-gray-500">
-      <%= @channel.description %>
+      <%= if assigns[:channel], do: @channel.description, else: "Channel description" %>
     </p>
     
     <div class="mt-8">
       <div class="bg-white shadow rounded-lg">
         <div class="px-4 py-5 sm:p-6">
-          <div class="chat-messages h-96 overflow-y-auto mb-4">
-            <%= if @messages == [] do %>
+          <div class="chat-messages h-96 overflow-y-auto mb-4" id="messages-container" phx-hook="MessagesContainer">
+            <%= if !assigns[:messages] || @messages == [] do %>
               <p class="text-gray-500 text-center py-8">No messages yet. Be the first to say something!</p>
             <% else %>
-              <%= for message <- Enum.reverse(@messages) do %>
+              <%= for message <- @messages do %>
                 <div class="message mb-4">
                   <div class="flex items-start">
                     <div class="flex-shrink-0">
                       <div class="h-8 w-8 rounded-full bg-[#DD1155] flex items-center justify-center text-white font-bold">
-                        <%= String.at(message.user.email, 0) |> String.upcase() %>
+                        <%= if message.user && message.user.email, do: String.at(message.user.email, 0) |> String.upcase(), else: "?" %>
                       </div>
                     </div>
                     <div class="ml-3">
                       <div class="text-sm font-medium text-gray-900">
-                        <%= message.user.email %>
+                        <%= if message.user, do: message.user.email || "Unknown", else: "Unknown User" %>
                       </div>
                       <div class="mt-1 text-sm text-gray-700">
                         <%= message.content %>
+                      </div>
+                      <div class="mt-1 text-xs text-gray-500">
+                        <%= if message.inserted_at, do: Calendar.strftime(message.inserted_at, "%I:%M %p"), else: "Just now" %>
                       </div>
                     </div>
                   </div>
@@ -37,25 +39,37 @@
             <% end %>
           </div>
           
-          <!-- Typing indicator - added here -->
+          <!-- Typing indicator -->
           <div class="typing-indicator mt-2 mb-2 h-5">
-            <%= if is_map(@typing_users) && map_size(@typing_users) > 0 do %>
+            <%= if assigns[:typing_users] && (!is_nil(@typing_users)) && MapSet.size(@typing_users) > 0 do %>
               <div class="text-sm text-gray-500 italic">
-                <%= typing_message(@typing_users) %>
+                <%= cond do %>
+                  <% MapSet.size(@typing_users) == 1 -> %>
+                    Someone is typing...
+                  <% MapSet.size(@typing_users) == 2 -> %>
+                    Two people are typing...
+                  <% MapSet.size(@typing_users) > 2 -> %>
+                    Several people are typing...
+                  <% true -> %>
+                    
+                <% end %>
               </div>
             <% end %>
           </div>
           
-          <.form for={%{}} phx-submit="send_message" class="mt-4">
+          <!-- Message form -->
+          <form phx-submit="send_message" class="mt-4">
             <div class="flex">
-              <input 
+              <input
                 type="text" 
                 name="message" 
-                value={@draft_message || ""}
+                value={assigns[:draft_message] || ""}
                 placeholder="Type your message..."
                 class="flex-1 shadow-sm focus:ring-[#DD1155] focus:border-[#DD1155] block w-full sm:text-sm border-gray-300 rounded-md mr-2"
                 phx-keyup="typing"
-                phx-key="keyup"
+                phx-value-typing="true"
+                id="message-input"
+                phx-hook="TypingIndicator"
               />
               <button 
                 type="submit"
@@ -64,7 +78,7 @@
                 Send
               </button>
             </div>
-          </.form>
+          </form>
         </div>
       </div>
     </div>

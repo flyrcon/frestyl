@@ -1,3 +1,4 @@
+# lib/frestyl_web/user_auth.ex
 defmodule FrestylWeb.UserAuth do
 
   import Plug.Conn
@@ -6,7 +7,9 @@ defmodule FrestylWeb.UserAuth do
   require Logger
 
   alias Frestyl.Accounts
+  alias Phoenix.Component
   alias FrestylWeb.Router.Helpers, as: Routes
+  import FrestylWeb, only: [routes: 0]
 
   @session_key :user_token
   @remember_me_cookie "_frestyl_web_user_remember_me"
@@ -20,165 +23,161 @@ defmodule FrestylWeb.UserAuth do
     require_authenticated_user(conn, [])
   end
 
+  def call(conn, :fetch_current_user) do
+    fetch_current_user(conn, [])
+  end
+
   def call(conn, _) do
     conn
   end
 
-  # User session management
+  # User session management - properly gets and assigns user
   def fetch_current_user(conn, _opts) do
     Logger.info("FETCH_CURRENT_USER Plug: Starting for path: #{conn.request_path}")
+
+    # Always try to get a token from session or cookie
     {user_token, conn} = ensure_user_token(conn)
-    Logger.info("FETCH_CURRENT_USER Plug: Session token obtained: #{inspect user_token}")
+    Logger.info("FETCH_CURRENT_USER Plug: Token: #{inspect user_token}")
 
-    # Add logging before calling Accounts function
-    Logger.info("FETCH_CURRENT_USER Plug: Calling Accounts.get_user_by_session_token with token: #{inspect user_token}")
-    user = user_token && Accounts.get_user_by_session_token(user_token)
-    # Add logging after calling Accounts function
-    Logger.info("FETCH_CURRENT_USER Plug: Result from Accounts.get_user_by_session_token: #{inspect user && user.email}")
+    # Only try to get user if we have a token
+    user =
+      if user_token do
+        user = Accounts.get_user_by_session_token(user_token)
+        Logger.info("FETCH_CURRENT_USER Plug: User from token: #{inspect user && user.email}")
+        user
+      else
+        Logger.info("FETCH_CURRENT_USER Plug: No token, no user")
+        nil
+      end
 
+    # Always assign the user (even if nil) and return
+    conn = Plug.Conn.assign(conn, :current_user, user)
+    Logger.info("FETCH_CURRENT_USER Plug: Assigned user to conn: #{inspect conn.assigns[:current_user] && conn.assigns[:current_user].email}")
 
-    if user do
-      Logger.info("FETCH_CURRENT_USER Plug: Found user #{user.email} from token")
-    else
-      Logger.info("FETCH_CURRENT_USER Plug: No user found for token or no token present")
-    end
-
-    assigned_conn = assign(conn, :current_user, user)
-    Logger.info("FETCH_CURRENT_USER Plug: User assigned to conn: #{inspect assigned_conn.assigns[:current_user] && assigned_conn.assigns[:current_user].email}")
-    assigned_conn
+    conn
   end
 
+  # Session management helper to ensure token is always preserved
   defp ensure_user_token(conn) do
     Logger.info("ensure_user_token: Checking session for token")
-    if user_token = get_session(conn, @session_key) do
-      Logger.info("ensure_user_token: Token found in session")
-      {user_token, conn}
+
+    # Check for token in session first
+    session_token = get_session(conn, @session_key)
+    Logger.info("ensure_user_token: Session token: #{inspect session_token}")
+
+    if session_token do
+      Logger.info("ensure_user_token: Token found in session, returning it")
+      {session_token, conn}
     else
       Logger.info("ensure_user_token: Token not in session, checking cookies")
       conn = fetch_cookies(conn, signed: [@remember_me_cookie])
+      cookie_token = conn.cookies[@remember_me_cookie]
+      Logger.info("ensure_user_token: Cookie token: #{inspect cookie_token}")
 
-      if user_token = conn.cookies[@remember_me_cookie] do
-        Logger.info("ensure_user_token: Token found in remember_me cookie, putting in session")
-        {user_token, put_session(conn, @session_key, user_token)}
+      if cookie_token do
+        Logger.info("ensure_user_token: Token found in remember_me cookie, putting in session and returning it")
+        # IMPORTANT: Always update the session with the token from cookie
+        updated_conn = put_session(conn, @session_key, cookie_token)
+        {cookie_token, updated_conn}
       else
-        Logger.info("ensure_user_token: Token not found in session or cookies")
+        Logger.info("ensure_user_token: No token found anywhere")
         {nil, conn}
       end
     end
   end
 
   # LiveView auth hooks
-  # lib/frestyl_web/user_auth.ex
-
-  # Replace your on_mount(:ensure_authenticated) function with this fixed version:
 
   def on_mount(:ensure_authenticated, _params, session, socket) do
     Logger.info("DashboardLive on_mount(:ensure_authenticated): Hook started")
-    # Check assigns first
-    user = socket.assigns[:current_user]
-    Logger.info("DashboardLive on_mount(:ensure_authenticated): User from socket assigns: #{inspect user && user.email}")
+    Logger.info("DashboardLive on_mount(:ensure_authenticated): Session: #{inspect session}")
 
+    # Try to get user from session token
+    user_token = session[@session_key |> Atom.to_string()] || session["user_token"] || session[:user_token]
+    Logger.info("DashboardLive on_mount(:ensure_authenticated): Session token: #{inspect user_token}")
+
+    user =
+      if user_token do
+        Logger.info("DashboardLive on_mount(:ensure_authenticated): Looking up user by token")
+        Accounts.get_user_by_session_token(user_token)
+      else
+        Logger.info("DashboardLive on_mount(:ensure_authenticated): No token in session")
+        nil
+      end
+
+    Logger.info("DashboardLive on_mount(:ensure_authenticated): User status: #{inspect user && user.email}")
+
+    # If we found a user, assign to socket and continue the mount
     if user do
-      Logger.info("DashboardLive on_mount(:ensure_authenticated): User authenticated via assigns, continuing mount")
-      # User is already assigned by the plug, no need to re-assign unless you want to refresh it
+      Logger.info("DashboardLive on_mount(:ensure_authenticated): User is authenticated, continuing")
+      socket = Phoenix.Component.assign(socket, :current_user, user)
       {:cont, socket}
     else
-      # Fallback: If user not in assigns, fetch from session
-      Logger.info("DashboardLive on_mount(:ensure_authenticated): User not in assigns, checking session...")
+      # No authenticated user, redirect to login
+      Logger.info("DashboardLive on_mount(:ensure_authenticated): No authenticated user found, redirecting")
+      {:halt, Phoenix.LiveView.redirect(socket, to: "/users/log_in")}
+    end
+  end
 
-      # Get user token from session
-      user_token = session["user_token"]
+  # MUST redirect authenticated users to dashboard
+  def on_mount(:redirect_if_user_is_authenticated, _params, session, socket) do
+    Logger.info("LiveView on_mount(:redirect_if_user_is_authenticated): ALWAYS REDIRECT VERSION")
 
-      # Fetch user if token exists
-      user = user_token && Accounts.get_user_by_session_token(user_token)
-      Logger.info("DashboardLive on_mount(:ensure_authenticated): User fetched from session: #{inspect user && user.email}")
+    # Properly assign user to LiveView socket
+    user_token = session[@session_key |> Atom.to_string()] || session[@session_key]
 
-      if user do
-        Logger.info("DashboardLive on_mount(:ensure_authenticated): User authenticated via session, assigning and continuing mount")
-        socket = Phoenix.Component.assign(socket, current_user: user)
-        {:cont, socket}
+    user =
+      if user_token do
+        Logger.info("redirect_if_user_is_authenticated mount: Found token in session")
+        Frestyl.Accounts.get_user_by_session_token(user_token)
       else
-        Logger.info("DashboardLive on_mount(:ensure_authenticated): Auth failed. Redirecting to login.")
-        {:halt, Phoenix.LiveView.redirect(socket, to: "/users/log_in")}
+        Logger.info("redirect_if_user_is_authenticated mount: No token in session")
+        nil
       end
+
+    Logger.info("redirect_if_user_is_authenticated mount: User: #{inspect user && user.email}")
+
+    # If user is authenticated, ALWAYS redirect to dashboard
+    if user do
+      Logger.info("redirect_if_user_is_authenticated mount: User is authenticated, redirecting to dashboard")
+      {:halt, Phoenix.LiveView.redirect(socket, to: "/dashboard")}
+    else
+      Logger.info("redirect_if_user_is_authenticated mount: User is not authenticated, continuing")
+      socket = Phoenix.Component.assign(socket, :current_user, nil)
+      {:cont, socket}
     end
   end
 
   def on_mount(:mount_current_user, _params, session, socket) do
     Logger.info("LiveView on_mount(:mount_current_user): Hook started")
-    # Check assigns first
-    user = socket.assigns[:current_user]
-    Logger.info("LiveView on_mount(:mount_current_user): User from socket assigns: #{inspect user && user.email}")
 
-    if user do
-       Logger.info("LiveView on_mount(:mount_current_user): User found in assigns.")
-       {:cont, socket}
-    else
-      # Fallback: Get user from session
-      Logger.info("LiveView on_mount(:mount_current_user): User not in assigns, checking session...")
-      user_token = session["user_token"]
-      user = user_token && Accounts.get_user_by_session_token(user_token)
+    # Get user from session token
+    user_token = session[@session_key |> Atom.to_string()] || session[@session_key]
 
-      Logger.info("LiveView on_mount(:mount_current_user): User fetched from session: #{inspect user && user.email}")
-
-      socket = Phoenix.Component.assign(socket, current_user: user)
-      {:cont, socket}
-    end
-  end
-
-  def on_mount(:redirect_if_user_is_authenticated, _params, session, socket) do
-    Logger.info("LiveView on_mount(:redirect_if_user_is_authenticated): Hook started")
-    # Prioritize checking assigns first
-    user = socket.assigns[:current_user]
-    Logger.info("LiveView on_mount(:redirect_if_user_is_authenticated): User from socket assigns: #{inspect user && user.email}")
-
-
-    if user do
-      Logger.info("LiveView on_mount(:redirect_if_user_is_authenticated): User authenticated via assigns, redirecting to dashboard")
-      {:halt, Phoenix.LiveView.redirect(socket, to: "/dashboard")}
-    else
-      # Fallback: Get user from session
-      Logger.info("LiveView on_mount(:redirect_if_user_is_authenticated): User not in assigns, checking session...")
-      user_token = session["user_token"]
-      user = user_token && Accounts.get_user_by_session_token(user_token)
-
-      Logger.info("LiveView on_mount(:redirect_if_user_is_authenticated): User fetched from session: #{inspect user && user.email}")
-
-      if user do
-         Logger.info("LiveView on_mount(:redirect_if_user_is_authenticated): User authenticated via session, redirecting to dashboard")
-         {:halt, Phoenix.LiveView.redirect(socket, to: "/dashboard")}
+    user =
+      if user_token do
+        Logger.info("mount_current_user: Found token in session")
+        Frestyl.Accounts.get_user_by_session_token(user_token)
       else
-        Logger.info("LiveView on_mount(:redirect_if_user_is_authenticated): User not authenticated, continuing")
-        {:cont, socket}
+        Logger.info("mount_current_user: No token in session")
+        nil
       end
-    end
+
+    Logger.info("mount_current_user: User: #{inspect user && user.email}")
+
+    # Assign user to socket
+    socket = Phoenix.Component.assign(socket, :current_user, user)
+    {:cont, socket}
   end
 
-  def redirect_if_user_is_authenticated(conn, _opts) do
-    Logger.info("REDIRECT_IF_AUTH Plug: Starting for Path #{conn.request_path}")
-    Logger.info("REDIRECT_IF_AUTH Plug: User assigned: #{inspect(conn.assigns[:current_user] && conn.assigns[:current_user].email)}")
-
-    if conn.assigns[:current_user] do
-      Logger.info("REDIRECT_IF_AUTH Plug: User authenticated - redirecting to dashboard")
-      conn
-      |> put_flash(:info, "You are already logged in.")
-      |> redirect(to: "/dashboard")
-      |> halt()
-    else
-      Logger.info("REDIRECT_IF_AUTH Plug: User not authenticated - allowing continuation")
-      conn
-    end
-  end
-
+  # Fixed to not redirect authenticated users
   def require_authenticated_user(conn, _opts) do
-    Logger.info("REQUIRE_AUTH Plug: Starting for Path #{conn.request_path}")
-    Logger.info("REQUIRE_AUTH Plug: User assigned: #{inspect(conn.assigns[:current_user] && conn.assigns[:current_user].email)}")
-
+    # User is already authenticated, continue
     if conn.assigns[:current_user] do
-      Logger.info("REQUIRE_AUTH Plug: User authenticated - allowing continuation")
+      Logger.info("require_authenticated_user: User is authenticated, continuing")
       conn
     else
-      Logger.info("REQUIRE_AUTH Plug: User not authenticated - redirecting to login")
+      Logger.info("require_authenticated_user: Not authenticated, redirecting to login")
       conn
       |> put_flash(:error, "You must log in to access this page.")
       |> redirect(to: "/users/log_in")
@@ -186,10 +185,29 @@ defmodule FrestylWeb.UserAuth do
     end
   end
 
-  # Update the login function to handle 2FA
+  # Simplified to always redirect authenticated users to dashboard
+  def redirect_if_user_is_authenticated(conn, _opts) do
+    user = conn.assigns[:current_user]
+    Logger.info("redirect_if_user_is_authenticated: Current path: #{conn.request_path}, User: #{inspect user && user.email}")
+
+    if user do
+      Logger.info("redirect_if_user_is_authenticated: User is authenticated, redirecting to dashboard")
+      conn
+      |> redirect(to: "/dashboard")
+      |> halt()
+    else
+      Logger.info("redirect_if_user_is_authenticated: User is not authenticated, continuing")
+      conn
+    end
+  end
+
+  # Login function
   def log_in_user(conn, user, params \\ %{}) do
+    Logger.info("log_in_user: Logging in user #{user.email}")
+
     # Check if user has 2FA enabled
     if user.totp_enabled do
+      Logger.info("log_in_user: User has 2FA enabled, redirecting to verification")
       # Store user info in session but don't generate token yet
       conn
       |> put_session(:pending_2fa, %{
@@ -199,30 +217,33 @@ defmodule FrestylWeb.UserAuth do
       })
       |> redirect(to: Routes.user_live_two_factor_verify_path(conn, :index))
     else
+      Logger.info("log_in_user: Normal login process")
       # Proceed with normal login
       token = Accounts.generate_user_session_token(user)
-      user_return_to = get_session(conn, :user_return_to)
+      Logger.info("log_in_user: Generated session token: #{inspect token}")
 
-      conn
-      |> renew_session()
-      |> put_session(:user_token, token)
-      |> put_session(:live_socket_id, "users_sessions:#{Base.url_encode64(token)}")
-      |> maybe_write_remember_me_cookie(token, params)
-      |> redirect(to: user_return_to || "/dashboard")
+      conn = conn
+        |> renew_session()
+        |> put_session(@session_key, token)
+        |> put_session(:live_socket_id, "users_sessions:#{Base.url_encode64(token)}")
+        |> maybe_write_remember_me_cookie(token, params)
+
+      # FORCE redirect to dashboard
+      Logger.info("log_in_user: Redirecting to dashboard")
+      redirect(conn, to: "/dashboard")
     end
   end
 
   # Add a function to complete login after 2FA verification
   def complete_2fa_login(conn, user, params \\ %{}) do
     token = Accounts.generate_user_session_token(user)
-    user_return_to = get_session(conn, :user_return_to)
 
     conn
     |> renew_session()
-    |> put_session(:user_token, token)
+    |> put_session(@session_key, token)
     |> put_session(:live_socket_id, "users_sessions:#{Base.url_encode64(token)}")
     |> maybe_write_remember_me_cookie(token, params)
-    |> redirect(to: user_return_to || Routes.page_path(conn, :home))
+    |> redirect(to: "/dashboard")
   end
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}) do

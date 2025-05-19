@@ -9,6 +9,7 @@ defmodule Frestyl.Channels do
   alias Frestyl.Channels.Message
   alias Frestyl.Channels.{Channel, ChannelMembership}
   alias Frestyl.Accounts.User
+  alias Frestyl.Channels.Room
   alias Frestyl.Channels.ChannelInvitation
 
   ## Channel functions
@@ -77,7 +78,33 @@ defmodule Frestyl.Channels do
   @doc """
   Gets a single channel.
   """
-  def get_channel!(id), do: Repo.get!(Channel, id)
+  # lib/frestyl/channels.ex (partial suggested changes)
+
+  # The error happens because get_channel/1 is using Repo.get! which raises an error when id is nil
+  # Here's a safer implementation:
+
+  def get_channel(nil), do: nil  # Handle nil ID explicitly
+
+  def get_channel(id) do
+    try do
+      Repo.get(Channel, id)
+    rescue
+      # Handle any errors (like invalid ID format)
+      _e in Ecto.Query.CastError -> nil
+      _e -> nil  # Catch all other errors and return nil
+    end
+  end
+
+  # If your Channel module uses slugs, you might need this version instead:
+  def get_channel_by_slug(nil), do: nil
+
+  def get_channel_by_slug(slug) when is_binary(slug) do
+    try do
+      Repo.get_by(Channel, slug: slug)
+    rescue
+      _e -> nil  # Catch any errors and return nil
+    end
+  end
 
   @doc """
   Creates a channel.
@@ -147,6 +174,82 @@ defmodule Frestyl.Channels do
 
         {:ok, deleted_channel}
       error -> error
+    end
+  end
+
+   @doc """
+  Gets a channel with the given ID.
+  """
+  def get_channel!(id), do: Repo.get!(Channel, id)
+
+  # In your Frestyl.Channels module (create it if it doesn't exist)
+  def list_channels_for_user(_user_id) do
+    # Return an empty list for now, implement proper channel fetching later
+    []
+  end
+
+  @doc """
+  Gets the default room for a channel.
+  """
+  def get_default_room(channel_id) do
+    Room
+    |> where([r], r.channel_id == ^channel_id and r.is_default == true)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  @doc """
+  Creates a default room for a channel if one doesn't exist.
+  """
+  def create_default_room(channel_id) do
+    case get_default_room(channel_id) do
+      nil ->
+        %Room{}
+        |> Room.changeset(%{
+          name: "General",
+          description: "General discussion",
+          channel_id: channel_id,
+          is_default: true
+        })
+        |> Repo.insert()
+
+      room ->
+        {:ok, room}
+    end
+  end
+
+  @doc """
+  Gets or creates a general room for a channel.
+  """
+  def get_or_create_general_room(channel_id) do
+    case get_default_room(channel_id) do
+      nil -> create_default_room(channel_id)
+      room -> {:ok, room}
+    end
+  end
+
+  @doc """
+  Creates a default room for a channel if one doesn't exist.
+  """
+  def create_default_room(channel_id) do
+    # First check if a default room already exists
+    case get_default_room(channel_id) do
+      nil ->
+        # Get the channel to ensure it exists
+        channel = get_channel!(channel_id)
+
+        # Create a default room
+        %Room{}
+        |> Room.changeset(%{
+          name: "General",
+          channel_id: channel_id,
+          is_default: true,
+          description: "Default room for #{channel.name}"
+        })
+        |> Repo.insert()
+
+      room ->
+        {:ok, room}
     end
   end
 
@@ -357,26 +460,6 @@ defmodule Frestyl.Channels do
     user_member?(user, channel)
   end
 
-  @doc """
-  Adds a user to a channel.
-  """
-  def join_channel(user, channel) do
-    case channel.visibility do
-      "public" ->
-        create_membership(%{
-          channel_id: channel.id,
-          user_id: user.id,
-          role: "member",
-          status: "active",
-          last_activity_at: DateTime.utc_now()
-        })
-      "private" ->
-        {:error, "This channel requires approval to join"}
-      "invite_only" ->
-        {:error, "This channel is invite-only"}
-    end
-  end
-
   def invite_to_channel(inviter_id, channel_id, email) do
     # Use the existing aliases to get the user
     user = Accounts.get_user_by_email(email)
@@ -483,27 +566,6 @@ defmodule Frestyl.Channels do
   end
 
   @doc """
-  Removes a user from a channel.
-  Returns error if trying to remove the last admin when other members remain.
-  """
-  def leave_channel(user, channel) do
-    # Check if this is the last admin
-    if is_last_admin?(channel.id, user.id) do
-      {:error, "You cannot leave the channel as you are the only admin. Please promote another member to admin first."}
-    else
-      # Find the membership
-      channel_member = Repo.get_by(ChannelMember, user_id: user.id, channel_id: channel.id)
-
-      if channel_member do
-        # Delete the membership
-        Repo.delete(channel_member)
-      else
-        {:error, "You are not a member of this channel"}
-      end
-    end
-  end
-
-  @doc """
   Creates a channel membership.
   """
   def create_membership(attrs) do
@@ -536,15 +598,6 @@ defmodule Frestyl.Channels do
   end
 
   @doc """
-  Updates a user's role in a channel.
-  """
-  def update_member_role(membership, role) when role in ["admin", "moderator", "member"] do
-    membership
-    |> ChannelMembership.changeset(%{role: role})
-    |> Repo.update()
-  end
-
-  @doc """
   Updates a user's last activity time in a channel.
   """
   def update_member_activity(user_id, channel_id) do
@@ -562,24 +615,182 @@ defmodule Frestyl.Channels do
     end
   end
 
-  @doc """
-  Blocks a user from a channel.
-  """
-  def block_user(channel, %User{} = user, %User{} = blocked_by, attrs \\ %{}) do
-    # Remove any existing memberships
-    case get_channel_membership(user, channel) do
-      nil -> :ok  # No membership to remove
-      membership -> Repo.delete(membership)
-    end
+  # lib/frestyl/channels.ex - Changes to add
 
-    # Create the block
-    %BlockedUser{}
-    |> BlockedUser.changeset(Map.merge(attrs, %{
-      channel_id: channel.id,
-      user_id: user.id,
-      blocked_by_user_id: blocked_by.id
-    }))
-    |> Repo.insert()
+  # These are the key functions needed by ChannelLive.Show that need to be adapted
+
+  # Check if a user is blocked from a channel
+  def user_blocked?(channel_id, user_id) do
+    # Check directly in the database if this user is blocked for this channel
+    Repo.exists?(from b in BlockedUser,
+      where: b.channel_id == ^channel_id and b.user_id == ^user_id and
+            (is_nil(b.expires_at) or b.expires_at > ^DateTime.utc_now())
+    )
+  end
+
+  # Check if a user is a member of a channel
+  def is_member?(channel_id, user_id) do
+    Repo.exists?(
+      from m in ChannelMembership,
+      where: m.channel_id == ^channel_id and m.user_id == ^user_id
+    )
+  end
+
+  # Check if a user is an admin of a channel (using direct query)
+  def is_admin?(channel_id, user_id) do
+    Repo.exists?(
+      from m in ChannelMembership,
+      where: m.channel_id == ^channel_id and m.user_id == ^user_id and m.role in ["admin", "owner"]
+    )
+  end
+
+  # Get a member's role in a channel
+  def get_member_role(channel_id, user_id) do
+    query = from m in ChannelMembership,
+      where: m.channel_id == ^channel_id and m.user_id == ^user_id,
+      select: m.role
+
+    Repo.one(query) || "guest"
+  end
+
+  # Join a channel using IDs
+  def join_channel(channel_id, user_id) do
+    # Create a new membership record directly
+    create_membership(%{
+      channel_id: channel_id,
+      user_id: user_id,
+      role: "member",
+      status: "active",
+      last_activity_at: DateTime.utc_now()
+    })
+  end
+
+  # Leave a channel using IDs
+  def leave_channel(channel_id, user_id) do
+    # Find the membership
+    membership = Repo.get_by(ChannelMembership, channel_id: channel_id, user_id: user_id)
+
+    if membership do
+      # Delete the membership
+      Repo.delete(membership)
+    else
+      {:error, "Membership not found"}
+    end
+  end
+
+  # Get channel member with preloaded user
+  def get_channel_member(channel_id, user_id) do
+    Repo.one(
+      from m in ChannelMembership,
+      where: m.channel_id == ^channel_id and m.user_id == ^user_id,
+      preload: [:user]
+    )
+  end
+
+  # Update a member's role directly using IDs
+  def update_member_role(channel_id, user_id, role) when role in ["admin", "moderator", "member"] do
+    membership = get_channel_member(channel_id, user_id)
+
+    if membership do
+      # Using the existing changeset directly since update_member_role/2 doesn't exist
+      membership
+      |> ChannelMembership.changeset(%{role: role})
+      |> Repo.update()
+    else
+      {:error, "Membership not found"}
+    end
+  end
+
+  # Remove a member from a channel
+  def remove_member(channel_id, user_id) do
+    membership = get_channel_member(channel_id, user_id)
+
+    if membership do
+      Repo.delete(membership)
+    else
+      {:error, "Membership not found"}
+    end
+  end
+
+  # Block a user by ID or email with a reason and duration
+  # For the block_user/3 function:
+
+  # Block a user by ID or email with a reason and duration
+  def block_user(channel_id, email_or_id, attrs \\ %{}) do
+    channel = get_channel(channel_id)
+
+    if !channel do
+      {:error, "Channel not found"}
+    else
+      user = case email_or_id do
+        email when is_binary(email) -> Frestyl.Accounts.get_user_by_email(email)
+        id when is_integer(id) -> Frestyl.Accounts.get_user(id)
+      end
+
+      attrs = Map.take(attrs, [:reason, :duration])
+
+      # Get admin user for blocking - you might want to use the current user here
+      admin_user = Frestyl.Accounts.get_system_user()
+
+      if user do
+        # Convert duration string to actual expiration date
+        attrs = case attrs[:duration] do
+          "permanent" -> attrs
+          "1d" -> Map.put(attrs, :expires_at, DateTime.add(DateTime.utc_now(), 1, :day))
+          "7d" -> Map.put(attrs, :expires_at, DateTime.add(DateTime.utc_now(), 7, :day))
+          "30d" -> Map.put(attrs, :expires_at, DateTime.add(DateTime.utc_now(), 30, :day))
+          "90d" -> Map.put(attrs, :expires_at, DateTime.add(DateTime.utc_now(), 90, :day))
+          _ -> attrs
+        end
+
+        # Using your existing block_user function with proper signature
+        # Check the existing signature in the current file
+        %BlockedUser{}
+        |> BlockedUser.changeset(Map.merge(attrs, %{
+          channel_id: channel.id,
+          user_id: user.id,
+          blocked_by_user_id: admin_user.id
+        }))
+        |> Repo.insert()
+      else
+        # Email blocking
+        %BlockedUser{}
+        |> BlockedUser.changeset(Map.merge(attrs, %{
+          channel_id: channel.id,
+          email: email_or_id,
+          blocked_by_user_id: admin_user.id
+        }))
+        |> Repo.insert()
+      end
+    end
+  end
+
+  # Unblock a user or email
+  def unblock_user(block_id) do
+    block = Repo.get(BlockedUser, block_id)
+
+    if block do
+      Repo.delete(block)
+    else
+      {:error, "Block not found"}
+    end
+  end
+
+  # List messages for a channel with optional limit
+  def list_messages(channel_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+
+    Message
+    |> where([m], m.room_id == ^channel_id)
+    |> order_by([m], desc: m.inserted_at)
+    |> limit(^limit)
+    |> preload(:user)
+    |> Repo.all()
+  end
+
+  # Subscribe to a channel's PubSub topic
+  def subscribe(channel_id) do
+    Phoenix.PubSub.subscribe(Frestyl.PubSub, "channel:#{channel_id}")
   end
 
   @doc """
@@ -593,17 +804,6 @@ defmodule Frestyl.Channels do
       blocked_by_user_id: blocked_by.id
     }))
     |> Repo.insert()
-  end
-
-  @doc """
-  Unblocks a user from a channel.
-  """
-  def unblock_user(channel, %User{} = user) do
-    Repo.get_by(BlockedUser, channel_id: channel.id, user_id: user.id)
-    |> case do
-      nil -> {:error, "User is not blocked"}
-      blocked -> Repo.delete(blocked)
-    end
   end
 
   @doc """
@@ -702,25 +902,41 @@ defmodule Frestyl.Channels do
   @doc """
   Gets active media for a channel.
   """
+  # Add this function to handle channel IDs
+  @doc """
+  Gets active media for a channel.
+  """
+  # Handle Channel struct
   def get_active_media(%Channel{} = channel) do
-  # Load active media items
-  branding_media = if channel.active_branding_media_id,
-                  do: Repo.get(Frestyl.Media.MediaItem, channel.active_branding_media_id),
-                  else: nil
-
-  presentation_media = if channel.active_presentation_media_id,
-                      do: Repo.get(Frestyl.Media.MediaItem, channel.active_presentation_media_id),
-                      else: nil
-
-  performance_media = if channel.active_performance_media_id,
-                    do: Repo.get(Frestyl.Media.MediaItem, channel.active_performance_media_id),
+    # Load active media items
+    branding_media = if channel.active_branding_media_id,
+                    do: Repo.get(Frestyl.Media.MediaItem, channel.active_branding_media_id),
                     else: nil
 
-  %{
-  branding: branding_media,
-  presentation: presentation_media,
-  performance: performance_media
-  }
+    presentation_media = if channel.active_presentation_media_id,
+                        do: Repo.get(Frestyl.Media.MediaItem, channel.active_presentation_media_id),
+                        else: nil
+
+    performance_media = if channel.active_performance_media_id,
+                      do: Repo.get(Frestyl.Media.MediaItem, channel.active_performance_media_id),
+                      else: nil
+
+    %{
+      branding: branding_media,
+      presentation: presentation_media,
+      performance: performance_media
+    }
+  end
+
+  # Handle integer or string IDs
+  def get_active_media(channel_id) when is_integer(channel_id) or is_binary(channel_id) do
+    channel_id = if is_binary(channel_id), do: String.to_integer(channel_id), else: channel_id
+
+    # Try to fetch the channel
+    case get_channel(channel_id) do
+      nil -> %{} # Return an empty map if channel not found
+      channel -> get_active_media(channel)
+    end
   end
 
   @doc """
@@ -742,12 +958,5 @@ defmodule Frestyl.Channels do
     {:ok, updated_channel}
   error -> error
   end
-  end
-
-  @doc """
-  Gets a channel by slug.
-  """
-  def get_channel_by_slug!(slug) do
-  Repo.get_by!(Channel, slug: slug)
   end
 end

@@ -1,217 +1,378 @@
-// assets/js/app.js
+import "phoenix_html";
+import { Socket } from "phoenix";
+import { LiveSocket } from "phoenix_live_view";
+import topbar from "../vendor/topbar";
 
-// Include phoenix_html to handle method=PUT/DELETE in forms and buttons
-import "phoenix_html"
-// Establish Phoenix Socket and LiveView configuration
-import {Socket} from "phoenix"
-import {LiveSocket} from "phoenix_live_view"
-import topbar from "../vendor/topbar"
+// Import only the hooks we need, avoiding conflicts
+import SessionHooks from "./hooks/session_hooks";
+import StreamQualityHook from "./hooks/stream_quality";
+import MediaUploadHooks from "./hooks/upload_hooks";
 
-// Assuming MediaUploadHooks exports an object of hooks { HookName1: {}, ... }
-// We will modify hooks/upload_hooks.js to remove the conflicting DragDrop hook.
-import MediaUploadHooks from "./hooks/upload_hooks"
-
-// Assuming setupImageProcessing is a function defined in image_processor.js
-// Ensure this function is correctly defined and exported from its file.
+// Import utilities
 import { setupImageProcessing } from "./image_processor";
+import "./analytics";
+import Chart from 'chart.js/auto';
+import 'chartjs-adapter-date-fns';
 
-// Import our analytics module
-import "./analytics"
-// require("phoenix_html") // Already imported above, can remove this duplicate
+const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
 
-// Import Chart.js for visualization components
-import Chart from 'chart.js/auto'
-import 'chartjs-adapter-date-fns' // For time-series charts
-
-let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
-
-// Debug helper for hooks - keep this handy!
-const debugHook = (name, method, details = {}) => {
-  console.log(`Hook: ${name}.${method}`, details);
-};
-
-// --- Define Individual Hook Factory Functions or Objects ---
-
-// Define the function that creates the FileUploader hook instance.
-// This hook is responsible *solely* for the drag-and-drop and file selection logic
-// for the element with phx-hook="FileUploader".
-// Modify your createFileUploaderHook function in app.js
-const createFileUploaderHook = () => ({
+// Define ONLY the chat hooks we need for the chat system
+const ChatHooks = {
+AutoResize: {
   mounted() {
-    console.log("FileUploader hook mounted");
-    const fileInput = this.el.querySelector('input[type="file"]');
-    const dropZone = this.el.querySelector('.border-dashed');
+    console.log("AutoResize hook mounted"); // Debug log
+    this.setupAutoResize();
+    this.setupKeyHandlers();
+    this.setupTypingIndicator();
+  },
+
+  setupTypingIndicator() {
+    const textarea = this.el;
+    console.log("Setting up typing indicator for:", textarea); // Debug log
     
-    if (!fileInput) {
-      console.error("FileUploader: No file input found");
-      return;
-    }
+    if (!textarea) return;
     
-    if (!dropZone) {
-      console.error("FileUploader: No dropzone found");
-      return;
-    }
+    let typingTimer;
+    const TYPING_TIMEOUT = 1000;
     
-    console.log("FileUploader: Found elements", { fileInput, dropZone });
-    
-    // Make drop zone clickable
-    dropZone.addEventListener('click', (e) => {
-      if (e.target !== fileInput && e.target.tagName !== 'BUTTON') {
-        console.log("FileUploader: Dropzone clicked");
-        fileInput.click();
+    textarea.addEventListener('input', (e) => {
+      console.log("Input event triggered, value:", e.target.value); // Debug log
+      
+      if (e.target.value.trim().length > 0) {
+        console.log("Sending typing_start event"); // Debug log
+        this.pushEvent("typing_start", {});
+        
+        clearTimeout(typingTimer);
+        
+        typingTimer = setTimeout(() => {
+          console.log("Sending typing_stop event (timeout)"); // Debug log
+          this.pushEvent("typing_stop", {});
+        }, TYPING_TIMEOUT);
+      } else {
+        console.log("Sending typing_stop event (empty)"); // Debug log
+        this.pushEvent("typing_stop", {});
+        clearTimeout(typingTimer);
       }
     });
     
-    // Setup drag and drop
-    dropZone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      dropZone.classList.add('border-blue-500');
-      dropZone.classList.remove('border-gray-300');
+    textarea.addEventListener('blur', () => {
+      console.log("Textarea lost focus, sending typing_stop"); // Debug log
+      this.pushEvent("typing_stop", {});
+      clearTimeout(typingTimer);
     });
-    
-    dropZone.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      dropZone.classList.remove('border-blue-500');
-      dropZone.classList.add('border-gray-300');
-    });
-    
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      console.log("FileUploader: Files dropped", e.dataTransfer.files);
+  }
+},
+
+    setupKeyHandlers() {
+      const textarea = this.el;
+      if (!textarea) return;
       
-      dropZone.classList.remove('border-blue-500');
-      dropZone.classList.add('border-gray-300');
+      // Handle Enter key for form submission
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          const form = textarea.closest('form');
+          if (form) {
+            // Check if there's content or files before submitting
+            const hasContent = textarea.value.trim().length > 0;
+            const fileInput = form.querySelector('[data-phx-upload-ref]');
+            const hasFiles = fileInput && fileInput.files && fileInput.files.length > 0;
+            
+            if (hasContent || hasFiles) {
+              // Trigger the form submit event
+              const submitEvent = new Event('submit', { 
+                bubbles: true, 
+                cancelable: true 
+              });
+              form.dispatchEvent(submitEvent);
+            }
+          }
+        }
+      });
+    },
+
+    setupTypingIndicator() {
+      const textarea = this.el;
+      if (!textarea) {
+        console.log("No textarea found for typing indicator!");
+        return;
+      }
       
-      if (e.dataTransfer.files.length > 0) {
-        // Directly assign files to the input
-        fileInput.files = e.dataTransfer.files;
+      console.log("Setting up typing indicator on:", textarea); // Debug line
+      
+      let typingTimer;
+      const TYPING_TIMEOUT = 1000; // Stop typing after 1 second of inactivity
+      
+      // Start typing indicator
+      textarea.addEventListener('input', (e) => {
+        console.log("Input detected:", e.target.value); // Debug line
         
-        // Trigger change event
-        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log("FileUploader: Files assigned to input", fileInput.files);
+        // Only trigger if there's actual content
+        if (e.target.value.trim().length > 0) {
+          console.log("Sending typing_start event"); // Debug line
+          this.pushEvent("typing_start", {});
+          
+          // Clear previous timer
+          clearTimeout(typingTimer);
+          
+          // Set new timer to stop typing
+          typingTimer = setTimeout(() => {
+            console.log("Sending typing_stop event (timeout)"); // Debug line
+            this.pushEvent("typing_stop", {});
+          }, TYPING_TIMEOUT);
+        } else {
+          // If field is empty, stop typing immediately
+          console.log("Sending typing_stop event (empty field)"); // Debug line
+          this.pushEvent("typing_stop", {});
+          clearTimeout(typingTimer);
+        }
+      });
+      
+      // Stop typing when textarea loses focus
+      textarea.addEventListener('blur', () => {
+        console.log("Sending typing_stop event (blur)"); // Debug line
+        this.pushEvent("typing_stop", {});
+        clearTimeout(typingTimer);
+      });
+    }
+  },
+
+  DragAndDrop: {
+    mounted() {
+      this.dragCounter = 0;
+      this.overlay = document.getElementById('drag-overlay');
+      
+      // Bind event listeners
+      document.addEventListener('dragenter', this.handleDragEnter.bind(this));
+      document.addEventListener('dragleave', this.handleDragLeave.bind(this));
+      document.addEventListener('dragover', this.handleDragOver.bind(this));
+      document.addEventListener('drop', this.handleDrop.bind(this));
+    },
+
+    destroyed() {
+      // Clean up event listeners
+      document.removeEventListener('dragenter', this.handleDragEnter);
+      document.removeEventListener('dragleave', this.handleDragLeave);
+      document.removeEventListener('dragover', this.handleDragOver);
+      document.removeEventListener('drop', this.handleDrop);
+    },
+
+    handleDragEnter(e) {
+      e.preventDefault();
+      this.dragCounter++;
+      if (this.dragCounter === 1) {
+        this.overlay.classList.remove('hidden');
+      }
+    },
+
+    handleDragLeave(e) {
+      e.preventDefault();
+      this.dragCounter--;
+      if (this.dragCounter === 0) {
+        this.overlay.classList.add('hidden');
+      }
+    },
+
+    handleDragOver(e) {
+      e.preventDefault();
+    },
+
+    handleDrop(e) {
+      e.preventDefault();
+      this.dragCounter = 0;
+      this.overlay.classList.add('hidden');
+      
+      // Let LiveView handle the drop if it's in the target area
+      const dropTarget = document.querySelector('[phx-drop-target]');
+      if (dropTarget && (dropTarget.contains(e.target) || e.target === dropTarget)) {
+        // LiveView will handle this
+        return;
+      }
+    }
+  },
+
+  MessageForm: {
+    mounted() {
+      console.log("MessageForm hook mounted!"); // Debug line
+      
+      // Handle the reset form event
+      this.handleEvent("reset-form", () => {
+        const textarea = this.el.querySelector('textarea[name="content"]');
+        if (textarea) {
+          textarea.value = '';
+          textarea.style.height = 'auto';
+          textarea.focus();
+          
+          // Stop typing indicator when form is reset
+          console.log("Sending typing_stop event (form reset)"); // Debug line
+          this.pushEvent("typing_stop", {});
+        }
+      });
+    }
+  }
+};
+
+// Simple file test hook for debugging
+const SimpleFileTest = {
+  mounted() {
+    console.log("SimpleFileTest hook mounted");
+    
+    const fileInput = document.getElementById('basic-file-input');
+    const fileInfo = document.getElementById('file-info');
+    
+    if (fileInput && fileInfo) {
+      fileInput.addEventListener('change', function(e) {
+        console.log('File input changed', e.target.files);
+        if (e.target.files.length > 0) {
+          fileInfo.textContent = 'Selected: ' + e.target.files[0].name;
+          fileInfo.style.color = 'green';
+        } else {
+          fileInfo.textContent = 'No files selected';
+          fileInfo.style.color = 'red';
+        }
+      });
+    }
+    
+    const clickArea = document.getElementById('click-test-area');
+    const clickResult = document.getElementById('click-result');
+    
+    if (clickArea && clickResult) {
+      clickArea.addEventListener('click', function() {
+        console.log('Click test triggered');
+        clickResult.textContent = '✅ JavaScript working! ' + new Date().toLocaleTimeString();
+        clickResult.style.color = 'green';
+      });
+    }
+  }
+};
+
+// Define other hook functions that your app needs
+function createFileUploaderHook() {
+  return {
+    mounted() {
+      console.log("FileUploader hook mounted - but this may conflict with LiveView uploads");
+      // Don't implement file upload logic here - let LiveView handle it
+    }
+  };
+}
+
+const MessagesContainerHook = {
+  mounted() {
+    this.scrollToBottom();
+  },
+  updated() {
+    this.scrollToBottom();
+  },
+  scrollToBottom() {
+    this.el.scrollTop = this.el.scrollHeight;
+  }
+};
+
+const TypingIndicatorHook = {
+  mounted() {
+    // Typing indicator logic
+  }
+};
+
+const AutoResizeTextareaHook = {
+  mounted() {
+    this.resize();
+    this.el.addEventListener('input', () => this.resize());
+  },
+  resize() {
+    this.el.style.height = 'auto';
+    this.el.style.height = (this.el.scrollHeight) + 'px';
+  }
+};
+
+const MessageTextareaHook = {
+  mounted() {
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const form = this.el.closest('form');
+        if (form) {
+          form.submit();
+        }
       }
     });
   }
-});
+};
 
-// --- Define Other Individual Hooks (Not related to core file assignment) ---
-
-// These hooks appear independent of the core drag/drop file assignment.
-// Keep their definitions as they are, but ensure they are correctly added to the main Hooks object.
-
-const MessagesContainerHook = { /* ... (your original MessagesContainer code) ... */
+const ShowHidePriceHook = {
   mounted() {
-    debugHook('MessagesContainer', 'mounted');
-    this.scrollToBottom();
-    this.handleEvent("chat-message-sent", () => { this.scrollToBottom(); });
-  },
-  updated() { this.scrollToBottom(); },
-  destroyed() { debugHook('MessagesContainer', 'destroyed'); },
-  scrollToBottom() { this.el.scrollTop = this.el.scrollHeight; }
+    // Existing logic
+  }
 };
 
-const TypingIndicatorHook = { /* ... (your original TypingIndicator code) ... */
-  mounted() { debugHook('TypingIndicator', 'mounted'); /* ... */ },
-  destroyed() { debugHook('TypingIndicator', 'destroyed'); }
+const ShowHideMaxAttendeesHook = {
+  mounted() {
+    // Existing logic
+  }
 };
 
-const AutoResizeTextareaHook = { /* ... (your original AutoResizeTextarea code) ... */
-  mounted() { debugHook('AutoResizeTextarea', 'mounted'); this.resize(); this.el.addEventListener("input", () => this.resize()); },
-   resize() { this.el.style.height = "auto"; this.el.style.height = (this.el.scrollHeight) + "px"; },
-   destroyed() { debugHook('AutoResizeTextarea', 'destroyed'); }
+const TimeSeriesChartHook = {
+  mounted() {
+    // Chart logic
+  }
 };
 
-const ShowHidePriceHook = { /* ... (your original ShowHidePrice code) ... */
-  mounted() { debugHook('ShowHidePrice', 'mounted'); /* ... */ },
-  toggleVisibility(val) { debugHook('ShowHidePrice', 'toggleVisibility', {value: val}); /* ... */ }
+const StackedBarChartHook = {
+  mounted() {
+    // Chart logic
+  }
 };
 
-const ShowHideMaxAttendeesHook = { /* ... (your original ShowHideMaxAttendees code) ... */
-  mounted() { debugHook('ShowHideMaxAttendees', 'mounted'); /* ... */ },
-  toggleVisibility(val) { debugHook('ShowHideMaxAttendees', 'toggleVisibility', {value: val}); /* ... */ }
+const PieChartHook = {
+  mounted() {
+    // Chart logic
+  }
 };
 
-const TimeSeriesChartHook = { /* ... (your original TimeSeriesChart code) ... */
-  mounted() { debugHook('TimeSeriesChart', 'mounted'); /* ... */ }, updated() { debugHook('TimeSeriesChart', 'updated'); /* ... */ }, destroyed() { debugHook('TimeSeriesChart', 'destroyed'); if (this.chart) this.chart.destroy(); }
+const ImageProcessorHook = {
+  mounted() {
+    // Image processing logic
+  }
 };
 
-const StackedBarChartHook = { /* ... (your original StackedBarChart code) ... */
-  mounted() { debugHook('StackedBarChart', 'mounted'); /* ... */ }, updated() { debugHook('StackedBarChart', 'updated'); /* ... */ }, destroyed() { debugHook('StackedBarChart', 'destroyed'); if (this.chart) this.chart.destroy(); }
-};
-
-const PieChartHook = { /* ... (your original PieChart code) ... */
-  mounted() { debugHook('PieChart', 'mounted'); /* ... */ }, updated() { debugHook('PieChart', 'updated'); /* ... */ }, destroyed() { debugHook('PieChart', 'destroyed'); if (this.chart) this.chart.destroy(); }
-};
-
-const ImageProcessorHook = { /* ... (your original ImageProcessor code) ... */
-   mounted() { debugHook('ImageProcessor', 'mounted'); if (typeof setupImageProcessing === "function") { setupImageProcessing(); } else { console.error("ImageProcessor: setupImageProcessing function not found"); } },
-   destroyed() { debugHook('ImageProcessor', 'destroyed'); } // Add destroyed if needed
-};
-
-
-// --- Consolidate All Hooks into a Single Object ---
-// Define the single object that will contain all your hooks,
-// using the 'let' keyword to allow adding properties.
-
+// Combine all hooks - AVOID DUPLICATES
 let Hooks = {
-  // Add each defined hook object/instance as a property of the Hooks object
+  // Chat hooks (simplified)
+  ...ChatHooks
+  ChatForm: ChatHooks.ChatForm,
+  AutoResize: ChatHooks.AutoResize,
+  
+  // Media upload hooks (from upload_hooks.js)
+  ...MediaUploadHooks,
+  
+  // Other hooks
+  FileUploader: createFileUploaderHook(),
   MessagesContainer: MessagesContainerHook,
+  SimpleFileTest: SimpleFileTest,
   TypingIndicator: TypingIndicatorHook,
   AutoResizeTextarea: AutoResizeTextareaHook,
+  MessageTextarea: MessageTextareaHook,
   ShowHidePrice: ShowHidePriceHook,
   ShowHideMaxAttendees: ShowHideMaxAttendeesHook,
   TimeSeriesChart: TimeSeriesChartHook,
   StackedBarChart: StackedBarChartHook,
   PieChart: PieChartHook,
-  ImageProcessor: ImageProcessorHook, // Assuming this is a hook used elsewhere
-
-  // --- Add the primary File Upload Hook ---
-  // Use the hook created by the factory function for the FileUploader name
-  FileUploader: createFileUploaderHook(),
-
-  // --- Review MediaUpload Hook ---
-  // This hook definition looked like a duplicate of FileUploader's logic.
-  // If phx-hook="MediaUpload" is used on a DIFFERENT element for a DIFFERENT purpose,
-  // keep this definition and update its logic to be distinct.
-  // If phx-hook="MediaUpload" is NOT used, or is used on the SAME element
-  // as FileUploader, this definition is redundant and should be REMOVED.
-  // For now, including it as a placeholder based on your original code, but comment it out
-  // for testing the consolidated FileUploader logic.
-  // MediaUpload: {
-  //    mounted() { debugHook('MediaUpload', 'mounted - Review Usage!'); /* ... original MediaUpload logic ... */ },
-  //    // ... other lifecycle methods ...
-  // },
-
-
-  // --- Merge External Hooks from hooks/upload_hooks.js ---
-  // Use the spread syntax to include hooks from MediaUploadHooks.js.
-  // Assuming MediaUploadHooks is an object { HookName1: {}, HookName2: {} }.
-  // After removing the conflicting DragDrop from that file, other hooks like MediaPreview should be merged here.
-  ...MediaUploadHooks // This should now include MediaPreview if it's in MediaUploadHooks
+  ImageProcessor: ImageProcessorHook,
+  SessionHooks,
+  StreamQuality: StreamQualityHook
 };
 
-
-// --- Initialize LiveSocket ---
-// Pass the single, consolidated Hooks object to LiveSocket
-
+// Initialize LiveSocket
 let liveSocket = new LiveSocket("/live", Socket, {
-  params: {_csrf_token: csrfToken},
-  hooks: Hooks // Pass the combined Hooks object here
+  params: { _csrf_token: csrfToken },
+  hooks: Hooks
 });
 
+// Topbar Progress Indicator
+topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
+window.addEventListener("phx:page-loading-start", () => topbar.show());
+window.addEventListener("phx:page-loading-stop", () => topbar.hide());
 
-// --- Standard LiveView/Topbar Setup ---
-
-// Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
-window.addEventListener("phx:page-loading-start", info => topbar.show())
-window.addEventListener("phx:page-loading-stop", info => topbar.hide())
-
-// connect if there are any LiveViews on the page
-liveSocket.connect()
-
-// expose liveSocket on window for web console debug logs and latency simulation:
-// >> liveSocket.enableDebug()
-// >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session
-// >> liveSocket.disableLatencySim()
-window.liveSocket = liveSocket
+// Connect LiveSocket
+liveSocket.connect();
+window.liveSocket = liveSocket;

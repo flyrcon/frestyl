@@ -13,7 +13,6 @@ defmodule Frestyl.Application do
       {DNSCluster, query: Application.get_env(:frestyl, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Frestyl.PubSub, adapter_name: Phoenix.PubSub.PG2},
       Frestyl.Presence,
-      FrestylWeb.Presence,
       #{Absinthe.Subscription, FrestylWeb.Endpoint},
       Frestyl.Scheduler,
       # Start the Finch HTTP client for sending emails

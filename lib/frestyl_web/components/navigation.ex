@@ -164,7 +164,7 @@ defmodule FrestylWeb.Navigation do
 
       <!-- Mobile menu -->
       <div id="mobile-menu" style="display: none;" class="sm:hidden">
-        <div class="pt-2 pb-3 space-y-1">
+        <div class="pt-2 pb-3 space-y-1">w
           <.link
             navigate={~p"/dashboard"}
             class={[

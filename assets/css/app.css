@@ -134,3 +134,127 @@
       opacity: 1;
     }
   }
+
+/* Message form container */
+#message-form-container {
+  position: relative;
+}
+
+/* Drag and drop zone */
+#drop-zone {
+  transition: all 0.2s ease-in-out;
+  border-radius: 0.5rem;
+}
+
+#drop-zone.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Enhanced drag and drop styling */
+.phx-drop-target {
+  transition: all 0.2s ease-in-out;
+  border-radius: 0.375rem;
+}
+
+.phx-drop-target.phx-drop-target-over {
+  background-color: #f0f9ff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Message textarea */
+#message-textarea {
+  min-height: 2.5rem;
+  max-height: 150px;
+  transition: height 0.1s ease-out;
+}
+
+#message-textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+/* Upload preview */
+#upload-preview {
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* File upload button */
+label[for*="attachments"] {
+  transition: all 0.2s ease-in-out;
+}
+
+label[for*="attachments"]:hover {
+  background-color: #e5e7eb;
+  transform: translateY(-1px);
+}
+
+/* Send button */
+button[type="submit"] {
+  transition: all 0.2s ease-in-out;
+}
+
+button[type="submit"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Progress bar animation */
+.upload-progress {
+  transition: width 0.3s ease-out;
+}
+
+/* Message bubbles in chat */
+.chat-message {
+  transition: all 0.2s ease-in-out;
+}
+
+.chat-message:hover {
+  background-color: #f9fafb;
+}
+
+/* File attachment previews */
+.attachment-preview {
+  transition: all 0.2s ease-in-out;
+}
+
+.attachment-preview:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Animated typing dots */
+.typing-dots {
+  display: inline-block;
+  margin-left: 4px;
+}
+
+.typing-dots span {
+  animation: typing-dot 1.4s infinite ease-in-out both;
+  display: inline-block;
+}
+
+.typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+.typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing-dot {
+  0%, 80%, 100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
+  }
+}

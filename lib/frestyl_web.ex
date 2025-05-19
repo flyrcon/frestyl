@@ -17,6 +17,18 @@ defmodule FrestylWeb do
   those modules here.
   """
 
+    def authenticated_live_view do
+    quote do
+      use Phoenix.LiveView,
+        layout: {FrestylWeb.Layouts, :app}
+
+      # Add authentication hook
+      on_mount {FrestylWeb.UserAuth, :ensure_authenticated}
+
+      unquote(html_helpers())
+    end
+  end
+
   def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
 
   def router do
@@ -54,6 +66,9 @@ defmodule FrestylWeb do
     quote do
       use Phoenix.LiveView,
         layout: {FrestylWeb.Layouts, :app}
+
+      # Add this line if it's missing
+      # on_mount {FrestylWeb.UserAuth, :ensure_authenticated}
 
       unquote(html_helpers())
     end

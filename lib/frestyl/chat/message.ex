@@ -1,61 +1,36 @@
 defmodule Frestyl.Chat.Message do
   use Ecto.Schema
   import Ecto.Changeset
-  alias Frestyl.Accounts.User
-  alias Frestyl.Channels.Channel
 
   schema "messages" do
     field :content, :string
-    field :message_type, :string, default: "text" # text, image, file, system
+    field :message_type, :string, default: "text"
     field :metadata, :map, default: %{}
-    field :is_edited, :boolean, default: false
-    field :is_deleted, :boolean, default: false
 
-    belongs_to :user, User
-    belongs_to :channel, Channel
-    belongs_to :conversation, Frestyl.Chat.Conversation, on_replace: :nilify
+    has_many :attachments, Frestyl.Chat.Attachment
+
+    belongs_to :user, Frestyl.Accounts.User
+    belongs_to :conversation, Frestyl.Chat.Conversation
+    belongs_to :channel, Frestyl.Channels.Channel
+    belongs_to :room, Frestyl.Channels.Room
 
     timestamps()
   end
 
-  @doc false
   def changeset(message, attrs) do
     message
-    |> cast(attrs, [:content, :message_type, :metadata, :user_id, :channel_id, :conversation_id])
+    |> cast(attrs, [:content, :user_id, :conversation_id, :channel_id, :room_id, :message_type, :metadata])
     |> validate_required([:content, :user_id])
-    |> validate_at_least_one_destination()
-    |> validate_inclusion(:message_type, ["text", "image", "file", "system"])
-    |> validate_length(:content, max: 10000)
-    |> foreign_key_constraint(:user_id)
-    |> foreign_key_constraint(:channel_id)
-    |> foreign_key_constraint(:conversation_id)
+    |> validate_at_least_one_recipient()
   end
 
-  @doc """
-  Changeset for editing a message.
-  """
-  def edit_changeset(message, attrs) do
-    message
-    |> cast(attrs, [:content])
-    |> validate_required([:content])
-    |> validate_length(:content, max: 10000)
-    |> put_change(:is_edited, true)
-  end
-
-  @doc """
-  Marks a message as deleted.
-  """
-  def delete_changeset(message) do
-    change(message, is_deleted: true, content: "[This message was deleted]")
-  end
-
-  # Either channel_id or conversation_id must be set
-  defp validate_at_least_one_destination(changeset) do
-    channel_id = get_field(changeset, :channel_id)
+  # Updated validation - room_id is not required for conversation messages
+  defp validate_at_least_one_recipient(changeset) do
     conversation_id = get_field(changeset, :conversation_id)
+    channel_id = get_field(changeset, :channel_id)
 
-    if is_nil(channel_id) && is_nil(conversation_id) do
-      add_error(changeset, :base, "Message must be sent to either a channel or a conversation")
+    if is_nil(conversation_id) && is_nil(channel_id) do
+      add_error(changeset, :base, "Message must have at least one recipient (conversation or channel)")
     else
       changeset
     end

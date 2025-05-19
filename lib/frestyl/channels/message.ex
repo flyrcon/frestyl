@@ -6,7 +6,7 @@ defmodule Frestyl.Channels.Message do
 
   schema "messages" do
     field :content, :string
-    field :attachment_url, :string
+    # Remove the attachment_url field since it doesn't exist in the database
     field :message_type, :string, default: "text" # Options: "text", "file", "system"
 
     belongs_to :user, User
@@ -17,7 +17,7 @@ defmodule Frestyl.Channels.Message do
 
   def changeset(message, attrs) do
     message
-    |> cast(attrs, [:content, :attachment_url, :message_type, :user_id, :room_id])
+    |> cast(attrs, [:content, :message_type, :user_id, :room_id]) # Remove attachment_url from here too
     |> validate_required([:content, :user_id, :room_id])
     |> validate_length(:content, min: 1, max: 5000)
   end

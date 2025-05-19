@@ -47,43 +47,166 @@ defmodule FrestylWeb.CoreComponents do
 
   def navigation(assigns) do
     ~H"""
-    <nav class="bg-white shadow mb-6">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between h-16">
-          <div class="flex">
-            <div class="flex-shrink-0 flex items-center">
-              <span class="text-[#DD1155] text-xl font-bold">Frestyl</span>
-            </div>
-            <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
-              <a href="/dashboard" class={[
-                "inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium",
-                @active_tab == :dashboard && "border-[#DD1155] text-gray-900" || "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              ]}>
-                Dashboard
-              </a>
-              <a href="/channels" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+    <nav class="bg-white shadow-md mb-4">
+      <div class="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
+        <div class="flex justify-between h-14">
+          <div class="flex items-center">
+            <div class="hidden sm:flex sm:space-x-1">
+              <a
+                href="/channels"
+                class={[
+                  "px-3 py-2 rounded-md text-sm font-medium flex items-center transition-colors",
+                  @active_tab == :channels && "bg-gray-100 text-indigo-600" || "text-gray-700 hover:bg-gray-50 hover:text-indigo-600"
+                ]}
+              >
+                <svg class={"h-4 w-4 mr-1.5 #{if @active_tab == :channels, do: "text-indigo-600", else: "text-gray-500"}"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.7998 8.80005C20.8998 9.90005 20.8998 11.7 19.7998 12.8L18.3998 14.2C17.5998 15 16.4998 15.4 15.3998 15.4" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.5996 15.4C14.0996 15.4 12.6996 14.8 11.6996 13.9L8.29961 10.5C6.39961 8.6 6.39961 5.5 8.29961 3.6C10.1996 1.7 13.2996 1.7 15.1996 3.6L16.9996 5.4" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.5 15.5C6.8 15.5 5.1 14.5 4.2 13.4L2.5 11.1C1.9 10.3 1.9 9.2 2.5 8.4C3.1 7.6 4.2 7.4 5 8L8.5 10.5" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 20.5C11.8 20.5 10.1 19.5 9.2 18.4L7.5 16.1C6.9 15.3 6.9 14.2 7.5 13.4C8.1 12.6 9.2 12.4 10 13L13.5 15.5" />
+                </svg>
                 Channels
               </a>
-              <a href="/chat" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+
+              <a
+                href="/chat"
+                class={[
+                  "px-3 py-2 rounded-md text-sm font-medium flex items-center transition-colors",
+                  @active_tab == :chat && "bg-gray-100 text-purple-600" || "text-gray-700 hover:bg-gray-50 hover:text-purple-600"
+                ]}
+              >
+                <svg class={"h-4 w-4 mr-1.5 #{if @active_tab == :chat, do: "text-purple-600", else: "text-gray-500"}"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
                 Chat
               </a>
-              <a href="/media" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                Media
+
+              <a
+                href="/events"
+                class={[
+                  "px-3 py-2 rounded-md text-sm font-medium flex items-center transition-colors",
+                  @active_tab == :events && "bg-gray-100 text-rose-600" || "text-gray-700 hover:bg-gray-50 hover:text-rose-600"
+                ]}
+              >
+                <svg class={"h-4 w-4 mr-1.5 #{if @active_tab == :events, do: "text-rose-600", else: "text-gray-500"}"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Events
               </a>
-              <a href="/profile" class="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+
+              <a
+                href="/profile"
+                class={[
+                  "px-3 py-2 rounded-md text-sm font-medium flex items-center transition-colors",
+                  @active_tab == :profile && "bg-gray-100 text-teal-600" || "text-gray-700 hover:bg-gray-50 hover:text-teal-600"
+                ]}
+              >
+                <svg class={"h-4 w-4 mr-1.5 #{if @active_tab == :profile, do: "text-teal-600", else: "text-gray-500"}"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
                 Profile
               </a>
             </div>
           </div>
 
-          <div class="flex items-center">
-            <%= if @current_user do %>
-              <span class="mr-4 text-sm text-gray-700">Hi, <%= @current_user.name %></span>
-              <a href="/logout" data-method="delete" class="text-sm text-gray-700 hover:text-gray-900">
-                Logout
-              </a>
-            <% end %>
+          <div class="hidden sm:flex sm:items-center">
+            <a
+              href="/logout"
+              data-method="delete"
+              class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+            >
+              <svg class="h-4 w-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Logout
+            </a>
           </div>
+
+          <!-- Mobile menu button -->
+          <div class="flex items-center sm:hidden">
+            <button
+              type="button"
+              class="inline-flex items-center justify-center p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
+              aria-expanded="false"
+              phx-click={JS.toggle(to: "#mobile-menu", in: "transition ease-out duration-100", out: "transition ease-in duration-75", display: "block")}
+            >
+              <span class="sr-only">Open main menu</span>
+              <svg class="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mobile menu -->
+      <div id="mobile-menu" style="display: none;" class="sm:hidden bg-white border-t border-gray-200">
+        <div class="px-2 pt-2 pb-3 space-y-1">
+          <a
+            href="/channels"
+            class={[
+              "flex items-center px-3 py-2 rounded-md text-base font-medium",
+              @active_tab == :channels && "bg-gray-100 text-indigo-600" || "text-gray-700 hover:bg-gray-50 hover:text-indigo-600"
+            ]}
+          >
+            <svg class={"h-5 w-5 mr-3 #{if @active_tab == :channels, do: "text-indigo-600", else: "text-gray-500"}"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.7998 8.80005C20.8998 9.90005 20.8998 11.7 19.7998 12.8L18.3998 14.2C17.5998 15 16.4998 15.4 15.3998 15.4" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.5996 15.4C14.0996 15.4 12.6996 14.8 11.6996 13.9L8.29961 10.5C6.39961 8.6 6.39961 5.5 8.29961 3.6C10.1996 1.7 13.2996 1.7 15.1996 3.6L16.9996 5.4" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.5 15.5C6.8 15.5 5.1 14.5 4.2 13.4L2.5 11.1C1.9 10.3 1.9 9.2 2.5 8.4C3.1 7.6 4.2 7.4 5 8L8.5 10.5" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 20.5C11.8 20.5 10.1 19.5 9.2 18.4L7.5 16.1C6.9 15.3 6.9 14.2 7.5 13.4C8.1 12.6 9.2 12.4 10 13L13.5 15.5" />
+            </svg>
+            Channels
+          </a>
+
+          <a
+            href="/chat"
+            class={[
+              "flex items-center px-3 py-2 rounded-md text-base font-medium",
+              @active_tab == :chat && "bg-gray-100 text-purple-600" || "text-gray-700 hover:bg-gray-50 hover:text-purple-600"
+            ]}
+          >
+            <svg class={"h-5 w-5 mr-3 #{if @active_tab == :chat, do: "text-purple-600", else: "text-gray-500"}"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            Chat
+          </a>
+
+          <a
+            href="/events"
+            class={[
+              "flex items-center px-3 py-2 rounded-md text-base font-medium",
+              @active_tab == :events && "bg-gray-100 text-rose-600" || "text-gray-700 hover:bg-gray-50 hover:text-rose-600"
+            ]}
+          >
+            <svg class={"h-5 w-5 mr-3 #{if @active_tab == :events, do: "text-rose-600", else: "text-gray-500"}"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Events
+          </a>
+
+          <a
+            href="/profile"
+            class={[
+              "flex items-center px-3 py-2 rounded-md text-base font-medium",
+              @active_tab == :profile && "bg-gray-100 text-teal-600" || "text-gray-700 hover:bg-gray-50 hover:text-teal-600"
+            ]}
+          >
+            <svg class={"h-5 w-5 mr-3 #{if @active_tab == :profile, do: "text-teal-600", else: "text-gray-500"}"} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            Profile
+          </a>
+
+          <a
+            href="/logout"
+            data-method="delete"
+            class="flex items-center px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50 hover:text-red-600"
+          >
+            <svg class="h-5 w-5 mr-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Sign out
+          </a>
         </div>
       </div>
     </nav>

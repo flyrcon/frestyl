@@ -1,0 +1,498 @@
+<!-- Create lib/frestyl_web/live/broadcast_live/show.html.heex -->
+<div class="flex flex-col h-screen bg-gray-900">
+  <!-- Header -->
+  <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-800">
+    <div>
+      <h1 class="text-xl font-semibold text-white"><%= @broadcast.title %></h1>
+      <p class="text-sm text-gray-400">
+        Hosted by <%= @broadcast.host.username %> • 
+        <%= if @stream_started do %>
+          <span class="text-green-500">Live</span>
+        <% else %>
+          <%= if @broadcast.status == "scheduled" do %>
+            <span class="text-blue-500">Scheduled</span>
+          <% else %>
+            <span class="text-gray-500">Ended</span>
+          <% end %>
+        <% end %>
+      </p>
+    </div>
+    
+    <div class="flex items-center space-x-3">
+      <!-- Host controls -->
+      <%= if @is_host do %>
+        <%= if !@stream_started && @broadcast.status == "scheduled" do %>
+          <button 
+            phx-click="start_stream"
+            class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-md flex items-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+            </svg>
+            Start Stream
+          </button>
+        <% end %>
+        
+        <%= if @stream_started do %>
+          <button 
+            phx-click="end_stream"
+            class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-md flex items-center"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+            </svg>
+            End Stream
+          </button>
+        <% end %>
+      <% end %>
+      
+      <!-- Viewer count -->
+      <div class="px-3 py-1 bg-gray-700 rounded-full flex items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-500 mr-1" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+          <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
+        </svg>
+        <span class="text-white text-sm">
+          <%= @audience_stats.active %> watching
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Main content -->
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Stream area -->
+    <div class="flex-1 flex flex-col bg-black">
+      <!-- Video container -->
+      <div class="flex-1 relative">
+        <%= if @stream_started do %>
+          <div id="stream-container" class="w-full h-full flex items-center justify-center">
+            <video id="broadcast-video" class="max-w-full max-h-full" autoplay controls></video>
+          </div>
+          
+          <!-- Stream controls overlay -->
+          <div class="absolute bottom-4 right-4 z-10 flex items-center space-x-2">
+            <!-- Quality settings control -->
+            <div id="quality-settings" phx-hook="StreamQuality" class="relative">
+              <button
+                phx-click="toggle_quality_settings"
+                class="flex items-center space-x-1 text-white bg-black bg-opacity-50 hover:bg-opacity-70 px-3 py-1.5 rounded-md text-sm transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span>Quality (<%= String.capitalize(@current_quality) %>)</span>
+              </button>
+            </div>
+            
+            <!-- Audio only toggle -->
+            <button
+              phx-click="toggle_audio_only"
+              class={[
+                "flex items-center space-x-1 px-3 py-1.5 rounded-md text-sm transition-colors",
+                @audio_only && "bg-indigo-600 text-white" || "bg-black bg-opacity-50 hover:bg-opacity-70 text-white"
+              ]}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 01-1.414-2.536m-1.414 0a9 9 0 01.268-3.364m1.782 2.828a5 5 0 01-1.414-2.536" />
+              </svg>
+              <span>Audio Only</span>
+            </button>
+          </div>
+        <% else %>
+          <div class="w-full h-full flex items-center justify-center">
+            <%= if @broadcast.status == "scheduled" do %>
+              <!-- Show waiting room -->
+              <div class="text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h2 class="text-2xl font-semibold text-white mb-2">Broadcast hasn't started yet</h2>
+                <p class="text-gray-400 max-w-md mx-auto">
+                  The host hasn't started the broadcast yet. You'll automatically join when it begins.
+                </p>
+              </div>
+            <% else %>
+              <!-- Show ended message -->
+              <div class="text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mx-auto text-gray-600 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <!-- Continue from where we left off in lib/frestyl_web/live/broadcast_live/show.html.heex -->
+                <h2 class="text-2xl font-semibold text-white mb-2">This broadcast has ended</h2>
+                <p class="text-gray-400 max-w-md mx-auto">
+                  The broadcast has concluded. Thank you for watching!
+                  <%= if @broadcast.recording_available do %>
+                    You can watch the recording below.
+                  <% end %>
+                </p>
+                
+                <%= if @broadcast.recording_available do %>
+                  <button class="mt-4 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md">
+                    Watch Recording
+                  </button>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+      
+      <!-- Tabs for different sections -->
+      <div class="bg-gray-800 border-t border-gray-700">
+        <div class="flex">
+          <button
+            phx-click="change_tab"
+            phx-value-tab="chat"
+            class={[
+              "px-4 py-2 text-sm",
+              @current_tab == "chat" && "border-b-2 border-indigo-500 text-white" || "text-gray-400 hover:text-white"
+            ]}
+          >
+            Chat
+          </button>
+          
+          <button
+            phx-click="change_tab"
+            phx-value-tab="participants"
+            class={[
+              "px-4 py-2 text-sm",
+              @current_tab == "participants" && "border-b-2 border-indigo-500 text-white" || "text-gray-400 hover:text-white"
+            ]}
+          >
+            Participants
+          </button>
+          
+          <button
+            phx-click="change_tab"
+            phx-value-tab="about"
+            class={[
+              "px-4 py-2 text-sm",
+              @current_tab == "about" && "border-b-2 border-indigo-500 text-white" || "text-gray-400 hover:text-white"
+            ]}
+          >
+            About
+          </button>
+          
+          <%= if @is_host do %>
+            <button
+              phx-click="change_tab"
+              phx-value-tab="analytics"
+              class={[
+                "px-4 py-2 text-sm",
+                @current_tab == "analytics" && "border-b-2 border-indigo-500 text-white" || "text-gray-400 hover:text-white"
+              ]}
+            >
+              Analytics
+            </button>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Side panel - dynamic based on current tab -->
+    <div class="w-80 border-l border-gray-800 bg-gray-900 flex flex-col">
+      <%= case @current_tab do %>
+        <% "chat" -> %>
+          <div class="flex-1 flex flex-col">
+            <div class="p-4 border-b border-gray-800">
+              <h3 class="text-white font-medium">Live Chat</h3>
+            </div>
+            
+            <%= if @chat_enabled do %>
+              <!-- Chat component will go here -->
+              <div class="flex-1 p-4 overflow-y-auto">
+                <div class="text-center text-gray-500 py-20">
+                  Chat will be displayed here
+                </div>
+              </div>
+              
+              <div class="border-t border-gray-800 p-4">
+                <textarea 
+                  placeholder="Type a message..."
+                  class="w-full bg-gray-800 border border-gray-700 rounded-md p-2 text-white text-sm"
+                  rows="3"
+                  disabled={@current_user && @current_user.id in @muted_users}
+                ></textarea>
+                
+                <div class="mt-2 flex justify-between items-center">
+                  <button class="text-gray-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                  </button>
+                  
+                  <button 
+                    class="px-3 py-1 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-500"
+                    disabled={@current_user && @current_user.id in @muted_users}
+                  >
+                    Send
+                  </button>
+                </div>
+                
+                <%= if @current_user && @current_user.id in @muted_users do %>
+                  <div class="mt-2 text-xs text-center text-red-400">
+                    You have been muted by the host
+                  </div>
+                <% end %>
+              </div>
+            <% else %>
+              <div class="flex-1 flex items-center justify-center">
+                <div class="text-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-600 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <p class="text-gray-400">Chat is currently disabled</p>
+                </div>
+              </div>
+            <% end %>
+          </div>
+          
+        <% "participants" -> %>
+          <div class="flex-1 flex flex-col">
+            <div class="p-4 border-b border-gray-800">
+              <h3 class="text-white font-medium">Participants (<%= @participant_count %>)</h3>
+            </div>
+            
+            <!-- Audience stats -->
+            <%= if @is_host do %>
+              <div class="p-4 border-b border-gray-800">
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="bg-gray-800 p-3 rounded-lg">
+                    <div class="text-2xl font-semibold text-indigo-400"><%= @audience_stats.waiting %></div>
+                    <div class="text-xs text-gray-400">In Waiting Room</div>
+                  </div>
+                  <div class="bg-gray-800 p-3 rounded-lg">
+                    <div class="text-2xl font-semibold text-green-400"><%= @audience_stats.active %></div>
+                    <div class="text-xs text-gray-400">Watching Now</div>
+                  </div>
+                  <div class="bg-gray-800 p-3 rounded-lg">
+                    <div class="text-2xl font-semibold text-red-400"><%= @audience_stats.left %></div>
+                    <div class="text-xs text-gray-400">Left Broadcast</div>
+                  </div>
+                  <div class="bg-gray-800 p-3 rounded-lg">
+                    <div class="text-2xl font-semibold text-white"><%= @audience_stats.total %></div>
+                    <div class="text-xs text-gray-400">Total Participants</div>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+            
+            <div class="flex-1 overflow-y-auto p-4">
+              <!-- Participant list would go here -->
+              <div class="text-center text-gray-500 py-20">
+                Participant list will be displayed here
+              </div>
+            </div>
+          </div>
+          
+        <% "about" -> %>
+          <div class="flex-1 overflow-y-auto p-4">
+            <h3 class="text-lg font-medium text-white mb-4">About This Broadcast</h3>
+            
+            <div class="prose prose-sm text-gray-300">
+              <p><%= @broadcast.description %></p>
+            </div>
+            
+            <div class="mt-6">
+              <h4 class="text-sm font-medium text-gray-400 mb-2">Details</h4>
+              
+              <div class="space-y-2">
+                <div class="flex justify-between">
+                  <span class="text-gray-500">Started</span>
+                  <span class="text-white">
+                    <%= if @broadcast.started_at do %>
+                      <%= Calendar.strftime(@broadcast.started_at, "%b %d, %Y at %I:%M %p") %>
+                    <% else %>
+                      Not started yet
+                    <% end %>
+                  </span>
+                </div>
+                
+                <div class="flex justify-between">
+                  <span class="text-gray-500">Type</span>
+                  <span class="text-white"><%= String.capitalize(@broadcast.broadcast_type) %></span>
+                </div>
+                
+                <div class="flex justify-between">
+                  <span class="text-gray-500">Host</span>
+                  <span class="text-white"><%= @broadcast.host.username %></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+        <% "analytics" -> %>
+          <%= if @is_host do %>
+            <div class="flex-1 overflow-y-auto p-4">
+              <h3 class="text-lg font-medium text-white mb-4">Analytics</h3>
+              
+              <!-- Audience stats -->
+              <div class="mb-6">
+                <h4 class="text-sm font-medium text-gray-400 mb-2">Audience</h4>
+                
+                <div class="bg-gray-800 p-4 rounded-lg">
+                  <div class="flex justify-between items-center mb-4">
+                    <span class="text-white">Current Viewers</span>
+                    <span class="text-xl font-semibold text-white"><%= @audience_stats.active %></span>
+                  </div>
+                  
+                  <div class="h-32 bg-gray-900 rounded-md flex items-center justify-center">
+                    <!-- Viewer graph would go here -->
+                    <p class="text-gray-500">Viewer graph will be displayed here</p>
+                  </div>
+                  
+                  <div class="mt-4 grid grid-cols-2 gap-4">
+                    <div>
+                      <div class="text-sm text-gray-400">Peak Viewers</div>
+                      <div class="text-lg text-white">
+                        <%= @audience_stats.active %> 
+                        <!-- This would be the peak, not just current -->
+                      </div>
+                    </div>
+                    <div>
+                      <div class="text-sm text-gray-400">Avg. Watch Time</div>
+                      <div class="text-lg text-white">N/A</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Chat stats -->
+              <div class="mb-6">
+                <h4 class="text-sm font-medium text-gray-400 mb-2">Chat Activity</h4>
+                
+                <div class="bg-gray-800 p-4 rounded-lg">
+                  <div class="flex justify-between items-center mb-4">
+                    <span class="text-white">Total Messages</span>
+                    <span class="text-xl font-semibold text-white">0</span>
+                  </div>
+                  
+                  <div class="h-32 bg-gray-900 rounded-md flex items-center justify-center">
+                    <!-- Message graph would go here -->
+                    <p class="text-gray-500">Message graph will be displayed here</p>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Live controls -->
+              <div>
+                <h4 class="text-sm font-medium text-gray-400 mb-2">Live Controls</h4>
+                
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between bg-gray-800 p-3 rounded-lg">
+                    <div class="text-white">Chat</div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={@chat_enabled} 
+                        class="sr-only peer"
+                        phx-click="toggle_chat"
+                      >
+                      <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                  </div>
+                  
+                  <div class="flex items-center justify-between bg-gray-800 p-3 rounded-lg">
+                    <div class="text-white">Reactions</div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={@reactions_enabled} 
+                        class="sr-only peer"
+                        phx-click="toggle_reactions"
+                      >
+                      <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% end %>
+          
+        <% _ -> %>
+          <div class="flex-1 flex items-center justify-center">
+            <div class="text-center">
+              <p class="text-gray-400">Select a tab to view content</p>
+            </div>
+          </div>
+      <% end %>
+    </div>
+  </div>
+</div>
+
+<!-- RTC initialization script -->
+<script>
+window.addEventListener("phx:update", function() {
+  // Check if we need to initialize the RTC client
+  if (document.getElementById("broadcast-video") && !window.rtcClientInitialized) {
+    initializeRtcClient();
+  }
+});
+
+function initializeRtcClient() {
+  // This should connect to your existing RTC client
+  if (window.RtcClient && !window.rtcClientInitialized) {
+    const userToken = document.querySelector("meta[name='user-token']").getAttribute("content");
+    const userId = document.querySelector("meta[name='user-id']").getAttribute("content");
+    const broadcastId = "<%= @broadcast.id %>";
+    
+    if (userToken && userId) {
+      const rtcClient = new window.RtcClient(userToken, userId);
+      
+      // Store the client for use by other components
+      window.rtcClient = rtcClient;
+      window.rtcClientInitialized = true;
+      
+      // If we're the host and the stream is started, start sending
+      const isHost = <%= @is_host %>;
+      const streamStarted = <%= @stream_started %>;
+      
+      if (isHost && streamStarted) {
+        // Start the stream
+        rtcClient.startLocalStream()
+          .then(stream => {
+            // Display the local stream to the host
+            const videoElement = document.getElementById("broadcast-video");
+            if (videoElement) {
+              videoElement.srcObject = stream;
+            }
+            
+            // Join the room to start broadcasting
+            rtcClient.joinRoom(broadcastId);
+            rtcClient.joinSignalingChannel(broadcastId);
+          })
+          .catch(error => {
+            console.error("Error starting local stream:", error);
+            alert("Unable to access camera and microphone. Please check your permissions.");
+          });
+      } else if (streamStarted) {
+        // We're a viewer and the stream is active
+        rtcClient.joinRoom(broadcastId);
+        rtcClient.joinSignalingChannel(broadcastId);
+        
+        // Listen for remote streams
+        rtcClient.onTrack((peerId, stream) => {
+          const videoElement = document.getElementById("broadcast-video");
+          if (videoElement) {
+            videoElement.srcObject = stream;
+          }
+        });
+      }
+      
+      // Update the hook data for stream quality
+      if (streamStarted) {
+        const hook = document.getElementById("quality-settings").__liveSocket.getHook(document.getElementById("quality-settings"));
+        if (hook && rtcClient.peerConnections) {
+          // Find the first peer connection
+          const firstPeerId = Object.keys(rtcClient.peerConnections)[0];
+          if (firstPeerId) {
+            hook.setPeerConnection(rtcClient.peerConnections[firstPeerId]);
+          }
+        }
+      }
+    }
+  }
+}
+</script>
