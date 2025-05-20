@@ -121,6 +121,22 @@ defmodule Frestyl.Media do
   end
 
   @doc """
+  Returns a list of media items for a specific session.
+  """
+  def list_session_media_items(session_id) do
+    # Query MediaItem with a join to the sessions table
+    query = from m in MediaItem,
+            where: m.session_id == ^session_id,
+            order_by: [desc: m.inserted_at]
+
+    Repo.all(query)
+  rescue
+    # Handle the case where the session_id column might not exist yet
+    Ecto.QueryError ->
+      []
+  end
+
+  @doc """
   Changes a media item's category.
   """
   def update_media_category(%MediaItem{} = media_item, category)

@@ -13,6 +13,7 @@ defmodule Frestyl.Accounts.User do
     field :confirmed_at, :naive_datetime # <-- Add this field for email confirmation
     field :status, :string, default: "offline"
     field :username, :string
+    field :timezone, :string, default: "UTC"
 
     # New fields
     field :role, :string, default: "user"
@@ -55,15 +56,6 @@ defmodule Frestyl.Accounts.User do
 
   # You may have a general changeset for admin use etc.
   # Ensure this one handles password hashing correctly if password is changed.
-  def changeset(user, attrs) do
-    user
-    |> cast(attrs, [:email, :password, :name]) # Added name based on required validation
-    |> validate_required([:name, :email]) # Password required handled in registration_changeset
-    |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "must have the @ sign and no spaces")
-    |> unique_constraint(:email)
-    # Apply password hashing only if password is provided
-    |> put_password_hash()
-  end
 
   # Add to lib/frestyl/accounts/user.ex
   def privacy_changeset(user, attrs) do
@@ -149,7 +141,7 @@ defmodule Frestyl.Accounts.User do
   # This changeset is specifically for registration
   def registration_changeset(user, attrs) do
     user
-    |> cast(attrs, [:name, :email, :password, :username, :confirmed_at, :confirmation_token, :confirmation_sent_at]) # Include confirmation fields
+    |> cast(attrs, [:name, :email, :password, :username, :confirmed_at, :confirmation_token, :confirmation_sent_at, :timezone]) # Include confirmation fields
     |> validate_required([:name, :email, :password, :username])
     # Ensure required fields are present *before* unique constraints
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "must have the @ sign and no spaces")

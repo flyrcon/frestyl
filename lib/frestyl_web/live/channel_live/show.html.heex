@@ -96,7 +96,7 @@
               <%= if @is_member do %>
                 <button 
                   phx-click="show_session_form"
-                  class="inline-flex items-center px-3 py-2 rounded-xl bg-gradient-to-r from-teal-400 to-emerald-500 text-white shadow-sm hover:from-teal-500 hover:to-emerald-600 transition-colors"
+                  class="inline-flex items-center px-3 py-2 rounded-xl bg-gradient-to-r from-[#FF3467] to-[#FF6B98] text-white shadow-sm hover:from-[#FF3467] hover:to-[#FF6B98] transition-colors"
                   title="Start Creating"
                 >
                   <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -145,35 +145,78 @@
                   <%= if @show_options_panel do %>
                     <div class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg py-1 z-20">
                   <%= if @can_edit do %>
-                    <.link
-                      navigate={~p"/channels/#{@channel.slug}/edit"}
-                      class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                    >
-                      <svg class="mr-2 h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      Edit Channel
-                    </.link>
-                    
-                    <.link
-                      navigate={~p"/channels/#{@channel.slug}/members"}
-                      class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                    >
-                      <svg class="mr-2 h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                      Manage Members
-                    </.link>
-                    
-                    <.link
-                      navigate={~p"/channels/#{@channel.slug}/customize"}
-                      class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
-                    >
-                      <svg class="mr-2 h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                      </svg>
-                      Customize
-                    </.link>
+                    <div class="relative inline-block text-left">
+                      <div>
+                        <button type="button" 
+                          id="channel-management-menu-button"
+                          aria-expanded="true" 
+                          aria-haspopup="true"
+                          class="inline-flex w-full justify-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                          onclick="document.getElementById('channel-management-dropdown').classList.toggle('hidden')"
+                        >
+                          Manage Channel
+                          <svg class="-mr-1 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                          </svg>
+                        </button>
+                      </div>
+                      
+                      <div id="channel-management-dropdown" 
+                        class="absolute right-0 z-10 mt-2 w-56 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none hidden"
+                        role="menu" 
+                        aria-orientation="vertical" 
+                        aria-labelledby="channel-management-menu-button" 
+                        tabindex="-1"
+                      >
+                        <div class="py-1" role="none">
+                          <.link
+                            navigate={~p"/channels/#{@channel.slug}/edit"}
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            role="menuitem"
+                            tabindex="-1"
+                          >
+                            Edit Channel Details
+                          </.link>
+                          
+                          <.link
+                            navigate={~p"/channels/#{@channel.slug}/members"}
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            role="menuitem"
+                            tabindex="-1"
+                          >
+                            Manage Members
+                          </.link>
+                          
+                          <.link
+                            navigate={~p"/channels/#{@channel.slug}/customize"}
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            role="menuitem"
+                            tabindex="-1"
+                          >
+                            Customize Branding
+                          </.link>
+                          
+                          <.link
+                            navigate={~p"/channels/#{@channel.slug}/settings"}
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            role="menuitem"
+                            tabindex="-1"
+                          >
+                            Channel Settings
+                          </.link>
+                          
+                          <button 
+                            phx-click="leave_channel"
+                            data-confirm="Are you sure you want to leave this channel?"
+                            class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                            role="menuitem"
+                            tabindex="-1"
+                          >
+                            Leave Channel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   <% end %>
                   
                   <button 
@@ -211,1457 +254,1679 @@
         <div class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
           <!-- Main content sections go here -->
           <%= if @is_member do %>
-  <!-- Happening Now and Upcoming Section -->
-  <section class="mb-8">
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-      <div class="flex border-b border-gray-200">
-        <button 
-          phx-click="switch_activity_tab" 
-          phx-value-tab="happening_now"
-          class={[
-            "flex-1 px-4 py-3 text-center font-medium",
-            @activity_tab == "happening_now" && "text-indigo-600 border-b-2 border-indigo-500",
-            @activity_tab != "happening_now" && "text-gray-500 hover:text-gray-700"
-          ]}
-        >
-          <span class="flex items-center justify-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            Happening Now
-          </span>
-        </button>
-        
-        <button 
-          phx-click="switch_activity_tab" 
-          phx-value-tab="upcoming"
-          class={[
-            "flex-1 px-4 py-3 text-center font-medium",
-            @activity_tab == "upcoming" && "text-indigo-600 border-b-2 border-indigo-500",
-            @activity_tab != "upcoming" && "text-gray-500 hover:text-gray-700"
-          ]}
-        >
-          <span class="flex items-center justify-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Upcoming
-          </span>
-        </button>
-      </div>
-
-      <div class="p-5">
-        <%= if @activity_tab == "happening_now" do %>
-          <%= if has_active_sessions?(@sessions) || has_active_broadcasts?(@broadcasts) do %>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <%= if has_active_sessions?(@sessions) do %>
-                <%= for session <- active_sessions(@sessions) do %>
-                  <div class="border border-teal-100 rounded-lg overflow-hidden hover:shadow-md transition-all">
-                    <div class="bg-gradient-to-r from-teal-400 to-emerald-500 px-4 py-3 flex justify-between items-center">
-                      <h3 class="font-medium text-white flex items-center">
-                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23-.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-                        </svg>
-                        <%= session.title %>
-                      </h3>
-                      <span class="text-xs bg-white/20 rounded-full px-2 py-1 text-white">
-                        <%= String.capitalize(session.session_type || "Creative") %>
-                      </span>
-                    </div>
-                    <div class="p-4">
-                      <div class="flex justify-between items-center mb-3">
-                        <div class="flex items-center text-sm text-gray-500">
-                          <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                          </svg>
-                          <span><%= Map.get(session, :participants_count, 0) %> creators</span>
-                        </div>
-                        <span class="text-xs px-2 py-1 rounded-full bg-teal-100 text-teal-600">
-                          Active Now
-                        </span>
-                      </div>
-                      
-                      <button 
-                        phx-click="start_session" 
-                        phx-value-id={session.id}
-                        class="w-full mt-2 px-3 py-2 text-sm font-medium text-center rounded-lg bg-gradient-to-r from-teal-400 to-emerald-500 text-white hover:from-teal-500 hover:to-emerald-600 transition-colors"
-                      >
-                        Join Creation
-                      </button>
-                    </div>
-                  </div>
-                <% end %>
-              <% end %>
-
-              <%= if has_active_broadcasts?(@broadcasts) do %>
-                <%= for broadcast <- active_broadcasts(@broadcasts) do %>
-                  <div class="border border-indigo-100 rounded-lg overflow-hidden hover:shadow-md transition-all">
-                    <div class="bg-gradient-to-r from-indigo-400 to-purple-500 px-4 py-3 flex justify-between items-center">
-                      <h3 class="font-medium text-white flex items-center">
-                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
-                          <circle cx="12" cy="12" r="4" />
-                        </svg>
-                        <%= broadcast.title %>
-                      </h3>
-                      <span class="text-xs bg-white/20 rounded-full px-2 py-1 text-white">
-                        <%= String.capitalize(broadcast.broadcast_type) %>
-                      </span>
-                    </div>
-                    <div class="p-4">
-                      <div class="flex justify-between items-center mb-3">
-                        <span class="text-sm text-gray-500">Hosted by <%= get_user_name(broadcast.host_id, @users_map) %></span>
-                        <span class="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-600">
-                          Live Now
-                        </span>
-                      </div>
-                      
-                      <button 
-                        phx-click="join_broadcast" 
-                        phx-value-id={broadcast.id}
-                        class="w-full mt-2 px-3 py-2 text-sm font-medium text-center rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600 transition-colors"
-                      >
-                        Watch Stream
-                      </button>
-                    </div>
-                  </div>
-                <% end %>
-              <% end %>
-            </div>
-          <% else %>
-            <div class="text-center py-8">
-              <div class="mx-auto w-16 h-16 bg-gradient-to-r from-teal-100 to-indigo-100 rounded-full flex items-center justify-center mb-4">
-                <svg class="h-8 w-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <h3 class="text-lg font-medium text-gray-900 mb-2">Nothing happening right now</h3>
-              <p class="text-gray-500 mb-4">Start creating, collaborate with others or schedule a broadcast.</p>
-              <div class="flex flex-wrap justify-center gap-3">
-                <button 
-                  phx-click="show_session_form"
-                  class="px-4 py-2 rounded-lg bg-gradient-to-r from-teal-400 to-emerald-500 text-white hover:from-teal-500 hover:to-emerald-600 transition-colors"
-                >
-                  Start Creating
-                </button>
-                <button 
-                  phx-click="show_broadcast_form"
-                  class="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600 transition-colors"
-                >
-                  Stream Live
-                </button>
-              </div>
-            </div>
-          <% end %>
-        <% else %>
-          <!-- Upcoming Tab Content -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <%= if Enum.empty?(@upcoming_broadcasts) && Enum.empty?(@sessions) do %>
-              <div class="md:col-span-2 text-center py-8">
-                <div class="mx-auto w-16 h-16 bg-gradient-to-r from-indigo-100 to-teal-100 rounded-full flex items-center justify-center mb-4">
-                  <svg class="h-8 w-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <h3 class="text-lg font-medium text-gray-900 mb-2">No upcoming events</h3>
-                <p class="text-gray-500 mb-4">Schedule a broadcast or plan a creative session</p>
-                <div class="flex flex-wrap justify-center gap-3">
+            <!-- Happening Now and Upcoming Section - Enhanced -->
+            <section class="mb-8">
+              <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                <!-- Enhanced Tabs with vibrant styling -->
+                <div class="flex border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
                   <button 
-                    phx-click="show_session_form"
-                    class="px-4 py-2 rounded-lg bg-gradient-to-r from-teal-400 to-emerald-500 text-white hover:from-teal-500 hover:to-emerald-600 transition-colors"
-                  >
-                    Plan Session
-                  </button>
-                  <button 
-                    phx-click="show_broadcast_form"
-                    class="px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600 transition-colors"
-                  >
-                    Schedule Broadcast
-                  </button>
-                </div>
-              </div>
-            <% else %>
-              <%= for broadcast <- @upcoming_broadcasts do %>
-                <div class="border border-indigo-100 rounded-lg overflow-hidden hover:shadow-md transition-all">
-                  <div class="bg-gradient-to-r from-indigo-400 to-purple-500 px-4 py-3 flex justify-between items-center">
-                    <h3 class="font-medium text-white flex items-center">
-                      <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
-                        <circle cx="12" cy="12" r="4" />
-                      </svg>
-                      <%= broadcast.title %>
-                    </h3>
-                    <span class="text-xs bg-white/20 rounded-full px-2 py-1 text-white">
-                      <%= String.capitalize(broadcast.broadcast_type) %>
-                    </span>
-                  </div>
-                  <div class="p-4">
-                    <div class="flex justify-between items-center mb-3">
-                      <div class="flex items-center text-sm text-gray-500">
-                        <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <%= format_date_time(broadcast.scheduled_for) %>
-                      </div>
-                    </div>
-                    
-                    <%= if broadcast.host_id == @current_user.id do %>
-                      <button 
-                        phx-click="view_broadcast" 
-                        phx-value-id={broadcast.id}
-                        class="w-full mt-2 px-3 py-2 text-sm font-medium text-center rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600 transition-colors"
-                      >
-                        Manage Broadcast
-                      </button>
-                    <% else %>
-                      <button 
-                        phx-click="register_for_broadcast" 
-                        phx-value-id={broadcast.id}
-                        class="w-full mt-2 px-3 py-2 text-sm font-medium text-center rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600 transition-colors"
-                      >
-                        Register
-                      </button>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
-              
-              <%= for session <- upcoming_sessions(@sessions) do %>
-                <div class="border border-teal-100 rounded-lg overflow-hidden hover:shadow-md transition-all">
-                  <div class="bg-gradient-to-r from-teal-400 to-emerald-500 px-4 py-3 flex justify-between items-center">
-                    <h3 class="font-medium text-white flex items-center">
-                      <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23-.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-                      </svg>
-                      <%= session.title %>
-                    </h3>
-                    <span class="text-xs bg-white/20 rounded-full px-2 py-1 text-white">
-                      <%= String.capitalize(session.session_type || "Creative") %>
-                    </span>
-                  </div>
-                  <div class="p-4">
-                    <div class="flex justify-between items-center mb-3">
-                      <div class="flex items-center text-sm text-gray-500">
-                        <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <%= format_date_time(session.scheduled_for) %>
-                      </div>
-                    </div>
-                    
-                    <button 
-                      phx-click="view_session" 
-                      phx-value-id={session.id}
-                      class="w-full mt-2 px-3 py-2 text-sm font-medium text-center rounded-lg bg-gradient-to-r from-teal-400 to-emerald-500 text-white hover:from-teal-500 hover:to-emerald-600 transition-colors"
-                    >
-                      View Details
-                    </button>
-                  </div>
-                </div>
-              <% end %>
-            <% end %>
-          </div>
-        <% end %>
-      </div>
-    </div>
-  </section>
-
-  <!-- Collaboration Hub (Redesigned) -->
-  <section class="mb-8">
-    <h2 class="text-lg font-semibold text-gray-800 mb-4 px-1">Collaboration Hub</h2>
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      <!-- Creative Studio Column -->
-      <div class="lg:col-span-4 bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="bg-gradient-to-r from-teal-400 to-emerald-500 px-4 py-3 flex justify-between items-center">
-          <h3 class="font-medium text-white flex items-center">
-            Studio
-          </h3>
-          <%= if @can_create_session do %>
-            <button 
-              phx-click="show_session_form"
-              class="text-xs bg-white/20 px-2 py-1 rounded-lg text-white hover:bg-white/30"
-            >
-              Create
-            </button>
-          <% end %>
-        </div>
-        
-        <div>
-          <%= if Enum.empty?(@sessions) do %>
-            <div class="p-6 text-center">
-              <div class="mx-auto w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center mb-3">
-                <svg class="h-6 w-6 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23-.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-                </svg>
-              </div>
-              <p class="text-gray-500 text-sm mb-3">Start a creative session to collaborate</p>
-              <%= if @can_create_session do %>
-                <button 
-                  phx-click="show_session_form"
-                  class="px-3 py-1.5 text-sm rounded-lg bg-gradient-to-r from-teal-400 to-emerald-500 text-white hover:from-teal-500 hover:to-emerald-600 transition-colors"
-                >
-                  Open Studio
-                </button>
-              <% end %>
-            </div>
-          <% else %>
-            <div class="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
-              <%= for session <- Enum.take(@sessions, 5) do %>
-                <div class="p-4 hover:bg-gray-50 transition-all">
-                  <div class="flex justify-between items-start">
-                    <div>
-                      <h4 class="font-medium text-gray-900 text-sm">
-                        <%= session.title %>
-                      </h4>
-                      <div class="mt-1 flex items-center gap-2">
-                        <span class="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-600">
-                          <%= session.session_type || "Creative" %>
-                        </span>
-                        <span class="text-xs text-gray-500 flex items-center">
-                          <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                          </svg>
-                          <%= Map.get(session, :participants_count, 0) %>
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <button 
-                      phx-click="start_session" 
-                      phx-value-id={session.id}
-                      class="text-xs px-2 py-1 rounded-lg bg-teal-100 text-teal-600 hover:bg-teal-200"
-                    >
-                      Open
-                    </button>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          <% end %>
-        </div>
-      </div>
-      
-      <!-- Broadcast Station Column -->
-      <div class="lg:col-span-4 bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="bg-gradient-to-r from-indigo-400 to-purple-500 px-4 py-3 flex justify-between items-center">
-          <h3 class="font-medium text-white flex items-center">
-            Broadcast
-          </h3>
-          <%= if @can_create_broadcast do %>
-            <button 
-              phx-click="show_broadcast_form"
-              class="text-xs bg-white/20 px-2 py-1 rounded-lg text-white hover:bg-white/30"
-            >
-              Schedule
-            </button>
-          <% end %>
-        </div>
-        
-        <div>
-          <%= if Enum.empty?(@upcoming_broadcasts) do %>
-            <div class="p-6 text-center">
-              <div class="mx-auto w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center mb-3">
-                <svg class="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
-                  <circle cx="12" cy="12" r="4" />
-                </svg>
-              </div>
-              <p class="text-gray-500 text-sm mb-3">No upcoming broadcasts</p>
-              <%= if @can_create_broadcast do %>
-                <button 
-                  phx-click="show_broadcast_form"
-                  class="px-3 py-1.5 text-sm rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600 transition-colors"
-                >
-                  Stream Live
-                </button>
-              <% end %>
-            </div>
-          <% else %>
-            <div class="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
-              <%= for broadcast <- @upcoming_broadcasts do %>
-                <div class="p-4 hover:bg-gray-50 transition-all">
-                  <div class="flex justify-between items-start">
-                    <div>
-                      <h4 class="font-medium text-gray-900 text-sm">
-                        <%= broadcast.title %>
-                      </h4>
-                      <div class="flex items-center text-xs text-gray-500 mt-1 gap-2">
-                        <span class="flex items-center">
-                          <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <%= format_date_time(broadcast.scheduled_for) %>
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <%= if broadcast.host_id == @current_user.id do %>
-                      <button 
-                        phx-click="view_broadcast" 
-                        phx-value-id={broadcast.id}
-                        class="text-xs px-2 py-1 rounded-lg bg-indigo-100 text-indigo-600 hover:bg-indigo-200"
-                      >
-                        Manage
-                      </button>
-                    <% else %>
-                      <button 
-                        phx-click="register_for_broadcast" 
-                        phx-value-id={broadcast.id}
-                        class="text-xs px-2 py-1 rounded-lg bg-indigo-100 text-indigo-600 hover:bg-indigo-200"
-                      >
-                        RSVP
-                      </button>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          <% end %>
-        </div>
-      </div>
-      
-      <!-- Members Column -->
-        <div class="lg:col-span-4 bg-white rounded-xl shadow-sm overflow-hidden">
-          <div class="bg-gradient-to-r from-blue-500 to-sky-600 px-4 py-3 flex justify-between items-center">
-            <h3 class="font-medium text-white flex items-center">
-              <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-              Members
-            </h3>
-          <span class="text-xs bg-white/20 px-2 py-1 rounded-full text-white">
-            <%= length(@members) %>
-          </span>
-        </div>
-        
-        <div class="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
-          <%= for member <- Enum.take(@members, 8) do %>
-            <div class="p-3 hover:bg-gray-50 transition-all">
-              <div class="flex items-center">
-                <div class="flex-shrink-0 mr-3">
-                  <%= if member.user.avatar_url do %>
-                    <img src={member.user.avatar_url} alt="" class="h-8 w-8 rounded-full object-cover">
-                  <% else %>
-                    <div class="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-                      <span class="text-xs font-medium text-white">
-                        <%= String.first(member.user.name || "U") %>
-                      </span>
-                    </div>
-                  <% end %>
-                </div>
-                <div>
-                  <p class="text-sm font-medium text-gray-900">
-                    <%= member.user.name || member.user.email %>
-                  </p>
-                  <span 
+                    phx-click="switch_activity_tab" 
+                    phx-value-tab="happening_now"
                     class={[
-                      "text-xs px-1.5 py-0.5 rounded-full", 
-                      member.role == "owner" && "bg-purple-100 text-purple-800",
-                      member.role == "admin" && "bg-red-100 text-red-800", 
-                      member.role == "moderator" && "bg-blue-100 text-blue-800",
-                      member.role == "member" && "bg-gray-100 text-gray-800"
+                      "flex-1 px-6 py-4 text-center font-semibold transition-all duration-200 relative",
+                      @activity_tab == "happening_now" && [
+                        "text-white bg-gradient-to-r from-[#FF3467] to-[#FF6B98]",
+                        "shadow-lg transform -translate-y-0.5"
+                      ] || [
+                        "text-gray-600 hover:text-gray-800 hover:bg-gray-50"
+                      ]
                     ]}
                   >
-                    <%= String.capitalize(member.role) %>
-                  </span>
+                    <span class="flex items-center justify-center relative z-10">
+                      <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Happening Now
+                      <%= if @activity_tab == "happening_now" do %>
+                        <span class="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs">
+                          <%= length(active_sessions(@sessions)) + length(active_broadcasts(@broadcasts)) %>
+                        </span>
+                      <% end %>
+                    </span>
+                      <%= if @activity_tab == "happening_now" do %>
+                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#FF3467] to-[#FF6B98]"></div>
+                      <% end %>
+                  </button>
+                  
+                  <button 
+                    phx-click="switch_activity_tab" 
+                    phx-value-tab="upcoming"
+                    class={[
+                      "flex-1 px-6 py-4 text-center font-semibold transition-all duration-200 relative",
+                      @activity_tab == "upcoming" && [
+                        "text-white bg-gradient-to-r from-indigo-500 to-purple-600",
+                        "shadow-lg transform -translate-y-0.5"
+                      ] || [
+                        "text-gray-600 hover:text-gray-800 hover:bg-gray-50"
+                      ]
+                    ]}
+                  >
+                    <span class="flex items-center justify-center relative z-10">
+                      <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Upcoming
+                      <%= if @activity_tab == "upcoming" do %>
+                        <span class="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs">
+                          <%= length(@upcoming_broadcasts) %>
+                        </span>
+                      <% end %>
+                    </span>
+                    <%= if @activity_tab == "upcoming" do %>
+                      <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-400 to-purple-500"></div>
+                    <% end %>
+                  </button>
+                </div>
+
+                <div class="p-6">
+                  <%= if @activity_tab == "happening_now" do %>
+                    <!-- Happening Now - Enhanced Styling -->
+                    <%= if has_active_sessions?(@sessions) || has_active_broadcasts?(@broadcasts) do %>
+                      <div class="space-y-4">
+                        <!-- Active Sessions -->
+                        <%= if has_active_sessions?(@sessions) do %>
+                          <% sessions_to_show = if Map.get(assigns, :happening_expanded, false) do
+                            active_sessions(@sessions)
+                          else
+                            Enum.take(active_sessions(@sessions), 3)
+                          end %>
+                          
+                          <%= for session <- sessions_to_show do %>
+                            <div 
+                              id={"active-session-#{session.id}"}
+                              class="group relative bg-gradient-to-r from-pink-50 to-rose-100 border border-[#FF3467]/20 rounded-xl p-4 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                              phx-click="toggle_session_details"
+                              phx-value-id={session.id}
+                              phx-value-type="session"
+                            >
+                              <!-- Live indicator -->
+                              <div class="absolute top-3 right-3 flex items-center">
+                                <div class="w-2 h-2 bg-[#FF3467] rounded-full animate-pulse mr-2"></div>
+                                <span class="text-xs font-medium text-[#FF3467] uppercase tracking-wide">Live</span>
+                              </div>
+                              
+                              <div class="flex items-center justify-between">
+                                <div class="flex-1 min-w-0 pr-4">
+                                  <div class="flex items-center justify-between">
+                                    <h4 class="font-semibold text-gray-900 text-lg truncate">
+                                      <%= session.title %>
+                                    </h4>
+                                    <svg class={[
+                                      "h-5 w-5 text-[#FF3467] transition-transform",
+                                      Map.get(assigns, :expanded_session_id) == session.id && "rotate-180" || ""
+                                    ]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </div>
+                                  
+                                  <div class="flex items-center mt-2 space-x-4">
+                                    <span class="text-sm font-medium text-[#FF3467] bg-[#FF3467]/10 px-2 py-1 rounded-full">
+                                      <%= String.capitalize(session.session_type || "Creative") %>
+                                    </span>
+                                    <span class="text-sm text-gray-600 flex items-center">
+                                      <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                      </svg>
+                                      <% participant_count = Map.get(session, :participants_count, 0) %>
+                                      <%= participant_count %> <%= if participant_count == 1, do: "creator", else: "creators" %>
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <!-- Expanded Details -->
+                              <%= if Map.get(assigns, :expanded_session_id) == session.id do %>
+                                <div class="mt-4 pt-4 border-t border-[#FF3467]/20 space-y-3">
+                                  <%= if session.description do %>
+                                    <p class="text-sm text-gray-700"><%= session.description %></p>
+                                  <% end %>
+                                  
+                                  <div class="flex justify-between items-center">
+                                    <button 
+                                      phx-click="start_session" 
+                                      phx-value-id={session.id}
+                                      class="flex-1 mr-2 px-4 py-2 text-sm font-semibold text-center rounded-lg bg-gradient-to-r from-[#FF3467] to-[#FF6B98] text-white hover:from-[#FF3467] hover:to-[#FF6B98] transition-all shadow-sm hover:shadow-md"
+                                    >
+                                      Join Session
+                                    </button>
+                                    
+                                    <%= if session.creator_id == @current_user.id do %>
+                                      <div class="flex space-x-2">
+                                        <button 
+                                          phx-click="edit_session" 
+                                          phx-value-id={session.id}
+                                          class="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                          title="Edit session"
+                                        >
+                                          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                          </svg>
+                                        </button>
+                                        <button 
+                                          phx-click="delete_session" 
+                                          phx-value-id={session.id}
+                                          data-confirm="Are you sure you want to delete this session?"
+                                          class="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                          title="Delete session"
+                                        >
+                                          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    <% end %>
+                                  </div>
+                                </div>
+                              <% end %>
+                            </div>
+                          <% end %>
+                        <% end %>
+
+                        <!-- Active Broadcasts -->
+                        <%= if has_active_broadcasts?(@broadcasts) do %>
+                          <% broadcasts_to_show = if Map.get(assigns, :happening_expanded, false) do
+                            active_broadcasts(@broadcasts)
+                          else
+                            Enum.take(active_broadcasts(@broadcasts), 3)
+                          end %>
+                          
+                          <%= for broadcast <- broadcasts_to_show do %>
+                            <div 
+                              id={"active-broadcast-#{broadcast.id}"}
+                              class="group relative bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                              phx-click="toggle_session_details"
+                              phx-value-id={broadcast.id}
+                              phx-value-type="broadcast"
+                            >
+                              <!-- Live indicator -->
+                              <div class="absolute top-3 right-3 flex items-center">
+                                <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-2"></div>
+                                <span class="text-xs font-medium text-red-600 uppercase tracking-wide">Live</span>
+                              </div>
+                              
+                              <div class="flex items-center justify-between">
+                                <div class="flex-1 min-w-0 pr-4">
+                                  <div class="flex items-center justify-between">
+                                    <h4 class="font-semibold text-gray-900 text-lg truncate">
+                                      <%= broadcast.title %>
+                                    </h4>
+                                    <svg class={[
+                                      "h-5 w-5 text-purple-600 transition-transform",
+                                      Map.get(assigns, :expanded_broadcast_id) == broadcast.id && "rotate-180" || ""
+                                    ]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </div>
+                                  
+                                  <div class="flex items-center mt-2 space-x-4">
+                                    <span class="text-sm font-medium text-purple-700 bg-purple-100 px-2 py-1 rounded-full">
+                                      <%= String.capitalize(broadcast.broadcast_type) %>
+                                    </span>
+                                    <span class="text-sm text-gray-600">
+                                      Hosted by <%= get_user_name(broadcast.host_id, @users_map) %>
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <!-- Expanded Details -->
+                              <%= if Map.get(assigns, :expanded_broadcast_id) == broadcast.id do %>
+                                <div class="mt-4 pt-4 border-t border-purple-200 space-y-3">
+                                  <%= if broadcast.description do %>
+                                    <p class="text-sm text-gray-700"><%= broadcast.description %></p>
+                                  <% end %>
+                                  
+                                  <div class="flex justify-between items-center">
+                                    <button 
+                                      phx-click="join_broadcast" 
+                                      phx-value-id={broadcast.id}
+                                      class="flex-1 mr-2 px-4 py-2 text-sm font-semibold text-center rounded-lg bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md"
+                                    >
+                                      Watch Stream
+                                    </button>
+                                    
+                                    <%= if broadcast.host_id == @current_user.id do %>
+                                      <div class="flex space-x-2">
+                                        <button 
+                                          phx-click="manage_broadcast" 
+                                          phx-value-id={broadcast.id}
+                                          class="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                          title="Manage broadcast"
+                                        >
+                                          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                          </svg>
+                                        </button>
+                                        <button 
+                                          phx-click="delete_broadcast" 
+                                          phx-value-id={broadcast.id}
+                                          data-confirm="Are you sure you want to delete this broadcast?"
+                                          class="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                          title="Delete broadcast"
+                                        >
+                                          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    <% end %>
+                                  </div>
+                                </div>
+                              <% end %>
+                            </div>
+                          <% end %>
+                        <% end %>
+                        
+                        <!-- View More Button for Happening Now -->
+                        <%= if (length(active_sessions(@sessions)) + length(active_broadcasts(@broadcasts))) > 3 do %>
+                          <div class="text-center pt-4">
+                            <button 
+                              phx-click="toggle_happening_expanded"
+                              class="inline-flex items-center px-4 py-2 text-sm font-medium text-[#FF3467] bg-[#FF3467]/10 rounded-lg hover:bg-[#FF3467]/20 transition-colors"
+                            >
+                              <span class="mr-2">
+                                <%= if Map.get(assigns, :happening_expanded, false), do: "Show Less", else: "View All (#{length(active_sessions(@sessions)) + length(active_broadcasts(@broadcasts))})" %>
+                              </span>
+                              <svg class={[
+                                "h-4 w-4 transition-transform",
+                                Map.get(assigns, :happening_expanded, false) && "rotate-180" || ""
+                              ]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                          </div>
+                        <% end %>
+                      </div>
+                    <% else %>
+                      <div class="text-center py-12">
+                        <div class="mx-auto w-20 h-20 bg-gradient-to-r from-[#FF3467]/10 to-[#FF6B98]/10 rounded-full flex items-center justify-center mb-4">
+                          <svg class="h-10 w-10 text-[#FF3467]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                        </div>
+                        <h3 class="text-xl font-semibold text-gray-900 mb-2">Nothing happening right now</h3>
+                        <p class="text-gray-600 mb-6">Start creating, collaborate with others or go live.</p>
+                        <div class="flex flex-wrap justify-center gap-3">
+                          <button 
+                            phx-click="show_session_form"
+                            class="px-6 py-3 rounded-lg bg-gradient-to-r from-[#FF3467] to-[#FF6B98] text-white font-semibold hover:from-[#FF3467] hover:to-[#FF6B98] transition-all shadow-sm hover:shadow-md"
+                          >
+                            Start Creating
+                          </button>
+                          <button 
+                            phx-click="show_broadcast_form"
+                            class="px-6 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md"
+                          >
+                            Stream Live
+                          </button>
+                        </div>
+                      </div>
+                    <% end %>
+                  <% else %>
+                    <!-- Upcoming Events - Enhanced Styling -->
+                    <%= if Enum.empty?(@upcoming_broadcasts) do %>
+                      <div class="text-center py-12">
+                        <div class="mx-auto w-20 h-20 bg-gradient-to-r from-indigo-100 to-purple-100 rounded-full flex items-center justify-center mb-4">
+                          <svg class="h-10 w-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <h3 class="text-xl font-semibold text-gray-900 mb-2">No upcoming events</h3>
+                        <p class="text-gray-600 mb-6">Schedule a broadcast or plan a creative session</p>
+                        <div class="flex flex-wrap justify-center gap-3">
+                          <button 
+                            phx-click="show_session_form"
+                            class="px-6 py-3 rounded-lg bg-gradient-to-r from-[#FF3467] to-[#FF6B98] text-white font-semibold hover:from-[#FF3467] hover:to-[#FF6B98] transition-all shadow-sm hover:shadow-md"
+                          > 
+                            Plan Session
+                          </button>
+                          <button 
+                            phx-click="show_broadcast_form"
+                            class="px-6 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md"
+                          >
+                            Schedule Broadcast
+                          </button>
+                        </div>
+                      </div>
+                    <% else %>
+                      <div class="space-y-4">
+                        <% broadcasts_to_show = if Map.get(assigns, :upcoming_expanded, false) do
+                          @upcoming_broadcasts
+                        else
+                          Enum.take(@upcoming_broadcasts, 3)
+                        end %>
+                        
+                        <%= for broadcast <- broadcasts_to_show do %>
+                          <div 
+                            id={"upcoming-broadcast-#{broadcast.id}"}
+                            class="group relative bg-gradient-to-r from-purple-50 to-fuchsia-100 border border-fuchsia-200 rounded-xl p-4 hover:shadow-lg transition-all duration-200 cursor-pointer"
+                            phx-click="toggle_broadcast_details"
+                            phx-value-id={broadcast.id}
+                          >
+                            <div class="flex items-center justify-between">
+                              <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between">
+                                  <h4 class="font-semibold text-gray-900 text-lg truncate pr-2">
+                                    <%= broadcast.title %>
+                                  </h4>
+                                  <div class="flex items-center gap-3 flex-shrink-0">
+                                    <span class="text-sm font-medium text-indigo-700 bg-indigo-100 px-3 py-1 rounded-full">
+                                      <%= String.capitalize(broadcast.broadcast_type) %>
+                                    </span>
+                                    <div class="text-right">
+                                      <div class="text-sm font-semibold text-gray-900">
+                                        <%= format_date_with_day(broadcast.scheduled_for, @current_user.timezone || "UTC") %>
+                                      </div>
+                                      <div class="text-xs text-gray-600">
+                                        <%= format_time(broadcast.scheduled_for) %>
+                                      </div>
+                                    </div>
+                                    <svg class={[
+                                      "h-5 w-5 text-indigo-600 transition-transform",
+                                      Map.get(assigns, :expanded_broadcast_id) == broadcast.id && "rotate-180" || ""
+                                    ]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </div>
+                                </div>
+                                
+                                <div class="flex items-center justify-between mt-2">
+                                  <span class="text-xs text-gray-600">
+                                    <%= Frestyl.Timezone.compact_format_with_timezone(broadcast.scheduled_for, @current_user.timezone || "UTC") %>
+                                  </span>
+                                  <%= if Map.get(broadcast, :registered_count, 0) > 0 do %>
+                                    <span class="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded-full">
+                                      <%= broadcast.registered_count %> registered
+                                    </span>
+                                  <% end %>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- Expanded Details -->
+                            <%= if Map.get(assigns, :expanded_broadcast_id) == broadcast.id do %>
+                              <div class="mt-4 pt-4 border-t border-indigo-200 space-y-3">
+                                <%= if broadcast.description do %>
+                                  <p class="text-sm text-gray-700"><%= broadcast.description %></p>
+                                <% end %>
+                                
+                                <div class="flex items-center justify-between text-sm">
+                                  <div class="flex items-center text-gray-600">
+                                    <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                    </svg>
+                                    Host: <%= get_user_name(broadcast.host_id, @users_map) %>
+                                  </div>
+                                  
+                                  <%= if broadcast.waiting_room_enabled do %>
+                                    <span class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                                      Waiting room enabled
+                                    </span>
+                                  <% end %>
+                                </div>
+                                
+                                <div class="flex justify-between items-center">
+                                  <%= if broadcast.host_id == @current_user.id do %>
+                                    <.link 
+                                      navigate={~p"/channels/#{@channel.id}/broadcasts/#{broadcast.id}/sound-check"}
+                                      class="flex-1 mr-2 px-4 py-2 text-sm font-semibold text-center rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md"
+                                    >
+                                      Join as Host
+                                    </.link>
+                                    <div class="flex space-x-2">
+                                      <button 
+                                        phx-click="edit_broadcast" 
+                                        phx-value-id={broadcast.id}
+                                        class="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                        title="Edit broadcast"
+                                      >
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                      </button>
+                                      <button 
+                                        phx-click="delete_broadcast" 
+                                        phx-value-id={broadcast.id}
+                                        data-confirm="Are you sure you want to delete this event?"
+                                        class="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Delete broadcast"
+                                      >
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  <% else %>
+                                    <.link 
+                                      navigate={~p"/channels/#{@channel.id}/broadcasts/#{broadcast.id}/sound-check"}
+                                      class="flex-1 px-4 py-2 text-sm font-semibold text-center rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md"
+                                    >
+                                      Join Broadcast
+                                    </.link>
+                                  <% end %>
+                                </div>
+                              </div>
+                            <% end %>
+                          </div>
+                        <% end %>
+                        
+                        <!-- View More Button for Upcoming -->
+                        <%= if length(@upcoming_broadcasts) > 3 do %>
+                          <div class="text-center pt-4">
+                            <button 
+                              phx-click="toggle_upcoming_expanded"
+                              class="inline-flex items-center px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                            >
+                              <span class="mr-2">
+                                <%= if Map.get(assigns, :upcoming_expanded, false), do: "Show Less", else: "View All (#{length(@upcoming_broadcasts)})" %>
+                              </span>
+                              <svg class={[
+                                "h-4 w-4 transition-transform",
+                                Map.get(assigns, :upcoming_expanded, false) && "rotate-180" || ""
+                              ]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                          </div>
+                        <% end %>
+                      </div>
+                    <% end %>
+                  <% end %>
                 </div>
               </div>
-            </div>
-          <% end %>
-        </div>
-        
-        <div class="bg-gray-50 p-3 border-t border-gray-100 flex justify-between items-center">
-          <button 
-            phx-click="switch_to_members_view"
-            class="text-xs text-indigo-600 hover:text-indigo-800"
-          >
-            View all
-          </button>
-          
-          <%= if @can_edit do %>
-            <button 
-              phx-click="show_invite_modal"
-              class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200"
-            >
-              Invite
-            </button>
-          <% end %>
-        </div>
-      </div>
-    </div>
-  </section>
-<% else %>
-  <!-- Non-member view -->
-  <div class="max-w-lg mx-auto py-8">
-    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-      <div class="bg-gradient-to-r from-blue-500 to-indigo-600 h-32 flex items-end p-6 relative">
-        <h2 class="text-2xl font-semibold text-white z-10">Join Channel</h2>
-      </div>
-      
-      <div class="p-6 text-center">
-        <div class="mx-auto w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-4">
-          <svg class="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-        </div>
-        <h3 class="text-xl font-medium text-gray-900 mb-2">Members Only Content</h3>
-        <p class="text-gray-500 mb-6">
-          Join this channel to access exclusive content, chat with other members, and share files.
-        </p>
-        <button
-          phx-click="join_channel"
-          class="inline-flex items-center px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-sm hover:from-blue-600 hover:to-indigo-700 transition-colors"
-        >
-          <svg class="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-          </svg>
-          Join Channel
-        </button>
-      </div>
-    </div>
-  </div>
-<% end %>
+            </section>
 
-<%= if @is_member do %>
-  <!-- Content and Chat Section -->
-  <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- Content Library - Takes 2/3 of the space on large screens -->
-    <div class="lg:col-span-2">
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-        <div class="bg-gradient-to-r from-purple-500 to-pink-600 px-4 py-3 flex justify-between items-center">
-          <h3 class="font-medium text-white flex items-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-            Content Library
-          </h3>
-          <button 
-            phx-click="show_media_upload"
-            class="text-xs bg-white/20 px-2 py-1 rounded-lg text-white hover:bg-white/30"
-          >
-            Upload
-          </button>
-        </div>
-        
-        <!-- Active Media Preview -->
-        <div class="px-4 py-3 border-b border-gray-100">
-          <div class="flex items-center justify-between mb-2">
-            <h4 class="text-sm font-medium text-gray-700">Active Media</h4>
-            <%= if @can_edit do %>
-              <button 
-                phx-click="manage_active_media"
-                class="text-xs text-indigo-600 hover:text-indigo-800 flex items-center"
-              >
-                Manage
-                <svg class="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            <% end %>
-          </div>
-          
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <!-- Show Branding only to admins -->
-            <%= if @can_edit do %>
-              <div class="rounded-lg border border-gray-200 overflow-hidden">
-                <div class="bg-gradient-to-tr from-blue-50 to-indigo-50 h-8 flex items-center px-3">
-                  <span class="text-xs font-medium text-indigo-700">Branding</span>
+          <!-- Collaboration Hub (Redesigned) -->
+          <section class="mb-8">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4 px-1">Collaboration Hub</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <!-- Creative Studio Column -->
+              <div class="lg:col-span-4 bg-white rounded-xl shadow-sm overflow-hidden">
+                <div class="bg-gradient-to-r from-[#FF3467] to-[#FF6B98] px-4 py-3 flex justify-between items-center">
+                  <h3 class="font-medium text-white flex items-center">
+                    Studio
+                  </h3>
+                  <%= if @can_create_session do %>
+                    <button 
+                      phx-click="show_session_form"
+                      class="text-xs bg-white/20 px-2 py-1 rounded-lg text-white hover:bg-white/30"
+                    >
+                      Create
+                    </button>
+                  <% end %>
                 </div>
-                <div class="p-3">
-                  <%= if Map.get(@active_media, :branding) do %>
-                    <div class="flex items-center">
-                      <div class="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 mr-2">
-                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                        </svg>
+                
+                <!-- Studio content with icons instead of labels -->
+                <div class="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
+                  <%= for session <- Enum.take(@sessions, 5) do %>
+                    <div class="p-4 hover:bg-gray-50 transition-all">
+                      <div class="flex justify-between items-start">
+                        <div>
+                          <h4 class="font-medium text-gray-900 text-sm">
+                            <%= session.title %>
+                          </h4>
+                          <div class="mt-1 flex items-center gap-2">
+                            <!-- Use icons instead of text labels -->
+                            <%= case session.session_type do %>
+                              <% "audio" -> %>
+                                <svg class="h-4 w-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                </svg>
+                              <% "midi" -> %>
+                                <svg class="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                                </svg>
+                              <% "text" -> %>
+                                <svg class="h-4 w-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              <% "visual" -> %>
+                                <svg class="h-4 w-4 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              <% _ -> %>
+                                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                  <%= session.session_type || "Creative" %>
+                                </span>
+                            <% end %>
+                            
+                            <span class="text-xs text-gray-500 flex items-center">
+                              <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                              </svg>
+                              <%= Map.get(session, :participants_count, 0) %>
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div class="truncate">
-                        <p class="text-xs font-medium text-gray-900 truncate">
-                          <%= @active_media.branding.title %>
-                        </p>
+                      
+                      <div class="mt-2 flex">
+                        <button 
+                          phx-click="join_session" 
+                          phx-value-id={session.id} 
+                          class="w-full px-2 py-1 text-xs bg-fuchsia-100 text-fuchsia-700 rounded hover:bg-fuchsia-200 transition-colors"
+                        >
+                          Join
+                        </button>
                       </div>
-                    </div>
-                  <% else %>
-                    <div class="flex justify-center">
-                      <button 
-                        phx-click="browse_media_for_category" 
-                        phx-value-category="branding" 
-                        class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100"
-                      >
-                        Set Branding
-                      </button>
                     </div>
                   <% end %>
                 </div>
               </div>
-            <% end %>
-            
-            <!-- Files Card -->
-            <div class="rounded-lg border border-gray-200 overflow-hidden">
-              <div class="bg-gradient-to-tr from-purple-50 to-indigo-50 h-8 flex items-center px-3">
-                <span class="text-xs font-medium text-purple-700">Files</span>
-              </div>
-              <div class="p-3">
-                <%= if Map.get(@active_media, :presentation) do %>
-                  <div class="flex items-center">
-                    <div class="h-8 w-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600 mr-2">
-                      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <div class="truncate">
-                      <p class="text-xs font-medium text-gray-900 truncate">
-                        <%= @active_media.presentation.title %>
-                      </p>
-                    </div>
-                  </div>
-                <% else %>
-                  <div class="flex justify-center">
+              
+              <!-- Broadcast Station Column -->
+              <div class="lg:col-span-4 bg-white rounded-xl shadow-sm overflow-hidden">
+                <div class="bg-gradient-to-r from-indigo-400 to-purple-500 px-4 py-3 flex justify-between items-center">
+                  <h3 class="font-medium text-white flex items-center">
+                    Broadcast
+                  </h3>
+                  <%= if @can_create_broadcast do %>
                     <button 
-                      phx-click="browse_media_for_category" 
-                      phx-value-category="presentation" 
-                      class="text-xs px-2 py-1 rounded-full bg-purple-50 text-purple-600 hover:bg-purple-100"
+                      phx-click="show_broadcast_form"
+                      class="text-xs bg-white/20 px-2 py-1 rounded-lg text-white hover:bg-white/30"
                     >
-                      Set Files
+                      Schedule
                     </button>
-                  </div>
-                <% end %>
+                  <% end %>
+                </div>
+                
+                <div>
+                  <%= if Enum.empty?(@upcoming_broadcasts) do %>
+                    <!-- Empty state same as before -->
+                  <% else %>
+                    <div class="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
+                      <%= for broadcast <- @upcoming_broadcasts do %>
+                        <div class="p-4 hover:bg-gray-50 transition-all">
+                          <div class="flex justify-between items-start">
+                            <div>
+                              <h4 class="font-medium text-gray-900 text-sm">
+                                <%= broadcast.title %>
+                              </h4>
+                              <div class="mt-1 flex flex-wrap items-center gap-2">
+                                <span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                                  <%= String.capitalize(broadcast.broadcast_type || "Standard") %>
+                                </span>
+                                <span class="text-xs text-gray-600">
+                                  <%= format_date_time(broadcast.scheduled_for, @current_user.timezone || "UTC") %>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div class="mt-2 flex">
+                            <%= if can_create_broadcast?(@user_role) do %>
+                              <button 
+                                phx-click="manage_broadcast" 
+                                phx-value-id={broadcast.id} 
+                                class="w-full px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors"
+                              >
+                                Manage
+                              </button>
+                            <% else %>
+                              <button 
+                                phx-click="register_for_broadcast" 
+                                phx-value-id={broadcast.id} 
+                                class="w-full px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors"
+                              >
+                                Register
+                              </button>
+                            <% end %>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
               </div>
-            </div>
-            
-            <!-- Recordings Card -->
-            <div class="rounded-lg border border-gray-200 overflow-hidden">
-              <div class="bg-gradient-to-tr from-pink-50 to-red-50 h-8 flex items-center px-3">
-                <span class="text-xs font-medium text-pink-700">Recordings</span>
-              </div>
-              <div class="p-3">
-                <%= if Map.get(@active_media, :performance) do %>
-                  <div class="flex items-center">
-                    <div class="h-8 w-8 rounded-lg bg-pink-100 flex items-center justify-center text-pink-600 mr-2">
-                      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              
+              <!-- Members Column -->
+                <div class="lg:col-span-4 bg-white rounded-xl shadow-sm overflow-hidden">
+                  <div class="bg-gradient-to-r from-blue-500 to-sky-600 px-4 py-3 flex justify-between items-center">
+                    <h3 class="font-medium text-white flex items-center">
+                      <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                       </svg>
+                      Members
+                    </h3>
+                  <span class="text-xs bg-white/20 px-2 py-1 rounded-full text-white">
+                    <%= length(@members) %>
+                  </span>
+                </div>
+                
+                <div class="divide-y divide-gray-100 max-h-[320px] overflow-y-auto">
+                  <%= for member <- Enum.take(@members, 8) do %>
+                    <div class="p-3 hover:bg-gray-50 transition-all">
+                      <div class="flex items-center">
+                        <div class="flex-shrink-0 mr-3">
+                          <%= if member.user.avatar_url do %>
+                            <img src={member.user.avatar_url} alt="" class="h-8 w-8 rounded-full object-cover">
+                          <% else %>
+                            <div class="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+                              <span class="text-xs font-medium text-white">
+                                <%= String.first(member.user.name || "U") %>
+                              </span>
+                            </div>
+                          <% end %>
+                        </div>
+                        <div>
+                          <p class="text-sm font-medium text-gray-900">
+                            <%= member.user.name || member.user.email %>
+                          </p>
+                          <span 
+                            class={[
+                              "text-xs px-1.5 py-0.5 rounded-full", 
+                              member.role == "owner" && "bg-purple-100 text-purple-800",
+                              member.role == "admin" && "bg-red-100 text-red-800", 
+                              member.role == "moderator" && "bg-blue-100 text-blue-800",
+                              member.role == "member" && "bg-gray-100 text-gray-800"
+                            ]}
+                          >
+                            <%= String.capitalize(member.role) %>
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div class="truncate">
-                      <p class="text-xs font-medium text-gray-900 truncate">
-                        <%= @active_media.performance.title %>
-                      </p>
-                    </div>
-                  </div>
-                <% else %>
-                  <div class="flex justify-center">
+                  <% end %>
+                </div>
+                
+                <div class="bg-gray-50 p-3 border-t border-gray-100 flex justify-between items-center">
+                  <button 
+                    phx-click="switch_to_members_view"
+                    class="text-xs text-indigo-600 hover:text-indigo-800"
+                  >
+                    View all
+                  </button>
+                  
+                  <%= if @can_edit do %>
                     <button 
-                      phx-click="browse_media_for_category" 
-                      phx-value-category="performance" 
-                      class="text-xs px-2 py-1 rounded-full bg-pink-50 text-pink-600 hover:bg-pink-100"
+                      phx-click="show_invite_modal"
+                      class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200"
                     >
-                      Set Recording
+                      Invite
                     </button>
-                  </div>
-                <% end %>
+                  <% end %>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-        
-        <!-- Recent Files Grid -->
-        <div class="p-4">
-          <div class="flex items-center justify-between mb-3">
-            <h4 class="text-sm font-medium text-gray-700">Recent Files</h4>
-            <button 
-              phx-click="switch_to_files_view"
-              class="text-xs text-indigo-600 hover:text-indigo-800 flex items-center"
-            >
-              View all
-              <svg class="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-          
-          <%= if Enum.empty?(@media_files) do %>
-            <div class="text-center py-8 bg-gray-50 rounded-lg">
-              <svg class="mx-auto h-10 w-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-              </svg>
-              <p class="mt-2 text-sm text-gray-500">No files uploaded yet</p>
-              <button 
-                phx-click="show_media_upload"
-                class="mt-3 px-3 py-1.5 text-sm border border-transparent rounded-lg bg-gradient-to-r from-purple-400 to-pink-500 text-white hover:from-purple-500 hover:to-pink-600"
-              >
-                Upload Files
-              </button>
-            </div>
-          <% else %>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <%= for file <- Enum.take(@media_files, 8) do %>
-                <div 
-                  class="border border-gray-200 rounded-lg overflow-hidden hover:shadow-sm cursor-pointer transition-all" 
-                  phx-click="view_media" 
-                  phx-value-id={file.id}
+          </section>
+        <% else %>
+          <!-- Non-member view -->
+          <div class="max-w-lg mx-auto py-8">
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+              <div class="bg-gradient-to-r from-blue-500 to-indigo-600 h-32 flex items-end p-6 relative">
+                <h2 class="text-2xl font-semibold text-white z-10">Join Channel</h2>
+              </div>
+              
+              <div class="p-6 text-center">
+                <div class="mx-auto w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-4">
+                  <svg class="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </div>
+                <h3 class="text-xl font-medium text-gray-900 mb-2">Members Only Content</h3>
+                <p class="text-gray-500 mb-6">
+                  Join this channel to access exclusive content, chat with other members, and share files.
+                </p>
+                <button
+                  phx-click="join_channel"
+                  class="inline-flex items-center px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-sm hover:from-blue-600 hover:to-indigo-700 transition-colors"
                 >
-                  <div class={[
-                    "h-24 flex items-center justify-center",
-                    file.media_type == "image" && "bg-gradient-to-r from-pink-500/20 to-pink-600/20",
-                    file.media_type == "video" && "bg-gradient-to-r from-purple-500/20 to-purple-600/20",
-                    file.media_type == "audio" && "bg-gradient-to-r from-blue-500/20 to-blue-600/20",
-                    !Enum.member?(["image", "video", "audio"], file.media_type) && "bg-gradient-to-r from-gray-500/10 to-gray-600/10"
-                  ]}>
-                    <%= cond do %>
-                      <% file.media_type == "image" -> %>
-                        <svg class="h-8 w-8 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      <% file.media_type == "video" -> %>
-                        <svg class="h-8 w-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      <% file.media_type == "audio" -> %>
-                        <svg class="h-8 w-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                        </svg>
-                      <% true -> %>
-                        <svg class="h-8 w-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                    <% end %>
-                  </div>
-                  <div class="p-2">
-                    <p class="text-xs font-medium text-gray-900 truncate">
-                      <%= file.title || file.filename %>
-                    </p>
-                    <p class="text-xs text-gray-500 mt-0.5">
-                      <%= format_date(file.inserted_at) %>
-                    </p>
-                  </div>
-                </div>
-              <% end %>
+                  <svg class="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                  </svg>
+                  Join Channel
+                </button>
+              </div>
             </div>
-          <% end %>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Chat Section - Takes 1/3 of the space on large screens -->
-    <div class="lg:col-span-1">
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden h-[600px] flex flex-col">
-        <div class="bg-gradient-to-r from-cyan-500 to-blue-500 px-4 py-3 flex items-center justify-between">
-          <h3 class="font-medium text-white flex items-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            Chat
-          </h3>
-          <span class="text-xs bg-white/20 px-2 py-1 rounded-full text-white">
-            <%= length(Map.get(assigns, :online_members, [])) %> online
-          </span>
-        </div>
-        
-        <!-- Messages Container -->
-        <div class="flex-grow overflow-y-auto p-4" id="messages-container-chat" phx-hook="MessagesContainer" phx-update="append">
-          <!-- Message List -->
-          <div id="messages-list" class="space-y-4">
-            <%= for message <- @chat_messages do %>
-              <% user = Map.get(@users_map, message.user_id) %>
-              <div id={"message-#{message.id}"} class="flex group">
-                <div class="flex-shrink-0 mr-3">
-                  <div class="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white">
-                    <%= if user && user.name do %>
-                      <%= String.first(user.name) %>
-                    <% else %>
-                      U
+          </div>
+        <% end %>
+
+        <%= if @is_member do %>
+          <!-- Content and Chat Section -->
+          <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Content Library - Takes 2/3 of the space on large screens -->
+            <div class="lg:col-span-2">
+              <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+                <div class="bg-gradient-to-r from-purple-500 to-pink-600 px-4 py-3 flex justify-between items-center">
+                  <h3 class="font-medium text-white flex items-center">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    Content Library
+                  </h3>
+                  <button 
+                    phx-click="show_media_upload"
+                    class="text-xs bg-white/20 px-2 py-1 rounded-lg text-white hover:bg-white/30"
+                  >
+                    Upload
+                  </button>
+                </div>
+                
+                <!-- Active Media Preview -->
+                <div class="px-4 py-3 border-b border-gray-100">
+                  <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-sm font-medium text-gray-700">Active Media</h4>
+                    <%= if @can_edit do %>
+                      <button 
+                        phx-click="manage_active_media"
+                        class="text-xs text-indigo-600 hover:text-indigo-800 flex items-center"
+                      >
+                        Manage
+                        <svg class="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    <% end %>
+                  </div>
+                  
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <!-- Show Branding only to admins -->
+                    <%= if @can_edit do %>
+                      <div class="rounded-lg border border-gray-200 overflow-hidden">
+                        <div class="bg-gradient-to-tr from-blue-50 to-indigo-50 h-8 flex items-center px-3">
+                          <span class="text-xs font-medium text-indigo-700">Branding</span>
+                        </div>
+                        <div class="p-3">
+                          <%= if Map.get(@active_media, :branding) do %>
+                            <div class="flex items-center">
+                              <div class="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 mr-2">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                                </svg>
+                              </div>
+                              <div class="truncate">
+                                <p class="text-xs font-medium text-gray-900 truncate">
+                                  <%= @active_media.branding.title %>
+                                </p>
+                              </div>
+                            </div>
+                          <% else %>
+                            <div class="flex justify-center">
+                              <button 
+                                phx-click="browse_media_for_category" 
+                                phx-value-category="branding" 
+                                class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100"
+                              >
+                                Set Branding
+                              </button>
+                            </div>
+                          <% end %>
+                        </div>
+                      </div>
+                    <% end %>
+                    
+                    <!-- Files Card -->
+                    <div class="rounded-lg border border-gray-200 overflow-hidden">
+                      <div class="bg-gradient-to-tr from-purple-50 to-indigo-50 h-8 flex items-center px-3">
+                        <span class="text-xs font-medium text-purple-700">Files</span>
+                      </div>
+                      <div class="p-3">
+                        <%= if Map.get(@active_media, :presentation) do %>
+                          <div class="flex items-center">
+                            <div class="h-8 w-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600 mr-2">
+                              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <div class="truncate">
+                              <p class="text-xs font-medium text-gray-900 truncate">
+                                <%= @active_media.presentation.title %>
+                              </p>
+                            </div>
+                          </div>
+                        <% else %>
+                          <div class="flex justify-center">
+                            <button 
+                              phx-click="browse_media_for_category" 
+                              phx-value-category="presentation" 
+                              class="text-xs px-2 py-1 rounded-full bg-purple-50 text-purple-600 hover:bg-purple-100"
+                            >
+                              Set Files
+                            </button>
+                          </div>
+                        <% end %>
+                      </div>
+                    </div>
+                    
+                    <!-- Recordings Card -->
+                    <div class="rounded-lg border border-gray-200 overflow-hidden">
+                      <div class="bg-gradient-to-tr from-pink-50 to-red-50 h-8 flex items-center px-3">
+                        <span class="text-xs font-medium text-pink-700">Recordings</span>
+                      </div>
+                      <div class="p-3">
+                        <%= if Map.get(@active_media, :performance) do %>
+                          <div class="flex items-center">
+                            <div class="h-8 w-8 rounded-lg bg-pink-100 flex items-center justify-center text-pink-600 mr-2">
+                              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                            <div class="truncate">
+                              <p class="text-xs font-medium text-gray-900 truncate">
+                                <%= @active_media.performance.title %>
+                              </p>
+                            </div>
+                          </div>
+                        <% else %>
+                          <div class="flex justify-center">
+                            <button 
+                              phx-click="browse_media_for_category" 
+                              phx-value-category="performance" 
+                              class="text-xs px-2 py-1 rounded-full bg-pink-50 text-pink-600 hover:bg-pink-100"
+                            >
+                              Set Recording
+                            </button>
+                          </div>
+                        <% end %>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Recent Files Grid -->
+                <div class="p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-sm font-medium text-gray-700">Recent Files</h4>
+                    <button 
+                      phx-click="switch_to_files_view"
+                      class="text-xs text-indigo-600 hover:text-indigo-800 flex items-center"
+                    >
+                      View all
+                      <svg class="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <%= if Enum.empty?(@media_files) do %>
+                    <div class="text-center py-8 bg-gray-50 rounded-lg">
+                      <svg class="mx-auto h-10 w-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+                      </svg>
+                      <p class="mt-2 text-sm text-gray-500">No files uploaded yet</p>
+                      <button 
+                        phx-click="show_media_upload"
+                        class="mt-3 px-3 py-1.5 text-sm border border-transparent rounded-lg bg-gradient-to-r from-purple-400 to-pink-500 text-white hover:from-purple-500 hover:to-pink-600"
+                      >
+                        Upload Files
+                      </button>
+                    </div>
+                  <% else %>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <%= for file <- Enum.take(@media_files, 8) do %>
+                        <div 
+                          class="border border-gray-200 rounded-lg overflow-hidden hover:shadow-sm cursor-pointer transition-all" 
+                          phx-click="view_media" 
+                          phx-value-id={file.id}
+                        >
+                          <div class={[
+                            "h-24 flex items-center justify-center",
+                            file.media_type == "image" && "bg-gradient-to-r from-pink-500/20 to-pink-600/20",
+                            file.media_type == "video" && "bg-gradient-to-r from-purple-500/20 to-purple-600/20",
+                            file.media_type == "audio" && "bg-gradient-to-r from-blue-500/20 to-blue-600/20",
+                            !Enum.member?(["image", "video", "audio"], file.media_type) && "bg-gradient-to-r from-gray-500/10 to-gray-600/10"
+                          ]}>
+                            <%= cond do %>
+                              <% file.media_type == "image" -> %>
+                                <svg class="h-8 w-8 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              <% file.media_type == "video" -> %>
+                                <svg class="h-8 w-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              <% file.media_type == "audio" -> %>
+                                <svg class="h-8 w-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                                </svg>
+                              <% true -> %>
+                                <svg class="h-8 w-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                            <% end %>
+                          </div>
+                          <div class="p-2">
+                            <p class="text-xs font-medium text-gray-900 truncate">
+                              <%= file.title || file.filename %>
+                            </p>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                              <%= format_date(file.inserted_at) %>
+                            </p>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Chat Section - Takes 1/3 of the space on large screens -->
+            <div class="lg:col-span-1">
+              <div class="bg-white rounded-xl shadow-sm overflow-hidden h-[600px] flex flex-col">
+                <div class="bg-gradient-to-r from-cyan-500 to-blue-500 px-4 py-3 flex items-center justify-between">
+                  <h3 class="font-medium text-white flex items-center">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    Chat
+                  </h3>
+                  <span class="text-xs bg-white/20 px-2 py-1 rounded-full text-white">
+                    <%= length(Map.get(assigns, :online_members, [])) %> online
+                  </span>
+                </div>
+                
+                <!-- Messages Container -->
+                <div class="flex-grow overflow-y-auto p-4" id="messages-container-chat" phx-hook="MessagesContainer" phx-update="append">
+                  <!-- Message List -->
+                  <div id="messages-list" class="space-y-4">
+                    <%= for message <- @chat_messages do %>
+                      <% user = Map.get(@users_map, message.user_id) %>
+                      <div id={"message-#{message.id}"} class="flex group">
+                        <div class="flex-shrink-0 mr-3">
+                          <div class="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white">
+                            <%= if user && user.name do %>
+                              <%= String.first(user.name) %>
+                            <% else %>
+                              U
+                            <% end %>
+                          </div>
+                        </div>
+                        <div class="flex-grow">
+                          <div class="flex items-center">
+                            <span class="text-sm font-medium text-gray-900">
+                              <%= if user do %>
+                                <%= user.name || user.email %>
+                              <% else %>
+                                Unknown User
+                              <% end %>
+                            </span>
+                            <span class="ml-2 text-xs text-gray-500">
+                              <%= format_time(message.inserted_at) %>
+                            </span>
+                            
+                            <!-- Message Actions - Visible on hover -->
+                            <div class="ml-2 hidden group-hover:flex">
+                              <%= if message.user_id == @current_user.id || (@current_user.role in ["admin", "moderator", "channel_owner"]) do %>
+                                <button 
+                                  phx-click="delete_message" 
+                                  phx-value-id={message.id}
+                                  class="text-xs text-gray-400 hover:text-red-500 transition-colors p-1"
+                                  title="Delete message"
+                                >
+                                  <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              <% end %>
+                            </div>
+                          </div>
+                          
+                          <!-- Message Content -->
+                          <%= case message.message_type do %>
+                            <% "text" -> %>
+                              <div class="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
+                                <%= message.content %>
+                              </div>
+                            <% "image" -> %>
+                              <div class="mt-1">
+                                <img src={message.content} alt="Image" class="max-w-[200px] rounded-lg shadow-sm" />
+                              </div>
+                            <% "file" -> %>
+                              <div class="mt-1 flex items-center">
+                                <div class="p-2 bg-gray-50 rounded-lg flex items-center">
+                                  <svg class="h-4 w-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  <a href={message.content} target="_blank" class="text-xs text-blue-600 hover:underline">
+                                    <%= message.metadata["filename"] || "Download file" %>
+                                  </a>
+                                </div>
+                              </div>
+                            <% _ -> %>
+                              <div class="mt-1 text-sm text-gray-800">
+                                <%= message.content %>
+                              </div>
+                          <% end %>
+                        </div>
+                      </div>
                     <% end %>
                   </div>
                 </div>
-                <div class="flex-grow">
-                  <div class="flex items-center">
-                    <span class="text-sm font-medium text-gray-900">
-                      <%= if user do %>
-                        <%= user.name || user.email %>
-                      <% else %>
-                        Unknown User
-                      <% end %>
-                    </span>
-                    <span class="ml-2 text-xs text-gray-500">
-                      <%= format_time(message.inserted_at) %>
-                    </span>
+
+                <!-- Message Input - Redesigned for better proportions -->
+                <div class="border-t border-gray-200 px-3 py-2 bg-gray-50">
+                  <form phx-submit="send_message" class="flex gap-2">
+                    <div class="flex-grow relative">
+                      <textarea
+                        id="message-input"
+                        name="message"
+                        placeholder="Type a message..."
+                        rows="1"
+                        phx-keyup="typing"
+                        phx-hook="AutoResizeTextarea"
+                        class="w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm resize-none pr-8"
+                        style="min-height: 2.5rem; max-height: 6rem;"
+                      ><%= @message_text %></textarea>
+                      
+                      <!-- File attachment button positioned inside textarea -->
+                      <button
+                        type="button"
+                        phx-click="show_media_upload"
+                        class="absolute right-2 bottom-2 text-gray-400 hover:text-gray-600"
+                        title="Attach file"
+                      >
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                        </svg>
+                      </button>
+                    </div>
                     
-                    <!-- Message Actions - Visible on hover -->
-                    <div class="ml-2 hidden group-hover:flex">
-                      <%= if message.user_id == @current_user.id || (@current_user.role in ["admin", "moderator", "channel_owner"]) do %>
-                        <button 
-                          phx-click="delete_message" 
-                          phx-value-id={message.id}
-                          class="text-xs text-gray-400 hover:text-red-500 transition-colors p-1"
-                          title="Delete message"
-                        >
-                          <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      <% end %>
+                    <!-- Send button -->
+                    <button
+                      type="submit"
+                      class="self-end p-2 border border-transparent rounded-full shadow-sm text-white bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
+                    >
+                      <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </section>
+        <% end %>
+
+        <!-- Modal Templates - These appear at the end of the template -->
+
+        <!-- Create Session Modal -->
+        <%= if @show_session_form do %>
+          <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
+            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <!-- Background overlay -->
+              <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+              
+              <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+              
+              <!-- Modal panel -->
+              <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale">
+                <div class="bg-gradient-to-r from-teal-400 to-emerald-500 px-4 py-4 sm:px-6 flex items-center justify-between">
+                  <h3 class="text-lg leading-6 font-medium text-white flex items-center">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23-.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+                    </svg>
+                    Start Creating
+                  </h3>
+                  <button 
+                    type="button"
+                    phx-click="hide_session_form"
+                    class="text-white hover:text-gray-200 focus:outline-none"
+                  >
+                    <span class="sr-only">Close</span>
+                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <form phx-submit="create_session" class="px-4 py-5 sm:p-6">
+                  <div class="space-y-4">
+                    <!-- Session form fields -->
+                    <div>
+                      <label for="title" class="block text-sm font-medium text-gray-700">Session Title</label>
+                      <input type="text" name="session[title]" id="title"
+                        class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                        placeholder="Enter session title" required>
+                    </div>
+                    
+                    <div>
+                      <label for="description" class="block text-sm font-medium text-gray-700">Description (Optional)</label>
+                      <textarea name="session[description]" id="description" rows="3"
+                        class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                        placeholder="What will this creation be about?"></textarea>
+                    </div>
+                    
+                    <div>
+                      <label for="session_type" class="block text-sm font-medium text-gray-700">Creation Type</label>
+                      <select name="session[session_type]" id="session_type" 
+                        class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                      >
+                        <option value="mixed">Mixed Media</option>
+                        <option value="audio">Audio</option>
+                        <option value="text">Text Only</option>
+                        <option value="visual">Visual</option>
+                        <option value="midi">MIDI</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label for="max_participants" class="block text-sm font-medium text-gray-700">Maximum Creators (Optional)</label>
+                      <input type="number" name="session[max_participants]" id="max_participants"
+                        class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
+                        placeholder="Leave blank for unlimited">
+                    </div>
+                    
+                    <div class="flex items-center">
+                      <input type="checkbox" name="session[is_public]" id="is_public" 
+                        class="h-4 w-4 text-teal-600 focus:ring-teal-500 border-gray-300 rounded" 
+                        checked>
+                      <label for="is_public" class="ml-2 block text-sm text-gray-700">
+                        Make this session visible to all channel members
+                      </label>
                     </div>
                   </div>
                   
-                  <!-- Message Content -->
-                  <%= case message.message_type do %>
-                    <% "text" -> %>
-                      <div class="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
-                        <%= message.content %>
-                      </div>
-                    <% "image" -> %>
-                      <div class="mt-1">
-                        <img src={message.content} alt="Image" class="max-w-[200px] rounded-lg shadow-sm" />
-                      </div>
-                    <% "file" -> %>
-                      <div class="mt-1 flex items-center">
-                        <div class="p-2 bg-gray-50 rounded-lg flex items-center">
-                          <svg class="h-4 w-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <a href={message.content} target="_blank" class="text-xs text-blue-600 hover:underline">
-                            <%= message.metadata["filename"] || "Download file" %>
-                          </a>
+                  <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" phx-click="hide_session_form"
+                      class="px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit"
+                      class="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-teal-400 to-emerald-500 hover:from-teal-500 hover:to-emerald-600"
+                    >
+                      Open Studio
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Create Broadcast Modal -->
+        <%= if @show_broadcast_form do %>
+          <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
+            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <!-- Background overlay -->
+              <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+              
+              <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+              
+              <!-- Modal panel -->
+              <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale">
+                <div class="bg-gradient-to-r from-indigo-400 to-purple-500 px-4 py-4 sm:px-6 flex items-center justify-between">
+                  <h3 class="text-lg leading-6 font-medium text-white flex items-center">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+                      <circle cx="12" cy="12" r="4" />
+                    </svg>
+                    Schedule Broadcast
+                  </h3>
+                  <button 
+                    type="button"
+                    phx-click="hide_broadcast_form"
+                    class="text-white hover:text-gray-200 focus:outline-none"
+                  >
+                    <span class="sr-only">Close</span>
+                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <form phx-submit="schedule_broadcast" class="px-4 py-5 sm:p-6">
+                  <div class="space-y-4">
+                    <!-- Broadcast form fields -->
+                    <div>
+                      <label for="broadcast_title" class="block text-sm font-medium text-gray-700">Broadcast Title</label>
+                      <input type="text" name="broadcast[title]" id="broadcast_title"
+                        class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        placeholder="Enter broadcast title" required>
+                    </div>
+                    
+                    <div>
+                      <label for="broadcast_description" class="block text-sm font-medium text-gray-700">Description (Optional)</label>
+                      <textarea name="broadcast[description]" id="broadcast_description" rows="3"
+                        class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        placeholder="What will this broadcast be about?"></textarea>
+                    </div>
+                    
+                    <div>
+                      <label for="broadcast_type" class="block text-sm font-medium text-gray-700">Broadcast Type</label>
+                      <select name="broadcast[broadcast_type]" id="broadcast_type" 
+                        class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        required
+                      >
+                        <option value="standard">Standard</option>
+                        <option value="performance">Performance</option>
+                        <option value="tutorial">Tutorial</option>
+                        <option value="interview">Interview</option>
+                        <option value="q_and_a">Q&A Session</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label for="scheduled_for" class="block text-sm font-medium text-gray-700">Date and Time</label>
+                      <input type="datetime-local" name="broadcast[scheduled_for]" id="scheduled_for"
+                        class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        required>
+                    </div>
+                    
+                    <div class="flex items-center">
+                      <input type="checkbox" name="broadcast[waiting_room_enabled]" id="waiting_room_enabled" 
+                        class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" 
+                        checked>
+                      <label for="waiting_room_enabled" class="ml-2 block text-sm text-gray-700">
+                        Enable waiting room
+                      </label>
+                    </div>
+                    
+                    <div class="flex items-center">
+                      <input type="checkbox" name="broadcast[is_public]" id="broadcast_is_public" 
+                        class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" 
+                        checked>
+                      <label for="broadcast_is_public" class="ml-2 block text-sm text-gray-700">
+                        Make this broadcast visible to all channel members
+                      </label>
+                    </div>
+                  </div>
+                  
+                  <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" phx-click="hide_broadcast_form"
+                      class="px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit"
+                      class="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-400 to-purple-500 hover:from-indigo-500 hover:to-purple-600"
+                    >
+                      Schedule
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Invite Modal -->
+        <%= if @show_invite_modal do %>
+          <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
+            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <!-- Background overlay -->
+              <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+              
+              <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+              
+              <!-- Modal panel -->
+              <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale">
+                <div class="bg-gradient-to-r from-blue-400 to-blue-500 px-4 py-4 sm:px-6 flex items-center justify-between">
+                  <h3 class="text-lg leading-6 font-medium text-white flex items-center">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                    </svg>
+                    Invite to Channel
+                  </h3>
+                  <button 
+                    type="button"
+                    phx-click="hide_invite_modal"
+                    class="text-white hover:text-gray-200 focus:outline-none"
+                  >
+                    <span class="sr-only">Close</span>
+                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <form phx-submit="invite_to_channel" class="px-4 py-5 sm:p-6">
+                  <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700">Email address</label>
+                    <div class="mt-1">
+                      <input type="email" name="email" id="email"
+                        class="block w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        placeholder="email@example.com" required>
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">
+                      Invite someone to join <span class="font-medium"><%= @channel.name %></span>
+                    </p>
+                  </div>
+                  
+                  <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" phx-click="hide_invite_modal"
+                      class="px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit"
+                      class="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-500 hover:to-blue-600"
+                    >
+                      Send Invitation
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Media Upload Modal -->
+        <%= if @show_media_upload do %>
+          <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
+            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <!-- Background overlay -->
+              <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+              
+              <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+              
+              <!-- Modal panel -->
+              <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale">
+                <div class="bg-gradient-to-r from-purple-500 to-pink-600 px-4 py-4 sm:px-6 flex items-center justify-between">
+                  <h3 class="text-lg leading-6 font-medium text-white flex items-center">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Upload Media
+                  </h3>
+                  <button 
+                    type="button"
+                    phx-click="hide_media_upload"
+                    class="text-white hover:text-gray-200 focus:outline-none"
+                  >
+                    <span class="sr-only">Close</span>
+                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div class="px-4 py-5 sm:p-6">
+                  <.live_component
+                    module={FrestylWeb.ChannelLive.MediaUploadComponent}
+                    id="media-upload"
+                    channel_id={@channel.id}
+                    current_user={@current_user}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Media Viewer Modal -->
+        <%= if @viewing_media do %>
+          <.live_component
+            module={FrestylWeb.ChannelLive.MediaViewerComponent}
+            id="media-viewer"
+            file_id={@viewing_media}
+            current_user={@current_user}
+            is_admin={@is_admin}
+          />
+        <% end %>
+
+          <!-- Session Viewer Modal -->
+          <%= if @viewing_session do %>
+            <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
+              <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <!-- Background overlay -->
+                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+                
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                
+                <!-- Modal panel -->
+                <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full animate-scale">
+                  <div class="bg-gradient-to-r from-teal-400 to-emerald-500 px-4 py-4 sm:px-6 flex items-center justify-between">
+                    <h3 class="text-lg leading-6 font-medium text-white">
+                      <%= @viewing_session.title %>
+                    </h3>
+                    <button 
+                      type="button"
+                      phx-click="close_session_view"
+                      class="text-white hover:text-gray-200 focus:outline-none"
+                    >
+                      <span class="sr-only">Close</span>
+                      <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <div class="px-4 py-5 sm:p-6">
+                    <div class="space-y-4">
+                      <%= if @viewing_session.description do %>
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Description</h4>
+                          <p class="mt-1 text-sm text-gray-900"><%= @viewing_session.description %></p>
+                        </div>
+                      <% end %>
+                      
+                      <div class="grid grid-cols-2 gap-4">
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Type</h4>
+                          <p class="mt-1 text-sm text-gray-900"><%= String.capitalize(@viewing_session.session_type || "Creative") %></p>
+                        </div>
+                        
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Status</h4>
+                          <p class="mt-1 text-sm text-gray-900">
+                            <span 
+                              class={[
+                                "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                                @viewing_session.status == "active" && "bg-teal-100 text-teal-800",
+                                @viewing_session.status == "scheduled" && "bg-blue-100 text-blue-800",
+                                @viewing_session.status == "ended" && "bg-gray-100 text-gray-800"
+                              ]}
+                            >
+                              <%= String.capitalize(@viewing_session.status) %>
+                            </span>
+                          </p>
+                        </div>
+                        
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Created by</h4>
+                          <p class="mt-1 text-sm text-gray-900">
+                            <%= (@users_map[@viewing_session.creator_id] || %{}).name || "Unknown" %>
+                          </p>
+                        </div>
+                        
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Created</h4>
+                          <p class="mt-1 text-sm text-gray-900">
+                            <%= format_date_time(@viewing_session.inserted_at) %>
+                          </p>
                         </div>
                       </div>
-                    <% _ -> %>
-                      <div class="mt-1 text-sm text-gray-800">
-                        <%= message.content %>
+                      
+                      <%= if length(@viewing_session.session_participants || []) > 0 do %>
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500 mb-2">Current Participants</h4>
+                          <div class="flex flex-wrap gap-2">
+                            <%= for participant <- @viewing_session.session_participants do %>
+                              <div class="flex items-center px-2 py-1 bg-gray-100 rounded-full text-xs">
+                                <div class="h-5 w-5 rounded-full bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-white mr-1.5">
+                                  <%= String.first(participant.user.name || "U") %>
+                                </div>
+                                <span class="text-gray-800">
+                                  <%= participant.user.name || participant.user.email %>
+                                </span>
+                              </div>
+                            <% end %>
+                          </div>
+                        </div>
+                      <% end %>
+                      
+                      <div class="pt-4 mt-4 border-t border-gray-200 flex justify-end gap-2">
+                        <button
+                          phx-click="close_session_view"
+                          class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          phx-click="start_session"
+                          phx-value-id={@viewing_session.id}
+                          class="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-teal-400 to-emerald-500 text-white hover:from-teal-500 hover:to-emerald-600"
+                        >
+                          Open Studio
+                        </button>
                       </div>
-                  <% end %>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        </div>
-
-        <!-- Message Input - Redesigned for better proportions -->
-        <div class="border-t border-gray-200 px-3 py-2 bg-gray-50">
-          <form phx-submit="send_message" class="flex gap-2">
-            <div class="flex-grow relative">
-              <textarea
-                id="message-input"
-                name="message"
-                placeholder="Type a message..."
-                rows="1"
-                phx-keyup="typing"
-                phx-hook="AutoResizeTextarea"
-                class="w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm resize-none pr-8"
-                style="min-height: 2.5rem; max-height: 6rem;"
-              ><%= @message_text %></textarea>
-              
-              <!-- File attachment button positioned inside textarea -->
-              <button
-                type="button"
-                phx-click="show_media_upload"
-                class="absolute right-2 bottom-2 text-gray-400 hover:text-gray-600"
-                title="Attach file"
-              >
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                </svg>
-              </button>
-            </div>
-            
-            <!-- Send button -->
-            <button
-              type="submit"
-              class="self-end p-2 border border-transparent rounded-full shadow-sm text-white bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
-            >
-              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  </section>
-<% end %>
-
-<!-- Modal Templates - These appear at the end of the template -->
-
-<!-- Create Session Modal -->
-<%= if @show_session_form do %>
-  <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <!-- Background overlay -->
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
-      
-      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-      
-      <!-- Modal panel -->
-      <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale">
-        <div class="bg-gradient-to-r from-teal-400 to-emerald-500 px-4 py-4 sm:px-6 flex items-center justify-between">
-          <h3 class="text-lg leading-6 font-medium text-white flex items-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23-.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
-            </svg>
-            Start Creating
-          </h3>
-          <button 
-            type="button"
-            phx-click="hide_session_form"
-            class="text-white hover:text-gray-200 focus:outline-none"
-          >
-            <span class="sr-only">Close</span>
-            <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <form phx-submit="create_session" class="px-4 py-5 sm:p-6">
-          <div class="space-y-4">
-            <!-- Session form fields -->
-            <div>
-              <label for="title" class="block text-sm font-medium text-gray-700">Session Title</label>
-              <input type="text" name="session[title]" id="title"
-                class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
-                placeholder="Enter session title" required>
-            </div>
-            
-            <div>
-              <label for="description" class="block text-sm font-medium text-gray-700">Description (Optional)</label>
-              <textarea name="session[description]" id="description" rows="3"
-                class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
-                placeholder="What will this creation be about?"></textarea>
-            </div>
-            
-            <div>
-              <label for="session_type" class="block text-sm font-medium text-gray-700">Creation Type</label>
-              <select name="session[session_type]" id="session_type" 
-                class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
-              >
-                <option value="mixed">Mixed Media</option>
-                <option value="audio">Audio</option>
-                <option value="text">Text Only</option>
-                <option value="visual">Visual</option>
-                <option value="midi">MIDI</option>
-              </select>
-            </div>
-            
-            <div>
-              <label for="max_participants" class="block text-sm font-medium text-gray-700">Maximum Creators (Optional)</label>
-              <input type="number" name="session[max_participants]" id="max_participants"
-                class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-teal-500 focus:border-teal-500 sm:text-sm"
-                placeholder="Leave blank for unlimited">
-            </div>
-            
-            <div class="flex items-center">
-              <input type="checkbox" name="session[is_public]" id="is_public" 
-                class="h-4 w-4 text-teal-600 focus:ring-teal-500 border-gray-300 rounded" 
-                checked>
-              <label for="is_public" class="ml-2 block text-sm text-gray-700">
-                Make this session visible to all channel members
-              </label>
-            </div>
-          </div>
-          
-          <div class="mt-5 flex justify-end gap-2">
-            <button type="button" phx-click="hide_session_form"
-              class="px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button type="submit"
-              class="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-teal-400 to-emerald-500 hover:from-teal-500 hover:to-emerald-600"
-            >
-              Open Studio
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-<% end %>
-
-<!-- Create Broadcast Modal -->
-<%= if @show_broadcast_form do %>
-  <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <!-- Background overlay -->
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
-      
-      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-      
-      <!-- Modal panel -->
-      <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale">
-        <div class="bg-gradient-to-r from-indigo-400 to-purple-500 px-4 py-4 sm:px-6 flex items-center justify-between">
-          <h3 class="text-lg leading-6 font-medium text-white flex items-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
-              <circle cx="12" cy="12" r="4" />
-            </svg>
-            Schedule Broadcast
-          </h3>
-          <button 
-            type="button"
-            phx-click="hide_broadcast_form"
-            class="text-white hover:text-gray-200 focus:outline-none"
-          >
-            <span class="sr-only">Close</span>
-            <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <form phx-submit="schedule_broadcast" class="px-4 py-5 sm:p-6">
-          <div class="space-y-4">
-            <!-- Broadcast form fields -->
-            <div>
-              <label for="broadcast_title" class="block text-sm font-medium text-gray-700">Broadcast Title</label>
-              <input type="text" name="broadcast[title]" id="broadcast_title"
-                class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder="Enter broadcast title" required>
-            </div>
-            
-            <div>
-              <label for="broadcast_description" class="block text-sm font-medium text-gray-700">Description (Optional)</label>
-              <textarea name="broadcast[description]" id="broadcast_description" rows="3"
-                class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                placeholder="What will this broadcast be about?"></textarea>
-            </div>
-            
-            <div>
-              <label for="broadcast_type" class="block text-sm font-medium text-gray-700">Broadcast Type</label>
-              <select name="broadcast[broadcast_type]" id="broadcast_type" 
-                class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                required
-              >
-                <option value="standard">Standard</option>
-                <option value="performance">Performance</option>
-                <option value="tutorial">Tutorial</option>
-                <option value="interview">Interview</option>
-                <option value="q_and_a">Q&A Session</option>
-              </select>
-            </div>
-            
-            <div>
-              <label for="scheduled_for" class="block text-sm font-medium text-gray-700">Date and Time</label>
-              <input type="datetime-local" name="broadcast[scheduled_for]" id="scheduled_for"
-                class="mt-1 block w-full border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                required>
-            </div>
-            
-            <div class="flex items-center">
-              <input type="checkbox" name="broadcast[waiting_room_enabled]" id="waiting_room_enabled" 
-                class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" 
-                checked>
-              <label for="waiting_room_enabled" class="ml-2 block text-sm text-gray-700">
-                Enable waiting room
-              </label>
-            </div>
-            
-            <div class="flex items-center">
-              <input type="checkbox" name="broadcast[is_public]" id="broadcast_is_public" 
-                class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" 
-                checked>
-              <label for="broadcast_is_public" class="ml-2 block text-sm text-gray-700">
-                Make this broadcast visible to all channel members
-              </label>
-            </div>
-          </div>
-          
-          <div class="mt-5 flex justify-end gap-2">
-            <button type="button" phx-click="hide_broadcast_form"
-              class="px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button type="submit"
-              class="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-400 to-purple-500 hover:from-indigo-500 hover:to-purple-600"
-            >
-              Schedule
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-<% end %>
-
-<!-- Invite Modal -->
-<%= if @show_invite_modal do %>
-  <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <!-- Background overlay -->
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
-      
-      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-      
-      <!-- Modal panel -->
-      <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale">
-        <div class="bg-gradient-to-r from-blue-400 to-blue-500 px-4 py-4 sm:px-6 flex items-center justify-between">
-          <h3 class="text-lg leading-6 font-medium text-white flex items-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-            </svg>
-            Invite to Channel
-          </h3>
-          <button 
-            type="button"
-            phx-click="hide_invite_modal"
-            class="text-white hover:text-gray-200 focus:outline-none"
-          >
-            <span class="sr-only">Close</span>
-            <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <form phx-submit="invite_to_channel" class="px-4 py-5 sm:p-6">
-          <div>
-            <label for="email" class="block text-sm font-medium text-gray-700">Email address</label>
-            <div class="mt-1">
-              <input type="email" name="email" id="email"
-                class="block w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="email@example.com" required>
-            </div>
-            <p class="mt-1 text-sm text-gray-500">
-              Invite someone to join <span class="font-medium"><%= @channel.name %></span>
-            </p>
-          </div>
-          
-          <div class="mt-5 flex justify-end gap-2">
-            <button type="button" phx-click="hide_invite_modal"
-              class="px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button type="submit"
-              class="px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-500 hover:to-blue-600"
-            >
-              Send Invitation
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-<% end %>
-
-<!-- Media Upload Modal -->
-<%= if @show_media_upload do %>
-  <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <!-- Background overlay -->
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
-      
-      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-      
-      <!-- Modal panel -->
-      <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale">
-        <div class="bg-gradient-to-r from-purple-500 to-pink-600 px-4 py-4 sm:px-6 flex items-center justify-between">
-          <h3 class="text-lg leading-6 font-medium text-white flex items-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
-            Upload Media
-          </h3>
-          <button 
-            type="button"
-            phx-click="hide_media_upload"
-            class="text-white hover:text-gray-200 focus:outline-none"
-          >
-            <span class="sr-only">Close</span>
-            <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <div class="px-4 py-5 sm:p-6">
-          <.live_component
-            module={FrestylWeb.ChannelLive.MediaUploadComponent}
-            id="media-upload"
-            channel_id={@channel.id}
-            current_user={@current_user}
-          />
-        </div>
-      </div>
-    </div>
-  </div>
-<% end %>
-
-<!-- Media Viewer Modal -->
-<%= if @viewing_media do %>
-  <.live_component
-    module={FrestylWeb.ChannelLive.MediaViewerComponent}
-    id="media-viewer"
-    file_id={@viewing_media}
-    current_user={@current_user}
-    is_admin={@is_admin}
-  />
-<% end %>
-
-<!-- Session Viewer Modal -->
-<%= if @viewing_session do %>
-  <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <!-- Background overlay -->
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
-      
-      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-      
-      <!-- Modal panel -->
-      <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full animate-scale">
-        <div class="bg-gradient-to-r from-teal-400 to-emerald-500 px-4 py-4 sm:px-6 flex items-center justify-between">
-          <h3 class="text-lg leading-6 font-medium text-white">
-            <%= @viewing_session.title %>
-          </h3>
-          <button 
-            type="button"
-            phx-click="close_session_view"
-            class="text-white hover:text-gray-200 focus:outline-none"
-          >
-            <span class="sr-only">Close</span>
-            <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <div class="px-4 py-5 sm:p-6">
-          <div class="space-y-4">
-            <%= if @viewing_session.description do %>
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Description</h4>
-                <p class="mt-1 text-sm text-gray-900"><%= @viewing_session.description %></p>
-              </div>
-            <% end %>
-            
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Type</h4>
-                <p class="mt-1 text-sm text-gray-900"><%= String.capitalize(@viewing_session.session_type || "Creative") %></p>
-              </div>
-              
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Status</h4>
-                <p class="mt-1 text-sm text-gray-900">
-                  <span 
-                    class={[
-                      "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
-                      @viewing_session.status == "active" && "bg-teal-100 text-teal-800",
-                      @viewing_session.status == "scheduled" && "bg-blue-100 text-blue-800",
-                      @viewing_session.status == "ended" && "bg-gray-100 text-gray-800"
-                    ]}
-                  >
-                    <%= String.capitalize(@viewing_session.status) %>
-                  </span>
-                </p>
-              </div>
-              
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Created by</h4>
-                <p class="mt-1 text-sm text-gray-900">
-                  <%= (@users_map[@viewing_session.creator_id] || %{}).name || "Unknown" %>
-                </p>
-              </div>
-              
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Created</h4>
-                <p class="mt-1 text-sm text-gray-900">
-                  <%= format_date_time(@viewing_session.inserted_at) %>
-                </p>
-              </div>
-            </div>
-            
-            <%= if length(@viewing_session.session_participants || []) > 0 do %>
-              <div>
-                <h4 class="text-sm font-medium text-gray-500 mb-2">Current Participants</h4>
-                <div class="flex flex-wrap gap-2">
-                  <%= for participant <- @viewing_session.session_participants do %>
-                    <div class="flex items-center px-2 py-1 bg-gray-100 rounded-full text-xs">
-                      <div class="h-5 w-5 rounded-full bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-white mr-1.5">
-                        <%= String.first(participant.user.name || "U") %>
-                      </div>
-                      <span class="text-gray-800">
-                        <%= participant.user.name || participant.user.email %>
-                      </span>
                     </div>
-                  <% end %>
+                  </div>
                 </div>
               </div>
-            <% end %>
-            
-            <div class="pt-4 mt-4 border-t border-gray-200 flex justify-end gap-2">
-              <button
-                phx-click="close_session_view"
-                class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                phx-click="start_session"
-                phx-value-id={@viewing_session.id}
-                class="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-teal-400 to-emerald-500 text-white hover:from-teal-500 hover:to-emerald-600"
-              >
-                Open Studio
-              </button>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-<% end %>
+          <% end %>
 
-<!-- Broadcast Viewer Modal -->
-<%= if @viewing_broadcast do %>
-  <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <!-- Background overlay -->
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
-      
-      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-      
-      <!-- Modal panel -->
-      <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full animate-scale">
-        <div class="bg-gradient-to-r from-indigo-400 to-purple-500 px-4 py-4 sm:px-6 flex items-center justify-between">
-          <h3 class="text-lg leading-6 font-medium text-white">
-            <%= @viewing_broadcast.title %>
-          </h3>
-          <button 
-            type="button"
-            phx-click="close_broadcast_view"
-            class="text-white hover:text-gray-200 focus:outline-none"
-          >
-            <span class="sr-only">Close</span>
-            <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <div class="px-4 py-5 sm:p-6">
-          <div class="space-y-4">
-            <%= if @viewing_broadcast.description do %>
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Description</h4>
-                <p class="mt-1 text-sm text-gray-900"><%= @viewing_broadcast.description %></p>
-              </div>
-            <% end %>
-            
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Type</h4>
-                <p class="mt-1 text-sm text-gray-900"><%= String.capitalize(@viewing_broadcast.broadcast_type || "Standard") %></p>
-              </div>
-              
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Status</h4>
-                <p class="mt-1 text-sm text-gray-900">
-                  <span 
-                    class={[
-                      "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
-                      @viewing_broadcast.status == "active" && "bg-indigo-100 text-indigo-800",
-                      @viewing_broadcast.status == "scheduled" && "bg-blue-100 text-blue-800",
-                      @viewing_broadcast.status == "ended" && "bg-gray-100 text-gray-800"
-                    ]}
-                  >
-                    <%= String.capitalize(@viewing_broadcast.status) %>
-                  </span>
-                </p>
-              </div>
-              
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Host</h4>
-                <p class="mt-1 text-sm text-gray-900">
-                  <%= (@users_map[@viewing_broadcast.host_id] || %{}).name || "Unknown" %>
-                </p>
-              </div>
-              
-              <div>
-                <h4 class="text-sm font-medium text-gray-500">Scheduled For</h4>
-                <p class="mt-1 text-sm text-gray-900">
-                  <%= format_date_time(@viewing_broadcast.scheduled_for) %>
-                </p>
-              </div>
-            </div>
-            
-            <%= if @viewing_broadcast.recording_available do %>
-              <div class="mt-4 pt-4 border-t border-gray-200">
-                <h4 class="text-sm font-medium text-gray-500 mb-2">Recording Available</h4>
-                <a 
-                  href={@viewing_broadcast.recording_url} 
-                  target="_blank"
-                  class="inline-flex items-center px-3 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-400 to-purple-500 hover:from-indigo-500 hover:to-purple-600"
-                >
-                  <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Watch Recording
-                </a>
-              </div>
-            <% end %>
-            
-            <%= if length(@viewing_broadcast.session_participants || []) > 0 do %>
-              <div class="mt-4 pt-4 border-t border-gray-200">
-                <h4 class="text-sm font-medium text-gray-500 mb-2">Registered Viewers</h4>
-                <div class="flex flex-wrap gap-2">
-                  <%= for participant <- @viewing_broadcast.session_participants do %>
-                    <div class="flex items-center px-2 py-1 bg-gray-100 rounded-full text-xs">
-                      <div class="h-5 w-5 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white mr-1.5">
-                        <%= String.first(participant.user.name || "U") %>
+          <!-- Broadcast Viewer Modal -->
+          <%= if @viewing_broadcast do %>
+            <div class="fixed z-50 inset-0 overflow-y-auto" role="dialog" aria-modal="true">
+              <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <!-- Background overlay -->
+                <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+                
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+                
+                <!-- Modal panel -->
+                <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full animate-scale">
+                  <div class="bg-gradient-to-r from-indigo-400 to-purple-500 px-4 py-4 sm:px-6 flex items-center justify-between">
+                    <h3 class="text-lg leading-6 font-medium text-white">
+                      <%= @viewing_broadcast.title %>
+                    </h3>
+                    <button 
+                      type="button"
+                      phx-click="close_broadcast_view"
+                      class="text-white hover:text-gray-200 focus:outline-none"
+                    >
+                      <span class="sr-only">Close</span>
+                      <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <div class="px-4 py-5 sm:p-6">
+                    <div class="space-y-4">
+                      <%= if @viewing_broadcast.description do %>
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Description</h4>
+                          <p class="mt-1 text-sm text-gray-900"><%= @viewing_broadcast.description %></p>
+                        </div>
+                      <% end %>
+                      
+                      <div class="grid grid-cols-2 gap-4">
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Type</h4>
+                          <p class="mt-1 text-sm text-gray-900"><%= String.capitalize(@viewing_broadcast.broadcast_type || "Standard") %></p>
+                        </div>
+                        
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Status</h4>
+                          <p class="mt-1 text-sm text-gray-900">
+                            <span 
+                              class={[
+                                "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                                @viewing_broadcast.status == "active" && "bg-indigo-100 text-indigo-800",
+                                @viewing_broadcast.status == "scheduled" && "bg-blue-100 text-blue-800",
+                                @viewing_broadcast.status == "ended" && "bg-gray-100 text-gray-800"
+                              ]}
+                            >
+                              <%= String.capitalize(@viewing_broadcast.status) %>
+                            </span>
+                          </p>
+                        </div>
+                        
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Host</h4>
+                          <p class="mt-1 text-sm text-gray-900">
+                            <%= (@users_map[@viewing_broadcast.host_id] || %{}).name || "Unknown" %>
+                          </p>
+                        </div>
+                        
+                        <div>
+                          <h4 class="text-sm font-medium text-gray-500">Scheduled For</h4>
+                          <p class="mt-1 text-sm text-gray-900">
+                            <%= format_date_time(@viewing_broadcast.scheduled_for) %>
+                          </p>
+                        </div>
                       </div>
-                      <span class="text-gray-800">
-                        <%= participant.user.name || participant.user.email %>
-                      </span>
+                      
+                      <%= if @viewing_broadcast.recording_available do %>
+                        <div class="mt-4 pt-4 border-t border-gray-200">
+                          <h4 class="text-sm font-medium text-gray-500 mb-2">Recording Available</h4>
+                          <a 
+                            href={@viewing_broadcast.recording_url} 
+                            target="_blank"
+                            class="inline-flex items-center px-3 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-400 to-purple-500 hover:from-indigo-500 hover:to-purple-600"
+                          >
+                            <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Watch Recording
+                          </a>
+                        </div>
+                      <% end %>
+                      
+                      <%= if length(@viewing_broadcast.session_participants || []) > 0 do %>
+                        <div class="mt-4 pt-4 border-t border-gray-200">
+                          <h4 class="text-sm font-medium text-gray-500 mb-2">Registered Viewers</h4>
+                          <div class="flex flex-wrap gap-2">
+                            <%= for participant <- @viewing_broadcast.session_participants do %>
+                              <div class="flex items-center px-2 py-1 bg-gray-100 rounded-full text-xs">
+                                <div class="h-5 w-5 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white mr-1.5">
+                                  <%= String.first(participant.user.name || "U") %>
+                                </div>
+                                <span class="text-gray-800">
+                                  <%= participant.user.name || participant.user.email %>
+                                </span>
+                              </div>
+                            <% end %>
+                          </div>
+                        </div>
+                      <% end %>
+                      
+                      <div class="pt-4 mt-4 border-t border-gray-200 flex justify-end gap-2">
+                        <button
+                          phx-click="close_broadcast_view"
+                          class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                        
+                        <%= if @viewing_broadcast.status == "scheduled" do %>
+                          <%= if @viewing_broadcast.host_id == @current_user.id do %>
+                            <button
+                              phx-click="start_broadcast"
+                              phx-value-id={@viewing_broadcast.id}
+                              class="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600"
+                            >
+                              Stream Live
+                            </button>
+                          <% else %>
+                            <button
+                              phx-click="register_for_broadcast"
+                              phx-value-id={@viewing_broadcast.id}
+                              class="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600"
+                            >
+                              Register
+                            </button>
+                          <% end %>
+                        <% else %>
+                          <% if @viewing_broadcast.status == "active" do %>
+                            <button
+                              phx-click="join_broadcast"
+                              phx-value-id={@viewing_broadcast.id}
+                              class="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600"
+                            >
+                              Watch Stream
+                            </button>
+                          <% end %>
+                        <% end %>
+                      </div>
                     </div>
-                  <% end %>
+                  </div>
                 </div>
               </div>
-            <% end %>
-            
-            <div class="pt-4 mt-4 border-t border-gray-200 flex justify-end gap-2">
-              <button
-                phx-click="close_broadcast_view"
-                class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              
-              <%= if @viewing_broadcast.status == "scheduled" do %>
-                <%= if @viewing_broadcast.host_id == @current_user.id do %>
-                  <button
-                    phx-click="start_broadcast"
-                    phx-value-id={@viewing_broadcast.id}
-                    class="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600"
-                  >
-                    Stream Live
-                  </button>
-                <% else %>
-                  <button
-                    phx-click="register_for_broadcast"
-                    phx-value-id={@viewing_broadcast.id}
-                    class="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600"
-                  >
-                    Register
-                  </button>
-                <% end %>
-              <% else %>
-                <% if @viewing_broadcast.status == "active" do %>
-                  <button
-                    phx-click="join_broadcast"
-                    phx-value-id={@viewing_broadcast.id}
-                    class="px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-indigo-400 to-purple-500 text-white hover:from-indigo-500 hover:to-purple-600"
-                  >
-                    Watch Stream
-                  </button>
-                <% end %>
-              <% end %>
             </div>
-          </div>
+          <% end %>
         </div>
-      </div>
+      </main>
     </div>
-  </div>
-<% end %>
+  <% end %>
+</div>
 
 <!-- Helper Functions - Add these to your LiveView module -->
 <%# 
@@ -1712,8 +1977,4 @@ def upcoming_sessions(sessions) do
 end
 %>
 
-        </div>
-      </main>
-    </div>
-  <% end %>
-</div>
+

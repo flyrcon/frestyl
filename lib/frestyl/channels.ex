@@ -11,6 +11,7 @@ defmodule Frestyl.Channels do
   alias Frestyl.Accounts.User
   alias Frestyl.Channels.Room
   alias Frestyl.Channels.ChannelInvitation
+  alias Frestyl.Sessions
 
   ## Channel functions
 
@@ -943,20 +944,132 @@ defmodule Frestyl.Channels do
   Updates channel media settings.
   """
   def update_media_settings(%Channel{} = channel, attrs) do
-  channel
-  |> Channel.media_settings_changeset(attrs)
-  |> Repo.update()
-  |> case do
-  {:ok, updated_channel} ->
-    # Broadcast channel update
-    Phoenix.PubSub.broadcast(
-      Frestyl.PubSub,
-      "channels",
-      {:channel_updated, updated_channel}
-    )
+    channel
+    |> Channel.media_settings_changeset(attrs)
+    |> Repo.update()
+    |> case do
+    {:ok, updated_channel} ->
+      # Broadcast channel update
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "channels",
+        {:channel_updated, updated_channel}
+      )
 
-    {:ok, updated_channel}
-  error -> error
+      {:ok, updated_channel}
+    error -> error
+    end
   end
+
+  @doc """
+  Creates a session changeset for form validation.
+  """
+  def change_session(session) do
+    Sessions.Session.changeset(session || %Sessions.Session{}, %{})
+  end
+
+  @doc """
+  Creates a broadcast changeset for form validation.
+  """
+  def change_broadcast(broadcast) do
+    Sessions.Session.broadcast_changeset(broadcast || %Sessions.Session{}, %{})
+  end
+
+  @doc """
+  Creates a new session.
+  """
+  def create_session(attrs) do
+    Sessions.create_session(attrs)
+  end
+
+  @doc """
+  Creates a new broadcast.
+  """
+  def create_broadcast(attrs) do
+    Sessions.create_broadcast(attrs)
+  end
+
+  @doc """
+  Gets a session by ID.
+  """
+  def get_session!(id) do
+    Sessions.get_session_with_details!(id)
+  end
+
+  @doc """
+  Gets a broadcast by ID.
+  """
+  def get_broadcast!(id) do
+    Sessions.get_session_with_details!(id)
+  end
+
+  @doc """
+  Starts a session.
+  """
+  def start_session(session) do
+    Sessions.update_session(session, %{status: "active", started_at: DateTime.utc_now()})
+  end
+
+  @doc """
+  Starts a broadcast.
+  """
+  def start_broadcast(broadcast) do
+    Sessions.start_broadcast(broadcast)
+  end
+
+  @doc """
+  Creates a session changeset for form validation.
+  """
+  def change_session(session) do
+    Sessions.Session.changeset(session || %Sessions.Session{}, %{})
+  end
+
+  @doc """
+  Creates a broadcast changeset for form validation.
+  """
+  def change_broadcast(broadcast) do
+    Sessions.Session.broadcast_changeset(broadcast || %Sessions.Session{}, %{})
+  end
+
+  @doc """
+  Creates a new session.
+  """
+  def create_session(attrs) do
+    Sessions.create_session(attrs)
+  end
+
+  @doc """
+  Creates a new broadcast.
+  """
+  def create_broadcast(attrs) do
+    Sessions.create_broadcast(attrs)
+  end
+
+  @doc """
+  Gets a session by ID.
+  """
+  def get_session!(id) do
+    Sessions.get_session_with_details!(id)
+  end
+
+  @doc """
+  Gets a broadcast by ID.
+  """
+  def get_broadcast!(id) do
+    Sessions.get_session_with_details!(id)
+  end
+
+  @doc """
+  Starts a session.
+  """
+  def start_session(session) do
+    Sessions.update_session(session, %{status: "active", started_at: DateTime.utc_now()})
+  end
+
+  @doc """
+  Starts a broadcast.
+  """
+  def start_broadcast(broadcast) do
+    Sessions.start_broadcast(broadcast)
   end
 end

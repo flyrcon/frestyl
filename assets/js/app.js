@@ -16,70 +16,43 @@ import 'chartjs-adapter-date-fns';
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
 
-// Define ONLY the chat hooks we need for the chat system
+// Chat hooks for the chat system
 const ChatHooks = {
-AutoResize: {
-  mounted() {
-    console.log("AutoResize hook mounted"); // Debug log
-    this.setupAutoResize();
-    this.setupKeyHandlers();
-    this.setupTypingIndicator();
-  },
+  AutoResize: {
+    mounted() {
+      console.log("AutoResize hook mounted");
+      this.setupAutoResize();
+      this.setupKeyHandlers();
+      this.setupTypingIndicator();
+    },
 
-  setupTypingIndicator() {
-    const textarea = this.el;
-    console.log("Setting up typing indicator for:", textarea); // Debug log
-    
-    if (!textarea) return;
-    
-    let typingTimer;
-    const TYPING_TIMEOUT = 1000;
-    
-    textarea.addEventListener('input', (e) => {
-      console.log("Input event triggered, value:", e.target.value); // Debug log
+    setupAutoResize() {
+      const textarea = this.el;
+      if (!textarea) return;
       
-      if (e.target.value.trim().length > 0) {
-        console.log("Sending typing_start event"); // Debug log
-        this.pushEvent("typing_start", {});
-        
-        clearTimeout(typingTimer);
-        
-        typingTimer = setTimeout(() => {
-          console.log("Sending typing_stop event (timeout)"); // Debug log
-          this.pushEvent("typing_stop", {});
-        }, TYPING_TIMEOUT);
-      } else {
-        console.log("Sending typing_stop event (empty)"); // Debug log
-        this.pushEvent("typing_stop", {});
-        clearTimeout(typingTimer);
-      }
-    });
-    
-    textarea.addEventListener('blur', () => {
-      console.log("Textarea lost focus, sending typing_stop"); // Debug log
-      this.pushEvent("typing_stop", {});
-      clearTimeout(typingTimer);
-    });
-  }
-},
+      const resize = () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+      };
+      
+      textarea.addEventListener('input', resize);
+      resize(); // Initial resize
+    },
 
     setupKeyHandlers() {
       const textarea = this.el;
       if (!textarea) return;
       
-      // Handle Enter key for form submission
       textarea.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           const form = textarea.closest('form');
           if (form) {
-            // Check if there's content or files before submitting
             const hasContent = textarea.value.trim().length > 0;
             const fileInput = form.querySelector('[data-phx-upload-ref]');
             const hasFiles = fileInput && fileInput.files && fileInput.files.length > 0;
             
             if (hasContent || hasFiles) {
-              // Trigger the form submit event
               const submitEvent = new Event('submit', { 
                 bubbles: true, 
                 cancelable: true 
@@ -98,39 +71,33 @@ AutoResize: {
         return;
       }
       
-      console.log("Setting up typing indicator on:", textarea); // Debug line
+      console.log("Setting up typing indicator on:", textarea);
       
       let typingTimer;
-      const TYPING_TIMEOUT = 1000; // Stop typing after 1 second of inactivity
+      const TYPING_TIMEOUT = 1000;
       
-      // Start typing indicator
       textarea.addEventListener('input', (e) => {
-        console.log("Input detected:", e.target.value); // Debug line
+        console.log("Input detected:", e.target.value);
         
-        // Only trigger if there's actual content
         if (e.target.value.trim().length > 0) {
-          console.log("Sending typing_start event"); // Debug line
+          console.log("Sending typing_start event");
           this.pushEvent("typing_start", {});
           
-          // Clear previous timer
           clearTimeout(typingTimer);
           
-          // Set new timer to stop typing
           typingTimer = setTimeout(() => {
-            console.log("Sending typing_stop event (timeout)"); // Debug line
+            console.log("Sending typing_stop event (timeout)");
             this.pushEvent("typing_stop", {});
           }, TYPING_TIMEOUT);
         } else {
-          // If field is empty, stop typing immediately
-          console.log("Sending typing_stop event (empty field)"); // Debug line
+          console.log("Sending typing_stop event (empty field)");
           this.pushEvent("typing_stop", {});
           clearTimeout(typingTimer);
         }
       });
       
-      // Stop typing when textarea loses focus
       textarea.addEventListener('blur', () => {
-        console.log("Sending typing_stop event (blur)"); // Debug line
+        console.log("Sending typing_stop event (blur)");
         this.pushEvent("typing_stop", {});
         clearTimeout(typingTimer);
       });
@@ -142,7 +109,6 @@ AutoResize: {
       this.dragCounter = 0;
       this.overlay = document.getElementById('drag-overlay');
       
-      // Bind event listeners
       document.addEventListener('dragenter', this.handleDragEnter.bind(this));
       document.addEventListener('dragleave', this.handleDragLeave.bind(this));
       document.addEventListener('dragover', this.handleDragOver.bind(this));
@@ -150,7 +116,6 @@ AutoResize: {
     },
 
     destroyed() {
-      // Clean up event listeners
       document.removeEventListener('dragenter', this.handleDragEnter);
       document.removeEventListener('dragleave', this.handleDragLeave);
       document.removeEventListener('dragover', this.handleDragOver);
@@ -182,10 +147,8 @@ AutoResize: {
       this.dragCounter = 0;
       this.overlay.classList.add('hidden');
       
-      // Let LiveView handle the drop if it's in the target area
       const dropTarget = document.querySelector('[phx-drop-target]');
       if (dropTarget && (dropTarget.contains(e.target) || e.target === dropTarget)) {
-        // LiveView will handle this
         return;
       }
     }
@@ -193,9 +156,8 @@ AutoResize: {
 
   MessageForm: {
     mounted() {
-      console.log("MessageForm hook mounted!"); // Debug line
+      console.log("MessageForm hook mounted!");
       
-      // Handle the reset form event
       this.handleEvent("reset-form", () => {
         const textarea = this.el.querySelector('textarea[name="content"]');
         if (textarea) {
@@ -203,8 +165,7 @@ AutoResize: {
           textarea.style.height = 'auto';
           textarea.focus();
           
-          // Stop typing indicator when form is reset
-          console.log("Sending typing_stop event (form reset)"); // Debug line
+          console.log("Sending typing_stop event (form reset)");
           this.pushEvent("typing_stop", {});
         }
       });
@@ -212,7 +173,7 @@ AutoResize: {
   }
 };
 
-// Simple file test hook for debugging
+// File test hook for debugging
 const SimpleFileTest = {
   mounted() {
     console.log("SimpleFileTest hook mounted");
@@ -246,16 +207,16 @@ const SimpleFileTest = {
   }
 };
 
-// Define other hook functions that your app needs
+// Create file uploader hook
 function createFileUploaderHook() {
   return {
     mounted() {
       console.log("FileUploader hook mounted - but this may conflict with LiveView uploads");
-      // Don't implement file upload logic here - let LiveView handle it
     }
   };
 }
 
+// Other utility hooks
 const MessagesContainerHook = {
   mounted() {
     this.scrollToBottom();
@@ -270,7 +231,7 @@ const MessagesContainerHook = {
 
 const TypingIndicatorHook = {
   mounted() {
-    // Typing indicator logic
+    // Typing indicator logic if needed
   }
 };
 
@@ -299,6 +260,7 @@ const MessageTextareaHook = {
   }
 };
 
+// Chart hooks
 const ShowHidePriceHook = {
   mounted() {
     // Existing logic
@@ -335,15 +297,205 @@ const ImageProcessorHook = {
   }
 };
 
-// Combine all hooks - AVOID DUPLICATES
+// Chat auto-scroll hook
+const ChatScroll = {
+  mounted() {
+    this.scrollToBottom();
+  },
+  updated() {
+    this.scrollToBottom();
+  },
+  scrollToBottom() {
+    this.el.scrollTop = this.el.scrollHeight;
+  }
+};
+
+const SoundCheck = {
+  mounted() {
+    console.log("SoundCheck hook mounted");
+    
+    // Auto-start network test
+    setTimeout(() => {
+      this.testNetwork();
+    }, 1000);
+    
+    // Handle permission requests
+    this.handleEvent("request_media_permissions", () => {
+      this.requestPermissions();
+    });
+    
+    // Handle speaker tests
+    this.handleEvent("test_speaker_audio", () => {
+      this.testSpeakers();
+    });
+  },
+
+  async requestPermissions() {
+    try {
+      console.log("Requesting media permissions...");
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: true
+      });
+      
+      console.log("Got stream:", stream);
+      
+      // Check what we got
+      const audioTracks = stream.getAudioTracks();
+      const videoTracks = stream.getVideoTracks();
+      
+      // Set up microphone monitoring
+      if (audioTracks.length > 0) {
+        this.monitorMicrophone(stream);
+      }
+      
+      // Send success
+      this.pushEvent("permissions_granted", {
+        audio: audioTracks.length > 0,
+        video: videoTracks.length > 0
+      });
+      
+      // Store for cleanup
+      this.mediaStream = stream;
+      
+    } catch (error) {
+      console.error("Permission denied:", error);
+      this.pushEvent("permissions_denied", {});
+    }
+  },
+
+  monitorMicrophone(stream) {
+    try {
+      if (!window.AudioContext && !window.webkitAudioContext) {
+        console.log("AudioContext not supported");
+        return;
+      }
+      
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = audioContext.createAnalyser();
+      const microphone = audioContext.createMediaStreamSource(stream);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      microphone.connect(analyser);
+      analyser.fftSize = 256;
+
+      const updateLevel = () => {
+        analyser.getByteFrequencyData(dataArray);
+        
+        // Calculate average
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / dataArray.length;
+        const level = Math.round((average / 255) * 100);
+        
+        // Send update
+        this.pushEvent("microphone_level_update", { level: level });
+        
+        if (this.mediaStream && this.mediaStream.active) {
+          requestAnimationFrame(updateLevel);
+        }
+      };
+
+      updateLevel();
+      
+    } catch (error) {
+      console.error("Error monitoring microphone:", error);
+    }
+  },
+
+  testSpeakers() {
+    console.log("Testing speakers...");
+    
+    try {
+      // Create AudioContext
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Resume context if suspended
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      
+      // Create oscillator
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      // Configure
+      oscillator.frequency.value = 440; // A4 note
+      gainNode.gain.value = 0.1; // Quiet
+      
+      // Play for 1 second
+      oscillator.start();
+      
+      setTimeout(() => {
+        oscillator.stop();
+        this.pushEvent("speakers_test_complete", { success: true });
+      }, 1000);
+      
+    } catch (error) {
+      console.error("Speaker test failed:", error);
+      this.pushEvent("speakers_test_complete", { success: false });
+    }
+  },
+
+  testNetwork() {
+    console.log("Testing network...");
+    
+    const startTime = performance.now();
+    
+    // Use a small image test
+    fetch('/favicon.ico?' + Date.now())
+      .then(response => {
+        if (!response.ok) throw new Error('Network error');
+        return response.blob();
+      })
+      .then(() => {
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        
+        // Determine quality
+        let quality;
+        if (duration < 200) {
+          quality = "good";
+        } else if (duration < 1000) {
+          quality = "fair";
+        } else {
+          quality = "poor";
+        }
+        
+        console.log(`Network test: ${duration}ms = ${quality}`);
+        this.pushEvent("network_test_complete", { quality: quality });
+      })
+      .catch(error => {
+        console.error("Network test failed:", error);
+        this.pushEvent("network_test_complete", { quality: "poor" });
+      });
+  },
+
+  destroyed() {
+    // Clean up
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach(track => track.stop());
+    }
+  }
+};
+
+// Combine all hooks - NO DUPLICATES
 let Hooks = {
-  // Chat hooks (simplified)
-  ...ChatHooks
-  ChatForm: ChatHooks.ChatForm,
-  AutoResize: ChatHooks.AutoResize,
+  // Chat hooks
+  ...ChatHooks,
+  ChatScroll,
   
-  // Media upload hooks (from upload_hooks.js)
+  // Media upload hooks
   ...MediaUploadHooks,
+  
+  // Session hooks
+  ...SessionHooks,
   
   // Other hooks
   FileUploader: createFileUploaderHook(),
@@ -353,12 +505,12 @@ let Hooks = {
   AutoResizeTextarea: AutoResizeTextareaHook,
   MessageTextarea: MessageTextareaHook,
   ShowHidePrice: ShowHidePriceHook,
+  SoundCheck: SoundCheck,
   ShowHideMaxAttendees: ShowHideMaxAttendeesHook,
   TimeSeriesChart: TimeSeriesChartHook,
   StackedBarChart: StackedBarChartHook,
   PieChart: PieChartHook,
   ImageProcessor: ImageProcessorHook,
-  SessionHooks,
   StreamQuality: StreamQualityHook
 };
 

@@ -144,20 +144,33 @@ defmodule FrestylWeb.Router do
       live "/channels/:id/media", ChannelLive.MediaTab, :media
 
       # Sessions
-      live "/channels/:id/sessions", SessionLive.Index, :index
-      live "/channels/:channel_id/sessions/:session_id", StudioLive, :show
-      live "/channels/:channel_id/sessions/:session_id/edit", StudioLive, :edit_session
+      live "/channels/:slug/sessions", SessionLive.Index, :index
+      live "/channels/:channel_slug/sessions/:session_id", StudioLive, :show
+      live "/channels/:channel_slug/sessions/:session_id/edit", StudioLive, :edit_session
 
       # Broadcasts
-      live "/channels/:id/broadcasts", BroadcastLive.Index, :index
-      live "/channels/:channel_id/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
-      live "/channels/:channel_id/broadcasts/:broadcast_id/live", BroadcastLive.Live, :show
+      live "/channels/:channel_slug/broadcasts", BroadcastLive.Index, :index
+
+      # Sound check before joining (both channel context and direct access)
+      live "/channels/:channel_slug/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
+      live "/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
+
+      # Waiting room for scheduled broadcasts
+      live "/channels/:channel_slug/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
+      live "/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
+
+      # Live broadcast view
+      live "/channels/:channel_slug/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
+      live "/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
+
+      # Host management dashboard
       live "/channels/:channel_id/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
+      live "/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
 
       # Chat
       live "/chat", ChatLive.Index, :index
       live "/chat/:id", ChatLive.Index, :show
-      live "/channels/:channel_id/chat", ChatLive.Show, :show
+      live "/channels/:channel_slug/chat", ChatLive.Show, :show
 
       # Media
       live "/media", MediaLive.Index, :index
@@ -212,6 +225,7 @@ defmodule FrestylWeb.Router do
     resources "/channels", ChannelController, param: "slug", except: [:index, :show]
     get "/channels/:slug", ChannelController, :show
 
+    get "/broadcasts/:id", BroadcastController, :show
     resources "/channels/:channel_slug/rooms", RoomController, param: "slug", except: [:index]
 
     delete "/channels/:channel_slug/rooms/:room_slug/messages/:id", MessageController, :delete

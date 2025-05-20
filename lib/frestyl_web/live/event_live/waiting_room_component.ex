@@ -464,10 +464,10 @@ defmodule FrestylWeb.EventLive.WaitingRoomComponent do
                 </div>
               </div>
 
-              <!-- Right column - Preview and trivia -->
+              <!-- Preview and trivia -->
               <div class="md:col-span-3 space-y-6">
                 <div class="bg-gray-900 bg-opacity-70 rounded-lg p-4 flex flex-col items-center justify-center min-h-[300px]">
-                  <%= if @broadcast.preview_image_url do %>
+                  <%= if Map.get(@broadcast, :preview_image_url) do %>
                     <img
                       src={@broadcast.preview_image_url}
                       alt={@broadcast.title}

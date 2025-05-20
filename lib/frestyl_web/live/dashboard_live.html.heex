@@ -1,286 +1,459 @@
 <!-- lib/frestyl_web/live/dashboard_live.html.heex -->
-<div class="min-h-full bg-gray-50">
-  <.navigation active_tab={@active_tab} current_user={@current_user} />
+<div class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+  <.nav active_tab={@active_tab} current_user={@current_user} />
   
-  <div class="py-8">
-    <header>
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 class="text-3xl font-bold leading-tight text-gray-900">
-          <%= get_greeting(@current_user.name) %>
+  <div class="container px-4 sm:px-6 lg:px-8 mx-auto max-w-full">
+    <header class="py-6">
+      <div class="flex flex-col md:flex-row justify-between md:items-center mb-4">
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-900">
+          <%= get_simple_greeting(@current_user.name) %>
         </h1>
+        <div class="mt-4 md:mt-0 flex space-x-2">
+          <.link
+            navigate={~p"/channels/new"}
+            class="inline-flex items-center rounded-lg bg-gradient-to-r from-purple-700 to-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:from-purple-800 hover:to-indigo-700 transition duration-150 ease-in-out"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+            </svg>
+            New Channel
+          </.link>
+          <.link
+            navigate={~p"/media/upload"}
+            class="inline-flex items-center rounded-lg bg-gradient-to-r from-pink-600 to-rose-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:from-pink-700 hover:to-rose-600 transition duration-150 ease-in-out"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+            </svg>
+            Upload Media
+          </.link>
+        </div>
       </div>
     </header>
     
     <main>
-      <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-        <!-- Featured Content Section -->
-        <div class="mb-8 bg-white rounded-xl shadow-sm overflow-hidden">
-          <div class="p-6">
-            <h2 class="text-xl font-semibold text-gray-900 mb-4">Featured For You</h2>
-            <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg overflow-hidden relative">
-              <div class="absolute inset-0 bg-black opacity-20"></div>
-              <div class="p-8 relative z-10">
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white bg-opacity-20 text-white mb-3">
-                  <%= get_channel_category(@channels) %>
-                </span>
-                <h3 class="text-2xl font-bold text-white">Discover new content</h3>
-                <p class="mt-2 text-white text-opacity-90">Explore the latest uploads and collaborations</p>
-                <button class="mt-4 bg-white text-indigo-600 font-medium text-sm px-4 py-2 rounded-md hover:bg-opacity-90 transition-all">
-                  Browse Now
-                </button>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <!-- Stats Cards -->
+        <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100 transform transition-all duration-200 hover:shadow-md">
+          <div class="flex items-center">
+            <div class="flex-shrink-0 rounded-full bg-purple-100 p-2">
+              <svg class="h-5 w-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-gray-500 text-xs font-medium">Channels</p>
+              <div class="flex items-baseline">
+                <p class="text-xl font-bold text-gray-900"><%= @stats.channels %></p>
+                <span class="ml-1 text-xs text-green-500 font-medium px-1.5 py-0.5 rounded-full bg-green-50">+2 new</span>
               </div>
             </div>
           </div>
         </div>
         
-        <!-- Stats Grid -->
-        <div class="mb-8">
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="bg-white shadow-sm rounded-xl p-4">
-              <div class="flex items-center">
-                <div class="rounded-full bg-blue-100 p-2 mr-3">
-                  <svg class="h-5 w-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                  </svg>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-500 font-medium">Channels</p>
-                  <p class="text-xl font-bold text-gray-900"><%= @stats.channels %></p>
-                </div>
-              </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100 transform transition-all duration-200 hover:shadow-md">
+          <div class="flex items-center">
+            <div class="flex-shrink-0 rounded-full bg-indigo-100 p-2">
+              <svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+              </svg>
             </div>
-            
-            <div class="bg-white shadow-sm rounded-xl p-4">
-              <div class="flex items-center">
-                <div class="rounded-full bg-purple-100 p-2 mr-3">
-                  <svg class="h-5 w-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
-                  </svg>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-500 font-medium">Members</p>
-                  <p class="text-xl font-bold text-gray-900"><%= @stats.members %></p>
-                </div>
-              </div>
-            </div>
-            
-            <div class="bg-white shadow-sm rounded-xl p-4">
-              <div class="flex items-center">
-                <div class="rounded-full bg-pink-100 p-2 mr-3">
-                  <svg class="h-5 w-5 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path>
-                  </svg>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-500 font-medium">Media</p>
-                  <p class="text-xl font-bold text-gray-900"><%= @stats.media_files %></p>
-                </div>
-              </div>
-            </div>
-            
-            <div class="bg-white shadow-sm rounded-xl p-4">
-              <div class="flex items-center">
-                <div class="rounded-full bg-red-100 p-2 mr-3">
-                  <svg class="h-5 w-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                  </svg>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-500 font-medium">Views</p>
-                  <p class="text-xl font-bold text-gray-900"><%= @stats.total_views %></p>
-                </div>
+            <div class="ml-4">
+              <p class="text-gray-500 text-xs font-medium">Collaborators</p>
+              <div class="flex items-baseline">
+                <p class="text-xl font-bold text-gray-900"><%= @stats.members %></p>
+                <span class="ml-1 text-xs text-green-500 font-medium px-1.5 py-0.5 rounded-full bg-green-50">+5 this week</span>
               </div>
             </div>
           </div>
         </div>
         
-        <!-- Quick Actions - Compact and Colorful -->
-        <div class="mb-8">
-          <h2 class="text-xl font-semibold text-gray-900 mb-4 px-2">Quick Actions</h2>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <.link navigate={~p"/channels/new"} class="block">
-              <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl py-2 px-3 flex items-center transition-all hover:shadow-md">
-                <div class="bg-white/20 rounded-full p-1.5 w-7 h-7 flex items-center justify-center">
-                  <svg class="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                  </svg>
-                </div>
-                <p class="font-medium text-white text-xs ml-2">New Channel</p>
+        <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100 transform transition-all duration-200 hover:shadow-md">
+          <div class="flex items-center">
+            <div class="flex-shrink-0 rounded-full bg-pink-100 p-2">
+              <svg class="h-5 w-5 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"></path>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-gray-500 text-xs font-medium">Media Files</p>
+              <div class="flex items-baseline">
+                <p class="text-xl font-bold text-gray-900"><%= @stats.media_files %></p>
+                <span class="ml-1 text-xs text-green-500 font-medium px-1.5 py-0.5 rounded-full bg-green-50">+12 new</span>
               </div>
-            </.link>
-            
-            <.link navigate={~p"/media/upload"} class="block">
-              <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl py-2 px-3 flex items-center transition-all hover:shadow-md">
-                <div class="bg-white/20 rounded-full p-1.5 w-7 h-7 flex items-center justify-center">
-                  <svg class="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-                  </svg>
-                </div>
-                <p class="font-medium text-white text-xs ml-2">Upload Media</p>
-              </div>
-            </.link>
-            
-            <.link navigate={~p"/events/new"} class="block">
-              <div class="bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl py-2 px-3 flex items-center transition-all hover:shadow-md">
-                <div class="bg-white/20 rounded-full p-1.5 w-7 h-7 flex items-center justify-center">
-                  <svg class="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                  </svg>
-                </div>
-                <p class="font-medium text-white text-xs ml-2">Schedule Event</p>
-              </div>
-            </.link>
-
-            <.link navigate={~p"/invite"} class="block">
-              <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-xl py-2 px-3 flex items-center transition-all hover:shadow-md">
-                <div class="bg-white/20 rounded-full p-1.5 w-7 h-7 flex items-center justify-center">
-                  <svg class="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
-                  </svg>
-                </div>
-                <p class="font-medium text-white text-xs ml-2">Invite User</p>
-              </div>
-            </.link>
+            </div>
           </div>
         </div>
-        
-        <!-- Recent Channels -->
-        <div class="mb-8 bg-white rounded-xl shadow-sm">
-          <div class="p-6">
-            <div class="flex justify-between items-center mb-4">
-              <h2 class="text-xl font-semibold text-gray-900">Recent Channels</h2>
-              <.link navigate={~p"/channels"} class="text-sm text-indigo-600 hover:text-indigo-800">
-                View all →
-              </.link>
-            </div>
-            
-            <%= if @channels == [] do %>
-              <div class="text-center py-6 bg-gray-50 rounded-lg">
-                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                <h3 class="mt-2 text-sm font-medium text-gray-900">No channels yet</h3>
-                <p class="mt-1 text-sm text-gray-500">Get started by creating a new channel.</p>
-                <div class="mt-6">
-                  <.link
-                    navigate={~p"/channels/new"}
-                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                  >
-                    Create Channel
-                  </.link>
-                </div>
-              </div>
-            <% else %>
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <%= for channel <- @channels do %>
-                  <.link navigate={~p"/channels/#{channel.id}"} class="block group">
-                    <div class="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all">
-                      <div class="h-20 bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center relative">
-                        <div class="absolute inset-0 bg-black opacity-20"></div>
-                        <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        </svg>
-                      </div>
-                      <div class="p-4">
-                        <h3 class="text-md font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
-                          <%= channel.name %>
-                        </h3>
-                        <p class="mt-1 text-sm text-gray-500 line-clamp-2">
-                          <%= channel.description %>
-                        </p>
-                      </div>
-                    </div>
-                  </.link>
+      </div>
+      
+      <!-- Channels Section with Horizontal Scroll -->
+      <div class="mb-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="p-5">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold text-gray-900">My Channels</h2>
+            <.link navigate={~p"/channels"} class="text-sm font-medium text-indigo-600 hover:text-indigo-800 transition">
+              View All →
+            </.link>
+          </div>
+          
+          <%= if Enum.empty?(@user_channels) do %>
+            <div class="text-center py-10 bg-gray-50 rounded-xl border border-gray-100">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <p class="mt-4 text-gray-900 font-semibold">You don't have any channels yet</p>
+              <p class="mt-2 text-sm text-gray-500">Create one or join a public channel below</p>
+              <div class="mt-6">
+                <%= live_patch to: ~p"/channels/new", class: "inline-flex items-center px-3 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-800 hover:to-indigo-700 transition duration-150 ease-in-out" do %>
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                  </svg>
+                  Create Channel
                 <% end %>
               </div>
-            <% end %>
+            </div>
+          <% else %>
+            <div class="relative">
+              <div class="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-white pointer-events-none z-10"></div>
+              <div class="overflow-x-auto pb-4 -mx-5 px-5 scrollbar-hide">
+                <div class="flex space-x-4" style="min-width: max-content;">
+                  <%= for channel <- @user_channels do %>
+                    <%= live_redirect to: ~p"/channels/#{channel.id}", class: "block group" do %>
+                      <div class="w-56 bg-white border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-all duration-200">
+                        <div class="h-20 bg-gradient-to-r from-purple-700 to-indigo-600 flex items-center justify-center relative">
+                          <div class="absolute inset-0 bg-black opacity-25"></div>
+                          <%= if channel[:icon_url] do %>
+                            <img src={channel.icon_url} class="h-16 w-16 object-cover object-center relative z-10" alt={channel.name} />
+                          <% else %>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                          <% end %>
+                        </div>
+                        <div class="p-3">
+                          <h3 class="text-base font-semibold text-gray-900 group-hover:text-indigo-700 transition-colors">
+                            <%= channel.name %>
+                          </h3>
+                          <div class="mt-1 text-xs text-gray-500 flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                            </svg>
+                            <%= channel[:member_count] || 0 %> <%= if (channel[:member_count] || 0) == 1, do: "member", else: "members" %>
+                          </div>
+                          <%= if channel[:description] && channel.description != "" do %>
+                            <p class="mt-2 text-xs text-gray-500 line-clamp-2">
+                              <%= channel.description %>
+                            </p>
+                          <% end %>
+                          <div class="mt-2 flex justify-between items-center">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                              <%= get_channel_category(channel) %>
+                            </span>
+                            <span class="text-xs text-gray-500">
+                              <%= if channel[:last_active], do: "Active #{time_ago(channel.last_active)}", else: "New" %>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+              <div class="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-white pointer-events-none z-10"></div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+      
+      <!-- Two-column layout for mobile, three-column for desktop -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <!-- Discover Content Section (2 columns on desktop) -->
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div class="p-5">
+            <h2 class="text-lg font-bold text-gray-900 mb-4">Discover</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Featured Content Card -->
+              <div class="bg-gradient-to-r from-[#D81E5B] to-[#FF4081] rounded-lg overflow-hidden relative">
+                <div class="absolute inset-0 bg-black opacity-25"></div>
+                <div class="p-5 relative z-10">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-white bg-opacity-20 text-white">
+                    Featured
+                  </span>
+                  <h3 class="mt-2 text-lg font-bold text-white">Music Collaboration</h3>
+                  <p class="mt-1 text-white text-opacity-90 text-xs">Join creators in developing new tracks and mixes</p>
+                  <button class="mt-3 bg-white text-[#D81E5B] text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-opacity-90 transition-all duration-150">
+                    Explore Now
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Suggested Channel Card -->
+              <div class="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all duration-200">
+                <div class="h-20 bg-gradient-to-r from-[#007EA7] to-[#00A8E8] flex items-center justify-center relative">
+                  <div class="absolute inset-0 bg-black opacity-25"></div>
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                  </svg>
+                </div>
+                <div class="p-3">
+                  <h3 class="text-base font-semibold text-gray-900 group-hover:text-indigo-700 transition-colors">
+                    Audio Production
+                  </h3>
+                  <p class="mt-1 text-xs text-gray-500">
+                    Connect with 30+ audio professionals and enthusiasts
+                  </p>
+                  <button class="mt-2 text-xs font-medium text-[#007EA7] hover:text-blue-800 transition">
+                    Join Channel →
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Trending Content Card -->
+              <div class="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all duration-200">
+                <div class="h-20 bg-gradient-to-r from-[#FF9F1C] to-[#FFBF69] flex items-center justify-center relative">
+                  <div class="absolute inset-0 bg-black opacity-25"></div>
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div class="p-3">
+                  <div class="flex justify-between items-center">
+                    <h3 class="text-base font-semibold text-gray-900">
+                      Trending Videos
+                    </h3>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                      Hot
+                    </span>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500">
+                    Discover trending visual content from creators
+                  </p>
+                  <button class="mt-2 text-xs font-medium text-[#FF9F1C] hover:text-amber-800 transition">
+                    View Trending →
+                  </button>
+                </div>
+              </div>
+              
+              <!-- Collaborative Project Card -->
+              <div class="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all duration-200">
+                <div class="h-20 bg-gradient-to-r from-[#2FBF71] to-[#4AE38B] flex items-center justify-center relative">
+                  <div class="absolute inset-0 bg-black opacity-25"></div>
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                  </svg>
+                </div>
+                <div class="p-3">
+                  <div class="flex justify-between items-center">
+                    <h3 class="text-base font-semibold text-gray-900">
+                      Open Projects
+                    </h3>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                      New
+                    </span>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500">
+                    Join collaborative creative projects seeking contributors
+                  </p>
+                  <button class="mt-2 text-xs font-medium text-[#2FBF71] hover:text-emerald-800 transition">
+                    Find Projects →
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         
-        <!-- Enhanced Recent Media Section -->
-        <div class="mb-8 bg-white rounded-xl shadow-sm">
-          <div class="p-6">
-            <div class="flex justify-between items-center mb-4">
-              <h2 class="text-xl font-semibold text-gray-900">Recent Media</h2>
-              <.link navigate={~p"/media"} class="text-sm text-indigo-600 hover:text-indigo-800">
-                View all →
+        <!-- Right Column (Daily Question and Recent Media) -->
+        <div class="space-y-5">
+          <!-- Daily Question Widget with Third-Party Integration -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3">
+              <h2 class="text-base font-bold text-white">Daily Question</h2>
+            </div>
+            <div class="p-4">
+              <div class="daily-question-widget">
+                <!-- This could be an iframe or dynamic content loaded via API -->
+                <h3 class="text-sm font-medium text-gray-800 mb-2">What creative direction interests you most right now?</h3>
+                <div class="space-y-2">
+                  <label class="flex items-center space-x-3">
+                    <input type="radio" name="question" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                    <span class="text-xs text-gray-700">Visual storytelling & animation</span>
+                  </label>
+                  <label class="flex items-center space-x-3">
+                    <input type="radio" name="question" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                    <span class="text-xs text-gray-700">Audio production & sound design</span>
+                  </label>
+                  <label class="flex items-center space-x-3">
+                    <input type="radio" name="question" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                    <span class="text-xs text-gray-700">Interactive media & web experiences</span>
+                  </label>
+                  <label class="flex items-center space-x-3">
+                    <input type="radio" name="question" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                    <span class="text-xs text-gray-700">Written content & narratives</span>
+                  </label>
+                </div>
+                <button phx-click="submit_question" class="mt-3 w-full inline-flex justify-center items-center px-3 py-1.5 border border-transparent rounded-lg shadow-sm text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none transition-colors duration-150">
+                  Submit Response
+                </button>
+                <p class="mt-2 text-xxs text-gray-500 text-center">Your responses help us curate better content for you</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Recent Media Widget -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="flex justify-between items-center px-4 py-3 border-b border-gray-100">
+              <h2 class="text-base font-bold text-gray-900">Recent Media</h2>
+              <.link navigate={~p"/media"} class="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition">
+                View All →
               </.link>
             </div>
-            
-            <%= if @media_files == [] do %>
-              <div class="text-center py-6 bg-gray-50 rounded-lg">
-                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-                </svg>
-                <h3 class="mt-2 text-sm font-medium text-gray-900">No media files yet</h3>
-                <p class="mt-1 text-sm text-gray-500">Start sharing videos, images, or audio.</p>
-                <div class="mt-6">
-                  <.link
-                    navigate={~p"/media/upload"}
-                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700"
-                  >
-                    Upload Media
-                  </.link>
+            <div class="divide-y divide-gray-100">
+              <%= if Enum.empty?(@media_files) do %>
+                <div class="p-4 text-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                  </svg>
+                  <p class="mt-2 text-xs text-gray-500">No media files yet</p>
                 </div>
-              </div>
-            <% else %>
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <%= for media <- @media_files do %>
-                  <.link navigate={~p"/media/#{media.id}"} class="block group">
-                    <div class="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all">
-                      
-                      <!-- Different gradient backgrounds and icons based on media type -->
+              <% else %>
+                <%= for media <- Enum.take(@media_files, 4) do %>
+                  <.link navigate={~p"/media/#{media.id}"} class="block group p-3 hover:bg-gray-50 transition">
+                    <div class="flex items-center">
+                      <!-- Media Type Icon with different colors -->
                       <%= cond do %>
                         <% media.type == "video" -> %>
-                          <div class="h-24 bg-gradient-to-r from-purple-600 to-pink-500 flex items-center justify-center relative">
-                            <div class="absolute inset-0 bg-black opacity-20"></div>
-                            <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div class="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 flex items-center justify-center">
+                            <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                             </svg>
                           </div>
                         <% media.type == "image" -> %>
-                          <div class="h-24 bg-gradient-to-r from-pink-500 to-red-500 flex items-center justify-center relative">
-                            <div class="absolute inset-0 bg-black opacity-20"></div>
-                            <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div class="h-8 w-8 rounded-lg bg-gradient-to-r from-pink-500 to-rose-500 flex items-center justify-center">
+                            <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                             </svg>
                           </div>
                         <% media.type == "audio" -> %>
-                          <div class="h-24 bg-gradient-to-r from-red-500 to-yellow-500 flex items-center justify-center relative">
-                            <div class="absolute inset-0 bg-black opacity-20"></div>
-                            <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div class="h-8 w-8 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 flex items-center justify-center">
+                            <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
                             </svg>
                           </div>
                         <% true -> %>
-                          <div class="h-24 bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center relative">
-                            <div class="absolute inset-0 bg-black opacity-20"></div>
-                            <svg class="h-8 w-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div class="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+                            <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                             </svg>
                           </div>
                       <% end %>
                       
-                      <div class="p-4">
+                      <div class="ml-3 flex-1">
                         <div class="flex justify-between items-center">
-                          <h3 class="text-sm font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
+                          <h3 class="text-xs font-medium text-gray-900 group-hover:text-indigo-700 transition-colors line-clamp-1">
                             <%= media.name %>
                           </h3>
-                          <span class="text-xs bg-gray-100 px-2 py-1 rounded-full">
-                            <%= format_media_type(media.type) %>
+                          <span class="text-xxs text-gray-500 whitespace-nowrap ml-2">
+                            <%= if media[:updated_at], do: time_ago(media.updated_at), else: "New" %>
                           </span>
                         </div>
+                        <p class="text-xxs text-gray-500 mt-0.5 line-clamp-1">
+                          <%= if media[:description], do: media.description, else: "#{format_media_type(media.type)} file" %>
+                        </p>
                       </div>
                     </div>
                   </.link>
                 <% end %>
+              <% end %>
+              
+              <div class="p-3 text-center">
+                <.link
+                  navigate={~p"/media/upload"}
+                  class="inline-flex items-center px-2 py-1 border border-transparent text-xxs font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                  </svg>
+                  Upload New Media
+                </.link>
               </div>
-            <% end %>
+            </div>
+          </div>
+          
+          <!-- Quick Links Widget - Compact with Brand Purple Icons -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-100">
+              <h2 class="text-base font-bold text-gray-900">Quick Links</h2>
+            </div>
+            <div class="p-4">
+              <div class="grid grid-cols-2 gap-3">
+                <.link navigate={~p"/events/new"} class="flex flex-col items-center justify-center p-3 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition aspect-square">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span class="mt-2 text-xs font-medium text-gray-700">Events</span>
+                </.link>
+                
+                <.link navigate={~p"/invite"} class="flex flex-col items-center justify-center p-3 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition aspect-square">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                  <span class="mt-2 text-xs font-medium text-gray-700">Invite</span>
+                </.link>
+                
+                <.link navigate={~p"/chat"} class="flex flex-col items-center justify-center p-3 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition aspect-square">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  <span class="mt-2 text-xs font-medium text-gray-700">Chat</span>
+                </.link>
+                
+                <.link navigate={~p"/settings"} class="flex flex-col items-center justify-center p-3 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition aspect-square">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span class="mt-2 text-xs font-medium text-gray-700">Settings</span>
+                </.link>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </main>
   </div>
 </div>
+
+<style>
+  /* Custom scrollbar-hiding utility */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+  
+  /* Line clamp utilities */
+  .line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  /* Extra small text size */
+  .text-xxs {
+    font-size: 0.65rem;
+    line-height: 1rem;
+  }
+</style>

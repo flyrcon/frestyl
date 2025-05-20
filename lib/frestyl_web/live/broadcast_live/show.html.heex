@@ -194,49 +194,19 @@
     <!-- Side panel - dynamic based on current tab -->
     <div class="w-80 border-l border-gray-800 bg-gray-900 flex flex-col">
       <%= case @current_tab do %>
-        <% "chat" -> %>
+          <% "chat" -> %>
           <div class="flex-1 flex flex-col">
-            <div class="p-4 border-b border-gray-800">
-              <h3 class="text-white font-medium">Live Chat</h3>
-            </div>
-            
             <%= if @chat_enabled do %>
-              <!-- Chat component will go here -->
-              <div class="flex-1 p-4 overflow-y-auto">
-                <div class="text-center text-gray-500 py-20">
-                  Chat will be displayed here
-                </div>
-              </div>
-              
-              <div class="border-t border-gray-800 p-4">
-                <textarea 
-                  placeholder="Type a message..."
-                  class="w-full bg-gray-800 border border-gray-700 rounded-md p-2 text-white text-sm"
-                  rows="3"
-                  disabled={@current_user && @current_user.id in @muted_users}
-                ></textarea>
-                
-                <div class="mt-2 flex justify-between items-center">
-                  <button class="text-gray-400 hover:text-white">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                    </svg>
-                  </button>
-                  
-                  <button 
-                    class="px-3 py-1 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-500"
-                    disabled={@current_user && @current_user.id in @muted_users}
-                  >
-                    Send
-                  </button>
-                </div>
-                
-                <%= if @current_user && @current_user.id in @muted_users do %>
-                  <div class="mt-2 text-xs text-center text-red-400">
-                    You have been muted by the host
-                  </div>
-                <% end %>
-              </div>
+              <.live_component
+                module={FrestylWeb.BroadcastLive.ChatComponent}
+                id="broadcast-chat"
+                broadcast_id={@broadcast.id}
+                current_user={@current_user}
+                chat_enabled={@chat_enabled}
+                reactions_enabled={@reactions_enabled}
+                muted_users={@muted_users}
+                is_host={@is_host}
+              />
             <% else %>
               <div class="flex-1 flex items-center justify-center">
                 <div class="text-center">

@@ -103,17 +103,26 @@ defmodule Frestyl.Sessions.Session do
   Creates a session for a broadcast event
   """
   def broadcast_changeset(session, attrs) do
-    session
+    IO.inspect(attrs, label: "Input attrs")
+
+    changeset = session
     |> cast(attrs, [
       :title, :description, :broadcast_type, :is_public, :channel_id,
-      :host_id, :scheduled_for, :waiting_room_enabled, :waiting_room_open_time,
-      :max_participants
+      :host_id, :creator_id, :scheduled_for, :waiting_room_enabled, :waiting_room_open_time,
+      :max_participants, :session_type
     ])
-    |> validate_required([:title, :channel_id, :host_id, :scheduled_for, :broadcast_type])
+    |> validate_required([:title, :channel_id, :host_id, :creator_id, :scheduled_for, :broadcast_type])
     |> validate_inclusion(:broadcast_type, ["standard", "performance", "tutorial", "interview", "q_and_a"])
     |> validate_scheduled_time()
     |> put_change(:status, "scheduled")
+    |> put_change(:session_type, "broadcast")
     |> set_default_waiting_room_time()
+
+    IO.inspect(changeset.changes, label: "Changeset changes")
+    IO.inspect(changeset.errors, label: "Changeset errors")
+    IO.inspect(changeset.valid?, label: "Changeset valid?")
+
+    changeset
   end
 
   defp validate_scheduled_time(changeset) do

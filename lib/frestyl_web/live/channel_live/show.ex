@@ -5,6 +5,8 @@ defmodule FrestylWeb.ChannelLive.Show do
   alias Frestyl.Channels.Channel
   alias Frestyl.Accounts
   alias Frestyl.Media
+  alias Frestyl.Sessions
+  alias Frestyl.Timezone
 
   # Helper functions
   def can_edit_channel?(user_role) when is_atom(user_role) do
@@ -45,6 +47,55 @@ defmodule FrestylWeb.ChannelLive.Show do
     end)
     |> Enum.map(fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
     |> Enum.join("; ")
+  end
+
+  # Compact date format (e.g., "5.11.25")
+  def compact_date(nil), do: ""
+  def compact_date(datetime) do
+    Calendar.strftime(datetime, "%-d.%-m.%y")
+  end
+
+  def time_until(nil, _timezone), do: ""
+  def time_until(datetime, user_timezone) do
+    now = DateTime.utc_now()
+    local_datetime = Timezone.to_user_timezone(datetime, user_timezone || "UTC")
+    diff = DateTime.diff(local_datetime, now, :second)
+
+    cond do
+      diff < 0 -> "Past event"
+      diff < 60 -> "Less than a minute"
+      diff < 3600 ->
+        minutes = div(diff, 60)
+        "#{minutes} #{pluralize("minute", minutes)}"
+      diff < 86400 ->
+        hours = div(diff, 3600)
+        "#{hours} #{pluralize("hour", hours)}"
+      diff < 2_592_000 ->
+        days = div(diff, 86400)
+        "#{days} #{pluralize("day", days)}"
+      true ->
+        months = div(diff, 2_592_000)
+        "#{months} #{pluralize("month", months)}"
+    end
+  end
+
+  # Helper function for proper pluralization
+  defp pluralize(word, 1), do: word
+  defp pluralize(word, _), do: word <> "s"
+
+  # Add these event handlers to the same file
+
+  @impl true
+  def handle_event("toggle_upcoming_expanded", _, socket) do
+    current_state = Map.get(socket.assigns, :upcoming_expanded, false)
+    {:noreply, assign(socket, :upcoming_expanded, !current_state)}
+  end
+
+  @impl true
+  def handle_event("toggle_broadcast_details", %{"id" => id}, socket) do
+    current_id = Map.get(socket.assigns, :expanded_broadcast_id)
+    new_id = if current_id == String.to_integer(id), do: nil, else: String.to_integer(id)
+    {:noreply, assign(socket, :expanded_broadcast_id, new_id)}
   end
 
   def format_channel_datetime(nil), do: "Not scheduled"
@@ -88,10 +139,107 @@ defmodule FrestylWeb.ChannelLive.Show do
     |> Calendar.strftime("%I:%M %p")
   end
 
-  # Get user name from users map
+  # Format date with day of week (e.g., "Mon, 5.11.25")
+  def format_date_with_day(nil, _timezone), do: ""
+  def format_date_with_day(datetime, user_timezone) do
+    local_datetime = Timezone.to_user_timezone(datetime, user_timezone || "UTC")
+    Calendar.strftime(local_datetime, "%a, %-d.%-m.%y")
+  end
+
+  # Add these new event handlers:
+
+  @impl true
+  def handle_event("toggle_happening_expanded", _, socket) do
+    current_state = Map.get(socket.assigns, :happening_expanded, false)
+    {:noreply, assign(socket, :happening_expanded, !current_state)}
+  end
+
+  @impl true
+  def handle_event("toggle_session_details", %{"id" => id, "type" => "session"}, socket) do
+    current_id = Map.get(socket.assigns, :expanded_session_id)
+    new_id = if current_id == String.to_integer(id), do: nil, else: String.to_integer(id)
+    {:noreply, assign(socket, :expanded_session_id, new_id)}
+  end
+
+  @impl true
+  def handle_event("toggle_session_details", %{"id" => id, "type" => "broadcast"}, socket) do
+    current_id = Map.get(socket.assigns, :expanded_broadcast_id)
+    new_id = if current_id == String.to_integer(id), do: nil, else: String.to_integer(id)
+    {:noreply, assign(socket, :expanded_broadcast_id, new_id)}
+  end
+
+  @impl true
+  def handle_event("edit_session", %{"id" => id}, socket) do
+    # Redirect to session edit page or show edit modal
+    {:noreply, redirect(socket, to: ~p"/channels/#{socket.assigns.channel.slug}/sessions/#{id}/edit")}
+  end
+
+  @impl true
+  def handle_event("edit_broadcast", %{"id" => id}, socket) do
+    # Show broadcast edit form or redirect to edit page
+    broadcast = Sessions.get_session(id)
+    changeset = Sessions.change_session(broadcast, %{})
+
+    {:noreply,
+    socket
+    |> assign(:editing_broadcast, broadcast)
+    |> assign(:broadcast_changeset, changeset)
+    |> assign(:show_broadcast_edit_form, true)}
+  end
+
+  @impl true
+  def handle_event("manage_broadcast", %{"id" => id}, socket) do
+    # Redirect to broadcast management page
+    {:noreply, redirect(socket, to: ~p"/channels/#{socket.assigns.channel.slug}/broadcasts/#{id}/manage")}
+  end
+
+  @impl true
+  def handle_event("register_for_broadcast", %{"id" => id}, socket) do
+    broadcast_id = String.to_integer(id)
+    current_user = socket.assigns.current_user
+
+    case Sessions.join_session(broadcast_id, current_user.id) do
+      {:ok, _} ->
+        # Refresh the upcoming broadcasts to show updated registration count
+        upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(socket.assigns.channel.id)
+
+        {:noreply,
+        socket
+        |> put_flash(:info, "Successfully registered for the broadcast!")
+        |> assign(:upcoming_broadcasts, upcoming_broadcasts)}
+
+      {:error, reason} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Could not register for broadcast: #{reason}")}
+    end
+  end
+
+  def compact_date(nil, _timezone), do: ""
+  def compact_date(datetime, user_timezone) do
+    local_datetime = Timezone.to_user_timezone(datetime, user_timezone || "UTC")
+    Calendar.strftime(local_datetime, "%-d.%-m.%y")
+  end
+
+  # Time until event with timezone awareness
+  def time_until(nil, _timezone), do: ""
+  def time_until(datetime, user_timezone) do
+    Timezone.time_until_with_timezone(datetime, user_timezone || "UTC")
+  end
+
   def get_user_name(user_id, users_map) do
-    user = Map.get(users_map, user_id, %{})
-    user[:name] || user[:email] || "Unknown User"
+    case Map.get(users_map, user_id) do
+      %{name: name} when not is_nil(name) -> name
+      %{email: email} when not is_nil(email) -> email
+      user when is_struct(user) ->
+        # Handle User struct
+        user.name || user.email || user.username || "Unknown User"
+      %{} = user_map ->
+        # Handle map
+        user_map[:name] || user_map[:email] || user_map[:username] || "Unknown User"
+      _ ->
+        "Unknown User"
+    end
   end
 
   # Check if there are active sessions
@@ -141,24 +289,12 @@ defmodule FrestylWeb.ChannelLive.Show do
     end
   end
 
-  defp safe_list_channel_sessions(channel_id) do
-    if function_exported?(Channels, :list_channel_sessions, 1) do
-      Channels.list_channel_sessions(channel_id)
-    else
-      []  # Return empty list if function doesn't exist
-    end
-  rescue
-    _ -> []  # Catch any errors and return empty list
+  defp list_channel_sessions(channel_id) do
+    Sessions.list_active_sessions_for_channel(channel_id)
   end
 
-  defp safe_list_channel_broadcasts(channel_id) do
-    if function_exported?(Channels, :list_channel_broadcasts, 1) do
-      Channels.list_channel_broadcasts(channel_id)
-    else
-      []  # Return empty list if function doesn't exist
-    end
-  rescue
-    _ -> []  # Catch any errors and return empty list
+  defp list_channel_broadcasts(channel_id) do
+    Sessions.list_upcoming_broadcasts_for_channel(channel_id)
   end
 
   # Helper function to get channel members
@@ -247,11 +383,10 @@ defmodule FrestylWeb.ChannelLive.Show do
             chat_messages = list_channel_messages(channel.id, limit: 50) || []
 
             # Load sessions and broadcasts
-            sessions = safe_list_channel_sessions(channel.id)
-            broadcasts = safe_list_channel_broadcasts(channel.id)
-            upcoming_broadcasts = Enum.filter(broadcasts, fn b ->
-              Map.get(b, :scheduled_for) && DateTime.compare(Map.get(b, :scheduled_for), DateTime.utc_now()) == :gt
-            end)
+            sessions = Sessions.list_active_sessions_for_channel(channel.id)
+            broadcasts = Sessions.list_active_sessions_for_channel(channel.id)
+              |> Enum.filter(&(!is_nil(&1.broadcast_type)))
+            upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(channel.id)
 
             # Create users map for easier lookup
             users = get_users_for_messages(chat_messages)
@@ -289,6 +424,13 @@ defmodule FrestylWeb.ChannelLive.Show do
             |> assign(:viewing_session, nil)
             |> assign(:viewing_broadcast, nil)
             |> assign(:online_members, [])  # Added for chat section
+            |> assign(:upcoming_expanded, false)
+            |> assign(:expanded_broadcast_id, nil)
+            |> assign(:happening_expanded, false)
+            |> assign(:expanded_session_id, nil)
+            |> assign(:show_broadcast_edit_form, false)
+            |> assign(:editing_broadcast, nil)
+
           else
             socket
           end
@@ -613,6 +755,54 @@ end
      |> redirect(to: ~p"/dashboard")}
   end
 
+  # Broadcast management
+  @impl true
+  def handle_event("delete_session", %{"id" => id}, socket) do
+    session = Sessions.get_session(id)
+
+    if session && session.creator_id == socket.assigns.current_user.id do
+      case Sessions.delete_session(session) do
+        {:ok, _} ->
+          updated_sessions = Enum.reject(socket.assigns.sessions, &(&1.id == String.to_integer(id)))
+
+          {:noreply,
+          socket
+          |> put_flash(:info, "Session deleted successfully.")
+          |> assign(:sessions, updated_sessions)}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not delete session")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "You can only delete your own sessions")}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_broadcast", %{"id" => id}, socket) do
+    # First get the session (broadcast)
+    session = Sessions.get_session(id)
+
+    if session && session.host_id == socket.assigns.current_user.id do
+      case Sessions.delete_session(session) do
+        {:ok, _} ->
+          updated_broadcasts = Enum.reject(socket.assigns.broadcasts, &(&1.id == String.to_integer(id)))
+          updated_upcoming = Enum.reject(socket.assigns.upcoming_broadcasts, &(&1.id == String.to_integer(id)))
+
+          {:noreply,
+          socket
+          |> put_flash(:info, "Broadcast deleted successfully.")
+          |> assign(:broadcasts, updated_broadcasts)
+          |> assign(:upcoming_broadcasts, updated_upcoming)}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not delete broadcast")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "You can only delete your own broadcasts")}
+    end
+  end
+
   # Chat Events
   @impl true
   def handle_event("send_message", %{"message" => content}, socket) do
@@ -856,6 +1046,19 @@ end
     end
   end
 
+  @impl true
+  def handle_event("toggle_upcoming_expanded", _, socket) do
+    current_state = Map.get(socket.assigns, :upcoming_expanded, false)
+    {:noreply, assign(socket, :upcoming_expanded, !current_state)}
+  end
+
+  @impl true
+  def handle_event("toggle_broadcast_details", %{"id" => id}, socket) do
+    current_id = Map.get(socket.assigns, :expanded_broadcast_id)
+    new_id = if current_id == String.to_integer(id), do: nil, else: String.to_integer(id)
+    {:noreply, assign(socket, :expanded_broadcast_id, new_id)}
+  end
+
   # Media Management Events
   @impl true
   def handle_event("start_broadcast", _, socket) do
@@ -899,53 +1102,126 @@ end
   end
 
   @impl true
-  def handle_event("create_session", %{"session" => session_params}, socket) do
-    %{channel: channel, current_user: current_user} = socket.assigns
-
-    # Add channel_id and user_id to params
-    session_params = Map.merge(session_params, %{
-      "channel_id" => channel.id,
-      "user_id" => current_user.id
-    })
-
-    case Channels.create_session(session_params) do
-      {:ok, session} ->
-        {:noreply,
-        socket
-        |> put_flash(:info, "Session created successfully.")
-        |> redirect(to: ~p"/channels/#{channel.slug}")}
-
-      {:error, changeset} ->
-        {:noreply,
-        socket
-        |> put_flash(:error, "Error creating session: #{error_message(changeset)}")
-        |> assign(:changeset, changeset)}
-    end
-  end
-
-  @impl true
   def handle_event("schedule_broadcast", %{"broadcast" => broadcast_params}, socket) do
     %{channel: channel, current_user: current_user} = socket.assigns
 
-    # Add channel_id and user_id to params
-    broadcast_params = Map.merge(broadcast_params, %{
-      "channel_id" => channel.id,
-      "user_id" => current_user.id
-    })
+    # Add current_user to params for timezone conversion
+    broadcast_params_with_user = Map.put(broadcast_params, "current_user", current_user)
 
-    case Channels.create_broadcast(broadcast_params) do
+    # Convert parameters with timezone awareness
+    converted_params = broadcast_params_with_user
+      |> Map.put("channel_id", channel.id)
+      |> Map.put("host_id", current_user.id)
+      |> Map.put("creator_id", current_user.id)
+      |> convert_broadcast_params()
+
+    case Sessions.create_broadcast(converted_params) do
       {:ok, broadcast} ->
         {:noreply,
         socket
-        |> put_flash(:info, "Broadcast scheduled successfully.")
-        |> redirect(to: ~p"/channels/#{channel.slug}")}
+        |> put_flash(:info, "Broadcast scheduled successfully for #{Timezone.format_with_timezone(broadcast.scheduled_for, current_user.timezone)}")
+        |> assign(:show_broadcast_form, false)
+        |> assign(:broadcasts, [broadcast | socket.assigns.broadcasts])
+        |> assign(:upcoming_broadcasts, [broadcast | socket.assigns.upcoming_broadcasts])}
 
       {:error, changeset} ->
         {:noreply,
         socket
         |> put_flash(:error, "Error scheduling broadcast: #{error_message(changeset)}")
-        |> assign(:changeset, changeset)}
+        |> assign(:broadcast_changeset, changeset)
+        |> assign(:show_broadcast_form, true)}
     end
+  end
+
+  def format_date_time(nil, _timezone), do: ""
+  def format_date_time(datetime, user_timezone) do
+    Timezone.compact_format_with_timezone(datetime, user_timezone)
+  end
+
+  def time_until(nil, _timezone), do: ""
+  def time_until(datetime, user_timezone) do
+    Timezone.time_until_with_timezone(datetime, user_timezone)
+  end
+
+  def compact_date(nil, _timezone), do: ""
+  def compact_date(datetime, user_timezone) do
+    local_datetime = Timezone.to_user_timezone(datetime, user_timezone)
+    Calendar.strftime(local_datetime, "%-d.%-m.%y")
+  end
+
+  # Add this helper function to your show.ex file
+  defp convert_broadcast_params(params) do
+    params
+    |> convert_checkbox("is_public")
+    |> convert_checkbox("waiting_room_enabled")
+    |> convert_datetime("scheduled_for")
+  end
+
+  defp convert_checkbox(params, key) do
+    case Map.get(params, key) do
+      "on" -> Map.put(params, key, true)
+      nil -> Map.put(params, key, false)
+      value -> Map.put(params, key, value)
+    end
+  end
+
+  defp convert_datetime(params, key) do
+    case Map.get(params, key) do
+      datetime_string when is_binary(datetime_string) ->
+        user_timezone = Timezone.get_user_timezone(params["current_user"])
+
+        case NaiveDateTime.from_iso8601(datetime_string <> ":00") do
+          {:ok, naive_datetime} ->
+            case Timezone.naive_to_utc(naive_datetime, user_timezone) do
+              {:ok, utc_datetime} ->
+                Map.put(params, key, utc_datetime)
+              {:error, _} ->
+                params
+            end
+          _ -> params
+        end
+      _ -> params
+    end
+  end
+
+  @impl true
+  def handle_event("create_session", %{"session" => session_params}, socket) do
+    %{channel: channel, current_user: current_user} = socket.assigns
+
+    IO.inspect(session_params, label: "Original session_params")
+
+    # Add channel_id and creator_id to params
+    converted_params = session_params
+      |> Map.put("channel_id", channel.id)
+      |> Map.put("creator_id", current_user.id)
+      |> convert_session_params()  # We'll need to create this function
+
+    IO.inspect(converted_params, label: "Converted session params")
+
+    case Sessions.create_session(converted_params) do
+      {:ok, session} ->
+        {:noreply,
+        socket
+        |> put_flash(:info, "Session created successfully.")
+        |> assign(:show_session_form, false)
+        |> assign(:sessions, [session | socket.assigns.sessions])}
+
+      {:error, changeset} ->
+        IO.inspect(changeset.errors, label: "Session creation errors")
+
+        {:noreply,
+        socket
+        |> put_flash(:error, "Error creating session: #{error_message(changeset)}")
+        |> assign(:session_changeset, changeset)
+        |> assign(:show_session_form, true)}
+    end
+  end
+
+  # Add this helper function for sessions
+  defp convert_session_params(params) do
+    params
+    |> convert_checkbox("is_public")
+    # Sessions don't need datetime conversion since they start immediately
   end
 
   @impl true

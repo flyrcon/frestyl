@@ -5,7 +5,7 @@ defmodule Frestyl.Chat.Reaction do
   schema "reactions" do
     field :emoji, :string
     field :reaction_type, :string, default: "emoji"  # "emoji" or "custom"
-    field :custom_text, :string  # For custom reactions including hip-hop/slang and other creative reactions
+    field :custom_text, :string  # For custom reactions including hip-hop, slang and other creative reactions
 
     belongs_to :message, Frestyl.Chat.Message
     belongs_to :user, Frestyl.Accounts.User
