@@ -1105,31 +1105,77 @@ end
   def handle_event("schedule_broadcast", %{"broadcast" => broadcast_params}, socket) do
     %{channel: channel, current_user: current_user} = socket.assigns
 
-    # Add current_user to params for timezone conversion
-    broadcast_params_with_user = Map.put(broadcast_params, "current_user", current_user)
+    IO.inspect(broadcast_params, label: "Original broadcast_params")
 
-    # Convert parameters with timezone awareness
-    converted_params = broadcast_params_with_user
+    # Add required fields that were missing
+    complete_params = broadcast_params
       |> Map.put("channel_id", channel.id)
       |> Map.put("host_id", current_user.id)
       |> Map.put("creator_id", current_user.id)
-      |> convert_broadcast_params()
+      |> Map.put("session_type", "broadcast")
+      |> Map.put("status", "scheduled")
 
-    case Sessions.create_broadcast(converted_params) do
-      {:ok, broadcast} ->
+    # Convert scheduled_for datetime from user's timezone to UTC
+    complete_params = if Map.has_key?(complete_params, "scheduled_for") and
+                        complete_params["scheduled_for"] != "" do
+      user_timezone = Frestyl.Timezone.get_user_timezone(current_user)
+
+      case NaiveDateTime.from_iso8601(complete_params["scheduled_for"] <> ":00") do
+        {:ok, naive_dt} ->
+          case Frestyl.Timezone.naive_to_utc(naive_dt, user_timezone) do
+            {:ok, utc_datetime} ->
+              # Truncate microseconds to match database precision
+              truncated_datetime = DateTime.truncate(utc_datetime, :second)
+              Map.put(complete_params, "scheduled_for", truncated_datetime)
+            {:error, _} ->
+              # If conversion fails, remove the field and let validation catch it
+              Map.delete(complete_params, "scheduled_for")
+          end
+        {:error, _} ->
+          # If parsing fails, remove the field
+          Map.delete(complete_params, "scheduled_for")
+      end
+    else
+      complete_params
+    end
+
+    # Convert checkbox values
+    complete_params = complete_params
+      |> convert_checkbox("is_public")
+      |> convert_checkbox("waiting_room_enabled")
+
+    IO.inspect(complete_params, label: "Complete broadcast params")
+
+    case Sessions.create_session(complete_params) do
+      {:ok, session} ->
+        # Reload broadcasts to show the new one
+        broadcasts = Sessions.list_channel_sessions(channel.id, %{session_type: "broadcast"})
+        upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(channel.id)
+
         {:noreply,
         socket
-        |> put_flash(:info, "Broadcast scheduled successfully for #{Timezone.format_with_timezone(broadcast.scheduled_for, current_user.timezone)}")
+        |> assign(:broadcasts, broadcasts)
+        |> assign(:upcoming_broadcasts, upcoming_broadcasts)
         |> assign(:show_broadcast_form, false)
-        |> assign(:broadcasts, [broadcast | socket.assigns.broadcasts])
-        |> assign(:upcoming_broadcasts, [broadcast | socket.assigns.upcoming_broadcasts])}
+        |> put_flash(:info, "Broadcast scheduled successfully!")}
 
       {:error, changeset} ->
+        # Log the changeset for debugging
+        IO.inspect(changeset, label: "Broadcast creation failed")
+
         {:noreply,
         socket
-        |> put_flash(:error, "Error scheduling broadcast: #{error_message(changeset)}")
-        |> assign(:broadcast_changeset, changeset)
-        |> assign(:show_broadcast_form, true)}
+        |> put_flash(:error, "Failed to schedule broadcast: #{error_message(changeset)}")
+        |> assign(:broadcast_changeset, changeset)}
+    end
+  end
+
+  # Make sure you have this helper function (it should already be in your file)
+  defp convert_checkbox(params, key) do
+    case Map.get(params, key) do
+      "on" -> Map.put(params, key, true)
+      nil -> Map.put(params, key, false)
+      value -> Map.put(params, key, value)
     end
   end
 
@@ -1155,14 +1201,6 @@ end
     |> convert_checkbox("is_public")
     |> convert_checkbox("waiting_room_enabled")
     |> convert_datetime("scheduled_for")
-  end
-
-  defp convert_checkbox(params, key) do
-    case Map.get(params, key) do
-      "on" -> Map.put(params, key, true)
-      nil -> Map.put(params, key, false)
-      value -> Map.put(params, key, value)
-    end
   end
 
   defp convert_datetime(params, key) do

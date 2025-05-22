@@ -31,11 +31,22 @@ defmodule Frestyl.Sessions do
   end
 
   @doc """
-  Creates a new collaborative session.
+  Creates a new session - either collaborative or broadcast.
   """
   def create_session(attrs \\ %{}) do
-    %Session{}
-    |> Session.collaboration_changeset(attrs)
+    # Check if this is a broadcast by looking for broadcast-specific fields
+    is_broadcast = attrs["broadcast_type"] || attrs[:broadcast_type] ||
+                  attrs["session_type"] == "broadcast" || attrs[:session_type] == "broadcast"
+
+    changeset = if is_broadcast do
+      # Use broadcast changeset for broadcasts
+      %Session{} |> Session.broadcast_changeset(attrs)
+    else
+      # Use collaboration changeset for regular sessions
+      %Session{} |> Session.collaboration_changeset(attrs)
+    end
+
+    changeset
     |> Repo.insert()
     |> case do
       {:ok, session} ->
@@ -44,6 +55,149 @@ defmodule Frestyl.Sessions do
         {:ok, session}
       error -> error
     end
+  end
+
+  @doc """
+  Creates a changeset for session updates in the management interface.
+  """
+  def change_session(session, attrs \\ %{}) do
+    Session.changeset(session, attrs)
+  end
+
+  @doc """
+  Creates a changeset specifically for broadcast updates.
+  """
+  def change_broadcast(broadcast, attrs \\ %{}) do
+    Session.broadcast_changeset(broadcast, attrs)
+  end
+
+  @doc """
+  Lists sessions for a specific channel with filters.
+  """
+  def list_channel_sessions(channel_id, filters \\ %{}) do
+    query = from s in Session,
+      where: s.channel_id == ^channel_id
+
+    query = case Map.get(filters, :session_type) do
+      nil -> query
+      type -> from s in query, where: s.session_type == ^type
+    end
+
+    query = case Map.get(filters, :status) do
+      nil -> query
+      status -> from s in query, where: s.status == ^status
+    end
+
+    Repo.all(query)
+  end
+
+  @doc """
+  Gets detailed statistics for a broadcast including participant breakdown.
+  """
+  def get_broadcast_stats(session_id) do
+    participants_query = from p in SessionParticipant,
+      where: p.session_id == ^session_id
+
+    total = Repo.aggregate(participants_query, :count, :id)
+
+    waiting = from(p in participants_query, where: is_nil(p.joined_at))
+      |> Repo.aggregate(:count, :id)
+
+    active = from(p in participants_query,
+      where: not is_nil(p.joined_at) and is_nil(p.left_at))
+      |> Repo.aggregate(:count, :id)
+
+    left = from(p in participants_query, where: not is_nil(p.left_at))
+      |> Repo.aggregate(:count, :id)
+
+    %{
+      total: total,
+      waiting: waiting,
+      active: active,
+      left: left
+    }
+  end
+
+  @doc """
+  Marks when a participant actually joins the live session (not just registers).
+  """
+  def mark_participant_joined(session_id, user_id) do
+    case Repo.get_by(SessionParticipant, session_id: session_id, user_id: user_id) do
+      nil ->
+        {:error, "Participant not found"}
+      participant ->
+        participant
+        |> SessionParticipant.changeset(%{joined_at: DateTime.utc_now()})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Marks when a participant leaves the live session.
+  """
+  def mark_participant_left(session_id, user_id) do
+    case Repo.get_by(SessionParticipant, session_id: session_id, user_id: user_id) do
+      nil ->
+        {:error, "Participant not found"}
+      participant ->
+        participant
+        |> SessionParticipant.changeset(%{left_at: DateTime.utc_now()})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Updates a participant's role in a session.
+  """
+  def update_participant_role(session_id, user_id, new_role) when is_binary(user_id) do
+    update_participant_role(session_id, String.to_integer(user_id), new_role)
+  end
+
+  def update_participant_role(session_id, user_id, new_role) when is_integer(user_id) do
+    case Repo.get_by(SessionParticipant, session_id: session_id, user_id: user_id) do
+      nil ->
+        {:error, "Participant not found"}
+      participant ->
+        participant
+        |> SessionParticipant.changeset(%{role: new_role})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Removes a participant from a session entirely.
+  """
+  def remove_participant(session_id, user_id) when is_binary(user_id) do
+    remove_participant(session_id, String.to_integer(user_id))
+  end
+
+  def remove_participant(session_id, user_id) when is_integer(user_id) do
+    case Repo.get_by(SessionParticipant, session_id: session_id, user_id: user_id) do
+      nil ->
+        {:error, "Participant not found"}
+      participant ->
+        Repo.delete(participant)
+    end
+  end
+
+  @doc """
+  Starts a scheduled broadcast (changes status from scheduled to active).
+  """
+  def start_broadcast(session) do
+    session
+    |> Session.changeset(%{
+      status: "active",
+      started_at: DateTime.utc_now()
+    })
+    |> Repo.update()
+  end
+
+  @doc """
+  Gets the participant count for a session.
+  """
+  def get_participants_count(session_id) do
+    from(p in SessionParticipant, where: p.session_id == ^session_id)
+    |> Repo.aggregate(:count, :id)
   end
 
   @doc """
@@ -59,25 +213,40 @@ defmodule Frestyl.Sessions do
     is_public = params[:is_public] || params["is_public"] || false
     broadcast_type = params[:broadcast_type] || params["broadcast_type"] || "standard"
     waiting_room_enabled = params[:waiting_room_enabled] || params["waiting_room_enabled"] || false
-    scheduled_for = params[:scheduled_for] || params["scheduled_for"]
+    scheduled_for_string = params[:scheduled_for] || params["scheduled_for"]
     current_user = params[:current_user] || params["current_user"]
 
     # Handle timezone conversion if needed
-    scheduled_time = if scheduled_for && current_user && current_user.timezone do
+    scheduled_time_utc = if scheduled_for_string && current_user && current_user.timezone do
       # Convert from user timezone to UTC for storage
-      case Frestyl.Timezone.naive_to_utc(scheduled_for, current_user.timezone) do
+      case Frestyl.Timezone.naive_to_utc(scheduled_for_string, current_user.timezone) do
         {:ok, utc_time} -> utc_time
-        _ -> scheduled_for  # Fall back to original time if conversion fails
+        # Fallback if conversion fails. This is crucial for robustness.
+        # If naive_to_utc fails, try to parse the string directly as UTC, or set to nil/error.
+        {:error, _reason} ->
+          IO.warn("Frestyl.Timezone.naive_to_utc failed for '#{scheduled_for_string}' in timezone '#{current_user.timezone}'. Attempting direct UTC parse.")
+          case DateTime.from_iso8601(scheduled_for_string) do
+            {:ok, dt} -> dt
+            _ -> nil # Or a default DateTime, or raise an error
+          end
+        _ -> # Catch-all for other non-ok results
+          IO.warn("Frestyl.Timezone.naive_to_utc returned unexpected result for '#{scheduled_for_string}' in timezone '#{current_user.timezone}'.")
+          nil # Or a default DateTime, or raise an error
       end
     else
-      scheduled_for
+      # If no scheduled_for string or no user timezone, assume it's already UTC or nil
+      # Attempt to parse it as a DateTime (assuming it might be a string like "2025-05-22T08:00Z")
+      case DateTime.from_iso8601(scheduled_for_string) do
+        {:ok, dt} -> dt
+        _ -> nil # Or a default DateTime, or raise an error
+      end
     end
 
     # Determine initial status
-    status = if scheduled_time && DateTime.compare(scheduled_time, DateTime.utc_now()) == :gt do
+    status = if scheduled_time_utc && DateTime.compare(scheduled_time_utc, DateTime.utc_now()) == :gt do
       "scheduled"  # Future event
     else
-      "active"     # Immediate or past event
+      "active"     # Immediate or past event (or if scheduled_time_utc is nil)
     end
 
     # Create broadcast session
@@ -92,12 +261,12 @@ defmodule Frestyl.Sessions do
       status: status,
       broadcast_type: broadcast_type,
       waiting_room_enabled: waiting_room_enabled,
-      scheduled_for: scheduled_time,
-      session_type: "broadcast",  # Mark as a broadcast session
-      waiting_room_open_time: calculate_waiting_room_time(scheduled_time, waiting_room_enabled)
+      scheduled_for: scheduled_time_utc, # Use the correctly converted UTC time
+      session_type: "broadcast",
+      waiting_room_open_time: calculate_waiting_room_time(scheduled_time_utc, waiting_room_enabled)
     })
     |> Repo.insert()
-    |> broadcast_session_change(:broadcast_created)  # Broadcast the change to subscribers
+    |> broadcast_session_change(:broadcast_created)
   end
 
   # Helper to calculate when the waiting room should open

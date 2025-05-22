@@ -195,7 +195,7 @@ defmodule FrestylWeb.Navigation do
                   class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                   role="menuitem"
                 >
-                  Your Profile
+                  Profile
                 </.link>
 
                 <.link
@@ -204,6 +204,14 @@ defmodule FrestylWeb.Navigation do
                   role="menuitem"
                 >
                   Settings
+                </.link>
+
+                <.link
+                  navigate={~p"/portfolios"}
+                  class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  role="menuitem"
+                >
+                  Live Portfolio
                 </.link>
 
                 <.link
@@ -342,7 +350,14 @@ defmodule FrestylWeb.Navigation do
               navigate={~p"/profile"}
               class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-50"
             >
-              Your Profile
+              Profile
+            </.link>
+
+            <.link
+              navigate={~p"/portfolios"}
+              class="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+            >
+              Live Portfolio
             </.link>
 
             <.link

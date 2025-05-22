@@ -185,3 +185,5 @@ import_config "#{config_env()}.exs"
 
 config :stripity_stripe,
   api_key: System.get_env("STRIPE_SECRET_KEY")
+
+config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase

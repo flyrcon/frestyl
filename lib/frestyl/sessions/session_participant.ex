@@ -16,14 +16,12 @@ defmodule Frestyl.Sessions.SessionParticipant do
     timestamps()
   end
 
-  @doc false
-  def changeset(session_participant, attrs) do
-    session_participant
-    |> cast(attrs, [:session_id, :user_id, :role, :joined_at, :last_active_at])
+  def changeset(participant, attrs) do
+    participant
+    |> cast(attrs, [:session_id, :user_id, :role, :joined_at, :left_at])
     |> validate_required([:session_id, :user_id, :role])
-    |> validate_inclusion(:role, ["participant", "moderator", "owner", "host", "viewer"])
+    |> validate_inclusion(:role, ["participant", "moderator", "host", "owner"])
     |> unique_constraint([:session_id, :user_id])
-    |> put_join_timestamp()
   end
 
   defp put_join_timestamp(changeset) do
@@ -33,4 +31,5 @@ defmodule Frestyl.Sessions.SessionParticipant do
       changeset
     end
   end
+
 end

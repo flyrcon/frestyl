@@ -5,7 +5,7 @@ defmodule FrestylWeb.DashboardLive do
   # Import the `nav` function from Navigation
   import FrestylWeb.Navigation, only: [nav: 1]
 
-  alias Frestyl.{Channels, Media, Statistics, Events, Analytics}
+  alias Frestyl.{Channels, Media, Statistics, Events, Analytics, Portfolios}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -22,6 +22,7 @@ defmodule FrestylWeb.DashboardLive do
      socket
      |> assign(:page_title, "Dashboard")
      |> assign(:active_tab, :dashboard)
+     |> assign(:user_channels, [])
      |> load_dashboard_data()}
   end
 
@@ -54,36 +55,69 @@ defmodule FrestylWeb.DashboardLive do
     {:noreply, assign(socket, :stats, stats)}
   end
 
-  # Helper functions
+  defp get_simple_timezone_greeting(user) do
+    # Use UTC time for now
+    current_hour = DateTime.utc_now().hour
 
-  # New simplified greeting function
-  defp get_simple_greeting(name) do
-    hour = DateTime.utc_now().hour
-
+    # Determine time of day based on hour
     time_of_day = cond do
-      hour >= 5 and hour < 12 -> "Morning"
-      hour >= 12 and hour < 17 -> "Afternoon"
-      hour >= 17 and hour < 22 -> "Evening"
+      current_hour >= 5 and current_hour < 12 -> "Morning"
+      current_hour >= 12 and current_hour < 17 -> "Afternoon"
+      current_hour >= 17 and current_hour < 22 -> "Evening"
       true -> "Night"
     end
 
-    first_name = name |> String.split(" ") |> List.first || "Friend"
+    # Extract the name safely
+    first_name =
+      case user do
+        %{name: name} when is_binary(name) ->
+          name |> String.split(" ") |> List.first
+        name when is_binary(name) ->
+          name |> String.split(" ") |> List.first
+        _ ->
+          "Friend"
+      end
+
     "#{time_of_day}, #{first_name}!"
   end
 
-  # Keep the original function for backward compatibility
   defp get_greeting(name) do
-    hour = DateTime.utc_now().hour
+    # For simplicity, use UTC - we'll fix timezone properly later
+    current_hour = DateTime.utc_now().hour
 
     greeting = cond do
-      hour >= 5 and hour < 12 -> "Good Morning"
-      hour >= 12 and hour < 17 -> "Good Afternoon"
-      hour >= 17 and hour < 22 -> "Good Evening"
+      current_hour >= 5 and current_hour < 12 -> "Good Morning"
+      current_hour >= 12 and current_hour < 17 -> "Good Afternoon"
+      current_hour >= 17 and current_hour < 22 -> "Good Evening"
       true -> "Good Night"
     end
 
     "#{greeting}, #{String.split(name || "", " ") |> List.first || "Friend"}!"
   end
+
+  defp get_simple_timezone_greeting(user) do
+    # Get current time in America/New_York reliably
+    {:ok, local_time} = DateTime.now("America/New_York", Tzdata.TimeZoneDatabase)
+
+    current_hour = local_time.hour
+
+    time_of_day = cond do
+      current_hour >= 5 and current_hour < 12 -> "Morning"
+      current_hour >= 12 and current_hour < 17 -> "Afternoon"
+      current_hour >= 17 and current_hour < 22 -> "Evening"
+      true -> "Night"
+    end
+
+    first_name =
+      case user do
+        %{name: name} when is_binary(name) -> name |> String.split() |> List.first()
+        name when is_binary(name) -> name |> String.split() |> List.first()
+        _ -> "Friend"
+      end
+
+    "#{time_of_day}, #{first_name}!"
+  end
+
 
   defp get_channel_category(channel) do
     # In a real implementation, we would extract a category from the channel
@@ -107,11 +141,16 @@ defmodule FrestylWeb.DashboardLive do
     user = socket.assigns.current_user
 
     try do
+      # Directly get the channels and ensure we have a list
+      user_channels = Channels.list_user_channels(user.id)
+      IO.puts("DEBUG: Found #{length(user_channels || [])} channels for user #{user.id}")
+
       socket
       |> assign(:stats, get_user_stats(user))
-      |> assign(:user_channels, get_user_channels(user.id))
+      |> assign(:user_channels, user_channels)  # Directly assign the channels
       |> assign(:media_files, get_user_media(user.id))
       |> assign(:notifications, get_user_notifications(user.id))
+      |> assign(:user_portfolio, nil)  # Just set this to nil for now
     rescue
       e ->
         IO.puts("Error loading dashboard data: #{inspect(e)}")
@@ -121,7 +160,18 @@ defmodule FrestylWeb.DashboardLive do
         |> assign(:user_channels, [])
         |> assign(:media_files, [])
         |> assign(:notifications, [])
+        |> assign(:user_portfolio, nil)
     end
+  end
+
+  # Create a separate function for fallback assignments
+  defp fallback_assignments(socket, user) do
+    socket
+    |> assign(:stats, %{channels: 0, members: 0, media_files: 0, total_views: 0})
+    |> assign(:user_channels, [])
+    |> assign(:media_files, [])
+    |> assign(:notifications, [])
+    |> assign(:user_portfolio, nil)
   end
 
   defp get_user_stats(user) do
@@ -150,20 +200,19 @@ defmodule FrestylWeb.DashboardLive do
     end
   end
 
-  defp get_user_channels(user_id) do
-    # Try to get real channels, but fallback to empty list if needed
-    try do
-      Channels.list_user_channels(user_id)
-    rescue
-      _ ->
-        # Sample data to demonstrate UI
-        [
-          %{id: 1, name: "Music Production", description: "Collaborate on audio projects", member_count: 12, last_active: DateTime.utc_now() |> DateTime.add(-2, :hour)},
-          %{id: 2, name: "Visual Design", description: "Share and critique designs", member_count: 8, last_active: DateTime.utc_now() |> DateTime.add(-1, :day)},
-          %{id: 3, name: "Writer's Circle", description: "Creative writing and feedback", member_count: 5, last_active: DateTime.utc_now() |> DateTime.add(-3, :day)}
-        ]
+    defp get_user_channels(user_id) do
+      try do
+        channels = Channels.list_user_channels(user_id)
+        # Ensure we always return a list
+        channels || []
+      rescue
+        _ ->
+          # Log error for debugging
+          IO.puts("Error retrieving channels for user #{user_id}")
+          # Return empty list - or sample data if you prefer
+          []
+      end
     end
-  end
 
   defp get_user_media(user_id) do
     # Try to get real media, but fallback to empty list if needed
@@ -217,4 +266,58 @@ defmodule FrestylWeb.DashboardLive do
       "recently"
     end
   end
+
+  # Add new helper function to load portfolio data
+  defp assign_portfolio_data(socket, user) do
+    # Get all portfolios for this user
+    portfolios = Portfolios.list_user_portfolios(user.id)
+
+    # Assign the first portfolio if any exist, otherwise nil
+    case portfolios do
+      [portfolio | _] ->
+        socket
+        |> assign(:user_portfolio, portfolio)
+
+      [] ->
+        socket
+        |> assign(:user_portfolio, nil)
+    end
+  end
+
+  # Helper functions for portfolio display
+  defp has_portfolio?(_) do
+    # Check if user portfolio is assigned and not nil
+    false
+  end
+
+  defp get_section_count(portfolio) do
+    # Count the portfolio sections
+    case portfolio do
+      nil -> 0
+      _ -> Portfolios.list_portfolio_sections(portfolio.id) |> length()
+    end
+  end
+
+  defp get_view_count(portfolio) do
+    # Get portfolio visit count from the stats
+    case portfolio do
+      nil -> 0
+      _ ->
+        case Portfolios.get_portfolio_visit_stats(portfolio.id) do
+          stats when is_list(stats) ->
+            stats |> Enum.reduce(0, fn {_date, count}, acc -> acc + count end)
+          _ -> 0
+        end
+    end
+  end
+
+  defp format_visibility(visibility) do
+    case visibility do
+      :public -> "Public"
+      :private -> "Private"
+      :link_only -> "Shared Link"
+      _ -> "Private"
+    end
+  end
+
 end

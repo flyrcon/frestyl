@@ -1,0 +1,989 @@
+<!-- Create lib/frestyl_web/live/broadcast_live/manage.html.heex -->
+
+<div class="min-h-screen bg-gray-50">
+  <!-- Header -->
+  <div class="bg-white shadow-sm border-b">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center space-x-4">
+          <button 
+            phx-click="go_back"
+            class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Channel
+          </button>
+          
+          <div>
+            <h1 class="text-2xl font-bold text-gray-900"><%= @broadcast.title %></h1>
+            <p class="text-sm text-gray-500">
+              Hosted by <%= @host.username %> • 
+              <%= case @broadcast.status do %>
+                <% "scheduled" -> %>
+                  <span class="text-blue-600">Scheduled</span>
+                <% "active" -> %>
+                  <span class="text-green-600">Live</span>
+                <% "ended" -> %>
+                  <span class="text-gray-600">Ended</span>
+                <% _ -> %>
+                  <span class="text-gray-600"><%= String.capitalize(@broadcast.status) %></span>
+              <% end %>
+            </p>
+          </div>
+        </div>
+        
+        <div class="flex items-center space-x-3">
+          <!-- Quick Actions -->
+          <%= if @broadcast.status == "scheduled" do %>
+            <button
+              phx-click="start_broadcast"
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+              </svg>
+              Start Broadcast
+            </button>
+          <% end %>
+          
+          <%= if @broadcast.status == "active" do %>
+            <button
+              phx-click="end_broadcast"
+              data-confirm="Are you sure you want to end this broadcast?"
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
+              </svg>
+              End Broadcast
+            </button>
+          <% end %>
+          
+          <!-- View Live Broadcast -->
+          <%= if @broadcast.status == "active" do %>
+            <.link
+              navigate={~p"/channels/#{@channel.slug}/broadcasts/#{@broadcast.id}/live"}
+              class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              View Live
+            </.link>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab Navigation -->
+  <div class="bg-white border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <nav class="flex space-x-8" aria-label="Tabs">
+        <button
+          phx-click="switch_tab"
+          phx-value-tab="overview"
+          class={[
+            "py-4 px-1 border-b-2 font-medium text-sm",
+            @active_tab == "overview" && "border-indigo-500 text-indigo-600" || "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+          ]}
+        >
+          Overview
+        </button>
+        <button
+          phx-click="switch_tab"
+          phx-value-tab="settings"
+          class={[
+            "py-4 px-1 border-b-2 font-medium text-sm",
+            @active_tab == "settings" && "border-indigo-500 text-indigo-600" || "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+          ]}
+        >
+          Settings
+        </button>
+        <button
+          phx-click="switch_tab"
+          phx-value-tab="participants"
+          class={[
+            "py-4 px-1 border-b-2 font-medium text-sm",
+            @active_tab == "participants" && "border-indigo-500 text-indigo-600" || "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+          ]}
+        >
+          Participants (<%= length(@participants) %>)
+        </button>
+        <button
+          phx-click="switch_tab"
+          phx-value-tab="chat"
+          class={[
+            "py-4 px-1 border-b-2 font-medium text-sm",
+            @active_tab == "chat" && "border-indigo-500 text-indigo-600" || "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+          ]}
+        >
+          Chat & Moderation
+        </button>
+        <button
+          phx-click="switch_tab"
+          phx-value-tab="analytics"
+          class={[
+            "py-4 px-1 border-b-2 font-medium text-sm",
+            @active_tab == "analytics" && "border-indigo-500 text-indigo-600" || "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+          ]}
+        >
+          Analytics
+        </button>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Tab Content -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <%= case @active_tab do %>
+      <% "overview" -> %>
+        <!-- Overview Tab -->
+        <div class="space-y-6">
+          <!-- Stats Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Total Participants</dt>
+                      <dd class="text-3xl font-semibold text-gray-900"><%= @stats.total %></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Currently Watching</dt>
+                      <dd class="text-3xl font-semibold text-gray-900"><%= @stats.active %></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">In Waiting Room</dt>
+                      <dd class="text-3xl font-semibold text-gray-900"><%= @stats.waiting %></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Left Broadcast</dt>
+                      <dd class="text-3xl font-semibold text-gray-900"><%= @stats.left %></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Broadcast Details -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white shadow rounded-lg">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">Broadcast Details</h3>
+              </div>
+              <div class="px-6 py-4 space-y-4">
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Type</dt>
+                  <dd class="mt-1 text-sm text-gray-900 capitalize"><%= @broadcast.broadcast_type %></dd>
+                </div>
+                
+                <%= if @broadcast.scheduled_for do %>
+                  <div>
+                    <dt class="text-sm font-medium text-gray-500">Scheduled For</dt>
+                    <dd class="mt-1 text-sm text-gray-900"><%= format_timestamp(@broadcast.scheduled_for) %></dd>
+                  </div>
+                <% end %>
+                
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Created</dt>
+                  <dd class="mt-1 text-sm text-gray-900"><%= format_timestamp(@broadcast.inserted_at) %></dd>
+                </div>
+                
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Waiting Room</dt>
+                  <dd class="mt-1 text-sm text-gray-900">
+                    <%= if @broadcast.waiting_room_enabled, do: "Enabled", else: "Disabled" %>
+                  </dd>
+                </div>
+                
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Public</dt>
+                  <dd class="mt-1 text-sm text-gray-900">
+                    <%= if @broadcast.is_public, do: "Yes", else: "No" %>
+                  </dd>
+                </div>
+                
+                <%= if @broadcast.description && @broadcast.description != "" do %>
+                  <div>
+                    <dt class="text-sm font-medium text-gray-500">Description</dt>
+                    <dd class="mt-1 text-sm text-gray-900"><%= @broadcast.description %></dd>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+
+            <!-- Host Information -->
+            <div class="bg-white shadow rounded-lg">
+              <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 class="text-lg font-medium text-gray-900">Host Information</h3>
+                <button
+                  phx-click="show_host_assignment"
+                  class="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+                >
+                  Change Host
+                </button>
+              </div>
+              <div class="px-6 py-4">
+                <div class="flex items-center">
+                  <div class="h-12 w-12 bg-indigo-600 rounded-full flex items-center justify-center">
+                    <span class="text-white font-medium text-lg">
+                      <%= String.first(@host.username || @host.name || "H") %>
+                    </span>
+                  </div>
+                  <div class="ml-4">
+                    <h4 class="text-lg font-medium text-gray-900"><%= @host.username || @host.name %></h4>
+                    <p class="text-sm text-gray-500"><%= @host.email %></p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent Activity -->
+          <div class="bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">Recent Activity</h3>
+            </div>
+            <div class="px-6 py-4">
+              <div class="space-y-3">
+                <div class="flex items-center text-sm">
+                  <span class="w-2 h-2 bg-green-400 rounded-full mr-3"></span>
+                  <span class="text-gray-600">User joined</span>
+                  <span class="ml-auto text-gray-400">2 minutes ago</span>
+                </div>
+                <div class="flex items-center text-sm">
+                  <span class="w-2 h-2 bg-blue-400 rounded-full mr-3"></span>
+                  <span class="text-gray-600">Message sent in chat</span>
+                  <span class="ml-auto text-gray-400">5 minutes ago</span>
+                </div>
+                <div class="flex items-center text-sm">
+                  <span class="w-2 h-2 bg-red-400 rounded-full mr-3"></span>
+                  <span class="text-gray-600">User left broadcast</span>
+                  <span class="ml-auto text-gray-400">8 minutes ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      <% "settings" -> %>
+        <!-- Settings Tab -->
+        <div class="space-y-6">
+          <!-- Basic Settings -->
+          <div class="bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 class="text-lg font-medium text-gray-900">Basic Settings</h3>
+              <%= if not @show_edit_form do %>
+                <button
+                  phx-click="show_edit_form"
+                  class="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+                >
+                  Edit
+                </button>
+              <% end %>
+            </div>
+            
+            <%= if @show_edit_form do %>
+              <form phx-submit="update_broadcast" class="px-6 py-4">
+                <div class="space-y-4">
+                  <div>
+                    <label for="title" class="block text-sm font-medium text-gray-700">Title</label>
+                    <input
+                      type="text"
+                      name="session[title]"
+                      id="title"
+                      value={@broadcast.title}
+                      class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                    <textarea
+                      name="session[description]"
+                      id="description"
+                      rows="3"
+                      class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    ><%= @broadcast.description %></textarea>
+                  </div>
+                  
+                  <div>
+                    <label for="broadcast_type" class="block text-sm font-medium text-gray-700">Broadcast Type</label>
+                    <select
+                      name="session[broadcast_type]"
+                      id="broadcast_type"
+                      class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    >
+                      <option value="standard" selected={@broadcast.broadcast_type == "standard"}>Standard</option>
+                      <option value="performance" selected={@broadcast.broadcast_type == "performance"}>Performance</option>
+                      <option value="tutorial" selected={@broadcast.broadcast_type == "tutorial"}>Tutorial</option>
+                      <option value="interview" selected={@broadcast.broadcast_type == "interview"}>Interview</option>
+                      <option value="q_and_a" selected={@broadcast.broadcast_type == "q_and_a"}>Q&A</option>
+                    </select>
+                  </div>
+                  
+                  <div class="flex items-center">
+                    <input
+                      type="checkbox"
+                      name="session[is_public]"
+                      id="is_public"
+                      checked={@broadcast.is_public}
+                      class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    />
+                    <label for="is_public" class="ml-2 block text-sm text-gray-900">
+                      Public broadcast
+                    </label>
+                  </div>
+                  
+                  <div class="flex items-center">
+                    <input
+                      type="checkbox"
+                      name="session[waiting_room_enabled]"
+                      id="waiting_room_enabled"
+                      checked={@broadcast.waiting_room_enabled}
+                      class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    />
+                    <label for="waiting_room_enabled" class="ml-2 block text-sm text-gray-900">
+                      Enable waiting room
+                    </label>
+                  </div>
+                </div>
+                
+                <div class="mt-6 flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    phx-click="hide_edit_form"
+                    class="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            <% else %>
+              <div class="px-6 py-4 space-y-4">
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Title</dt>
+                  <dd class="mt-1 text-sm text-gray-900"><%= @broadcast.title %></dd>
+                </div>
+                
+                <%= if @broadcast.description && @broadcast.description != "" do %>
+                  <div>
+                    <dt class="text-sm font-medium text-gray-500">Description</dt>
+                    <dd class="mt-1 text-sm text-gray-900"><%= @broadcast.description %></dd>
+                  </div>
+                <% end %>
+                
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Type</dt>
+                  <dd class="mt-1 text-sm text-gray-900 capitalize"><%= @broadcast.broadcast_type %></dd>
+                </div>
+                
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Visibility</dt>
+                  <dd class="mt-1 text-sm text-gray-900">
+                    <%= if @broadcast.is_public, do: "Public", else: "Private" %>
+                  </dd>
+                </div>
+                
+                <div>
+                  <dt class="text-sm font-medium text-gray-500">Waiting Room</dt>
+                  <dd class="mt-1 text-sm text-gray-900">
+                    <%= if @broadcast.waiting_room_enabled, do: "Enabled", else: "Disabled" %>
+                  </dd>
+                </div>
+              </div>
+            <% end %>
+          </div>
+
+          <!-- Recording Settings -->
+          <div class="bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">Recording Settings</h3>
+            </div>
+            <div class="px-6 py-4">
+              <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-900">Auto-record broadcast</label>
+                    <p class="text-sm text-gray-500">Automatically start recording when broadcast begins</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={@broadcast.recording_available} class="sr-only peer" />
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Danger Zone -->
+          <div class="bg-white shadow rounded-lg border border-red-200">
+            <div class="px-6 py-4 border-b border-red-200">
+              <h3 class="text-lg font-medium text-red-900">Danger Zone</h3>
+            </div>
+            <div class="px-6 py-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h4 class="text-sm font-medium text-gray-900">Delete broadcast</h4>
+                  <p class="text-sm text-gray-500">Once deleted, this broadcast cannot be recovered.</p>
+                </div>
+                <button
+                  phx-click="delete_broadcast"
+                  data-confirm="Are you sure you want to delete this broadcast? This action cannot be undone."
+                  class="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-md text-sm font-medium"
+                >
+                  Delete Broadcast
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      <% "participants" -> %>
+        <!-- Participants Tab -->
+        <div class="space-y-6">
+          <!-- Participant Stats -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Active Participants</dt>
+                      <dd class="text-2xl font-semibold text-gray-900"><%= @stats.active %></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Waiting</dt>
+                      <dd class="text-2xl font-semibold text-gray-900"><%= @stats.waiting %></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Total Joined</dt>
+                      <dd class="text-2xl font-semibold text-gray-900"><%= @stats.total %></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Participants List -->
+          <div class="bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">Participant Management</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+              <%= if @participants == [] do %>
+                <div class="px-6 py-8 text-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <h3 class="mt-2 text-sm font-medium text-gray-900">No participants yet</h3>
+                  <p class="mt-1 text-sm text-gray-500">Participants will appear here once they join the broadcast.</p>
+                </div>
+              <% else %>
+                <%= for participant <- @participants do %>
+                  <div class="px-6 py-4 flex items-center justify-between">
+                    <div class="flex items-center">
+                      <div class="h-10 w-10 bg-indigo-600 rounded-full flex items-center justify-center">
+                        <span class="text-white font-medium text-sm">
+                          <%= String.first(participant.user.username || participant.user.name || "U") %>
+                        </span>
+                      </div>
+                      <div class="ml-4">
+                        <h4 class="text-sm font-medium text-gray-900 flex items-center">
+                          <%= participant.user.username || participant.user.name %>
+                          <%= if participant.role in ["host", "moderator"] do %>
+                            <span class={[
+                              "ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                              participant.role == "host" && "bg-indigo-100 text-indigo-800",
+                              participant.role == "moderator" && "bg-green-100 text-green-800"
+                            ]}>
+                              <%= String.capitalize(participant.role) %>
+                            </span>
+                          <% end %>
+                        </h4>
+                        <p class="text-sm text-gray-500">
+                          Joined <%= time_ago(participant.inserted_at) %>
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <%= if participant.role != "host" do %>
+                      <div class="flex items-center space-x-2">
+                        <%= if participant.role == "moderator" do %>
+                          <button
+                            phx-click="demote_participant"
+                            phx-value-user_id={participant.user_id}
+                            class="text-yellow-600 hover:text-yellow-900 text-sm font-medium"
+                          >
+                            Demote
+                          </button>
+                        <% else %>
+                          <button
+                            phx-click="promote_participant"
+                            phx-value-user_id={participant.user_id}
+                            class="text-green-600 hover:text-green-900 text-sm font-medium"
+                          >
+                            Promote
+                          </button>
+                        <% end %>
+                        
+                        <button
+                          phx-click="remove_participant"
+                          phx-value-user_id={participant.user_id}
+                          data-confirm="Are you sure you want to remove this participant?"
+                          class="text-red-600 hover:text-red-900 text-sm font-medium"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              <% end %>
+            </div>
+          </div>
+        </div>
+
+      <% "chat" -> %>
+        <!-- Chat & Moderation Tab -->
+        <div class="space-y-6">
+          <!-- Chat Controls -->
+          <div class="bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">Chat Controls</h3>
+            </div>
+            <div class="px-6 py-4 space-y-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-900">Enable Chat</label>
+                  <p class="text-sm text-gray-500">Allow participants to send messages</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={@chat_enabled}
+                    class="sr-only peer"
+                    phx-click="toggle_chat"
+                  />
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+              
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-900">Enable Reactions</label>
+                  <p class="text-sm text-gray-500">Allow participants to react to messages</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={@reactions_enabled}
+                    class="sr-only peer"
+                    phx-click="toggle_reactions"
+                  />
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- User Moderation -->
+          <div class="bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">User Moderation</h3>
+            </div>
+            <div class="px-6 py-4">
+              <!-- Muted Users -->
+              <div class="mb-6">
+                <h4 class="text-sm font-medium text-gray-700 mb-3">Muted Users</h4>
+                <%= if @muted_users == [] do %>
+                  <p class="text-sm text-gray-500">No muted users</p>
+                <% else %>
+                  <div class="space-y-2">
+                    <%= for user_id <- @muted_users do %>
+                      <%
+                        participant = Enum.find(@participants, &(&1.user_id == user_id))
+                        user = participant && participant.user
+                      %>
+                      <%= if user do %>
+                        <div class="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-md">
+                          <span class="text-sm text-gray-900"><%= user.username || user.name %></span>
+                          <button
+                            phx-click="unmute_user"
+                            phx-value-user_id={user_id}
+                            class="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+                          >
+                            Unmute
+                          </button>
+                        </div>
+                      <% end %>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+              
+              <!-- Quick Mute Actions -->
+              <div>
+                <h4 class="text-sm font-medium text-gray-700 mb-3">Quick Actions</h4>
+                <div class="space-y-2">
+                  <%= for participant <- @participants do %>
+                    <%= if participant.role != "host" and participant.user_id not in @muted_users do %>
+                      <div class="flex items-center justify-between py-2 px-3 border border-gray-200 rounded-md">
+                        <span class="text-sm text-gray-900"><%= participant.user.username || participant.user.name %></span>
+                        <button
+                          phx-click="mute_user"
+                          phx-value-user_id={participant.user_id}
+                          class="text-red-600 hover:text-red-900 text-sm font-medium"
+                        >
+                          Mute
+                        </button>
+                      </div>
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Preview (Leveraging your existing chat system) -->
+          <div class="bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">Live Chat Preview</h3>
+            </div>
+            <div class="h-96">
+              <!-- Integrate your existing ChatLive.Show component here -->
+              <.live_component
+                module={FrestylWeb.ChatLive.Show}
+                id="broadcast-chat-preview"
+                channel_id={@channel.id}
+                current_user={@current_user}
+                readonly={true}
+              />
+            </div>
+          </div>
+        </div>
+
+      <% "analytics" -> %>
+        <!-- Analytics Tab -->
+        <div class="space-y-6">
+          <!-- Performance Metrics -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Peak Viewers</dt>
+                      <dd class="text-2xl font-semibold text-gray-900"><%= @stats.active %></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Avg Watch Time</dt>
+                      <dd class="text-2xl font-semibold text-gray-900">--</dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Chat Messages</dt>
+                      <dd class="text-2xl font-semibold text-gray-900"><%= length(@chat_messages) %></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Engagement Rate</dt>
+                      <dd class="text-2xl font-semibold text-gray-900">--</dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts Placeholder -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white shadow rounded-lg">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">Viewer Count Over Time</h3>
+              </div>
+              <div class="px-6 py-4">
+                <div class="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <p class="text-gray-500">Chart will be displayed here</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white shadow rounded-lg">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">Chat Activity</h3>
+              </div>
+              <div class="px-6 py-4">
+                <div class="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <p class="text-gray-500">Chat activity chart will be displayed here</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Detailed Analytics Table -->
+          <div class="bg-white shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h3 class="text-lg font-medium text-gray-900">Participant Details</h3>
+            </div>
+            <div class="overflow-hidden">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Participant
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Join Time
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Duration
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Messages
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <%= for participant <- @participants do %>
+                    <tr>
+                      <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                          <div class="h-8 w-8 bg-indigo-600 rounded-full flex items-center justify-center">
+                            <span class="text-white font-medium text-xs">
+                              <%= String.first(participant.user.username || participant.user.name || "U") %>
+                            </span>
+                          </div>
+                          <div class="ml-3">
+                            <div class="text-sm font-medium text-gray-900">
+                              <%= participant.user.username || participant.user.name %>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <%= format_timestamp(participant.inserted_at) %>
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <%= if participant.left_at do %>
+                          <%= time_duration(participant.inserted_at, participant.left_at) %>
+                        <% else %>
+                          <%= time_duration(participant.inserted_at, DateTime.utc_now()) %>
+                        <% end %>
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        --
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap">
+                        <span class={[
+                          "inline-flex px-2 py-1 text-xs font-semibold rounded-full",
+                          is_nil(participant.left_at) && "bg-green-100 text-green-800" || "bg-gray-100 text-gray-800"
+                        ]}>
+                          <%= if is_nil(participant.left_at), do: "Active", else: "Left" %>
+                        </span>
+                      </td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+    <% end %>
+  </div>
+
+  <!-- Host Assignment Modal -->
+  <%= if @show_host_assignment do %>
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Assign New Host</h3>
+        </div>
+        <div class="px-6 py-4">
+          <div class="space-y-3">
+            <%= for user <- @available_hosts do %>
+              <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                <div class="flex items-center">
+                  <div class="h-8 w-8 bg-indigo-600 rounded-full flex items-center justify-center">
+                    <span class="text-white font-medium text-sm">
+                      <%= String.first(user.username || user.name || "U") %>
+                    </span>
+                  </div>
+                  <div class="ml-3">
+                    <div class="text-sm font-medium text-gray-900"><%= user.username || user.name %></div>
+                    <div class="text-sm text-gray-500"><%= user.email %></div>
+                  </div>
+                </div>
+                <button
+                  phx-click="assign_host"
+                  phx-value-user_id={user.id}
+                  class="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+                >
+                  Select
+                </button>
+              </div>
+            <% end %>
+          </div>
+        </div>
+        <div class="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end">
+          <button
+            phx-click="hide_host_assignment"
+            class="bg-gray-300 hover:bg-gray-400 text-gray-700 py-2 px-4 rounded-md text-sm font-medium"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  <% end %>
+</div>
+
+<script>
+  // Add any JavaScript needed for the management interface
+  window.addEventListener("phx:update", function() {
+    // Refresh any charts or real-time data
+  });
+</script>

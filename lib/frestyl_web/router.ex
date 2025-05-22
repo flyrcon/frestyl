@@ -198,6 +198,13 @@ defmodule FrestylWeb.Router do
       live "/users/settings/two_factor", UserLive.TwoFactorSetupLive, :index
       live "/account/sessions", UserLive.SessionManagementLive, :index
       live "/account/privacy", UserLive.PrivacySettingsLive, :index
+
+        # Portfolio routes
+      live "/portfolios", PortfolioLive.IndexLive, :index
+      live "/portfolios/:id/edit", PortfolioLive.EditLive, :edit
+      live "/portfolios/:id/share", PortfolioLive.ShareLive, :share
+      live "/portfolios/:id/analytics", PortfolioLive.AnalyticsLive, :analytics
+      live "/portfolios/:portfolio_id/resume-parser", PortfolioLive.ResumeParserLive, :parse
     end
 
     get "/dashboard", DashboardController, :index
@@ -320,6 +327,14 @@ defmodule FrestylWeb.Router do
   scope "/uploads", FrestylWeb do
     pipe_through [:browser, :require_auth, :media_cache]
     get "/*path", MediaController, :serve_file
+  end
+
+
+  scope "/", FrestylWeb do
+    pipe_through [:browser]
+
+    # Catch-all route for custom portfolio URLs
+    live "/:slug", PortfolioLive.ViewLive, :portfolio
   end
 
   defp debug_request(conn, _opts) do

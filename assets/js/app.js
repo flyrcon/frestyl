@@ -477,6 +477,24 @@ const SoundCheck = {
       });
   },
 
+    Hooks.SkillsInput = {
+    mounted() {
+      this.el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault()
+          const value = e.target.value.trim()
+          if (value) {
+            // Clear the input after adding
+            setTimeout(() => {
+              e.target.value = ""
+            }, 100)
+          }
+        }
+      })
+    }
+  }
+
+
   destroyed() {
     // Clean up
     if (this.mediaStream) {
@@ -528,3 +546,4 @@ window.addEventListener("phx:page-loading-stop", () => topbar.hide());
 // Connect LiveSocket
 liveSocket.connect();
 window.liveSocket = liveSocket;
+window.Hooks = Hooks

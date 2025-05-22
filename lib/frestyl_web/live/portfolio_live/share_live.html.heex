@@ -1,0 +1,266 @@
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <!-- Header with navigation -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">Share Portfolio</h1>
+      <p class="mt-1 text-sm text-gray-500">
+        Create and manage links to share your portfolio with others.
+      </p>
+    </div>
+    <div>
+      <.link
+        navigate={"/portfolios/#{@portfolio.id}/edit"}
+        class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+        <.icon name="hero-arrow-left-solid" class="mr-2 h-4 w-4" />
+        Back to Portfolio
+      </.link>
+    </div>
+  </div>
+  
+  <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <!-- Create Share Link Form -->
+    <div class="bg-white shadow sm:rounded-lg">
+      <div class="px-4 py-5 sm:p-6">
+        <h3 class="text-lg font-medium leading-6 text-gray-900">Create Share Link</h3>
+        <div class="mt-2 max-w-xl text-sm text-gray-500">
+          <p>Generate a unique link to share your portfolio with specific people.</p>
+        </div>
+        
+        <.form
+          for={@changeset}
+          phx-submit="create_share"
+          phx-change="validate"
+          class="mt-5 space-y-6">
+          
+          <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+            <div class="sm:col-span-3">
+              <.input field={@changeset[:name]} type="text" label="Recipient Name" />
+            </div>
+            
+            <div class="sm:col-span-3">
+              <.input field={@changeset[:email]} type="email" label="Recipient Email" />
+            </div>
+            
+            <div class="sm:col-span-3">
+              <.input
+                field={@changeset[:expires_at]}
+                type="datetime-local"
+                label="Link Expiry (Optional)"
+              />
+              <p class="mt-1 text-xs text-gray-500">
+                Leave blank for no expiration.
+              </p>
+            </div>
+          </div>
+          
+          <div class="flex justify-end">
+            <.button type="submit">Generate Link</.button>
+          </div>
+        </.form>
+        
+        <%= if @share_url do %>
+          <div class="mt-6 rounded-md bg-green-50 p-4">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+              </div>
+              <div class="ml-3 flex-1">
+                <h3 class="text-sm font-medium text-green-800">Link created successfully!</h3>
+                <div class="mt-2 text-sm text-green-700">
+                  <p>Copy this link to share with your recipient:</p>
+                  <div class="mt-2 flex">
+                    <input
+                      type="text"
+                      readonly
+                      value={@share_url}
+                      class="flex-1 min-w-0 block w-full px-3 py-2 rounded-l-md focus:ring-blue-500 focus:border-blue-500 text-sm border-gray-300"
+                    />
+                    <button
+                      type="button"
+                      phx-click="copy_share_link"
+                      phx-value-url={@share_url}
+                      class="inline-flex items-center px-3 py-2 border border-l-0 border-gray-300 rounded-r-md bg-gray-50 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      onclick={"navigator.clipboard.writeText('#{@share_url}')"}>
+                      <svg class="h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z" />
+                        <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM15 11h2a1 1 0 010 2h-2v-2z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    
+    <!-- Public Link -->
+    <div class="bg-white shadow sm:rounded-lg">
+      <div class="px-4 py-5 sm:p-6">
+        <h3 class="text-lg font-medium leading-6 text-gray-900">Public Link</h3>
+        <div class="mt-2 max-w-xl text-sm text-gray-500">
+          <p>
+            This is your portfolio's <%= if @portfolio.visibility == :public, do: "public", else: "direct" %> link.
+            <%= if @portfolio.visibility != :public do %>
+              Note: Your portfolio is currently not set to public, so this link will only work for people with whom you've shared it.
+            <% end %>
+          </p>
+        </div>
+        
+        <div class="mt-5">
+          <div class="flex">
+            <input
+              type="text"
+              readonly
+              value={portfolio_url(@portfolio.slug)}
+              class="flex-1 min-w-0 block w-full px-3 py-2 rounded-l-md focus:ring-blue-500 focus:border-blue-500 text-sm border-gray-300"
+            />
+            <button
+              type="button"
+              onclick={"navigator.clipboard.writeText('#{portfolio_url(@portfolio.slug)}'"}
+              class="inline-flex items-center px-3 py-2 border border-l-0 border-gray-300 rounded-r-md bg-gray-50 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+              <svg class="h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z" />
+                <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM15 11h2a1 1 0 010 2h-2v-2z" />
+              </svg>
+            </button>
+          </div>
+          
+          <%= if @portfolio.visibility != :public do %>
+            <div class="mt-4">
+              <.link
+                navigate={"/portfolios/#{@portfolio.id}/edit"}
+                class="text-sm text-blue-600 hover:text-blue-500">
+                Change portfolio visibility settings
+              </.link>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Shared Links -->
+  <div class="mt-8">
+    <h2 class="text-lg font-medium text-gray-900">Shared Links</h2>
+    
+    <%= if Enum.empty?(@shares) do %>
+      <div class="mt-4 bg-white rounded-md py-10 text-center">
+        <svg class="mx-auto h-12 w-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No shared links</h3>
+        <p class="mt-1 text-sm text-gray-500">
+          You haven't shared your portfolio with anyone yet. Create a share link to get started.
+        </p>
+      </div>
+    <% else %>
+      <div class="mt-4 flex flex-col">
+        <div class="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+          <div class="py-2 align-middle inline-block min-w-full sm:px-6 lg:px-8">
+            <div class="shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Recipient
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Created
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Views
+                    </th>
+                    <th scope="col" class="relative px-6 py-3">
+                      <span class="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  <%= for share <- @shares do %>
+                    <tr>
+                      <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                          <div>
+                            <div class="text-sm font-medium text-gray-900">
+                              <%= share.name || "Unnamed Recipient" %>
+                            </div>
+                            <div class="text-sm text-gray-500">
+                              <%= share.email || "No email" %>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900"><%= Calendar.strftime(share.inserted_at, "%B %d, %Y") %></div>
+                        <div class="text-sm text-gray-500">
+                          <%= if share.expires_at do %>
+                            Expires: <%= Calendar.strftime(share.expires_at, "%B %d, %Y") %>
+                          <% else %>
+                            Never expires
+                          <% end %>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap">
+                        <%= if @portfolio.approval_required do %>
+                          <span class={"inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium #{share.approved && "bg-green-100 text-green-800" || "bg-yellow-100 text-yellow-800"}"}>
+                            <%= share.approved && "Approved" || "Approval Required" %>
+                          </span>
+                        <% else %>
+                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            Active
+                          </span>
+                        <% end %>
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <%= share.access_count %> views
+                        <%= if share.last_accessed_at do %>
+                          <div class="text-xs text-gray-400">
+                            Last: <%= Calendar.strftime(share.last_accessed_at, "%B %d, %Y") %>
+                          </div>
+                        <% end %>
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div class="flex space-x-3 justify-end">
+                          <button
+                            type="button"
+                            onclick={"navigator.clipboard.writeText('#{portfolio_url(share.token)}'"}
+                            class="text-blue-600 hover:text-blue-900">
+                            Copy Link
+                          </button>
+                          
+                          <%= if @portfolio.approval_required do %>
+                            <button
+                              phx-click="toggle_approval"
+                              phx-value-id={share.id}
+                              class={share.approved && "text-yellow-600 hover:text-yellow-900" || "text-green-600 hover:text-green-900"}>
+                              <%= share.approved && "Revoke" || "Approve" %>
+                            </button>
+                          <% end %>
+                          
+                          <button
+                            phx-click="delete_share"
+                            phx-value-id={share.id}
+                            data-confirm="Are you sure you want to delete this share? This cannot be undone."
+                            class="text-red-600 hover:text-red-900">
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>

@@ -26,14 +26,23 @@ defmodule Frestyl.Timezone do
   def common_timezones, do: @common_timezones
 
   @doc """
-  Gets the user's timezone or defaults to UTC.
+  Gets the user's timezone or returns UTC as default.
+  This is the function that show.ex is looking for.
   """
-  def get_user_timezone(user) do
-    if user && user.timezone do
-      user.timezone
-    else
-      "UTC"
-    end
+  def get_user_timezone(%{timezone: timezone}) when is_binary(timezone) and timezone != "" do
+    timezone
+  end
+
+  def get_user_timezone(%{timezone: nil}) do
+    "UTC"
+  end
+
+  def get_user_timezone(%{timezone: ""}) do
+    "UTC"
+  end
+
+  def get_user_timezone(_user) do
+    "UTC"
   end
 
   @doc """
@@ -49,33 +58,67 @@ defmodule Frestyl.Timezone do
   def to_user_timezone(utc_datetime, _timezone), do: utc_datetime
 
   @doc """
-  Converts a user timezone datetime to UTC.
+  Converts a datetime from its current timezone to UTC.
+  This function assumes the input datetime has a timezone and will shift it to UTC.
   """
   def to_utc(nil, _timezone), do: nil
-  def to_utc(datetime, timezone) when is_binary(timezone) do
+  def to_utc(datetime, _timezone) when is_struct(datetime, DateTime) do
+    # This will shift the datetime to UTC, preserving the point in time
     case DateTime.shift_zone(datetime, "UTC") do
       {:ok, utc_datetime} -> utc_datetime
-      {:error, _} -> datetime
+      {:error, _} -> datetime # Fallback if shifting fails
     end
   end
-  def to_utc(datetime, _timezone), do: datetime
+  # Add a clause for NaiveDateTime if you want to handle it here
+  # def to_utc(%NaiveDateTime{} = naive_dt, timezone) when is_binary(timezone) do
+  #   naive_to_utc(naive_dt, timezone) # Reuse the naive_to_utc logic
+  # end
+  def to_utc(datetime, _timezone), do: datetime # Catch-all for other types or invalid inputs
+
 
   @doc """
-  Converts a naive datetime with timezone string to UTC datetime.
+  Converts a naive datetime (or its string representation)
+  from a specified timezone to a UTC datetime.
   """
-  def naive_to_utc(naive_datetime, timezone) when is_binary(naive_datetime) do
-    case NaiveDateTime.from_iso8601(naive_datetime) do
-      {:ok, naive} -> naive_to_utc(naive, timezone)
-      error -> error
+  # Handle string input first, convert to NaiveDateTime, then call self
+  def naive_to_utc(naive_datetime_str, timezone)
+      when is_binary(naive_datetime_str) and is_binary(timezone) do
+    case NaiveDateTime.from_iso8601(naive_datetime_str) do
+      {:ok, naive_dt} ->
+        naive_to_utc(naive_dt, timezone) # Recurse with NaiveDateTime struct
+      {:error, reason} ->
+        # For example: {:error, :invalid_iso_string_format}
+        {:error, {:iso_parse_failed, reason}}
     end
   end
 
-  def naive_to_utc(%NaiveDateTime{} = naive, timezone) do
-    # Convert to DateTime in the specified timezone
-    case DateTime.from_naive(naive, timezone) do
-      {:ok, datetime} -> {:ok, datetime}
-      error -> error
+  # Clause 2: Handles NaiveDateTime struct input
+  def naive_to_utc(%NaiveDateTime{} = naive_dt, timezone) when is_binary(timezone) do
+    # First, assume the naive_dt is in the 'timezone' provided.
+    case DateTime.from_naive(naive_dt, timezone) do
+      {:ok, datetime_in_chosen_tz} ->
+        # Then, shift that DateTime to UTC. This is the crucial step.
+        case DateTime.shift_zone(datetime_in_chosen_tz, "UTC") do
+          {:ok, utc_datetime} -> {:ok, utc_datetime}
+          {:error, reason} -> {:error, {:shift_to_utc_failed, reason}}
+        end
+      {:error, reason} ->
+        # For example: {:error, :invalid_timezone_for_naive_conversion}
+        {:error, {:timezone_conversion_failed, reason}}
     end
+  end
+
+  # IMPORTANT: Add a specific clause to catch and error if a DateTime struct is passed.
+  # This makes the function's contract explicit: it's for *naive* conversions.
+  def naive_to_utc(%DateTime{} = datetime, _timezone) do
+    IO.warn("Frestyl.Timezone.naive_to_utc was called with a DateTime struct (#{inspect(datetime)}). This function is designed to convert *naive* datetimes from a specified timezone to UTC. If the datetime is already timezone-aware, consider using Frestyl.Timezone.to_utc/2 directly or ensuring the input is naive.")
+    {:error, :expected_naive_datetime_got_timezone_aware}
+  end
+
+  # Catch-all for any other unexpected types
+  def naive_to_utc(other, timezone) do
+    IO.warn("Frestyl.Timezone.naive_to_utc called with unexpected type for naive_datetime: #{inspect(other)}. Timezone: #{inspect(timezone)}")
+    {:error, :invalid_argument_type}
   end
 
   @doc """

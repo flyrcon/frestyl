@@ -1,0 +1,829 @@
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <!-- Header with navigation -->
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-900">Edit Portfolio</h1>
+      <p class="mt-1 text-sm text-gray-500">
+        Customize your portfolio to showcase your professional experience.
+      </p>
+    </div>
+    <div>
+      <.link
+        navigate="/portfolios"
+        class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+        <.icon name="hero-arrow-left-solid" class="mr-2 h-4 w-4" />
+        Back to Portfolios
+      </.link>
+      
+      <.link
+        navigate={"/portfolios/#{@portfolio.id}/share"}
+        class="ml-3 inline-flex items-center px-3 py-1.5 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+        <.icon name="hero-share-solid" class="mr-2 h-4 w-4" />
+        Share Portfolio
+      </.link>
+      
+      <.link
+        navigate={"/#{@portfolio.slug}"}
+        class="ml-3 inline-flex items-center px-3 py-1.5 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+        target="_blank">
+        <.icon name="hero-eye-solid" class="mr-2 h-4 w-4" />
+        Preview
+      </.link>
+    </div>
+  </div>
+  
+  <!-- Tabs -->
+  <div class="mt-6 border-b border-gray-200">
+    <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+      <button
+        phx-click="change_tab"
+        phx-value-tab="details"
+        class={"whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${@active_tab == :details ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"}>
+        Portfolio Details
+      </button>
+      
+      <button
+        phx-click="change_tab"
+        phx-value-tab="sections"
+        class={"whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${@active_tab == :sections ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"}>
+        Content Sections
+      </button>
+      
+      <button
+        phx-click="change_tab"
+        phx-value-tab="media"
+        class={"whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${@active_tab == :media ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"}>
+        Media & Attachments
+      </button>
+      
+      <button
+        phx-click="change_tab"
+        phx-value-tab="theme"
+        class={"whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${@active_tab == :theme ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"}>
+        Theme & Layout
+      </button>
+      
+      <.link
+        navigate={"/portfolios/#{@portfolio.id}/resume-parser"}
+        class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+        Import Resume
+      </.link>
+    </nav>
+  </div>
+  
+  <!-- Tab content -->
+  <div class="mt-6">
+    <%= case @active_tab do %>
+      <% :details -> %>
+        <.form
+          for={@form}
+          phx-submit="update_portfolio"
+          phx-change="validate_portfolio"
+          class="space-y-6">
+          
+          <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+            <div class="sm:col-span-4">
+              <.input field={@form[:title]} type="text" label="Title" required />
+            </div>
+            
+            <!-- Custom URL Field -->
+            <div class="sm:col-span-4">
+              <div class="flex items-start">
+                <div class="flex-1">
+                  <label for="portfolio_slug" class="block text-sm font-medium text-gray-700">
+                    Custom Portfolio URL
+                  </label>
+                  <div class="mt-1 flex rounded-md shadow-sm">
+                    <span class="inline-flex items-center px-3 py-2 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                      <%= FrestylWeb.Endpoint.url() %>/
+                    </span>
+                    <.input 
+                      field={@form[:slug]} 
+                      type="text" 
+                      placeholder="my-awesome-portfolio"
+                      class="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md focus:ring-purple-500 focus:border-purple-500 sm:text-sm border-gray-300"
+                      style="margin-top: 0; border-top-left-radius: 0; border-bottom-left-radius: 0;"
+                    />
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500">
+                    This will be your portfolio's URL. Use only lowercase letters, numbers, and hyphens. Must be 3-50 characters.
+                  </p>
+                  
+                  <!-- Live URL Preview -->
+                  <%= if @form[:slug].value do %>
+                    <div class="mt-2 p-2 bg-purple-50 border border-purple-200 rounded-md">
+                      <p class="text-xs text-purple-700">
+                        <strong>Your portfolio will be available at:</strong><br>
+                        <code class="text-purple-800"><%= FrestylWeb.Endpoint.url() %>/<%= @form[:slug].value %></code>
+                      </p>
+                    </div>
+                  <% end %>
+                  
+                  <!-- Show validation errors for slug -->
+                  <%= if @form[:slug].errors != [] do %>
+                    <%= for {msg, _} <- @form[:slug].errors do %>
+                      <p class="mt-1 text-sm text-red-600">
+                        <svg class="inline h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                        <%= msg %>
+                      </p>
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+            
+            <div class="sm:col-span-3">
+              <.input
+                field={@form[:visibility]}
+                type="select"
+                label="Visibility"
+                options={[
+                  {"Public - Anyone can view", "public"},
+                  {"Private - Only you can view", "private"},
+                  {"Link only - People with the link can view", "link_only"}
+                ]}
+                required
+              />
+            </div>
+            
+            <div class="sm:col-span-3">
+              <.input
+                field={@form[:approval_required]}
+                type="checkbox"
+                label="Require approval before viewing"
+              />
+              <p class="mt-1 text-sm text-gray-500">
+                When enabled, you'll need to approve each person before they can view your portfolio.
+              </p>
+            </div>
+            
+            <div class="sm:col-span-6">
+              <.input field={@form[:description]} type="textarea" label="Description" />
+              <p class="mt-1 text-sm text-gray-500">
+                Briefly describe what this portfolio showcases.
+              </p>
+            </div>
+          </div>
+          
+          <div class="flex justify-end">
+            <.button type="submit">Save Changes</.button>
+          </div>
+        </.form>
+      
+      <% :sections -> %>
+        <%= if @section_edit_id do %>
+          <!-- Section editor -->
+          <% section = Enum.find(@sections, & &1.id == String.to_integer(@section_edit_id)) %>
+          <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+              <h3 class="text-lg font-medium leading-6 text-gray-900">Edit Section</h3>
+              
+              <.form
+                phx-submit="save_section"
+                class="mt-5 space-y-6">
+                
+                <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                  <div class="sm:col-span-3">
+                    <.input name="section[title]" type="text" label="Section Title" value={section.title} required />
+                  </div>
+                  
+                  <div class="sm:col-span-3">
+                    <.input
+                      name="section[section_type]"
+                      type="select"
+                      label="Section Type"
+                      value={section.section_type}
+                      options={[
+                        {"Introduction", "intro"},
+                        {"Work Experience", "experience"},
+                        {"Education", "education"},
+                        {"Skills", "skills"},
+                        {"Contact Information", "contact"},
+                        {"Custom Section", "custom"}
+                      ]}
+                      required
+                    />
+                  </div>
+                  
+                  <div class="sm:col-span-2">
+                    <.input
+                      name="section[visible]"
+                      type="checkbox"
+                      label="Visible"
+                      value={section.visible}
+                      checked={section.visible}
+                    />
+                  </div>
+                  
+                  <!-- Dynamic fields based on section type -->
+                  <%= case section.section_type do %>
+                    <% :intro -> %>
+                      <div class="sm:col-span-6">
+                        <.input
+                          name="section[headline]"
+                          type="text"
+                          label="Headline"
+                          value={section.content["headline"]}
+                        />
+                      </div>
+                      
+                      <div class="sm:col-span-6">
+                        <.input
+                          name="section[summary]"
+                          type="textarea"
+                          label="Summary"
+                          value={section.content["summary"]}
+                        />
+                      </div>
+                    
+                  <% :experience -> %>
+                    <!-- Dynamic jobs list -->
+                    <div class="sm:col-span-6">
+                      <h4 class="text-md font-medium text-gray-700 mb-2">Work Experience</h4>
+                      
+                      <!-- Existing jobs -->
+                      <%= if section.content["jobs"] do %>
+                        <%= for {job, index} <- Enum.with_index(section.content["jobs"]) do %>
+                          <div class="mb-4 border border-gray-200 rounded-md p-4 relative">
+                            <div class="flex justify-between items-center mb-2">
+                              <h5 class="font-medium">Job <%= index + 1 %></h5>
+                              <button
+                                type="button"
+                                phx-click="remove_job"
+                                phx-value-section-id={section.id}
+                                phx-value-job-index={index}
+                                class="text-red-600 hover:text-red-800 text-sm">
+                                Remove
+                              </button>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                              <div>
+                                <label class="block text-sm font-medium text-gray-700">Company</label>
+                                <input
+                                  type="text"
+                                  name={"section[jobs][#{index}][company]"}
+                                  value={job["company"]}
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                />
+                              </div>
+                              
+                              <div>
+                                <label class="block text-sm font-medium text-gray-700">Job Title</label>
+                                <input
+                                  type="text"
+                                  name={"section[jobs][#{index}][title]"}
+                                  value={job["title"]}
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                />
+                              </div>
+                              
+                              <div>
+                                <label class="block text-sm font-medium text-gray-700">Start Date</label>
+                                <input
+                                  type="text"
+                                  name={"section[jobs][#{index}][start_date]"}
+                                  value={job["start_date"]}
+                                  placeholder="e.g., January 2020"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                />
+                              </div>
+                              
+                              <div>
+                                <label class="block text-sm font-medium text-gray-700">End Date</label>
+                                <input
+                                  type="text"
+                                  name={"section[jobs][#{index}][end_date]"}
+                                  value={job["end_date"]}
+                                  placeholder="Leave blank if current"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                />
+                              </div>
+                              
+                              <div class="sm:col-span-1">
+                                <div class="flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    name={"section[jobs][#{index}][current]"}
+                                    value="true"
+                                    checked={job["current"]}
+                                    class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <label class="ml-2 block text-sm text-gray-900">Current Position</label>
+                                </div>
+                              </div>
+                              
+                              <div class="sm:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700">Description</label>
+                                <textarea
+                                  name={"section[jobs][#{index}][description]"}
+                                  rows="3"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                ><%= job["description"] %></textarea>
+                              </div>
+                            </div>
+                          </div>
+                        <% end %>
+                      <% end %>
+                      
+                      <!-- Add job button -->
+                      <button
+                        type="button"
+                        phx-click="add_job"
+                        phx-value-section-id={section.id}
+                        class="mt-2 inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        <.icon name="hero-plus-solid" class="mr-2 h-4 w-4" />
+                        Add Job
+                      </button>
+                    </div>
+                    
+                    <% :education -> %>
+                      <!-- Dynamic education list -->
+                      <div class="sm:col-span-6">
+                        <h4 class="text-md font-medium text-gray-700 mb-2">Education</h4>
+                        
+                        <!-- Existing education entries -->
+                        <%= if section.content["education"] do %>
+                          <%= for {education, index} <- Enum.with_index(section.content["education"]) do %>
+                            <div class="mb-4 border border-gray-200 rounded-md p-4 relative">
+                              <div class="flex justify-between items-center mb-2">
+                                <h5 class="font-medium">Education <%= index + 1 %></h5>
+                                <button
+                                  type="button"
+                                  phx-click="remove_education"
+                                  phx-value-section-id={section.id}
+                                  phx-value-education-index={index}
+                                  class="text-red-600 hover:text-red-800 text-sm">
+                                  Remove
+                                </button>
+                              </div>
+                              
+                              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <div>
+                                  <label class="block text-sm font-medium text-gray-700">Institution</label>
+                                  <input
+                                    type="text"
+                                    name={"section[education][#{index}][institution]"}
+                                    value={education["institution"]}
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label class="block text-sm font-medium text-gray-700">Degree</label>
+                                  <input
+                                    type="text"
+                                    name={"section[education][#{index}][degree]"}
+                                    value={education["degree"]}
+                                    placeholder="e.g., Bachelor of Science"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label class="block text-sm font-medium text-gray-700">Field of Study</label>
+                                  <input
+                                    type="text"
+                                    name={"section[education][#{index}][field]"}
+                                    value={education["field"]}
+                                    placeholder="e.g., Computer Science"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                  />
+                                </div>
+                                
+                                <div>
+                                  <label class="block text-sm font-medium text-gray-700">Graduation Year</label>
+                                  <input
+                                    type="text"
+                                    name={"section[education][#{index}][end_date]"}
+                                    value={education["end_date"]}
+                                    placeholder="e.g., 2020"
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                  />
+                                </div>
+                                
+                                <div class="sm:col-span-2">
+                                  <label class="block text-sm font-medium text-gray-700">Description (Optional)</label>
+                                  <textarea
+                                    name={"section[education][#{index}][description]"}
+                                    rows="2"
+                                    placeholder="Relevant coursework, achievements, etc."
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                                  ><%= education["description"] %></textarea>
+                                </div>
+                              </div>
+                            </div>
+                          <% end %>
+                        <% end %>
+                        
+                        <!-- Add education button -->
+                        <button
+                          type="button"
+                          phx-click="add_education"
+                          phx-value-section-id={section.id}
+                          class="mt-2 inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                          <.icon name="hero-plus-solid" class="mr-2 h-4 w-4" />
+                          Add Education
+                        </button>
+                      </div>
+                    
+                    <% :skills -> %>
+                      <div class="sm:col-span-6">
+                        <h4 class="text-md font-medium text-gray-700 mb-2">Skills</h4>
+                        
+                        <!-- Skills input -->
+                        <div class="mb-4">
+                          <label class="block text-sm font-medium text-gray-700">Add Skills</label>
+                          <div class="mt-1 flex rounded-md shadow-sm">
+                            <input
+                              type="text"
+                              id="new-skill-input"
+                              placeholder="Enter a skill and press Enter"
+                              class="flex-1 min-w-0 block w-full px-3 py-2 rounded-l-md border border-gray-300 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                              phx-keydown="add_skill_on_enter"
+                              phx-key="Enter"
+                              phx-value-section-id={section.id}
+                            />
+                            <button
+                              type="button"
+                              phx-click="add_skill"
+                              phx-value-section-id={section.id}
+                              class="inline-flex items-center px-3 py-2 border border-l-0 border-gray-300 rounded-r-md bg-gray-50 text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                              Add
+                            </button>
+                          </div>
+                          <p class="mt-1 text-sm text-gray-500">
+                            Add skills one at a time or use comma-separated values in the text area below.
+                          </p>
+                        </div>
+                        
+                        <!-- Current skills display -->
+                        <%= if section.content["skills"] && length(section.content["skills"]) > 0 do %>
+                          <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Current Skills</label>
+                            <div class="flex flex-wrap gap-2">
+                              <%= for {skill, index} <- Enum.with_index(section.content["skills"]) do %>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                                  <%= skill %>
+                                  <button
+                                    type="button"
+                                    phx-click="remove_skill"
+                                    phx-value-section-id={section.id}
+                                    phx-value-skill-index={index}
+                                    class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full text-blue-400 hover:bg-blue-200 hover:text-blue-600 focus:outline-none focus:bg-blue-500 focus:text-white">
+                                    <span class="sr-only">Remove skill</span>
+                                    <svg class="w-2 h-2" stroke="currentColor" fill="none" viewBox="0 0 8 8">
+                                      <path stroke-linecap="round" stroke-width="1.5" d="M1 1l6 6m0-6L1 7" />
+                                    </svg>
+                                  </button>
+                                </span>
+                              <% end %>
+                            </div>
+                          </div>
+                        <% end %>
+                        
+                        <!-- Bulk skills textarea -->
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700">All Skills (Comma-separated)</label>
+                          <textarea
+                            name="section[skills]"
+                            rows="3"
+                            placeholder="JavaScript, Elixir, Phoenix, React, etc."
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                          ><%= if section.content["skills"], do: Enum.join(section.content["skills"], ", "), else: "" %></textarea>
+                          <p class="mt-1 text-sm text-gray-500">
+                            You can also edit all skills directly here using comma-separated values.
+                          </p>
+                        </div>
+                      </div>
+                    
+                    <% :contact -> %>
+                      <div class="sm:col-span-6">
+                        <.input
+                          name="section[email]"
+                          type="email"
+                          label="Email Address"
+                          value={section.content["email"]}
+                        />
+                      </div>
+                      
+                      <div class="sm:col-span-6">
+                        <.input
+                          name="section[phone]"
+                          type="text"
+                          label="Phone Number"
+                          value={section.content["phone"]}
+                        />
+                      </div>
+                      
+                      <div class="sm:col-span-6">
+                        <.input
+                          name="section[location]"
+                          type="text"
+                          label="Location"
+                          value={section.content["location"]}
+                        />
+                      </div>
+                    
+                    <% :custom -> %>
+                      <div class="sm:col-span-6">
+                        <div class="mb-4">
+                          <label class="block text-sm font-medium text-gray-700">Section Heading</label>
+                          <input
+                            type="text"
+                            name="section[custom_title]"
+                            value={section.content["title"]}
+                            placeholder="e.g., Projects, Certifications, Awards"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700">Content</label>
+                          <textarea
+                            name="section[custom_content]"
+                            rows="8"
+                            placeholder="Write about your projects, certifications, awards, or any other relevant information..."
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                          ><%= section.content["content"] %></textarea>
+                          <p class="mt-1 text-sm text-gray-500">
+                            You can use line breaks to organize your content. This section supports any custom content you'd like to showcase.
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div class="sm:col-span-6">
+                        <.input
+                          name="section[custom_content]"
+                          type="textarea"
+                          label="Section Content"
+                          value={section.content["content"]}
+                          rows={6}
+                        />
+                      </div>
+                  <% end %>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    phx-click="cancel_section_edit"
+                    class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                    Cancel
+                  </button>
+                  
+                  <button
+                    type="submit"
+                    class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Save Section
+                  </button>
+                </div>
+              </.form>
+            </div>
+          </div>
+        <% else %>
+          <!-- Sections list -->
+          <div class="mb-4 flex justify-between items-center">
+            <h3 class="text-lg font-medium text-gray-900">Portfolio Sections</h3>
+            
+            <button
+              phx-click="add_section"
+              class="inline-flex items-center px-3 py-1.5 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+              <.icon name="hero-plus-solid" class="mr-2 h-4 w-4" />
+              Add Section
+            </button>
+          </div>
+          
+          <div class="space-y-4">
+            <%= if Enum.empty?(@sections) do %>
+              <div class="py-8 text-center">
+                <p class="text-gray-500">No sections yet. Add a section to start building your portfolio.</p>
+              </div>
+            <% else %>
+              <%= for section <- @sections do %>
+                <div class="border border-gray-200 rounded-md hover:shadow-sm transition-shadow">
+                  <div class="px-4 py-5 sm:p-6 flex justify-between items-start">
+                    <div>
+                      <h4 class="text-lg font-medium text-gray-900 flex items-center">
+                        <%= section.title %>
+                        <%= if !section.visible do %>
+                          <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            Hidden
+                          </span>
+                        <% end %>
+                      </h4>
+                      
+                      <p class="mt-1 text-sm text-gray-500">
+                        Type: <%= section.section_type |> Atom.to_string() |> String.capitalize() %>
+                      </p>
+                    </div>
+                    
+                    <div class="flex space-x-3">
+                      <button
+                        phx-click="edit_section"
+                        phx-value-id={section.id}
+                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        <.icon name="hero-pencil-square-solid" class="mr-2 h-4 w-4" />
+                        Edit
+                      </button>
+                      
+                      <button
+                        phx-click="delete_section"
+                        phx-value-id={section.id}
+                        data-confirm="Are you sure you want to delete this section? This cannot be undone."
+                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                        <.icon name="hero-trash-solid" class="mr-2 h-4 w-4 text-red-500" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
+            <% end %>
+          </div>
+        <% end %>
+      
+    <% :media -> %>
+      <div class="bg-white shadow sm:rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+          <h3 class="text-lg font-medium leading-6 text-gray-900">Media & Attachments</h3>
+          <div class="mt-2 max-w-xl text-sm text-gray-500">
+            <p>Upload documents, images, videos, or other files to showcase in your portfolio.</p>
+          </div>
+          
+          <div class="mt-5">
+            <.form
+              phx-submit="save_media"
+              phx-change="validate_upload"
+              class="space-y-6">
+              
+              <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                <div class="sm:col-span-3">
+                  <label for="media_section_id" class="block text-sm font-medium text-gray-700">Add to Section</label>
+                  <select
+                    id="media_section_id"
+                    name="media[section_id]"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    <option value="">None</option>
+                    <%= for section <- @sections do %>
+                      <option value={section.id}><%= section.title %></option>
+                    <% end %>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                <div class="space-y-1 text-center">
+                  <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  <div class="flex text-sm text-gray-600">
+                    <label for="file-upload" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                      <span>Upload files</span>
+                      <.live_file_input upload={@uploads.media} class="sr-only" />
+                    </label>
+                    <p class="pl-1">or drag and drop</p>
+                  </div>
+                  <p class="text-xs text-gray-500">
+                    PNG, JPG, GIF, MP4, MP3, PDF up to <%= @limits.max_media_size_mb %>MB
+                  </p>
+                </div>
+              </div>
+              
+              <div class="mt-4">
+                <%= for entry <- @uploads.media.entries do %>
+                  <div class="flex items-center space-x-3 mb-2">
+                    <div class="flex-1">
+                      <div class="text-sm font-medium text-gray-900"><%= entry.client_name %></div>
+                      <div class="text-xs text-gray-500"><%= entry.client_type %>, <%= entry.client_size %> bytes</div>
+                      
+                      <!-- Progress bar -->
+                      <div class="mt-1 relative pt-1">
+                        <div class="flex mb-2 items-center justify-between">
+                          <div>
+                            <span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-blue-600 bg-blue-200">
+                              <%= if entry.progress == 100, do: "Ready", else: "Uploading..." %>
+                            </span>
+                          </div>
+                          <div class="text-right">
+                            <span class="text-xs font-semibold inline-block text-blue-600">
+                              <%= entry.progress %>%
+                            </span>
+                          </div>
+                        </div>
+                        <div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-blue-200">
+                          <div style={"width: #{entry.progress}%"} class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500"></div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <button type="button" phx-click="cancel_upload" phx-value-ref={entry.ref} class="text-red-600 hover:text-red-800">
+                      <.icon name="hero-x-mark-solid" class="h-5 w-5" />
+                    </button>
+                  </div>
+                  
+                  <%= for err <- upload_errors(@uploads.media, entry) do %>
+                    <div class="text-sm text-red-600 mb-2"><%= error_to_string(err) %></div>
+                  <% end %>
+                <% end %>
+              </div>
+              
+              <div class="flex justify-end">
+                <.button
+                  type="submit"
+                  disabled={Enum.empty?(@uploads.media.entries)}
+                  class={"inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 #{if Enum.empty?(@uploads.media.entries), do: "bg-gray-400 cursor-not-allowed", else: "bg-blue-600 hover:bg-blue-700"}"}>
+                  Upload Files
+                </.button>
+              </div>
+            </.form>
+          </div>
+          
+          <!-- Media list would go here -->
+        </div>
+      </div>
+      
+      <% :theme -> %>
+        <div class="bg-white shadow sm:rounded-lg">
+          <div class="px-4 py-5 sm:p-6">
+            <h3 class="text-lg font-medium leading-6 text-gray-900">Theme & Layout</h3>
+            
+            <%= if @limits.custom_themes do %>
+              <div class="mt-2 max-w-xl text-sm text-gray-500">
+                <p>Customize the look and feel of your portfolio.</p>
+              </div>
+              
+              <.form
+                for={@form}
+                phx-submit="update_portfolio"
+                class="mt-5 space-y-6">
+                
+                <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                  <div class="sm:col-span-3">
+                    <.input
+                      field={@form[:theme]}
+                      type="select"
+                      label="Theme"
+                      options={[
+                        {"Modern (Default)", "default"},
+                        {"Minimalist", "minimalist"},
+                        {"Creative", "creative"},
+                        {"Professional", "professional"},
+                        {"Classic", "classic"}
+                      ]}
+                    />
+                  </div>
+                  
+                  <div class="sm:col-span-6">
+                    <.input
+                      field={@form[:custom_css]}
+                      type="textarea"
+                      label="Custom CSS"
+                      placeholder="/* Add your custom CSS here */"
+                      rows={8}
+                    />
+                    <p class="mt-1 text-xs text-gray-500">
+                      Advanced: Add your own CSS to customize your portfolio's appearance.
+                    </p>
+                  </div>
+                </div>
+                
+                <div class="flex justify-end">
+                  <.button type="submit">Save Changes</.button>
+                </div>
+              </.form>
+            <% else %>
+              <div class="mt-2 max-w-xl">
+                <div class="rounded-md bg-yellow-50 p-4">
+                  <div class="flex">
+                    <div class="flex-shrink-0">
+                      <svg class="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                      </svg>
+                    </div>
+                    <div class="ml-3">
+                      <h3 class="text-sm font-medium text-yellow-800">Premium Feature</h3>
+                      <div class="mt-2 text-sm text-yellow-700">
+                        <p>
+                          Custom themes are available on higher subscription tiers. Upgrade your plan to access this feature.
+                        </p>
+                      </div>
+                      <div class="mt-4">
+                        <.link
+                          navigate="/account/subscription"
+                          class="inline-flex items-center px-3 py-1.5 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                          Upgrade Plan
+                        </.link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+    <% end %>
+  </div>
+</div>

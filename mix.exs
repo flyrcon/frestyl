@@ -65,6 +65,8 @@ defmodule Frestyl.MixProject do
       {:jason, "~> 1.4"},
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
+      {:timex, "~> 3.7"},
+      {:tzdata, "~> 1.1"},
       {:waffle, "~> 1.1"},
       {:waffle_ecto, "~> 0.0.11"},
       {:ex_aws, "~> 2.4"},

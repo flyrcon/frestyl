@@ -53,7 +53,7 @@ defmodule Frestyl.Sessions.Session do
     ])
     |> validate_required([:title, :channel_id])
     |> validate_inclusion(:status, ["active", "scheduled", "ended", "cancelled"])
-    |> validate_inclusion(:session_type, ["mixed", "audio", "text", "visual", "midi"])
+    |> validate_inclusion(:session_type, ["mixed", "audio", "text", "visual", "midi", "broadcast"]) # Added "broadcast"
     |> validate_broadcast_fields()
     |> validate_session_scheduling()
   end
@@ -95,7 +95,7 @@ defmodule Frestyl.Sessions.Session do
     session
     |> cast(attrs, [:title, :description, :session_type, :is_public, :channel_id, :creator_id, :max_participants])
     |> validate_required([:title, :channel_id, :creator_id])
-    |> validate_inclusion(:session_type, ["mixed", "audio", "text", "visual", "midi"])
+    |> validate_inclusion(:session_type, ["mixed", "audio", "text", "visual", "midi", "broadcast"]) # Added "broadcast"
     |> put_change(:status, "active")
   end
 
@@ -149,7 +149,9 @@ defmodule Frestyl.Sessions.Session do
     if waiting_room_enabled && is_nil(waiting_room_open_time) && scheduled_for do
       # Default to opening waiting room 15 minutes before scheduled time
       open_time = DateTime.add(scheduled_for, -15 * 60, :second)
-      put_change(changeset, :waiting_room_open_time, open_time)
+      # Truncate microseconds to match database precision
+      truncated_open_time = DateTime.truncate(open_time, :second)
+      put_change(changeset, :waiting_room_open_time, truncated_open_time)
     else
       changeset
     end
