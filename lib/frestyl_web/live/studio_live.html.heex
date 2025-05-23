@@ -1,0 +1,279 @@
+# lib/frestyl_web/live/studio_live.html.heex
+
+<div class="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900">
+  <!-- Enhanced Header with Modern Styling -->
+  <header class="flex items-center justify-between px-6 py-4 bg-black/20 backdrop-blur-xl border-b border-white/10 sticky top-0 z-50">
+    <div class="flex items-center gap-6">
+      <div class="mr-4">
+        <.link navigate={~p"/channels/#{@channel.slug}"} class="text-white hover:text-purple-300 transition-colors group">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 group-hover:transform group-hover:-translate-x-1 transition-all" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+          </svg>
+        </.link>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <div class="text-sm text-purple-300 uppercase tracking-wider font-bold">
+          <%= @channel.name %>
+        </div>
+        <span class="text-purple-400">/</span>
+        <input
+          type="text"
+          value={@session.title || "Untitled Session"}
+          phx-blur="update_session_title"
+          class={[
+            "bg-transparent border-b-2 border-purple-400 focus:border-pink-400 text-white focus:outline-none text-xl font-bold placeholder-purple-300 transition-colors",
+            !can_edit_session?(@permissions) && "cursor-not-allowed"
+          ]}
+          readonly={!can_edit_session?(@permissions)}
+          aria-label="Session name"
+          placeholder="Enter session title..."
+        />
+      </div>
+    </div>
+
+    <div class="flex items-center space-x-4">
+      <!-- OT Status Indicators with Enhanced Styling -->
+      <%= if length(@pending_operations) > 0 do %>
+        <div class="flex items-center space-x-2 text-yellow-300 text-sm bg-yellow-900/30 px-3 py-1.5 rounded-full backdrop-blur-sm border border-yellow-500/30">
+          <div class="animate-pulse w-2 h-2 bg-yellow-400 rounded-full"></div>
+          <span class="font-medium"><%= length(@pending_operations) %> syncing</span>
+        </div>
+      <% end %>
+
+      <%= if length(@operation_conflicts) > 0 do %>
+        <div class="flex items-center space-x-2 text-red-300 text-sm bg-red-900/30 px-3 py-1.5 rounded-full backdrop-blur-sm border border-red-500/30 cursor-pointer" phx-click="clear_conflicts">
+          <div class="w-2 h-2 bg-red-400 rounded-full"></div>
+          <span class="font-medium"><%= length(@operation_conflicts) %> conflicts</span>
+        </div>
+      <% end %>
+
+      <!-- Connection status with modern indicator -->
+      <div class="flex items-center gap-2">
+        <span class={[
+          "h-3 w-3 rounded-full animate-pulse",
+          cond do
+            @connection_status == "connected" -> "bg-green-400 shadow-lg shadow-green-400/50"
+            @connection_status == "connecting" -> "bg-yellow-400 shadow-lg shadow-yellow-400/50"
+            true -> "bg-red-400 shadow-lg shadow-red-400/50"
+          end
+        ]} title={String.capitalize(@connection_status)}></span>
+        <span class="text-white/70 text-sm font-medium"><%= String.capitalize(@connection_status) %></span>
+      </div>
+
+      <!-- Collaborators indicator with avatars -->
+      <div class="relative flex items-center">
+        <div class="flex -space-x-2">
+          <%= for collaborator <- Enum.take(@collaborators, 3) do %>
+            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold border-2 border-white/20 shadow-lg">
+              <%= String.first(collaborator.username || "U") %>
+            </div>
+          <% end %>
+          <%= if length(@collaborators) > 3 do %>
+            <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-white text-xs font-bold border-2 border-white/20">
+              +<%= length(@collaborators) - 3 %>
+            </div>
+          <% end %>
+        </div>
+        <span class="ml-3 text-white/70 text-sm font-medium"><%= length(@collaborators) %> online</span>
+      </div>
+
+      <!-- Invite button with glow effect -->
+      <%= if can_invite_users?(@permissions) do %>
+        <button
+          type="button"
+          phx-click="toggle_invite_modal"
+          class="group relative overflow-hidden bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 p-3 rounded-2xl text-white shadow-lg shadow-pink-500/25 hover:shadow-xl hover:shadow-pink-500/40 transition-all duration-300 transform hover:scale-110"
+          aria-label="Invite collaborators"
+        >
+          <div class="absolute inset-0 bg-white/20 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 relative z-10" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
+          </svg>
+        </button>
+      <% end %>
+
+      <!-- Settings button -->
+      <button
+        type="button"
+        phx-click="toggle_settings_modal"
+        class="text-white/70 hover:text-white p-3 rounded-2xl hover:bg-white/10 transition-all duration-200"
+        aria-label="Settings"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+        </svg>
+      </button>
+
+      <!-- OT Debug Toggle with modern styling -->
+      <%= if Application.get_env(:frestyl, :environment) == :dev do %>
+        <button
+          phx-click="toggle_ot_debug"
+          class={[
+            "text-xs px-3 py-1.5 rounded-full font-bold transition-all duration-200",
+            @ot_debug_mode && "bg-yellow-500 text-black shadow-lg shadow-yellow-500/50" || "bg-gray-700 text-gray-300 hover:bg-gray-600"
+          ]}
+          title="Toggle OT Debug"
+        >
+          OT
+        </button>
+      <% end %>
+
+      <!-- End Session button with warning styling -->
+      <%= if @current_user.id == @session.creator_id || @current_user.id == @session.host_id do %>
+        <button
+          type="button"
+          phx-click="end_session"
+          class="group relative overflow-hidden bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-4 py-2 rounded-2xl text-white font-bold shadow-lg shadow-red-500/25 hover:shadow-xl hover:shadow-red-500/40 transition-all duration-300"
+        >
+          <div class="absolute inset-0 bg-white/20 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+          <span class="relative z-10">End Session</span>
+        </button>
+      <% end %>
+    </div>
+  </header>
+
+  <!-- OT Debug Panel with modern styling -->
+  <%= if @ot_debug_mode do %>
+    <div class="bg-yellow-900/20 backdrop-blur-sm border-b border-yellow-500/30 p-4 text-sm text-yellow-100">
+      <div class="flex flex-wrap gap-6">
+        <div class="flex items-center gap-2">
+          <span class="text-yellow-300">Text:</span>
+          <span class="bg-yellow-900/50 px-2 py-1 rounded">v<%= @workspace_state.text.version %></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-yellow-300">Audio:</span>
+          <span class="bg-yellow-900/50 px-2 py-1 rounded">v<%= @workspace_state.audio.version %></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-yellow-300">Pending:</span>
+          <span class="bg-yellow-900/50 px-2 py-1 rounded"><%= length(@pending_operations) %></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-yellow-300">Conflicts:</span>
+          <span class="bg-yellow-900/50 px-2 py-1 rounded"><%= length(@operation_conflicts) %></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-yellow-300">Track Counter:</span>
+          <span class="bg-yellow-900/50 px-2 py-1 rounded"><%= @workspace_state.audio.track_counter %></span>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Main content area with enhanced layout -->
+  <div class="flex flex-1 overflow-hidden" id="main-content">
+    <!-- Left sidebar - Tools with modern styling -->
+    <div class="w-20 bg-black/30 backdrop-blur-xl flex flex-col items-center py-6 space-y-4 border-r border-white/10">
+      <%= for tool <- @tools do %>
+        <button
+          type="button"
+          phx-click="set_active_tool"
+          phx-value-tool={tool.id}
+          class={[
+            "group relative p-4 rounded-2xl transition-all duration-300 transform hover:scale-110",
+            @active_tool == tool.id && "bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-2xl shadow-pink-500/50",
+            @active_tool != tool.id && "text-white/60 hover:text-white hover:bg-white/10",
+            !tool.enabled && "opacity-30 cursor-not-allowed"
+          ]}
+          disabled={!tool.enabled}
+          aria-label={tool.name}
+          aria-pressed={@active_tool == tool.id}
+          title={tool.name}
+        >
+          <!-- Glow effect for active tool -->
+          <%= if @active_tool == tool.id do %>
+            <div class="absolute inset-0 bg-gradient-to-r from-pink-500/20 to-purple-600/20 rounded-2xl blur-xl"></div>
+          <% end %>
+          
+          <div class={[
+            "relative z-10 p-2 rounded-xl transition-all duration-200",
+            @active_tool == tool.id && "bg-white/20",
+            @active_tool != tool.id && "bg-white/5 group-hover:bg-white/10"
+          ]}>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <%= case tool.icon do %>
+                <% "microphone" -> %>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                <% "music-note" -> %>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                <% "document-text" -> %>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <% "pencil" -> %>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              <% end %>
+            </svg>
+          </div>
+          
+          <!-- Tool name tooltip on hover -->
+          <div class="absolute left-full ml-4 px-3 py-2 bg-black/80 backdrop-blur-sm text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20">
+            <%= tool.name %>
+          </div>
+        </button>
+      <% end %>
+    </div>
+
+    <!-- Enhanced Workspace area -->
+    <div class="flex-1 overflow-hidden">
+      <%= case @active_tool do %>
+        <% "audio" -> %>
+          <div class="h-full flex flex-col bg-black/20 backdrop-blur-sm">
+            <div class="flex items-center justify-between p-6 border-b border-white/10 bg-black/30 backdrop-blur-xl">
+              <div class="flex items-center gap-4">
+                <h2 class="text-white text-2xl font-bold flex items-center gap-3">
+                  <div class="p-2 bg-gradient-to-r from-pink-500 to-purple-600 rounded-xl">
+                    <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                  </div>
+                  Audio Workspace
+                </h2>
+                <span class="text-sm text-purple-300 bg-purple-900/30 px-3 py-1.5 rounded-full border border-purple-500/30">
+                  Next: Track <%= @workspace_state.audio.track_counter + 1 %>
+                </span>
+              </div>
+
+              <div class="flex items-center space-x-3">
+                <%= if can_edit_audio?(@permissions) do %>
+                  <button
+                    type="button"
+                    phx-click="audio_add_track"
+                    class="group relative overflow-hidden bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 p-3 rounded-2xl text-white shadow-lg shadow-green-500/25 hover:shadow-xl hover:shadow-green-500/40 transition-all duration-300 transform hover:scale-110"
+                    aria-label="Add track"
+                  >
+                    <div class="absolute inset-0 bg-white/20 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 relative z-10" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                    </svg>
+                    
+                    <!-- Pending operation indicator with glow -->
+                    <%= if Enum.any?(@pending_operations, &(&1.type == :audio && &1.action == :add_track)) do %>
+                      <div class="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full animate-pulse shadow-lg shadow-yellow-400/50"></div>
+                    <% end %>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-6">
+              <%= if length(@workspace_state.audio.tracks) == 0 do %>
+                <div class="h-full flex flex-col items-center justify-center text-white/70">
+                  <div class="w-24 h-24 mb-8 bg-gradient-to-br from-pink-500/20 to-purple-600/20 rounded-3xl flex items-center justify-center border border-pink-500/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                  </div>
+                  <h3 class="text-2xl font-bold mb-4">No audio tracks yet</h3>
+                  <p class="text-white/50 mb-8 text-center max-w-md">Start your audio journey by adding your first track. Collaborate with others in real-time!</p>
+                  <%= if can_edit_audio?(@permissions) do %>
+                    <button
+                      phx-click="audio_add_track"
+                      class="group relative overflow-hidden px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold rounded-2xl shadow-2xl shadow-pink-500/50 hover:shadow-pink-500/70 transition-all duration-300 transform hover:scale-105"
+                    >
+                      <div class="absolute inset-0 bg-white/20 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+                      <span class="relative z-10">Add your first track</span>
+                    </button>
+                  <% else %>
+                    <div class="text-center">
+                      <p class="text-white/50 bg-white/5 px-6 py-3 rounded-2xl border border-white/10">You don't have permission to add tracks</p>
+                    </div>

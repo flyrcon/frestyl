@@ -1,43 +1,50 @@
+<!-- lib/frestyl_web/components/layouts/app.html.heex -->
 <.flash_group flash={@flash} />
 
-<header class="px-4 sm:px-6 lg:px-8">
-  <%= if assigns[:current_user] && assigns[:conn] do %>
-    <meta name="user-token" content={Phoenix.Token.sign(@conn, "user socket", @current_user.id)} />
-  <% end %>
+<!-- Only render navigation for authenticated dashboard views -->
+<%= if assigns[:current_user] && assigns[:show_nav] != false do %>
+  <%= @inner_content %>
+<% else %>
+  <!-- Legacy layout for non-dashboard pages -->
+  <header class="px-4 sm:px-6 lg:px-8">
+    <%= if assigns[:current_user] && assigns[:conn] do %>
+      <meta name="user-token" content={Phoenix.Token.sign(@conn, "user socket", @current_user.id)} />
+    <% end %>
 
-  <div class="flex items-center justify-between border-b border-zinc-100 py-3 text-sm">
-    <div class="flex items-center gap-4">
-      <a href="/dashboard">
-        <img src={~p"/images/frestyl_logo.svg"} width="90" />
-      </a>
-    </div>
-    <div class="flex items-center gap-4 font-semibold leading-6 text-zinc-900">
-      <div class="flex-1 px-4 flex justify-center">
-        <div class="w-full max-w-lg">
-          <.form :let={f} for={%{}} action={~p"/search"} method="get" as="search" class="flex">
-            <input
-              type="text"
-              name="q"
-              placeholder="Search"
-              class="block w-full rounded-l-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-            />
-            <button
-              type="submit"
-              class="inline-flex items-center rounded-r-md border border-l-0 border-gray-300 bg-gray-50 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-            >
-              <svg class="h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd" />
-              </svg>
-            </button>
-          </.form>
+    <div class="flex items-center justify-between border-b border-zinc-100 py-3 text-sm">
+      <div class="flex items-center gap-4">
+        <a href="/dashboard">
+          <img src={~p"/images/frestyl_logo.svg"} width="90" />
+        </a>
+      </div>
+      <div class="flex items-center gap-4 font-semibold leading-6 text-zinc-900">
+        <div class="flex-1 px-4 flex justify-center">
+          <div class="w-full max-w-lg">
+            <.form :let={f} for={%{}} action={~p"/search"} method="get" as="search" class="flex">
+              <input
+                type="text"
+                name="q"
+                placeholder="Search"
+                class="block w-full rounded-l-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+              />
+              <button
+                type="submit"
+                class="inline-flex items-center rounded-r-md border border-l-0 border-gray-300 bg-gray-50 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                <svg class="h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd" />
+                </svg>
+              </button>
+            </.form>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-</header>
-<main class="px-4 py-20 sm:px-6 lg:px-8">
-  <div class="mx-auto max-w-2xl">
-    <.flash_group flash={@flash} />
-    <%= @inner_content %>
-  </div>
-</main>
+  </header>
+  <main class="px-4 py-20 sm:px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl">
+      <.flash_group flash={@flash} />
+      <%= @inner_content %>
+    </div>
+  </main>
+<% end %>

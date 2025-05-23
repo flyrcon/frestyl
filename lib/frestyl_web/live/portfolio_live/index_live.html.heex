@@ -1,77 +1,138 @@
-<!-- lib/frestyl_web/live/portfolio_live/index_live.html.heex -->
-<div class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+<!-- Updated Portfolio Index with Dashboard Design Language -->
+<div class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50">
+  <!-- Include Navigation -->
+  <FrestylWeb.Navigation.nav active_tab={:portfolios} current_user={@current_user} />
   
-  <div class="container px-4 sm:px-6 lg:px-8 mx-auto max-w-full">
-    <header class="py-6">
-      <div class="flex flex-col md:flex-row justify-between md:items-center mb-4">
-        <div>
-          <h1 class="text-2xl md:text-3xl font-bold text-gray-900">My Portfolios</h1>
-          <p class="mt-2 text-sm text-gray-600">
-            Create and manage your professional portfolios to showcase your work and experience.
-          </p>
-        </div>
-        <div class="mt-4 md:mt-0">
-          <button 
-            phx-click="create_portfolio" 
-            disabled={!@can_create}
-            class={"inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 #{if @can_create, do: "bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-800 hover:to-indigo-700", else: "bg-gray-400 cursor-not-allowed"}"}>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-            </svg>
-            Create Portfolio
-          </button>
+  <!-- Hero Section -->
+  <div class="relative overflow-hidden">
+    <!-- Background Elements -->
+    <div class="absolute inset-0 opacity-5">
+      <div class="absolute top-20 left-10 w-72 h-72 bg-gradient-to-br from-[#6A1B9A] to-[#0891B2] rounded-full blur-3xl"></div>
+      <div class="absolute bottom-20 right-10 w-96 h-96 bg-gradient-to-br from-[#C2185B] to-[#FF6B47] rounded-full blur-3xl"></div>
+    </div>
+    
+    <div class="relative px-4 sm:px-6 lg:px-8 xl:px-16 pt-8 pb-4">
+      <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="flex flex-col lg:flex-row justify-between lg:items-end mb-16">
+          <div class="mb-8 lg:mb-0 max-w-4xl">
+            <div class="flex items-center mb-6">
+              <div class="w-2 h-16 bg-gradient-to-b from-[#6A1B9A] to-[#0891B2] rounded-full mr-6"></div>
+              <div>
+                <h1 class="text-5xl lg:text-6xl font-black tracking-tight leading-none">
+                  <span class="bg-gradient-to-r from-[#6A1B9A] via-[#0891B2] to-[#C2185B] bg-clip-text text-transparent">
+                    My Portfolios
+                  </span>
+                </h1>
+              </div>
+            </div>
+            <p class="text-gray-600 text-lg font-medium leading-relaxed max-w-3xl">
+              Create and manage your professional portfolios to showcase your work and experience
+            </p>
+          </div>
+          
+          <!-- Action Button -->
+          <div>
+            <button 
+              phx-click="create_portfolio" 
+              disabled={!@can_create}
+              class={[
+                "group relative px-8 py-4 rounded-2xl font-bold text-lg shadow-xl transform hover:scale-105 transition-all duration-300 overflow-hidden",
+                if(@can_create, 
+                  do: "bg-gradient-to-r from-[#6A1B9A] to-[#0891B2] hover:from-[#5C178B] hover:to-[#0782A3] text-white shadow-[#6A1B9A]/25 hover:shadow-[#6A1B9A]/40", 
+                  else: "bg-gray-400 text-gray-600 cursor-not-allowed"
+                )
+              ]}
+            >
+              <%= if @can_create do %>
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 translate-x-full group-hover:translate-x-[-200%] transition-transform duration-700"></div>
+              <% end %>
+              <div class="relative flex items-center">
+                <div class="w-6 h-6 mr-3 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </div>
+                Create Portfolio
+              </div>
+            </button>
+          </div>
         </div>
       </div>
-    </header>
+    </div>
+  </div>
 
-    <main>
+  <!-- Main Content -->
+  <div class="px-4 sm:px-6 lg:px-8 xl:px-16 -mt-4 mb-20 relative z-10">
+    <div class="max-w-7xl mx-auto">
       <%= if Enum.empty?(@portfolios) do %>
         <!-- Empty State -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div class="text-center py-16">
-            <div class="mx-auto h-16 w-16 text-gray-400 mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-full h-full">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-xl border border-gray-100/50 overflow-hidden">
+          <div class="text-center py-20">
+            <div class="mx-auto w-24 h-24 bg-gradient-to-r from-[#6A1B9A]/10 to-[#0891B2]/10 rounded-full flex items-center justify-center mb-8">
+              <svg class="h-12 w-12 text-[#6A1B9A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
-            <h3 class="text-lg font-semibold text-gray-900">No portfolios yet</h3>
-            <p class="mt-2 text-sm text-gray-500">Get started by creating your first professional portfolio.</p>
-            <div class="mt-6">
+            <h3 class="text-3xl font-bold text-gray-900 mb-4">No portfolios yet</h3>
+            <p class="text-gray-600 mb-10 text-xl">Get started by creating your first professional portfolio</p>
+            <div class="space-y-4">
               <button 
                 phx-click="create_portfolio" 
                 disabled={!@can_create}
-                class={"inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-white shadow-sm transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 #{if @can_create, do: "bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-800 hover:to-indigo-700", else: "bg-gray-400 cursor-not-allowed"}"}>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                class={[
+                  "px-10 py-5 rounded-2xl font-bold text-lg transition-all shadow-lg hover:shadow-xl transform hover:scale-105",
+                  if(@can_create,
+                    do: "bg-gradient-to-r from-[#6A1B9A] to-[#0891B2] hover:from-[#5C178B] hover:to-[#0782A3] text-white",
+                    else: "bg-gray-400 text-gray-600 cursor-not-allowed"
+                  )
+                ]}
+              >
+                <svg class="h-6 w-6 mr-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
                 Create Your First Portfolio
               </button>
+              <%= unless @can_create do %>
+                <p class="text-sm text-gray-500">Upgrade your plan to create portfolios</p>
+              <% end %>
             </div>
           </div>
         </div>
       <% else %>
         <!-- Portfolio Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
           <%= for portfolio <- @portfolios do %>
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-200 transform hover:-translate-y-1">
+            <div class="group bg-white rounded-3xl shadow-xl border border-gray-100/50 overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2">
               <!-- Portfolio Header with Gradient -->
-              <div class="h-20 bg-gradient-to-r from-purple-700 to-indigo-600 flex items-center justify-center relative">
-                <div class="absolute inset-0 bg-black opacity-25"></div>
-                <div class="relative z-10 text-center">
-                  <h3 class="text-lg font-bold text-white line-clamp-1"><%= portfolio.title %></h3>
+              <div class="h-32 bg-gradient-to-r from-[#6A1B9A] via-[#0891B2] to-[#C2185B] flex items-center justify-center relative overflow-hidden">
+                <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+                <!-- Abstract portfolio elements -->
+                <div class="absolute top-4 right-4 w-8 h-8 bg-white bg-opacity-20 rounded-lg transform rotate-12"></div>
+                <div class="absolute bottom-4 left-4 w-12 h-2 bg-white bg-opacity-30 rounded-full"></div>
+                <div class="absolute top-6 left-6 w-4 h-4 bg-white bg-opacity-25 rounded-full"></div>
+                
+                <div class="relative z-10 text-center px-6">
+                  <h3 class="text-xl font-bold text-white truncate">
+                    <%= portfolio.title %>
+                  </h3>
+                  <div class="mt-2 text-white text-opacity-80 text-sm">
+                    /<%= portfolio.slug %>
+                  </div>
                 </div>
               </div>
               
               <!-- Portfolio Content -->
-              <div class="p-5">
-                <div class="flex items-center justify-between mb-3">
-                  <span class={"inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium #{
+              <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                  <span class={[
+                    "inline-flex items-center px-3 py-1 rounded-full text-xs font-bold",
                     case portfolio.visibility do
-                      :public -> "bg-green-100 text-green-800"
-                      :private -> "bg-red-100 text-red-800"
-                      :link_only -> "bg-yellow-100 text-yellow-800"
+                      :public -> "bg-green-100 text-green-800 border border-green-200"
+                      :private -> "bg-red-100 text-red-800 border border-red-200"
+                      :link_only -> "bg-yellow-100 text-yellow-800 border border-yellow-200"
                     end
-                  }"}>
+                  ]}>
                     <%= case portfolio.visibility do %>
                       <% :public -> %>
                         <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -92,38 +153,35 @@
                     <% end %>
                   </span>
                   
-                  <!-- Custom URL Display -->
-                  <div class="text-xs text-gray-500">
-                    /<%= portfolio.slug %>
+                  <div class="text-xs text-gray-500 font-medium">
+                    Updated <%= Calendar.strftime(portfolio.updated_at, "%b %d") %>
                   </div>
                 </div>
                 
-                <p class="text-sm text-gray-600 line-clamp-2 mb-4">
+                <p class="text-gray-600 text-sm line-clamp-3 mb-6 leading-relaxed">
                   <%= portfolio.description || "No description provided." %>
                 </p>
-                
-                <div class="text-xs text-gray-500 mb-4">
-                  Updated: <%= Calendar.strftime(portfolio.updated_at, "%B %d, %Y") %>
-                </div>
               </div>
               
               <!-- Action Buttons -->
-              <div class="border-t border-gray-100 bg-gray-50 px-5 py-3">
+              <div class="border-t border-gray-100 bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4">
                 <div class="flex justify-between items-center">
                   <div class="flex space-x-2">
                     <.link
                       navigate={"/portfolios/#{portfolio.id}/edit"}
-                      class="inline-flex items-center px-2 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded-md hover:bg-purple-200 transition-colors duration-150">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      class="inline-flex items-center px-3 py-2 text-xs font-bold text-[#6A1B9A] bg-[#6A1B9A]/10 rounded-xl hover:bg-[#6A1B9A]/20 transition-all border border-[#6A1B9A]/20"
+                    >
+                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                       Edit
                     </.link>
                     
                     <.link
-                      navigate={"/portfolios/#{portfolio.id}/share"}
-                      class="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded-md hover:bg-blue-200 transition-colors duration-150">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      navigate={("/portfolios/#{portfolio.id}/share")}
+                      class="inline-flex items-center px-3 py-2 text-xs font-bold text-[#0891B2] bg-[#0891B2]/10 rounded-xl hover:bg-[#0891B2]/20 transition-all border border-[#0891B2]/20"
+                    >
+                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                       </svg>
                       Share
@@ -132,10 +190,11 @@
                   
                   <div class="flex space-x-2">
                     <.link
-                      navigate={"/#{portfolio.slug}"}
+                      navigate={("/#{portfolio.slug}")}
                       target="_blank"
-                      class="inline-flex items-center px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-md hover:bg-green-200 transition-colors duration-150">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      class="inline-flex items-center px-3 py-2 text-xs font-bold text-[#C2185B] bg-[#C2185B]/10 rounded-xl hover:bg-[#C2185B]/20 transition-all border border-[#C2185B]/20"
+                    >
+                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                       </svg>
                       View
@@ -144,10 +203,11 @@
                     <button
                       phx-click="delete_portfolio"
                       phx-value-id={portfolio.id}
-                      data-confirm="Are you sure you want to delete '#{portfolio.title}'? This action cannot be undone."
-                      class="inline-flex items-center px-2 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-md hover:bg-red-200 transition-colors duration-150">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16" />
+                      data-confirm={"Are you sure you want to delete '#{portfolio.title}'? This action cannot be undone."}
+                      class="inline-flex items-center px-3 py-2 text-xs font-bold text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-all border border-red-200"
+                    >
+                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                       Delete
                     </button>
@@ -159,80 +219,106 @@
         </div>
       <% end %>
 
-      <!-- Portfolio Limits Section -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div class="p-6">
-          <h2 class="text-lg font-bold text-gray-900 mb-4">Your Portfolio Plan</h2>
+      <!-- Portfolio Plan Information -->
+      <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-xl border border-gray-100/50 overflow-hidden">
+        <div class="p-8 lg:p-12">
+          <div class="flex items-center mb-8">
+            <div class="w-1 h-12 bg-gradient-to-b from-[#6A1B9A] to-[#0891B2] rounded-full mr-6"></div>
+            <h2 class="text-3xl font-black text-gray-900">Your Portfolio Plan</h2>
+          </div>
           
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
             <!-- Portfolios Limit -->
-            <div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-100">
-              <div class="flex items-center">
-                <div class="flex-shrink-0 p-2 rounded-md bg-purple-600 text-white">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
+            <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#6A1B9A]/30 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
+              <div class="h-24 bg-gradient-to-r from-[#6A1B9A]/10 to-[#0891B2]/10 relative overflow-hidden">
+                <div class="absolute top-4 right-4 w-8 h-8 bg-[#6A1B9A]/20 rounded-full"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <div class="w-12 h-12 bg-[#6A1B9A] rounded-2xl flex items-center justify-center text-white">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                  </div>
                 </div>
-                <div class="ml-3">
-                  <h3 class="text-sm font-semibold text-gray-900">Portfolios</h3>
-                  <p class="text-sm text-gray-600">
-                    <%= if @limits.max_portfolios < 0 do %>
-                      <%= length(@portfolios) %> / Unlimited
-                    <% else %>
-                      <%= length(@portfolios) %> / <%= @limits.max_portfolios %>
-                    <% end %>
-                  </p>
-                </div>
+              </div>
+              <div class="p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Portfolios</h3>
+                <p class="text-2xl font-black text-[#6A1B9A] mb-1">
+                  <%= if @limits.max_portfolios < 0 do %>
+                    <%= length(@portfolios) %> / ∞
+                  <% else %>
+                    <%= length(@portfolios) %> / <%= @limits.max_portfolios %>
+                  <% end %>
+                </p>
+                <p class="text-sm text-gray-600">
+                  <%= if @limits.max_portfolios < 0, do: "Unlimited portfolios", else: "Portfolio limit" %>
+                </p>
               </div>
             </div>
             
             <!-- File Storage -->
-            <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
-              <div class="flex items-center">
-                <div class="flex-shrink-0 p-2 rounded-md bg-green-600 text-white">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
+            <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#0891B2]/30 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
+              <div class="h-24 bg-gradient-to-r from-[#0891B2]/10 to-[#C2185B]/10 relative overflow-hidden">
+                <div class="absolute top-4 right-4 w-6 h-6 bg-[#0891B2]/20 rounded-lg"></div>
+                <div class="absolute top-6 right-8 w-4 h-4 bg-[#0891B2]/30 rounded-full"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <div class="w-12 h-12 bg-[#0891B2] rounded-2xl flex items-center justify-center text-white">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
                 </div>
-                <div class="ml-3">
-                  <h3 class="text-sm font-semibold text-gray-900">File Storage</h3>
-                  <p class="text-sm text-gray-600"><%= @limits.max_media_size_mb %> MB per upload</p>
-                </div>
+              </div>
+              <div class="p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-2">File Storage</h3>
+                <p class="text-2xl font-black text-[#0891B2] mb-1">
+                  <%= @limits.max_media_size_mb %>MB
+                </p>
+                <p class="text-sm text-gray-600">Per upload limit</p>
               </div>
             </div>
             
             <!-- ATS Optimization -->
-            <div class="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg p-4 border border-blue-100">
-              <div class="flex items-center">
-                <div class="flex-shrink-0 p-2 rounded-md bg-blue-600 text-white">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
+            <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#C2185B]/30 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
+              <div class="h-24 bg-gradient-to-r from-[#C2185B]/10 to-[#FF6B47]/10 relative overflow-hidden">
+                <div class="absolute top-4 right-4 w-8 h-4 bg-[#C2185B]/20 rounded-full"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <div class="w-12 h-12 bg-[#C2185B] rounded-2xl flex items-center justify-center text-white">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                  </div>
                 </div>
-                <div class="ml-3">
-                  <h3 class="text-sm font-semibold text-gray-900">ATS Optimization</h3>
-                  <p class="text-sm text-gray-600">
-                    <%= if @limits.ats_optimization do %>
-                      <span class="text-green-600 font-medium">Available</span>
-                    <% else %>
-                      <span class="text-amber-600 font-medium">Premium Feature</span>
-                    <% end %>
-                  </p>
-                </div>
+              </div>
+              <div class="p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-2">ATS Optimization</h3>
+                <p class="text-lg font-black mb-1">
+                  <%= if @limits.ats_optimization do %>
+                    <span class="text-[#C2185B]">✓ Available</span>
+                  <% else %>
+                    <span class="text-amber-600">Premium</span>
+                  <% end %>
+                </p>
+                <p class="text-sm text-gray-600">
+                  <%= if @limits.ats_optimization, do: "Optimize for job portals", else: "Upgrade to unlock" %>
+                </p>
               </div>
             </div>
           </div>
           
           <%= if !@can_create || @limits.max_portfolios == 1 do %>
-            <div class="bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg p-4 border border-amber-200">
-              <div class="flex items-center justify-between">
-                <div>
-                  <h3 class="text-sm font-semibold text-gray-900">Need more portfolios or advanced features?</h3>
-                  <p class="text-sm text-gray-600 mt-1">Upgrade your plan to unlock additional portfolios and premium features.</p>
+            <div class="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-8 border border-amber-200">
+              <div class="flex flex-col md:flex-row md:items-center justify-between">
+                <div class="mb-6 md:mb-0">
+                  <h3 class="text-xl font-bold text-gray-900 mb-2">Need more portfolios or advanced features?</h3>
+                  <p class="text-gray-600">Upgrade your plan to unlock additional portfolios and premium features.</p>
                 </div>
                 <.link
                   navigate="/account/subscription"
-                  class="inline-flex items-center rounded-lg bg-gradient-to-r from-amber-600 to-orange-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:from-amber-700 hover:to-orange-600 transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
+                  class="inline-flex items-center px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-500 text-white font-bold hover:from-amber-700 hover:to-orange-600 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
                   Upgrade Plan
                 </.link>
               </div>
@@ -240,23 +326,77 @@
           <% end %>
         </div>
       </div>
-    </main>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation (from dashboard) -->
+  <div class="fixed bottom-0 left-0 right-0 lg:hidden z-50 bg-white/90 backdrop-blur-lg border-t border-gray-200/50 shadow-2xl">
+    <div class="safe-area-bottom">
+      <div class="grid grid-cols-5 h-20">
+        
+        <!-- Dashboard Tab -->
+        <.link navigate={~p"/dashboard"} class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-gray-500 hover:text-gray-700">
+          <div class="p-2 rounded-xl transition-all duration-300">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Dashboard</span>
+        </.link>
+        
+        <!-- Channels Tab -->
+        <.link navigate={~p"/channels"} class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-gray-500 hover:text-gray-700">
+          <div class="p-2 rounded-xl transition-all duration-300">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Channels</span>
+        </.link>
+        
+        <!-- CENTER UPLOAD BUTTON -->
+        <div class="flex items-center justify-center">
+          <.link navigate={~p"/media/upload"} class="w-16 h-16 bg-gradient-to-r from-[#FF6B47] to-[#C2185B] rounded-full flex items-center justify-center shadow-xl shadow-[#FF6B47]/30 transform hover:scale-110 active:scale-95 transition-all duration-300 border-4 border-white">
+            <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+          </.link>
+        </div>
+        
+        <!-- Chat Tab -->
+        <.link navigate={~p"/chat"} class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-gray-500 hover:text-gray-700">
+          <div class="p-2 rounded-xl transition-all duration-300">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Chat</span>
+        </.link>
+        
+        <!-- Portfolio Tab (Active) -->
+        <.link navigate={~p"/portfolios"} class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-[#6A1B9A]">
+          <div class="absolute top-0 w-12 h-1 bg-gradient-to-r from-[#6A1B9A] to-[#0891B2] rounded-b-full"></div>
+          <div class="p-2 rounded-xl transition-all duration-300 bg-gradient-to-br from-[#6A1B9A]/10 to-[#0891B2]/10 scale-110">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Portfolio</span>
+        </.link>
+      </div>
+    </div>
   </div>
 </div>
 
 <style>
-  /* Line clamp utilities */
-  .line-clamp-1 {
+  .line-clamp-3 {
     display: -webkit-box;
-    -webkit-line-clamp: 1;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
   
-  .line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
   }
 </style>

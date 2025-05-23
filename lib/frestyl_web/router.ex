@@ -329,7 +329,6 @@ defmodule FrestylWeb.Router do
     get "/*path", MediaController, :serve_file
   end
 
-
   scope "/", FrestylWeb do
     pipe_through [:browser]
 

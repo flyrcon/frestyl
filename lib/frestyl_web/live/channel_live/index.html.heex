@@ -1,162 +1,292 @@
-<!-- lib/frestyl_web/live/channel_live/index.html.heex -->
-<div class="min-h-full bg-gray-50">
-  <!-- Header with navigation -->
-  <div class="py-8">
-    <header>
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between">
-          <h1 class="text-3xl font-bold leading-tight text-gray-900">
-            My Channels
-          </h1>
-          <%= live_patch to: ~p"/channels/new", class: "inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" do %>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-            </svg>
-            Create Channel
-          <% end %>
-        </div>
-      </div>
-    </header>
+<!-- Updated Channel Index with Dashboard Design Language -->
+<div class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50">
+  <!-- Include Navigation -->
+  <FrestylWeb.Navigation.nav active_tab={:channels} current_user={@current_user} />
+  
+  <!-- Hero Section -->
+  <div class="relative overflow-hidden">
+    <!-- Background Elements -->
+    <div class="absolute inset-0 opacity-5">
+      <div class="absolute top-20 left-10 w-72 h-72 bg-gradient-to-br from-[#C2185B] to-[#6A1B9A] rounded-full blur-3xl"></div>
+      <div class="absolute bottom-20 right-10 w-96 h-96 bg-gradient-to-br from-[#FF6B47] to-[#C2185B] rounded-full blur-3xl"></div>
+    </div>
     
-    <main>
-      <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-        <!-- Search Form -->
-        <div class="mb-6 bg-white rounded-xl shadow-sm">
-          <div class="p-6">
-            <form phx-submit="search" class="flex">
-              <div class="flex-1 relative">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    <div class="relative px-4 sm:px-6 lg:px-8 xl:px-16 pt-8 pb-4">
+      <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="flex flex-col lg:flex-row justify-between lg:items-end mb-16">
+          <div class="mb-8 lg:mb-0 max-w-4xl">
+            <div class="flex items-center mb-6">
+              <div class="w-2 h-16 bg-gradient-to-b from-[#C2185B] to-[#6A1B9A] rounded-full mr-6"></div>
+              <div>
+                <h1 class="text-5xl lg:text-6xl font-black tracking-tight leading-none">
+                  <span class="bg-gradient-to-r from-[#C2185B] via-[#6A1B9A] to-[#FF6B47] bg-clip-text text-transparent">
+                    My Channels
+                  </span>
+                </h1>
+              </div>
+            </div>
+            <p class="text-gray-600 text-lg font-medium leading-relaxed max-w-3xl">
+              Connect, create, and collaborate with other creators in your channels
+            </p>
+          </div>
+          
+          <!-- Action Button -->
+          <div>
+            <%= live_patch to: ~p"/channels/new", class: "group relative bg-gradient-to-r from-[#C2185B] to-[#6A1B9A] hover:from-[#A91B56] hover:to-[#5C178B] text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-[#C2185B]/25 hover:shadow-[#C2185B]/40 transform hover:scale-105 transition-all duration-300 overflow-hidden" do %>
+              <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 translate-x-full group-hover:translate-x-[-200%] transition-transform duration-700"></div>
+              <div class="relative flex items-center">
+                <div class="w-6 h-6 mr-3 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
                 </div>
-                <input
-                  type="text"
-                  name="search"
-                  value={@search}
-                  placeholder="Search channels..."
-                  class="block w-full bg-gray-50 border border-gray-300 rounded-md py-2 pl-10 pr-3 text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-              <button type="submit" class="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                Search
-              </button>
-            </form>
-          </div>
-        </div>
-
-        <!-- My Channels Section -->
-        <div class="mb-8 bg-white rounded-xl shadow-sm">
-          <div class="p-6">
-            <h2 class="text-xl font-semibold text-gray-900 mb-4">My Channels</h2>
-            
-            <%= if Enum.empty?(@user_channels) do %>
-              <div class="text-center py-8 bg-gray-50 rounded-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                <p class="mt-4 text-gray-900 font-medium">You don't have any channels yet</p>
-                <p class="mt-2 text-sm text-gray-500">Create one or join a public channel below</p>
-                <div class="mt-6">
-                  <%= live_patch to: ~p"/channels/new", class: "inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" do %>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-                    </svg>
-                    Create Channel
-                  <% end %>
-                </div>
-              </div>
-            <% else %>
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <%= for channel <- @user_channels do %>
-                  <%= live_redirect to: ~p"/channels/#{channel.id}", class: "block group" do %>
-                    <div class="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all">
-                      <div class="h-20 bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center relative">
-                        <div class="absolute inset-0 bg-black opacity-20"></div>
-                        <%= if channel.icon_url do %>
-                          <img src={channel.icon_url} class="h-10 w-10 rounded-md relative z-10" alt={channel.name} />
-                        <% else %>
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                          </svg>
-                        <% end %>
-                      </div>
-                      <div class="p-4">
-                        <h3 class="text-md font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
-                          <%= channel.name %>
-                        </h3>
-                        <div class="mt-1 text-sm text-gray-500">
-                          <%= channel.member_count %> <%= if channel.member_count == 1, do: "member", else: "members" %>
-                        </div>
-                        <%= if channel.description && channel.description != "" do %>
-                          <p class="mt-2 text-sm text-gray-500 line-clamp-2">
-                            <%= channel.description %>
-                          </p>
-                        <% end %>
-                      </div>
-                    </div>
-                  <% end %>
-                <% end %>
+                Create Channel
               </div>
             <% end %>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <!-- Discover Public Channels Section -->
-        <div class="mb-8 bg-white rounded-xl shadow-sm">
-          <div class="p-6">
-            <h2 class="text-xl font-semibold text-gray-900 mb-4">Discover Public Channels</h2>
-            
-            <%= if Enum.empty?(@public_channels) do %>
-              <div class="text-center py-8 bg-gray-50 rounded-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+  <!-- Search Section -->
+  <div class="px-4 sm:px-6 lg:px-8 xl:px-16 -mt-4 mb-16 relative z-10">
+    <div class="max-w-7xl mx-auto">
+      <div class="bg-white/95 backdrop-blur-xl rounded-3xl shadow-xl border border-gray-100/50 p-8">
+        <form phx-submit="search" class="flex gap-4">
+          <div class="flex-1 relative">
+            <div class="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
+              <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              name="search"
+              value={@search}
+              placeholder="Search channels..."
+              class="block w-full pl-14 pr-6 py-4 bg-gray-50 border-0 rounded-2xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-[#C2185B]/20 focus:bg-white transition-all duration-200 text-lg"
+            />
+          </div>
+          <button type="submit" class="px-8 py-4 bg-gradient-to-r from-[#C2185B] to-[#6A1B9A] text-white font-bold rounded-2xl hover:from-[#A91B56] hover:to-[#5C178B] transition-all duration-300 transform hover:scale-105 shadow-lg">
+            Search
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- My Channels Section -->
+  <div class="px-4 sm:px-6 lg:px-8 xl:px-16 mb-20">
+    <div class="max-w-7xl mx-auto">
+      <div class="bg-white rounded-3xl shadow-xl border border-gray-100/50 overflow-hidden">
+        <div class="p-8 lg:p-12">
+          <div class="flex items-center mb-8">
+            <div class="w-1 h-12 bg-gradient-to-b from-[#C2185B] to-[#6A1B9A] rounded-full mr-6"></div>
+            <h2 class="text-3xl font-black text-gray-900">My Channels</h2>
+          </div>
+          
+          <%= if Enum.empty?(@user_channels) do %>
+            <div class="text-center py-16">
+              <div class="mx-auto w-20 h-20 bg-gradient-to-r from-[#C2185B]/10 to-[#6A1B9A]/10 rounded-full flex items-center justify-center mb-6">
+                <svg class="h-10 w-10 text-[#C2185B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
-                <p class="mt-4 text-gray-900 font-medium">No public channels found</p>
-                <p class="mt-2 text-sm text-gray-500">Create your own channel to get started</p>
               </div>
-            <% else %>
-              <div class="space-y-4">
-                <%= for channel <- @public_channels do %>
-                  <div class="bg-white border border-gray-200 rounded-lg overflow-hidden p-4 hover:shadow-sm transition-colors">
-                    <div class="flex items-center">
-                      <div class="flex-shrink-0 bg-blue-600 rounded-md p-3">
+              <h3 class="text-2xl font-bold text-gray-900 mb-4">You don't have any channels yet</h3>
+              <p class="text-gray-600 mb-8 text-lg">Create your first channel to start collaborating with other creators</p>
+              <div class="flex flex-wrap justify-center gap-4">
+                <%= live_patch to: ~p"/channels/new", class: "px-8 py-4 rounded-2xl bg-gradient-to-r from-[#C2185B] to-[#6A1B9A] text-white font-bold hover:from-[#A91B56] hover:to-[#5C178B] transition-all shadow-lg hover:shadow-xl transform hover:scale-105" do %>
+                  <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Create Channel
+                <% end %>
+              </div>
+            </div>
+          <% else %>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <%= for channel <- @user_channels do %>
+                <%= live_redirect to: ~p"/channels/#{channel.id}", class: "group block" do %>
+                  <div class="bg-white rounded-2xl border border-gray-200 hover:border-[#C2185B]/30 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 overflow-hidden">
+                    <div class="h-40 bg-gradient-to-r from-[#C2185B] via-[#6A1B9A] to-[#FF6B47] relative overflow-hidden">
+                      <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+                      <!-- Channel visual elements -->
+                      <div class="absolute top-4 right-4 w-8 h-8 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                        <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                      </div>
+                      <div class="absolute inset-0 flex items-center justify-center">
                         <%= if channel.icon_url do %>
-                          <img src={channel.icon_url} class="h-8 w-8" alt={channel.name} />
+                          <img src={channel.icon_url} class="h-20 w-20 rounded-3xl object-cover border-2 border-white border-opacity-30" alt={channel.name} />
                         <% else %>
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                          </svg>
+                          <div class="w-20 h-20 bg-white bg-opacity-10 backdrop-blur-sm rounded-3xl flex items-center justify-center border border-white border-opacity-20">
+                            <span class="text-3xl font-bold text-white">
+                              <%= String.first(channel.name) %>
+                            </span>
+                          </div>
                         <% end %>
                       </div>
-                      <div class="ml-4 flex-1 min-w-0">
-                        <h4 class="text-lg font-medium text-gray-900 truncate">
-                          <%= channel.name %>
-                        </h4>
-                        <p class="mt-1 text-sm text-gray-500 line-clamp-2">
+                    </div>
+                    <div class="p-6">
+                      <h3 class="text-xl font-bold text-gray-900 mb-3 group-hover:text-[#C2185B] transition-colors">
+                        <%= channel.name %>
+                      </h3>
+                      <div class="flex items-center text-gray-500 text-sm mb-4">
+                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <%= channel.member_count %> members
+                      </div>
+                      <%= if channel.description && channel.description != "" do %>
+                        <p class="text-gray-600 text-sm mb-4 leading-relaxed line-clamp-2">
                           <%= channel.description %>
                         </p>
-                        <p class="mt-1 text-sm text-gray-500">
-                          <%= channel.member_count || 0 %> <%= if (channel.member_count || 0) == 1, do: "member", else: "members" %>
-                        </p>
-                      </div>
-                      <div class="ml-4">
-                        <button phx-click="join_channel" phx-value-id={channel.id} class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                          Join Channel
-                        </button>
+                      <% end %>
+                      <div class="flex justify-between items-center">
+                        <span class="px-3 py-1 bg-gradient-to-r from-[#C2185B]/10 to-[#6A1B9A]/10 text-[#C2185B] text-xs font-bold rounded-full border border-[#C2185B]/20">
+                          <%= String.capitalize(channel.visibility) %>
+                        </span>
+                        <span class="text-xs text-gray-500 font-medium">
+                          <%= if channel[:last_active], do: "Active recently", else: "New" %>
+                        </span>
                       </div>
                     </div>
                   </div>
                 <% end %>
-              </div>
-            <% end %>
-          </div>
+              <% end %>
+            </div>
+          <% end %>
         </div>
       </div>
-    </main>
+    </div>
+  </div>
+
+  <!-- Discover Public Channels Section -->
+  <div class="px-4 sm:px-6 lg:px-8 xl:px-16 mb-20">
+    <div class="max-w-7xl mx-auto">
+      <div class="bg-white rounded-3xl shadow-xl border border-gray-100/50 overflow-hidden">
+        <div class="p-8 lg:p-12">
+          <div class="flex items-center mb-8">
+            <div class="w-1 h-12 bg-gradient-to-b from-[#FF6B47] to-[#0891B2] rounded-full mr-6"></div>
+            <h2 class="text-3xl font-black text-gray-900">Discover Public Channels</h2>
+          </div>
+          
+          <%= if Enum.empty?(@public_channels) do %>
+            <div class="text-center py-16">
+              <div class="mx-auto w-20 h-20 bg-gradient-to-r from-[#FF6B47]/10 to-[#0891B2]/10 rounded-full flex items-center justify-center mb-6">
+                <svg class="h-10 w-10 text-[#FF6B47]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <h3 class="text-2xl font-bold text-gray-900 mb-4">No public channels found</h3>
+              <p class="text-gray-600 text-lg">Create your own channel to get started</p>
+            </div>
+          <% else %>
+            <div class="space-y-6">
+              <%= for channel <- @public_channels do %>
+                <div class="group bg-white border border-gray-200 rounded-2xl overflow-hidden p-6 hover:shadow-lg hover:border-[#FF6B47]/30 transition-all duration-300 transform hover:-translate-y-1">
+                  <div class="flex items-center">
+                    <div class="flex-shrink-0 mr-6">
+                      <%= if channel.icon_url do %>
+                        <img src={channel.icon_url} class="h-16 w-16 rounded-2xl object-cover" alt={channel.name} />
+                      <% else %>
+                        <div class="h-16 w-16 bg-gradient-to-br from-[#FF6B47] to-[#0891B2] rounded-2xl flex items-center justify-center text-white font-bold text-xl">
+                          <%= String.first(channel.name) %>
+                        </div>
+                      <% end %>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <h4 class="text-xl font-bold text-gray-900 group-hover:text-[#FF6B47] transition-colors">
+                        <%= channel.name %>
+                      </h4>
+                      <p class="mt-2 text-gray-600 line-clamp-2">
+                        <%= channel.description %>
+                      </p>
+                      <div class="mt-3 flex items-center text-sm text-gray-500">
+                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <%= channel.member_count || 0 %> members
+                      </div>
+                    </div>
+                    <div class="ml-6">
+                      <button phx-click="join_channel" phx-value-id={channel.id} class="px-6 py-3 bg-gradient-to-r from-[#FF6B47] to-[#0891B2] text-white font-bold rounded-2xl hover:from-[#E55A3A] hover:to-[#0782A3] transition-all duration-300 transform hover:scale-105 shadow-lg">
+                        Join Channel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation (from dashboard) -->
+  <div class="fixed bottom-0 left-0 right-0 lg:hidden z-50 bg-white/90 backdrop-blur-lg border-t border-gray-200/50 shadow-2xl">
+    <div class="safe-area-bottom">
+      <div class="grid grid-cols-5 h-20">
+        
+        <!-- Dashboard Tab -->
+        <.link navigate={~p"/dashboard"} class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-gray-500 hover:text-gray-700">
+          <div class="p-2 rounded-xl transition-all duration-300">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Dashboard</span>
+        </.link>
+        
+        <!-- Channels Tab (Active) -->
+        <.link navigate={~p"/channels"} class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-[#6A1B9A]">
+          <div class="absolute top-0 w-12 h-1 bg-gradient-to-r from-[#6A1B9A] to-[#0891B2] rounded-b-full"></div>
+          <div class="p-2 rounded-xl transition-all duration-300 bg-gradient-to-br from-[#6A1B9A]/10 to-[#0891B2]/10 scale-110">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Channels</span>
+        </.link>
+        
+        <!-- CENTER UPLOAD BUTTON -->
+        <div class="flex items-center justify-center">
+          <.link navigate={~p"/media/upload"} class="w-16 h-16 bg-gradient-to-r from-[#FF6B47] to-[#C2185B] rounded-full flex items-center justify-center shadow-xl shadow-[#FF6B47]/30 transform hover:scale-110 active:scale-95 transition-all duration-300 border-4 border-white">
+            <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+          </.link>
+        </div>
+        
+        <!-- Chat Tab -->
+        <.link navigate={~p"/chat"} class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-gray-500 hover:text-gray-700">
+          <div class="p-2 rounded-xl transition-all duration-300">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Chat</span>
+        </.link>
+        
+        <!-- Media Tab -->
+        <.link navigate={~p"/media"} class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-gray-500 hover:text-gray-700">
+          <div class="p-2 rounded-xl transition-all duration-300">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Media</span>
+        </.link>
+      </div>
+    </div>
   </div>
 </div>
 
+<!-- Modal for new/edit channel -->
 <%= if @live_action in [:new, :edit] do %>
   <.modal id="channel-modal" show={@modal_visible} on_cancel={JS.push("close_modal")}>
     <:title><%= @modal_title %></:title>
@@ -171,3 +301,16 @@
     />
   </.modal>
 <% end %>
+
+<style>
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+</style>
