@@ -111,13 +111,18 @@ defmodule Frestyl.Media do
   def list_channel_files(channel_id, opts \\ []) do
     limit = Keyword.get(opts, :limit)
 
-    query = list_channel_media_by_category(channel_id, nil, opts)
+    # Query MediaFile table instead of MediaItem
+    query = from m in MediaFile,
+            where: m.channel_id == ^channel_id,
+            order_by: [desc: m.inserted_at]
 
-    if limit do
-      Enum.take(query, limit)
+    query = if limit do
+      limit(query, ^limit)
     else
       query
     end
+
+    Repo.all(query)
   end
 
   @doc """
@@ -338,15 +343,7 @@ defmodule Frestyl.Media do
   @doc """
   Determine the media type from the content type.
   """
-  def determine_media_type(content_type) when is_binary(content_type) do
-    cond do
-      String.starts_with?(content_type, "image/") -> "image"
-      String.starts_with?(content_type, "video/") -> "video"
-      String.starts_with?(content_type, "audio/") -> "audio"
-      String.match?(content_type, ~r/application\/(pdf|msword|vnd\.openxmlformats|vnd\.ms)/) -> "document"
-      true -> "other"
-    end
-  end
+
   def determine_media_type(_), do: "other"
 
   @doc """
@@ -417,6 +414,29 @@ defmodule Frestyl.Media do
         media_item.file_url
     end
   end
+
+  defp generate_unique_filename(original_filename) do
+    timestamp = System.system_time(:second)
+    random = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
+    ext = Path.extname(original_filename)
+    base = Path.basename(original_filename, ext)
+    "#{base}_#{timestamp}_#{random}#{ext}"
+  end
+
+  defp determine_storage_type do
+    if Application.get_env(:frestyl, :storage_backend) == :s3 do
+      "s3"
+    else
+      "local"
+    end
+  end
+
+  defp broadcast_created({:ok, media_file} = result) do
+    Phoenix.PubSub.broadcast(Frestyl.PubSub, "media_files", {:media_file_created, media_file})
+    result
+  end
+
+  defp broadcast_created(error), do: error
 
   @doc """
   Lists media files with optional filters.
@@ -570,11 +590,6 @@ defmodule Frestyl.Media do
   def broadcast({:error, _} = result, _event), do: result
 
   @doc """
-  Broadcasts when a media file is created.
-  """
-  def broadcast_created(result), do: broadcast(result, :media_file_created)
-
-  @doc """
   Broadcasts when a media file is updated.
   """
   def broadcast_updated(result), do: broadcast(result, :media_file_updated)
@@ -600,11 +615,6 @@ defmodule Frestyl.Media do
     result
   end
   def broadcast({:error, _} = result, _event), do: result
-
-  @doc """
-  Broadcasts when a media file is created.
-  """
-  def broadcast_created(result), do: broadcast(result, :media_file_created)
 
   @doc """
   Broadcasts when a media file is updated.

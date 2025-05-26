@@ -1,1624 +1,862 @@
-<!-- DASHBOARD PART 1: Header & Hero Section -->
-<div class="bg-white">
-  <.nav active_tab={@active_tab} current_user={@current_user} />
-  
-  <!-- HERO SECTION WITH BRAND GRADIENT -->
-  <div class="relative bg-gradient-to-br from-gray-50 via-white to-purple-50 overflow-hidden">
-    <!-- Abstract background shapes -->
-    <div class="absolute inset-0 opacity-5">
-      <div class="absolute top-20 left-10 w-72 h-72 bg-gradient-to-br from-[#C2185B] to-[#6A1B9A] rounded-full blur-3xl"></div>
-      <div class="absolute bottom-20 right-10 w-96 h-96 bg-gradient-to-br from-[#FF6B47] to-[#C2185B] rounded-full blur-3xl"></div>
-      <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-gradient-to-br from-[#0891B2] to-[#6A1B9A] rounded-full blur-3xl"></div>
-    </div>
-    
-    <div class="relative px-4 sm:px-6 lg:px-8 xl:px-16 pt-8 pb-4">
-      <div class="max-w-7xl mx-auto">
-        <div class="flex flex-col lg:flex-row justify-between lg:items-end mb-16">
-          <!-- Hero Title -->
-          <div class="mb-8 lg:mb-0 max-w-4xl">
-            <div class="flex items-center mb-6">
-              <div class="w-2 h-16 bg-gradient-to-b from-[#C2185B] to-[#6A1B9A] rounded-full mr-6"></div>
-              <div>
-                <h1 class="text-5xl lg:text-6xl xl:text-5xl font-black tracking-tight leading-none">
-                  <span class="bg-gradient-to-r from-[#C2185B] via-[#6A1B9A] to-[#FF6B47] bg-clip-text text-transparent">
-                    <%= get_simple_timezone_greeting(@current_user.full_name) %>
-                  </span>
-                </h1>
-              </div>
-            </div>
-            <p class="text-gray-600 text-lg font-medium leading-relaxed max-w-3xl">
-              Let's see what you come up with...
-            </p>
-          </div>
-          
-          <!-- Action Buttons -->
-          <div class="flex flex-wrap gap-4">
-            <.link
-              navigate={~p"/channels/new"}
-              class="group relative bg-gradient-to-r from-[#C2185B] to-[#6A1B9A] hover:from-[#A91B56] hover:to-[#5C178B] text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-[#C2185B]/25 hover:shadow-[#C2185B]/40 transform hover:scale-105 transition-all duration-300 overflow-hidden"
-            >
-              <!-- Button shine effect -->
-              <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 translate-x-full group-hover:translate-x-[-200%] transition-transform duration-700"></div>
-              <div class="relative flex items-center">
-                <div class="w-6 h-6 mr-3 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                  </svg>
-                </div>
-                Create Channel
-              </div>
-            </.link>
-            
-            <.link
-              navigate={~p"/media/upload"}
-              class="group relative bg-gradient-to-r from-[#FF6B47] to-[#0891B2] hover:from-[#E55A3A] hover:to-[#0782A3] text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-[#FF6B47]/25 hover:shadow-[#FF6B47]/40 transform hover:scale-105 transition-all duration-300 overflow-hidden"
-            >
-              <!-- Button shine effect -->
-              <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 translate-x-full group-hover:translate-x-[-200%] transition-transform duration-700"></div>
-              <div class="relative flex items-center">
-                <div class="w-6 h-6 mr-3 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                </div>
-                Upload Content
-              </div>
-            </.link>
+<!-- Navigation -->
+<nav class="fixed top-0 left-0 right-0 z-50 bg-white bg-opacity-95 backdrop-blur border-b border-gray-200">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-16">
+      <!-- Logo -->
+      <div class="flex items-center">
+        <img src={~p"/images/logo.svg"} alt="Frestyl" class="w-24 h-24" />
+      </div>
+      
+      <!-- Navigation Links -->
+      <div class="hidden md:flex items-center space-x-8">
+        <.link navigate={~p"/dashboard"} class="font-bold text-gray-900 hover:text-gray-700 relative pb-1">
+          Dashboard
+          <span class="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-pink-500 to-purple-500"></span>
+        </.link>
+        <.link navigate={~p"/channels"} class="font-semibold text-gray-600 hover:text-gray-900 relative pb-1 group">
+          Channels
+          <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-500 to-purple-500 group-hover:w-full transition-all duration-300"></span>
+        </.link>
+        <.link navigate={~p"/chat"} class="font-semibold text-gray-600 hover:text-gray-900 relative pb-1 group">
+          Chat
+          <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-500 to-purple-500 group-hover:w-full transition-all duration-300"></span>
+        </.link>
+        <.link navigate={~p"/media"} class="font-semibold text-gray-600 hover:text-gray-900 relative pb-1 group">
+          Media
+          <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-500 to-purple-500 group-hover:w-full transition-all duration-300"></span>
+        </.link>
+        <.link navigate={~p"/events"} class="font-semibold text-gray-600 hover:text-gray-900 relative pb-1 group">
+          Events
+          <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-500 to-purple-500 group-hover:w-full transition-all duration-300"></span>
+        </.link>
+      </div>
+      
+      <!-- Search & Actions -->
+      <div class="flex items-center space-x-4">
+        <!-- Search -->
+        <div class="relative hidden sm:block">
+          <div id="search-container" class="flex items-center">
+            <button id="search-toggle" class="p-2 text-gray-600 hover:text-blue-500">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
+            </button>
+            <input 
+              id="search-input"
+              type="search" 
+              placeholder="Search channels, media, people..."
+              class="hidden w-48 lg:w-64 h-10 ml-2 pl-4 pr-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            />
           </div>
         </div>
+        
+        <!-- Notifications -->
+        <button class="relative p-2 text-gray-600 hover:text-blue-500">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+          </svg>
+          <span class="absolute top-1 right-1 w-2 h-2 bg-pink-500 rounded-full"></span>
+        </button>
+        
+        <!-- Profile -->
+        <div class="relative" id="user-menu-container">
+          <button id="user-menu-button" class="w-8 h-8 bg-gradient-to-r from-orange-500 to-pink-500 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+            U
+          </button>
+          <div id="user-menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg z-50">
+            <div class="py-2">
+              <.link navigate={~p"/account"} class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Account</.link>
+              <.link navigate={~p"/portfolio"} class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Portfolio</.link>
+              <div class="border-t border-gray-100"></div>
+              <.link navigate={~p"/logout"} class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50">Logout</.link>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mobile menu button -->
+        <button id="mobile-menu-button" class="md:hidden p-2 text-gray-600 hover:text-blue-500">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+        </button>
       </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile Sidebar -->
+<div id="mobile-sidebar" class="fixed top-16 left-0 bottom-0 w-80 bg-white z-40 lg:hidden shadow-lg transform -translate-x-full transition-transform duration-300">
+  <div class="p-6 space-y-6">
+    <!-- Mobile search -->
+    <div class="relative">
+      <input 
+        type="search" 
+        placeholder="Search..."
+        class="w-full h-10 pl-10 pr-4 bg-gray-50 border-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <svg class="absolute left-3 top-3 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+      </svg>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="space-y-3">
+      <h3 class="font-bold text-gray-900 text-sm uppercase tracking-wide">Quick Actions</h3>
+      <button class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl">
+        <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-pink-500 rounded-lg flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+          </svg>
+        </div>
+        <span class="font-semibold text-gray-900 text-sm">New Channel</span>
+      </button>
+      <button class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl">
+        <div class="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+          </svg>
+        </div>
+        <span class="font-semibold text-gray-900 text-sm">Upload Media</span>
+      </button>
     </div>
   </div>
 </div>
 
-<!-- FLOATING STATS SECTION -->
-<div class="px-4 sm:px-6 lg:px-8 xl:px-16 -mt-4 mb-16 relative z-10">
-  <div class="max-w-7xl mx-auto">
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- Overlay -->
+<div id="mobile-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"></div>
+
+<!-- Main Content -->
+<div class="pt-16 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid grid-cols-12 gap-6">
       
-      <!-- Channels Stat -->
-      <div class="group relative">
-        <!-- Floating background with subtle animation -->
-        <div class="absolute inset-0 bg-gradient-to-br from-[#6A1B9A]/10 to-[#C2185B]/10 rounded-3xl transform rotate-1 group-hover:rotate-2 transition-transform duration-300"></div>
-        <div class="relative bg-white rounded-3xl p-8 shadow-xl border border-[#6A1B9A]/20 hover:shadow-2xl hover:shadow-[#6A1B9A]/10 transition-all duration-500 transform hover:-translate-y-3">
-          <!-- Visual element -->
-          <div class="absolute top-4 right-4 w-12 h-12 bg-gradient-to-br from-[#6A1B9A]/20 to-[#C2185B]/20 rounded-2xl flex items-center justify-center opacity-70">
-            <div class="w-6 h-1 bg-[#6A1B9A] rounded-full"></div>
+      <!-- Left Sidebar -->
+      <aside class="hidden lg:block col-span-3 space-y-6">
+        <!-- Activity Stats -->
+        <div class="bg-white rounded-xl p-6 shadow-md">
+          <h3 class="font-bold text-lg text-gray-900 mb-6">Snapshot</h3>
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-gray-600 font-medium text-sm">Active Channels</span>
+              <span class="font-mono font-bold text-gray-900 text-lg">24</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-gray-600 font-medium text-sm">Collaborators</span>
+              <span class="font-mono font-bold text-gray-900 text-lg">89</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-gray-600 font-medium text-sm">Media Files</span>
+              <span class="font-mono font-bold text-gray-900 text-lg">2.4K</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-gray-600 font-medium text-sm">Total Views</span>
+              <span class="font-mono font-bold text-gray-900 text-lg">156K</span>
+            </div>
           </div>
-          
-          <div class="flex items-center justify-between mb-6">
-            <div class="w-16 h-16 bg-gradient-to-br from-[#6A1B9A] to-[#C2185B] rounded-2xl flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform duration-300">
-              <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-white rounded-xl p-6 shadow-md">
+          <h3 class="font-bold text-lg text-gray-900 mb-6">Quick Actions</h3>
+          <div class="space-y-3">
+            <button class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl group">
+              <svg class="w-5 h-5 text-gray-600 group-hover:text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
               </svg>
-            </div>
-            <span class="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">+2 new</span>
-          </div>
-          <h3 class="text-gray-500 text-sm font-semibold mb-2 uppercase tracking-wide">Channels</h3>
-          <div class="flex items-baseline">
-            <p class="text-4xl font-black text-gray-900"><%= @stats.channels %></p>
-            <span class="ml-2 text-[#6A1B9A] text-sm font-bold">active</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Collaborators Stat -->
-      <div class="group relative">
-        <div class="absolute inset-0 bg-gradient-to-br from-[#C2185B]/10 to-[#FF6B47]/10 rounded-3xl transform -rotate-1 group-hover:-rotate-2 transition-transform duration-300"></div>
-        <div class="relative bg-white rounded-3xl p-8 shadow-xl border border-[#C2185B]/20 hover:shadow-2xl hover:shadow-[#C2185B]/10 transition-all duration-500 transform hover:-translate-y-3">
-          <!-- Visual element -->
-          <div class="absolute top-4 right-4 w-8 h-8 bg-gradient-to-br from-[#C2185B]/20 to-[#FF6B47]/20 rounded-full opacity-70"></div>
-          <div class="absolute top-6 right-8 w-4 h-4 bg-gradient-to-br from-[#FF6B47]/30 to-[#C2185B]/30 rounded-full opacity-50"></div>
-          
-          <div class="flex items-center justify-between mb-6">
-            <div class="w-16 h-16 bg-gradient-to-br from-[#C2185B] to-[#FF6B47] rounded-2xl flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform duration-300">
-              <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              <div class="text-left">
+                <div class="font-semibold text-gray-900 text-sm">New Channel</div>
+                <div class="text-xs text-gray-500">Start collaborating</div>
+              </div>
+            </button>
+            
+            <button class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl group">
+              <svg class="w-5 h-5 text-gray-600 group-hover:text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
               </svg>
-            </div>
-            <span class="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">+5 this week</span>
-          </div>
-          <h3 class="text-gray-500 text-sm font-semibold mb-2 uppercase tracking-wide">Collaborators</h3>
-          <div class="flex items-baseline">
-            <p class="text-4xl font-black text-gray-900"><%= @stats.members %></p>
-            <span class="ml-2 text-[#C2185B] text-sm font-bold">online</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Media Files Stat -->
-      <div class="group relative">
-        <div class="absolute inset-0 bg-gradient-to-br from-[#FF6B47]/10 to-[#0891B2]/10 rounded-3xl transform rotate-1 group-hover:rotate-2 transition-transform duration-300"></div>
-        <div class="relative bg-white rounded-3xl p-8 shadow-xl border border-[#FF6B47]/20 hover:shadow-2xl hover:shadow-[#FF6B47]/10 transition-all duration-500 transform hover:-translate-y-3">
-          <!-- Visual element - media icons -->
-          <div class="absolute top-4 right-4 flex space-x-1">
-            <div class="w-2 h-6 bg-[#FF6B47]/60 rounded-full"></div>
-            <div class="w-2 h-4 bg-[#FF6B47]/70 rounded-full"></div>
-            <div class="w-2 h-5 bg-[#FF6B47]/80 rounded-full"></div>
-          </div>
-          
-          <div class="flex items-center justify-between mb-6">
-            <div class="w-16 h-16 bg-gradient-to-br from-[#FF6B47] to-[#0891B2] rounded-2xl flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform duration-300">
-              <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+              <div class="text-left">
+                <div class="font-semibold text-gray-900 text-sm">Upload Media</div>
+                <div class="text-xs text-gray-500">Add to library</div>
+              </div>
+            </button>
+            
+            <button class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl group">
+              <svg class="w-5 h-5 text-gray-600 group-hover:text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
               </svg>
-            </div>
-            <span class="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">+12 today</span>
-          </div>
-          <h3 class="text-gray-500 text-sm font-semibold mb-2 uppercase tracking-wide">Media Files</h3>
-          <div class="flex items-baseline">
-            <p class="text-4xl font-black text-gray-900"><%= @stats.media_files %></p>
-            <span class="ml-2 text-[#FF6B47] text-sm font-bold">files</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Views Stat -->
-      <div class="group relative">
-        <div class="absolute inset-0 bg-gradient-to-br from-[#0891B2]/10 to-[#6A1B9A]/10 rounded-3xl transform -rotate-1 group-hover:-rotate-2 transition-transform duration-300"></div>
-        <div class="relative bg-white rounded-3xl p-8 shadow-xl border border-[#0891B2]/20 hover:shadow-2xl hover:shadow-[#0891B2]/10 transition-all duration-500 transform hover:-translate-y-3">
-          <!-- Visual element - eye/view indicator -->
-          <div class="absolute top-4 right-4 w-10 h-6 bg-gradient-to-r from-[#0891B2]/30 to-[#6A1B9A]/30 rounded-full opacity-60 flex items-center justify-center">
-            <div class="w-3 h-3 bg-[#0891B2] rounded-full"></div>
-          </div>
-          
-          <div class="flex items-center justify-between mb-6">
-            <div class="w-16 h-16 bg-gradient-to-br from-[#0891B2] to-[#6A1B9A] rounded-2xl flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform duration-300">
-              <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              <div class="text-left">
+                <div class="font-semibold text-gray-900 text-sm">Start Chat</div>
+                <div class="text-xs text-gray-500">Connect with others</div>
+              </div>
+            </button>
+            
+            <button class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl group">
+              <svg class="w-5 h-5 text-gray-600 group-hover:text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
               </svg>
-            </div>
-            <span class="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">+28% ↑</span>
-          </div>
-          <h3 class="text-gray-500 text-sm font-semibold mb-2 uppercase tracking-wide">Total Views</h3>
-          <div class="flex items-baseline">
-            <p class="text-4xl font-black text-gray-900"><%= @stats.total_views %></p>
-            <span class="ml-2 text-[#0891B2] text-sm font-bold">views</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- QUICK ACTIONS SECTION -->
-<div class="px-4 sm:px-6 lg:px-8 xl:px-16 mb-20">
-  <div class="max-w-7xl mx-auto">
-    <div class="bg-gradient-to-br from-gray-50 to-purple-50/30 rounded-3xl p-8 lg:p-12 border border-gray-100/50 shadow-sm">
-      <div class="flex items-center mb-8">
-        <div class="w-1 h-12 bg-gradient-to-b from-[#C2185B] to-[#6A1B9A] rounded-full mr-6"></div>
-        <h2 class="text-3xl font-black text-gray-900">
-          Quick Actions
-        </h2>
-      </div>
-      
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
-        
-        <!-- Events Action -->
-        <.link navigate={~p"/events/new"} class="group relative overflow-hidden">
-          <div class="bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg border border-gray-100 hover:border-[#6A1B9A]/30 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1">
-            <!-- Background pattern -->
-            <div class="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-[#6A1B9A]/10 to-[#C2185B]/10 rounded-full opacity-20 transform translate-x-6 -translate-y-6"></div>
-            
-            <div class="relative text-center">
-              <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#6A1B9A] to-[#C2185B] rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-[#6A1B9A]/30 transition-shadow duration-300">
-                <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
+              <div class="text-left">
+                <div class="font-semibold text-gray-900 text-sm">Invite Collaborators</div>
+                <div class="text-xs text-gray-500">Add team members</div>
               </div>
-              <span class="text-sm font-bold text-gray-700 group-hover:text-[#6A1B9A] transition-colors">Events</span>
-            </div>
-          </div>
-        </.link>
-        
-        <!-- Invite Action -->
-        <.link navigate={~p"/invite"} class="group relative overflow-hidden">
-          <div class="bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg border border-gray-100 hover:border-[#C2185B]/30 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1">
-            <!-- Background pattern -->
-            <div class="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-[#C2185B]/10 to-[#FF6B47]/10 rounded-full opacity-30 transform translate-x-4 -translate-y-4"></div>
-            
-            <div class="relative text-center">
-              <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#C2185B] to-[#FF6B47] rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-[#C2185B]/30 transition-shadow duration-300">
-                <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                </svg>
-              </div>
-              <span class="text-sm font-bold text-gray-700 group-hover:text-[#C2185B] transition-colors">Invite</span>
-            </div>
-          </div>
-        </.link>
-        
-        <!-- Chat Action -->
-        <.link navigate={~p"/chat"} class="group relative overflow-hidden">
-          <div class="bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg border border-gray-100 hover:border-[#0891B2]/30 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1">
-            <!-- Background pattern -->
-            <div class="absolute top-2 right-2 w-3 h-3 bg-[#0891B2]/40 rounded-full"></div>
-            <div class="absolute top-4 right-6 w-2 h-2 bg-[#0891B2]/50 rounded-full"></div>
-            
-            <div class="relative text-center">
-              <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#0891B2] to-[#6A1B9A] rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-[#0891B2]/30 transition-shadow duration-300">
-                <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <span class="text-sm font-bold text-gray-700 group-hover:text-[#0891B2] transition-colors">Chat</span>
-            </div>
-          </div>
-        </.link>
-        
-        <!-- Settings Action -->
-        <.link navigate={~p"/settings"} class="group relative overflow-hidden">
-          <div class="bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg border border-gray-100 hover:border-gray-300 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1">
-            <!-- Background pattern - gear elements -->
-            <div class="absolute top-2 right-3 w-4 h-4 border-2 border-gray-300 rounded-full opacity-30"></div>
-            <div class="absolute top-1 right-2 w-2 h-2 bg-gray-300 rounded-full opacity-40"></div>
-            
-            <div class="relative text-center">
-              <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-gray-500 to-gray-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-gray-500/30 transition-shadow duration-300">
-                <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <span class="text-sm font-bold text-gray-700 group-hover:text-gray-600 transition-colors">Settings</span>
-            </div>
-          </div>
-        </.link>
-        
-        <!-- Portfolio Action -->
-        <.link navigate={~p"/portfolios"} class="group relative overflow-hidden">
-          <div class="bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg border border-gray-100 hover:border-[#FF6B47]/30 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1">
-            <!-- Background pattern - portfolio grid -->
-            <div class="absolute top-2 right-2 grid grid-cols-2 gap-1 opacity-30">
-              <div class="w-2 h-2 bg-[#FF6B47]/60 rounded-sm"></div>
-              <div class="w-2 h-2 bg-[#FF6B47]/70 rounded-sm"></div>
-              <div class="w-2 h-1 bg-[#FF6B47]/50 rounded-sm"></div>
-              <div class="w-2 h-1 bg-[#FF6B47]/60 rounded-sm"></div>
-            </div>
-            
-            <div class="relative text-center">
-              <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#FF6B47] to-[#C2185B] rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-[#FF6B47]/30 transition-shadow duration-300">
-                <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              </div>
-              <span class="text-sm font-bold text-gray-700 group-hover:text-[#FF6B47] transition-colors">Portfolio</span>
-            </div>
-          </div>
-        </.link>
-        
-        <!-- Browse Action -->
-        <.link navigate={~p"/browse"} class="group relative overflow-hidden">
-          <div class="bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg border border-gray-100 hover:border-[#0891B2]/30 transition-all duration-300 transform hover:scale-105 hover:-translate-y-1">
-            <!-- Background pattern - discovery elements -->
-            <div class="absolute top-1 right-4 w-6 h-1 bg-[#0891B2]/40 rounded-full"></div>
-            <div class="absolute top-3 right-2 w-3 h-3 bg-[#0891B2]/30 rounded-full"></div>
-            
-            <div class="relative text-center">
-              <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#0891B2] to-[#FF6B47] rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-[#0891B2]/30 transition-shadow duration-300">
-                <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <span class="text-sm font-bold text-gray-700 group-hover:text-[#0891B2] transition-colors">Browse</span>
-            </div>
-          </div>
-        </.link>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- CHANNELS SECTION WITH VISUAL DUMMY DATA -->
-<div class="px-4 sm:px-6 lg:px-8 xl:px-16 mb-20">
-  <div class="max-w-7xl mx-auto">
-    <div class="bg-white rounded-3xl shadow-xl border border-gray-100/50 overflow-hidden">
-      <div class="p-8 lg:p-12">
-        <div class="flex justify-between items-center mb-8">
-          <div class="flex items-center">
-            <div class="w-1 h-12 bg-gradient-to-b from-[#C2185B] to-[#6A1B9A] rounded-full mr-6"></div>
-            <h2 class="text-3xl font-black text-gray-900">My Channels</h2>
-          </div>
-          <.link navigate={~p"/channels"} class="text-[#C2185B] hover:text-[#6A1B9A] font-bold text-lg transition-colors flex items-center group">
-            View All 
-            <svg class="ml-2 h-5 w-5 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </.link>
-        </div>
-        
-        <%= if Enum.empty?(@user_channels) do %>
-          <!-- Show dummy channels for demo -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            
-            <!-- Beat Creators Lab Channel -->
-            <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#C2185B]/30 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 overflow-hidden">
-              <div class="h-40 bg-gradient-to-br from-[#C2185B] via-[#6A1B9A] to-[#FF6B47] relative overflow-hidden">
-                <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                <!-- Sound wave visual elements -->
-                <div class="absolute bottom-4 left-4 flex space-x-1">
-                  <div class="w-1 h-4 bg-white bg-opacity-60 rounded-full"></div>
-                  <div class="w-1 h-6 bg-white bg-opacity-70 rounded-full"></div>
-                  <div class="w-1 h-3 bg-white bg-opacity-60 rounded-full"></div>
-                  <div class="w-1 h-5 bg-white bg-opacity-80 rounded-full"></div>
-                  <div class="w-1 h-2 bg-white bg-opacity-50 rounded-full"></div>
-                  <div class="w-1 h-7 bg-white bg-opacity-70 rounded-full"></div>
-                  <div class="w-1 h-4 bg-white bg-opacity-60 rounded-full"></div>
-                </div>
-                <!-- Floating music notes -->
-                <div class="absolute top-6 right-6 w-8 h-8 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                  <svg class="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                  </svg>
-                </div>
-                <div class="absolute inset-0 flex items-center justify-center">
-                  <div class="w-20 h-20 bg-white bg-opacity-10 backdrop-blur-sm rounded-3xl flex items-center justify-center border border-white border-opacity-20">
-                    <svg class="h-10 w-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-              <div class="p-6">
-                <h3 class="text-xl font-bold text-gray-900 mb-3 group-hover:text-[#C2185B] transition-colors">
-                  Beat Creators Lab
-                </h3>
-                <div class="flex items-center text-gray-500 text-sm mb-4">
-                  <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                  24 members
-                </div>
-                <p class="text-gray-600 text-sm mb-4 leading-relaxed">
-                  Collaborative space for music producers to share beats, get feedback, and create together.
-                </p>
-                <div class="flex justify-between items-center">
-                  <span class="px-3 py-1 bg-gradient-to-r from-[#C2185B]/10 to-[#6A1B9A]/10 text-[#C2185B] text-xs font-bold rounded-full border border-[#C2185B]/20">
-                    Music Production
-                  </span>
-                  <span class="text-xs text-gray-500 font-medium">
-                    Active 2h ago
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Visual Feedback Hub Channel -->
-            <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#6A1B9A]/30 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 overflow-hidden">
-              <div class="h-40 bg-gradient-to-br from-[#6A1B9A] via-[#0891B2] to-[#C2185B] relative overflow-hidden">
-                <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                <!-- Design elements -->
-                <div class="absolute top-6 left-6 w-8 h-8 bg-white bg-opacity-25 rounded-lg transform rotate-12"></div>
-                <div class="absolute bottom-8 right-8 w-6 h-6 bg-white bg-opacity-20 rounded-full"></div>
-                <div class="absolute top-12 right-12 w-4 h-12 bg-white bg-opacity-15 rounded-full"></div>
-                <!-- Color palette visual -->
-                <div class="absolute bottom-4 left-4 flex space-x-2">
-                  <div class="w-3 h-3 bg-[#FF6B47] rounded-full border border-white border-opacity-40"></div>
-                  <div class="w-3 h-3 bg-[#0891B2] rounded-full border border-white border-opacity-40"></div>
-                  <div class="w-3 h-3 bg-[#C2185B] rounded-full border border-white border-opacity-40"></div>
-                </div>
-                <div class="absolute inset-0 flex items-center justify-center">
-                  <div class="w-20 h-20 bg-white bg-opacity-10 backdrop-blur-sm rounded-3xl flex items-center justify-center border border-white border-opacity-20">
-                    <svg class="h-10 w-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-              <div class="p-6">
-                <h3 class="text-xl font-bold text-gray-900 mb-3 group-hover:text-[#6A1B9A] transition-colors">
-                  Visual Feedback Hub
-                </h3>
-                <div class="flex items-center text-gray-500 text-sm mb-4">
-                  <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                  18 members
-                </div>
-                <p class="text-gray-600 text-sm mb-4 leading-relaxed">
-                  Get constructive feedback on your designs, illustrations, and visual projects from fellow creators.
-                </p>
-                <div class="flex justify-between items-center">
-                  <span class="px-3 py-1 bg-gradient-to-r from-[#6A1B9A]/10 to-[#0891B2]/10 text-[#6A1B9A] text-xs font-bold rounded-full border border-[#6A1B9A]/20">
-                    Design & Visual
-                  </span>
-                  <span class="text-xs text-gray-500 font-medium">
-                    Active 1h ago
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Film & Motion Collective Channel -->
-            <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#FF6B47]/30 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 overflow-hidden">
-              <div class="h-40 bg-gradient-to-br from-[#FF6B47] via-[#C2185B] to-[#0891B2] relative overflow-hidden">
-                <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                <!-- Film strip elements -->
-                <div class="absolute top-4 left-4 right-4 h-2 bg-white bg-opacity-30 rounded-full"></div>
-                <div class="absolute bottom-4 left-4 right-4 h-2 bg-white bg-opacity-30 rounded-full"></div>
-                <div class="absolute left-4 top-4 bottom-4 w-2 bg-white bg-opacity-40 rounded-full"></div>
-                <div class="absolute right-4 top-4 bottom-4 w-2 bg-white bg-opacity-40 rounded-full"></div>
-                <!-- Film perforations -->
-                <div class="absolute left-2 top-8 space-y-2">
-                  <div class="w-1 h-1 bg-white bg-opacity-50 rounded-full"></div>
-                  <div class="w-1 h-1 bg-white bg-opacity-50 rounded-full"></div>
-                  <div class="w-1 h-1 bg-white bg-opacity-50 rounded-full"></div>
-                </div>
-                <div class="absolute right-2 top-8 space-y-2">
-                  <div class="w-1 h-1 bg-white bg-opacity-50 rounded-full"></div>
-                  <div class="w-1 h-1 bg-white bg-opacity-50 rounded-full"></div>
-                  <div class="w-1 h-1 bg-white bg-opacity-50 rounded-full"></div>
-                </div>
-                <div class="absolute inset-0 flex items-center justify-center">
-                  <div class="w-20 h-20 bg-white bg-opacity-10 backdrop-blur-sm rounded-3xl flex items-center justify-center border border-white border-opacity-20">
-                    <svg class="h-10 w-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-              <div class="p-6">
-                <h3 class="text-xl font-bold text-gray-900 mb-3 group-hover:text-[#FF6B47] transition-colors">
-                  Film & Motion Collective
-                </h3>
-                <div class="flex items-center text-gray-500 text-sm mb-4">
-                  <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                  31 members
-                </div>
-                <p class="text-gray-600 text-sm mb-4 leading-relaxed">
-                  Collaborate on video projects, share techniques, and create stunning motion graphics together.
-                </p>
-                <div class="flex justify-between items-center">
-                  <span class="px-3 py-1 bg-gradient-to-r from-[#FF6B47]/10 to-[#C2185B]/10 text-[#FF6B47] text-xs font-bold rounded-full border border-[#FF6B47]/20">
-                    Video & Motion
-                  </span>
-                  <span class="text-xs text-gray-500 font-medium">
-                    Active 30m ago
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        <% else %>
-          <!-- Real user channels with same styling -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <%= for channel <- @user_channels do %>
-              <%= live_redirect to: ~p"/channels/#{channel.id}", class: "group block" do %>
-                <div class="bg-white rounded-2xl border border-gray-200 hover:border-[#C2185B]/30 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 overflow-hidden">
-                  <div class="h-40 bg-gradient-to-r from-[#C2185B] via-[#6A1B9A] to-[#FF6B47] relative">
-                    <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                    <div class="absolute inset-0 flex items-center justify-center">
-                      <%= if channel[:icon_url] do %>
-                        <img src={channel.icon_url} class="h-20 w-20 rounded-3xl object-cover border-2 border-white border-opacity-30" alt={channel.name} />
-                      <% else %>
-                        <div class="w-20 h-20 bg-white bg-opacity-10 backdrop-blur-sm rounded-3xl flex items-center justify-center border border-white border-opacity-20">
-                          <svg class="h-10 w-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                          </svg>
-                        </div>
-                      <% end %>
-                    </div>
-                  </div>
-                  <div class="p-6">
-                    <h3 class="text-xl font-bold text-gray-900 mb-3 group-hover:text-[#C2185B] transition-colors">
-                      <%= channel.name %>
-                    </h3>
-                    <div class="flex items-center text-gray-500 text-sm mb-4">
-                      <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                      <%= channel[:member_count] || 0 %> members
-                    </div>
-                    <%= if channel[:description] && channel.description != "" do %>
-                      <p class="text-gray-600 text-sm mb-4 leading-relaxed">
-                        <%= channel.description %>
-                      </p>
-                    <% end %>
-                    <div class="flex justify-between items-center">
-                      <span class="px-3 py-1 bg-gradient-to-r from-[#6A1B9A]/10 to-[#C2185B]/10 text-[#6A1B9A] text-xs font-bold rounded-full border border-[#6A1B9A]/20">
-                        <%= get_channel_category(channel) %>
-                      </span>
-                      <span class="text-xs text-gray-500 font-medium">
-                        <%= if channel[:last_active], do: "Active #{time_ago(channel.last_active)}", else: "New" %>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
-            <% end %>
-          </div>
-        <% end %>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- DISCOVER SECTION WITH VISUAL IMAGERY -->
-<div class="px-4 sm:px-6 lg:px-8 xl:px-16 mb-20">
-  <div class="max-w-7xl mx-auto">
-    <!-- Main Content Area -->
-    <div class="grid grid-cols-1 xl:grid-cols-4 gap-8">
-      
-      <!-- Discovery Content (3/4 width) -->
-      <div class="xl:col-span-3">
-        <div class="bg-white rounded-3xl shadow-xl border border-gray-100/50 overflow-hidden">
-          <div class="p-8 lg:p-12">
-            <div class="flex items-center mb-8">
-              <div class="w-1 h-12 bg-gradient-to-b from-[#FF6B47] to-[#0891B2] rounded-full mr-6"></div>
-              <h2 class="text-3xl font-black text-gray-900">Discover & Collaborate</h2>
-            </div>
-            
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              
-              <!-- Featured Large Card -->
-              <div class="lg:col-span-2">
-                <div class="group relative h-80 rounded-3xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-[1.02]">
-                  <div class="absolute inset-0 bg-gradient-to-br from-[#C2185B] via-[#6A1B9A] to-[#FF6B47]"></div>
-                  <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                  
-                  <!-- Abstract visual elements -->
-                  <div class="absolute top-8 right-8 w-24 h-24 bg-white bg-opacity-10 rounded-3xl transform rotate-12 backdrop-blur-sm border border-white border-opacity-20"></div>
-                  <div class="absolute bottom-12 left-8 w-40 h-6 bg-white bg-opacity-15 rounded-full backdrop-blur-sm"></div>
-                  <div class="absolute top-20 left-12 w-12 h-12 bg-white bg-opacity-20 rounded-full backdrop-blur-sm"></div>
-                  <div class="absolute bottom-28 right-16 w-6 h-20 bg-white bg-opacity-15 rounded-full backdrop-blur-sm"></div>
-                  
-                  <!-- Floating collaboration icons -->
-                  <div class="absolute top-12 left-20 flex space-x-2">
-                    <div class="w-8 h-8 bg-white bg-opacity-20 rounded-full flex items-center justify-center backdrop-blur-sm border border-white border-opacity-30">
-                      <svg class="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                      </svg>
-                    </div>
-                    <div class="w-8 h-8 bg-white bg-opacity-20 rounded-full flex items-center justify-center backdrop-blur-sm border border-white border-opacity-30">
-                      <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <div class="w-8 h-8 bg-white bg-opacity-20 rounded-full flex items-center justify-center backdrop-blur-sm border border-white border-opacity-30">
-                      <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                  </div>
-                  
-                  <div class="relative h-full p-8 flex flex-col justify-between">
-                    <div>
-                      <span class="inline-flex items-center px-4 py-2 bg-white bg-opacity-20 backdrop-blur-sm text-white text-sm font-bold rounded-full border border-white border-opacity-30 mb-6">
-                        🔥 Featured Collaboration
-                      </span>
-                      <h3 class="text-3xl lg:text-4xl font-black text-white mb-4 leading-tight">
-                        Cross-Genre Music Lab
-                      </h3>
-                      <p class="text-white text-opacity-90 text-lg leading-relaxed max-w-lg">
-                        Join 50+ musicians experimenting with genre fusion and collaborative composition techniques. From jazz to electronic, hip-hop to classical.
-                      </p>
-                    </div>
-                    
-                    <button class="self-start bg-white bg-opacity-20 backdrop-blur-sm text-white font-bold px-8 py-4 rounded-2xl border border-white border-opacity-30 hover:bg-opacity-30 transition-all duration-300 transform hover:scale-105 shadow-lg">
-                      Join Collaboration
-                    </button>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- Grid of smaller cards -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                
-                <!-- Audio Production Card -->
-                <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#0891B2]/30 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
-                  <div class="h-24 bg-gradient-to-r from-[#0891B2] to-[#6A1B9A] relative overflow-hidden">
-                    <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                    <!-- Sound wave visual -->
-                    <div class="absolute bottom-2 left-4 flex space-x-1">
-                      <div class="w-1 h-4 bg-white bg-opacity-40 rounded-full animate-pulse"></div>
-                      <div class="w-1 h-6 bg-white bg-opacity-50 rounded-full animate-pulse" style="animation-delay: 0.1s"></div>
-                      <div class="w-1 h-3 bg-white bg-opacity-40 rounded-full animate-pulse" style="animation-delay: 0.2s"></div>
-                      <div class="w-1 h-5 bg-white bg-opacity-60 rounded-full animate-pulse" style="animation-delay: 0.3s"></div>
-                      <div class="w-1 h-2 bg-white bg-opacity-30 rounded-full animate-pulse" style="animation-delay: 0.4s"></div>
-                    </div>
-                    <div class="absolute inset-0 flex items-center justify-center">
-                      <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div class="p-4">
-                    <h3 class="text-lg font-bold text-gray-900 mb-2 group-hover:text-[#0891B2] transition-colors">
-                      Audio Mastering Circle
-                    </h3>
-                    <p class="text-gray-600 text-sm mb-3">
-                      Learn mastering techniques with industry pros
-                    </p>
-                    <div class="text-[#0891B2] hover:text-[#6A1B9A] text-sm font-bold cursor-pointer transition-colors">
-                      Join Circle →
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Visual Arts Card -->
-                <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#C2185B]/30 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
-                  <div class="h-24 bg-gradient-to-r from-[#C2185B] to-[#FF6B47] relative overflow-hidden">
-                    <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                    <!-- Color swatches -->
-                    <div class="absolute bottom-3 left-3 flex space-x-1">
-                      <div class="w-2 h-2 bg-[#FF6B47] rounded-full border border-white border-opacity-50"></div>
-                      <div class="w-2 h-2 bg-[#0891B2] rounded-full border border-white border-opacity-50"></div>
-                      <div class="w-2 h-2 bg-[#6A1B9A] rounded-full border border-white border-opacity-50"></div>
-                    </div>
-                    <div class="absolute inset-0 flex items-center justify-center">
-                      <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div class="p-4">
-                    <div class="flex justify-between items-start mb-2">
-                      <h3 class="text-lg font-bold text-gray-900 group-hover:text-[#C2185B] transition-colors">
-                        Digital Art Collective
-                      </h3>
-                      <span class="px-2 py-1 bg-gradient-to-r from-[#C2185B]/10 to-[#FF6B47]/10 text-[#C2185B] text-xs font-bold rounded-full border border-[#C2185B]/20">
-                        Hot
-                      </span>
-                    </div>
-                    <p class="text-gray-600 text-sm mb-3">
-                      Showcase and critique digital artwork
-                    </p>
-                    <div class="text-[#C2185B] hover:text-[#FF6B47] text-sm font-bold cursor-pointer transition-colors">
-                      View Gallery →
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Video Projects Card -->
-                <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#FF6B47]/30 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
-                  <div class="h-24 bg-gradient-to-r from-[#FF6B47] to-[#C2185B] relative overflow-hidden">
-                    <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                    <!-- Film strip visual -->
-                    <div class="absolute top-2 left-2 right-2 h-1 bg-white bg-opacity-30 rounded-full"></div>
-                    <div class="absolute bottom-2 left-2 right-2 h-1 bg-white bg-opacity-30 rounded-full"></div>
-                    <div class="absolute inset-0 flex items-center justify-center">
-                      <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div class="p-4">
-                    <div class="flex justify-between items-start mb-2">
-                      <h3 class="text-lg font-bold text-gray-900 group-hover:text-[#FF6B47] transition-colors">
-                        Open Film Projects
-                      </h3>
-                      <span class="px-2 py-1 bg-gradient-to-r from-[#FF6B47]/10 to-[#0891B2]/10 text-[#FF6B47] text-xs font-bold rounded-full border border-[#FF6B47]/20">
-                        New
-                      </span>
-                    </div>
-                    <p class="text-gray-600 text-sm mb-3">
-                      Collaborative video production opportunities
-                    </p>
-                    <div class="text-[#FF6B47] hover:text-[#C2185B] text-sm font-bold cursor-pointer transition-colors">
-                      Browse Projects →
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Code & Tech Card -->
-                <div class="group bg-white rounded-2xl border border-gray-200 hover:border-[#6A1B9A]/30 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
-                  <div class="h-24 bg-gradient-to-r from-[#6A1B9A] to-[#0891B2] relative overflow-hidden">
-                    <div class="absolute inset-0 bg-black bg-opacity-20"></div>
-                    <!-- Code elements -->
-                    <div class="absolute top-2 left-3 text-white text-opacity-40 text-xs font-mono">
-                      &lt;div&gt;
-                    </div>
-                    <div class="absolute bottom-2 right-3 text-white text-opacity-40 text-xs font-mono">
-                      { }
-                    </div>
-                    <div class="absolute inset-0 flex items-center justify-center">
-                      <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div class="p-4">
-                    <div class="flex justify-between items-start mb-2">
-                      <h3 class="text-lg font-bold text-gray-900 group-hover:text-[#6A1B9A] transition-colors">
-                        Creative Tech Hub
-                      </h3>
-                      <span class="px-2 py-1 bg-gradient-to-r from-[#6A1B9A]/10 to-[#0891B2]/10 text-[#6A1B9A] text-xs font-bold rounded-full border border-[#6A1B9A]/20">
-                        Code
-                      </span>
-                    </div>
-                    <p class="text-gray-600 text-sm mb-3">
-                      Interactive media and creative coding
-                    </p>
-                    <div class="text-[#6A1B9A] hover:text-[#0891B2] text-sm font-bold cursor-pointer transition-colors">
-                      Join Developers →
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- RIGHT SIDEBAR (1/4 width) - Now properly integrated -->
-      <div class="xl:col-span-1 space-y-8">
-        <!-- This is where Part 6 sidebar content goes -->
-        
-        <!-- Daily Question Widget -->
-        <div class="bg-white rounded-2xl shadow-xl border border-gray-100/50 overflow-hidden">
-          <div class="bg-gradient-to-r from-[#6A1B9A] to-[#C2185B] p-4">
-            <h2 class="text-lg font-bold text-white flex items-center">
-              <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Creative Insights
-            </h2>
-          </div>
-          <div class="p-6">
-            <h3 class="text-gray-900 font-bold mb-4">What's your primary creative motivation?</h3>
-            <div class="space-y-3">
-              <label class="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                <input type="radio" name="motivation" class="h-4 w-4 text-[#C2185B] focus:ring-[#C2185B] border-gray-300">
-                <span class="text-gray-700 text-sm group-hover:text-gray-900 transition-colors">Personal expression & artistic vision</span>
-              </label>
-              <label class="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                <input type="radio" name="motivation" class="h-4 w-4 text-[#C2185B] focus:ring-[#C2185B] border-gray-300">
-                <span class="text-gray-700 text-sm group-hover:text-gray-900 transition-colors">Building community & connections</span>
-              </label>
-              <label class="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                <input type="radio" name="motivation" class="h-4 w-4 text-[#C2185B] focus:ring-[#C2185B] border-gray-300">
-                <span class="text-gray-700 text-sm group-hover:text-gray-900 transition-colors">Professional development & growth</span>
-              </label>
-              <label class="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                <input type="radio" name="motivation" class="h-4 w-4 text-[#C2185B] focus:ring-[#C2185B] border-gray-300">
-                <span class="text-gray-700 text-sm group-hover:text-gray-900 transition-colors">Problem-solving & innovation</span>
-              </label>
-            </div>
-            <button phx-click="submit_question" class="mt-4 w-full bg-gradient-to-r from-[#C2185B] to-[#6A1B9A] hover:from-[#A91B56] hover:to-[#5C178B] text-white font-bold py-3 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg">
-              Share Your Response
             </button>
           </div>
         </div>
 
-        <!-- Recent Media Widget -->
-        <div class="bg-white rounded-2xl shadow-xl border border-gray-100/50 overflow-hidden">
-          <div class="flex justify-between items-center p-4 border-b border-gray-100">
-            <h2 class="text-lg font-bold text-gray-900">Recent Uploads</h2>
-            <.link navigate={~p"/media"} class="text-[#C2185B] hover:text-[#6A1B9A] text-sm font-bold transition-colors">
-              View All →
-            </.link>
-          </div>
-          <div class="p-6 text-center">
-            <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center">
-              <svg class="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-              </svg>
+        <!-- Daily Survey -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+          <div class="bg-gradient-to-r from-pink-600 to-purple-600 p-4">
+            <div class="flex items-center">
+              <div class="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center mr-3">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+              </div>
+              <h3 class="font-black text-white text-lg">Daily Survey</h3>
             </div>
-            <p class="text-gray-500 text-sm">No uploads yet</p>
-            <p class="text-gray-400 text-xs mt-1">Start creating and share your work</p>
           </div>
-          <div class="p-4">
-            <.link
-              navigate={~p"/media/upload"}
-              class="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-[#FF6B47] to-[#0891B2] hover:from-[#E55A3A] hover:to-[#0782A3] text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg"
-            >
-              <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Upload New Content
-            </.link>
+          <div class="p-6">
+            <div class="mb-4">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-gray-600">Daily Streak</span>
+                <span id="streak-counter" class="text-xs font-bold text-pink-600">7 days</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-1.5">
+                <div id="progress-bar" class="h-1.5 rounded-full bg-gradient-to-r from-pink-600 to-purple-600" style="width: 70%;"></div>
+              </div>
+            </div>
+
+            <div id="survey-content">
+              <p id="survey-question" class="text-gray-700 text-sm mb-4 leading-relaxed">
+                What's your preferred creative medium?
+              </p>
+              
+              <div id="survey-options" class="space-y-2 mb-4">
+                <button class="survey-option w-full text-left p-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-sm">
+                  Digital Art & Design
+                </button>
+                <button class="survey-option w-full text-left p-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-sm">
+                  Music & Audio
+                </button>
+                <button class="survey-option w-full text-left p-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-sm">
+                  Video & Film
+                </button>
+                <button class="survey-option w-full text-left p-2 bg-gray-50 hover:bg-gray-100 rounded-xl text-sm">
+                  Writing & Literature
+                </button>
+              </div>
+
+              <button id="survey-submit" class="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-bold px-4 py-2 rounded-xl text-sm">
+                Submit Response
+              </button>
+            </div>
+
+            <div id="survey-completed" class="hidden text-center">
+              <div class="p-3 bg-gray-50 rounded-xl">
+                <div class="text-pink-600 text-sm font-bold mb-1">Thanks for participating!</div>
+                <div class="text-xs text-gray-500">Next survey in 22 hours</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Bottom help text -->
+          <div class="px-6 pb-4">
+            <p class="text-xs text-gray-400 text-center">
+              Missing something? <.link class="text-purple-600 hover:text-purple-700">Help us improve Frestyl</.link>
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="lg:col-span-9 col-span-12 space-y-6">
+        <!-- Hero Section -->
+        <div class="bg-white rounded-xl p-6 shadow-md">
+          <div class="flex flex-col sm:flex-row sm:items-start justify-between mb-6 space-y-4 sm:space-y-0">
+            <div>
+              <h1 class="text-2xl sm:text-3xl font-black text-gray-900 mb-2">
+                <%= get_simple_timezone_greeting(@current_user.full_name) %>
+              </h1>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button class="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm">
+                <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                Channel
+              </button>
+              <button class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-semibold text-sm">
+                <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+                Content
+              </button>
+              <button class="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">
+                <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                </svg>
+                Collaborate
+              </button>
+            </div>
+          </div>
+
+          <!-- Stats Grid -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
+              <span class="absolute top-3 right-3 bg-green-100 text-green-600 text-xs font-bold px-2 py-1 rounded-full">+2 New</span>
+              <div class="flex items-center mt-6">
+                <svg class="w-5 h-5 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"></path>
+                </svg>
+                <div>
+                  <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Channels</h3>
+                  <p class="text-xl font-bold text-gray-900">24</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
+              <span class="absolute top-3 right-3 bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">Live</span>
+              <div class="flex items-center mt-6">
+                <svg class="w-5 h-5 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 616 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                </svg>
+                <div>
+                  <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Collaborators</h3>
+                  <p class="text-xl font-bold text-gray-900">89</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
+              <div class="absolute top-3 right-3 text-xs font-mono text-gray-600 font-bold">+12 Today</div>
+              <div class="flex items-center mt-6">
+                <svg class="w-5 h-5 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 712 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 712-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 712-2m0 0V5a2 2 0 712-2h6a2 2 0 712 2v2M7 7h10"></path>
+                </svg>
+                <div>
+                  <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Media Files</h3>
+                  <p class="text-xl font-bold text-gray-900">2.4K</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
+              <div class="absolute top-3 right-3 text-xs font-mono text-gray-600 font-bold">+28% ↑</div>
+              <div class="flex items-center mt-6">
+                <svg class="w-5 h-5 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                </svg>
+                <div>
+                  <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Views</h3>
+                  <p class="text-xl font-bold text-gray-900">156K</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Portfolio Widget -->
-        <div class="bg-white rounded-2xl shadow-xl border border-gray-100/50 overflow-hidden">
-          <div class="bg-gradient-to-r from-[#FF6B47] to-[#C2185B] p-4">
-            <h2 class="text-lg font-bold text-white flex items-center">
-              <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              Your Portfolio
-            </h2>
-          </div>
-          <div class="p-6 text-center">
-            <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-[#FF6B47]/20 to-[#C2185B]/20 rounded-2xl flex items-center justify-center border border-[#FF6B47]/30">
-              <svg class="h-8 w-8 text-[#FF6B47]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
+        <!-- Content Grid -->
+        <div class="space-y-6 lg:grid lg:grid-cols-12 lg:gap-6 lg:space-y-0">
+          <!-- Network Section -->
+          <div class="lg:col-span-8 bg-white rounded-xl shadow-md overflow-hidden">
+            <div class="p-6">
+              <div class="flex items-start justify-between mb-6">
+                <h2 class="text-2xl font-black text-gray-900">Network</h2>
+                <.link class="text-purple-600 hover:text-purple-700 font-semibold text-sm flex items-center group">
+                  View All 
+                  <svg class="ml-2 h-4 w-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                  </svg>
+                </.link>
+              </div>
+
+              <div class="flex gap-4 overflow-x-auto pb-4">
+                <!-- Beat Creators Lab -->
+                <div class="flex-none w-56">
+                  <div class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative">
+                    <div class="absolute top-3 left-3 bg-blue-100 text-blue-600 text-xs font-bold px-3 py-1 rounded-full">
+                      Music
+                    </div>
+                    <span class="absolute top-3 right-3 bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">Live</span>
+                    <div class="h-1 bg-gradient-to-r from-cyan-600 to-blue-600"></div>
+                    <div class="p-4 pt-12">
+                      <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-base font-black text-gray-900 hover:text-cyan-600 transition-colors">
+                          Beat Creators Lab
+                        </h3>
+                        <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                        </svg>
+                      </div>
+                      <div class="flex items-center text-gray-500 text-sm mb-3">
+                        <svg class="h-3 w-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 616 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        24 members
+                      </div>
+                      <p class="text-gray-600 text-xs leading-relaxed mb-3">
+                        Share beats and get feedback from producers.
+                      </p>
+                      <div class="text-xs text-gray-500 font-medium">
+                        Active now
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Visual Feedback Hub -->
+                <div class="flex-none w-56">
+                  <div class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative">
+                    <div class="absolute top-3 left-3 bg-purple-100 text-purple-600 text-xs font-bold px-3 py-1 rounded-full">
+                      Design
+                    </div>
+                    <span class="absolute top-3 right-3 bg-green-100 text-green-600 text-xs font-bold px-2 py-1 rounded-full">New</span>
+                    <div class="h-1 bg-gradient-to-r from-yellow-500 to-orange-500"></div>
+                    <div class="p-4 pt-12">
+                      <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-base font-black text-gray-900 hover:text-yellow-600 transition-colors">
+                          Visual Feedback Hub
+                        </h3>
+                        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                      </div>
+                      <div class="flex items-center text-gray-500 text-sm mb-3">
+                        <svg class="h-3 w-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 616 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        42 members
+                      </div>
+                      <p class="text-gray-600 text-xs leading-relaxed mb-3">
+                        Get feedback on visual projects.
+                      </p>
+                      <div class="text-xs text-gray-500 font-medium">
+                        Active 1h ago
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Frestyl Official -->
+                <div class="flex-none w-56">
+                  <div class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative">
+                    <div class="absolute top-3 left-3 bg-blue-100 text-blue-600 text-xs font-bold px-3 py-1 rounded-full">
+                      Official
+                    </div>
+                    <div class="h-1 bg-gradient-to-r from-pink-600 to-purple-600"></div>
+                    <div class="p-4 pt-12">
+                      <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-base font-black text-gray-900 hover:text-pink-600 transition-colors">
+                          Frestyl Official
+                        </h3>
+                        <span class="text-sm font-bold text-gray-600">F</span>
+                      </div>
+                      <div class="flex items-center text-gray-500 text-sm mb-3">
+                        <svg class="h-3 w-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 616 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        1.2k members
+                      </div>
+                      <p class="text-gray-600 text-xs leading-relaxed mb-3">
+                        Official announcements and updates.
+                      </p>
+                      <div class="text-xs text-gray-500 font-medium">
+                        Active 2h ago
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <h3 class="text-gray-900 font-bold mb-2">Showcase Your Work</h3>
-            <p class="text-gray-600 text-sm mb-4 leading-relaxed">Create a professional portfolio to highlight your creative projects and attract collaborators</p>
-            <.link
-              navigate={~p"/portfolios"}
-              class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-[#FF6B47] to-[#C2185B] hover:from-[#E55A3A] hover:to-[#A91B56] text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg"
-            >
-              <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Create Portfolio
-            </.link>
+          </div>
+
+          <!-- Live Portfolio -->
+          <div class="lg:col-span-4 bg-white rounded-xl shadow-md overflow-hidden">
+            <div class="bg-gradient-to-r from-yellow-500 to-orange-500 p-4">
+              <div class="flex items-center">
+                <div class="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center mr-3">
+                  <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 712 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 712-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 712-2m0 0V5a2 2 0 712-2h6a2 2 0 712 2v2M7 7h10"></path>
+                  </svg>
+                </div>
+                <h3 class="text-lg font-black text-white">Live Portfolio</h3>
+              </div>
+            </div>
+            <div class="p-4">
+              <p class="text-gray-600 text-xs mb-4 leading-relaxed">
+                Showcase your projects with privacy controls you deserve.
+              </p>
+              
+              <div class="space-y-2 mb-4">
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-600 font-medium text-xs">Projects</span>
+                  <span class="font-bold text-gray-900 text-sm">8</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-600 font-medium text-xs">Views</span>
+                  <span class="font-bold text-gray-900 text-sm">234</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-600 font-medium text-xs">Requests</span>
+                  <span class="font-bold text-gray-900 text-sm">12</span>
+                </div>
+              </div>
+
+              <.link navigate={~p"/portfolios"} class="block w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold py-2 rounded-lg text-xs text-center">
+                Manage
+              </.link>
+            </div>
           </div>
         </div>
-      </div>
+
+        <!-- Discover Section -->
+        <div class="space-y-6 lg:grid lg:grid-cols-12 lg:gap-6 lg:space-y-0">
+          <div class="lg:col-span-8 bg-white rounded-xl shadow-md overflow-hidden">
+            <div class="p-6">
+              <h2 class="text-2xl font-black text-gray-900 mb-6">Discover</h2>
+              
+              <div class="grid grid-cols-2 gap-4">
+                <!-- Featured Card - Top Left -->
+                <div>
+                  <div class="relative h-48 rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-500 bg-gradient-to-r from-purple-600 to-indigo-600">
+                    <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+                    <div class="relative h-full p-4 flex flex-col justify-between">
+                      <div>
+                        <span class="inline-flex items-center px-2 py-1 bg-white bg-opacity-20 backdrop-blur-sm text-white text-xs font-bold rounded-full border border-white border-opacity-30 mb-3">
+                          🔥 Featured
+                        </span>
+                        <h3 class="text-lg font-black text-white mb-2 leading-tight">
+                          Cross-Genre Music Lab
+                        </h3>
+                        <p class="text-white text-opacity-90 text-xs leading-relaxed">
+                          Join 50+ musicians experimenting with genre fusion.
+                        </p>
+                      </div>
+                      <button class="self-start bg-white bg-opacity-20 backdrop-blur-sm text-white font-semibold px-3 py-2 rounded-xl border border-white border-opacity-30 text-xs hover:bg-opacity-30">
+                        Join Collaboration
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Top Right -->
+                <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-3 relative">
+                  <div class="absolute top-3 left-3 bg-blue-100 text-blue-600 text-xs font-bold px-3 py-1 rounded-full">
+                    Audio
+                  </div>
+                  <div class="pt-8">
+                    <h3 class="text-lg font-black text-gray-900 mb-2">Audio Mastering</h3>
+                    <p class="text-xs text-gray-600 mb-2">Learn with pros</p>
+                    <div class="text-purple-600 text-xs font-bold">Join →</div>
+                  </div>
+                </div>
+                
+                <!-- Bottom Left -->
+                <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-3 relative">
+                  <div class="absolute top-3 left-3 bg-green-100 text-green-600 text-xs font-bold px-3 py-1 rounded-full">
+                    Video
+                  </div>
+                  <div class="pt-8">
+                    <h3 class="text-lg font-black text-gray-900 mb-2">Film Collective</h3>
+                    <p class="text-xs text-gray-600 mb-2">Share short films</p>
+                    <div class="text-purple-600 text-xs font-bold">Watch →</div>
+                  </div>
+                </div>
+                
+                <!-- Bottom Right -->
+                <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-3 relative">
+                  <div class="absolute top-3 left-3 bg-pink-100 text-pink-600 text-xs font-bold px-3 py-1 rounded-full">
+                    Hot
+                  </div>
+                  <div class="pt-8">
+                    <h3 class="text-lg font-black text-gray-900 mb-2">Digital Art</h3>
+                    <p class="text-xs text-gray-600 mb-2">Showcase work</p>
+                    <div class="text-purple-600 text-xs font-bold">View →</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Connect Section -->
+          <div class="lg:col-span-4 space-y-4">
+            <!-- Collaborators -->
+            <div class="bg-white rounded-xl shadow-md p-4">
+              <h4 class="font-black text-gray-900 text-sm mb-3">Collaborators</h4>
+              <div class="space-y-3">
+                <div class="flex items-center space-x-3">
+                  <span class="w-8 h-8 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-lg flex items-center justify-center text-xs font-bold text-white">M</span>
+                  <div class="flex-1">
+                    <h5 class="font-bold text-gray-900 text-xs">Maya Chen</h5>
+                    <p class="text-xs text-gray-500">3D environments specialist</p>
+                  </div>
+                  <button class="text-cyan-600 hover:text-blue-600 text-xs font-semibold">
+                    Connect
+                  </button>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                  <span class="w-8 h-8 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center text-xs font-bold text-white">J</span>
+                  <div class="flex-1">
+                    <h5 class="font-bold text-gray-900 text-xs">Josh Kim</h5>
+                    <p class="text-xs text-gray-500">Lo-fi and ambient sounds</p>
+                  </div>
+                  <button class="text-purple-600 hover:text-indigo-600 text-xs font-semibold">
+                    Connect
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Events -->
+            <div class="bg-white rounded-xl shadow-md p-4">
+              <h4 class="font-black text-gray-900 text-sm mb-3">Upcoming Events</h4>
+              <div class="space-y-3">
+                <div class="flex items-center space-x-3">
+                  <span class="w-8 h-8 bg-gradient-to-r from-pink-600 to-purple-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                  </span>
+                  <div class="flex-1">
+                    <h5 class="font-bold text-gray-900 text-xs">Creative Showcase</h5>
+                    <p class="text-xs text-gray-500">Tomorrow 7PM</p>
+                  </div>
+                  <button class="text-pink-600 hover:text-purple-600 text-xs font-semibold">
+                    Register
+                  </button>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                  <span class="w-8 h-8 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center">
+                    <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
+                    </svg>
+                  </span>
+                  <div class="flex-1">
+                    <h5 class="font-bold text-gray-900 text-xs">Music Workshop</h5>
+                    <p class="text-xs text-gray-500">Friday 2PM</p>
+                  </div>
+                  <button class="text-yellow-600 hover:text-orange-600 text-xs font-semibold">
+                    Register
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Suggested Connections -->
+            <div class="bg-white rounded-xl shadow-md p-4">
+              <h4 class="font-black text-gray-900 text-sm mb-3">Suggested</h4>
+              <div class="space-y-3">
+                <div class="flex items-center space-x-3">
+                  <span class="w-8 h-8 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center text-xs font-bold text-white">S</span>
+                  <div class="flex-1">
+                    <h5 class="font-bold text-gray-900 text-xs">Sam Rodriguez</h5>
+                    <p class="text-xs text-gray-500">Video Editor</p>
+                  </div>
+                  <button class="text-purple-600 hover:text-indigo-600 text-xs font-semibold">
+                    Connect
+                  </button>
+                </div>
+                <div class="flex items-center space-x-3">
+                  <span class="w-8 h-8 bg-gradient-to-r from-orange-500 to-pink-500 rounded-lg flex items-center justify-center text-xs font-bold text-white">A</span>
+                  <div class="flex-1">
+                    <h5 class="font-bold text-gray-900 text-xs">Alex Turner</h5>
+                    <p class="text-xs text-gray-500">Musician</p>
+                  </div>
+                  <button class="text-orange-600 hover:text-pink-600 text-xs font-semibold">
+                    Connect
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   </div>
 </div>
 
-<!-- MOBILE BOTTOM NAVIGATION -->
-<div class="fixed bottom-0 left-0 right-0 xl:hidden z-50 bg-white/90 backdrop-blur-lg border-t border-gray-200/50 shadow-2xl">
-  <div class="safe-area-bottom">
-    <div class="grid grid-cols-5 h-20">
-      
-      <!-- Dashboard Tab -->
-      <.link navigate={~p"/dashboard"} class={[
-        "flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative",
-        if(@active_tab == :dashboard, do: "text-[#C2185B]", else: "text-gray-500 hover:text-gray-700")
-      ]}>
-        <%= if @active_tab == :dashboard do %>
-          <div class="absolute top-0 w-12 h-1 bg-gradient-to-r from-[#C2185B] to-[#6A1B9A] rounded-b-full"></div>
-        <% end %>
-        <div class={[
-          "p-2 rounded-xl transition-all duration-300",
-          if(@active_tab == :dashboard, do: "bg-gradient-to-br from-[#C2185B]/10 to-[#6A1B9A]/10 scale-110", else: "")
-        ]}>
-          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-          </svg>
-        </div>
-        <span class="text-xs font-bold">Dashboard</span>
-      </.link>
-      
-      <!-- Channels Tab -->
-      <.link navigate={~p"/channels"} class={[
-        "flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative",
-        if(@active_tab == :channels, do: "text-[#6A1B9A]", else: "text-gray-500 hover:text-gray-700")
-      ]}>
-        <%= if @active_tab == :channels do %>
-          <div class="absolute top-0 w-12 h-1 bg-gradient-to-r from-[#6A1B9A] to-[#0891B2] rounded-b-full"></div>
-        <% end %>
-        <div class={[
-          "p-2 rounded-xl transition-all duration-300",
-          if(@active_tab == :channels, do: "bg-gradient-to-br from-[#6A1B9A]/10 to-[#0891B2]/10 scale-110", else: "")
-        ]}>
-          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-          </svg>
-        </div>
-        <span class="text-xs font-bold">Channels</span>
-      </.link>
-      
-      <!-- CENTER UPLOAD BUTTON -->
-      <div class="flex items-center justify-center">
-        <.link navigate={~p"/media/upload"} class="w-16 h-16 bg-gradient-to-r from-[#FF6B47] to-[#C2185B] rounded-full flex items-center justify-center shadow-xl shadow-[#FF6B47]/30 transform hover:scale-110 active:scale-95 transition-all duration-300 border-4 border-white">
-          <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-        </.link>
-      </div>
-      
-      <!-- Chat Tab -->
-      <.link navigate={~p"/chat"} class={[
-        "flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative",
-        if(@active_tab == :chat, do: "text-[#0891B2]", else: "text-gray-500 hover:text-gray-700")
-      ]}>
-        <%= if @active_tab == :chat do %>
-          <div class="absolute top-0 w-12 h-1 bg-gradient-to-r from-[#0891B2] to-[#6A1B9A] rounded-b-full"></div>
-        <% end %>
-        <div class={[
-          "p-2 rounded-xl transition-all duration-300",
-          if(@active_tab == :chat, do: "bg-gradient-to-br from-[#0891B2]/10 to-[#6A1B9A]/10 scale-110", else: "")
-        ]}>
-          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-        </div>
-        <span class="text-xs font-bold">Chat</span>
-      </.link>
-      
-      <!-- Media Tab -->
-      <.link navigate={~p"/media"} class={[
-        "flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative",
-        if(@active_tab == :media, do: "text-[#FF6B47]", else: "text-gray-500 hover:text-gray-700")
-      ]}>
-        <%= if @active_tab == :media do %>
-          <div class="absolute top-0 w-12 h-1 bg-gradient-to-r from-[#FF6B47] to-[#C2185B] rounded-b-full"></div>
-        <% end %>
-        <div class={[
-          "p-2 rounded-xl transition-all duration-300",
-          if(@active_tab == :media, do: "bg-gradient-to-br from-[#FF6B47]/10 to-[#C2185B]/10 scale-110", else: "")
-        ]}>
-          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
-          </svg>
-        </div>
-        <span class="text-xs font-bold">Media</span>
-      </.link>
-    </div>
-  </div>
-</div>
-
-<style>
-  /* FRESTYL DASHBOARD CUSTOM STYLES */
-  
-  /* Brand Color Variables */
-  :root {
-    --frestyl-fuschia: #C2185B;
-    --frestyl-purple: #6A1B9A;
-    --frestyl-coral: #FF6B47;
-    --frestyl-teal: #0891B2;
-  }
-
-  /* Smooth transitions for all interactive elements */
-  .transition-smooth {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  /* Enhanced hover effects for cards */
-  .card-hover:hover {
-    transform: translateY(-8px) scale(1.02);
-    box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.15);
-  }
-
-  /* Floating animation for stats cards */
-  @keyframes float {
-    0%, 100% {
-      transform: translateY(0px) rotate(0deg);
-    }
-    50% {
-      transform: translateY(-6px) rotate(1deg);
-    }
-  }
-
-  .floating-card {
-    animation: float 6s ease-in-out infinite;
-  }
-
-  .floating-card:nth-child(2) {
-    animation-delay: -2s;
-  }
-
-  .floating-card:nth-child(3) {
-    animation-delay: -4s;
-  }
-
-  .floating-card:nth-child(4) {
-    animation-delay: -1s;
-  }
-
-  /* Gradient text animations */
-  @keyframes gradient-shift {
-    0% {
-      background-position: 0% 50%;
-    }
-    50% {
-      background-position: 100% 50%;
-    }
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  .animate-gradient {
-    background-size: 300% 300%;
-    animation: gradient-shift 8s ease infinite;
-  }
-
-  /* Button shine effect */
-  .btn-shine {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .btn-shine::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.3),
-      transparent
-    );
-    transition: left 0.6s;
-  }
-
-  .btn-shine:hover::before {
-    left: 100%;
-  }
-
-  /* Custom scrollbar styling */
-  .scrollbar-custom {
-    scrollbar-width: thin;
-    scrollbar-color: var(--frestyl-fuschia) #f1f5f9;
-  }
-
-  .scrollbar-custom::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  .scrollbar-custom::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 3px;
-  }
-
-  .scrollbar-custom::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, var(--frestyl-fuschia), var(--frestyl-purple));
-    border-radius: 3px;
-  }
-
-  .scrollbar-custom::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, var(--frestyl-purple), var(--frestyl-coral));
-  }
-
-  /* Hide scrollbar but keep functionality */
-  .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Line clamp utilities */
-  .line-clamp-1 {
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  /* Glass morphism effect */
-  .glass {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  /* Pulse animation for visual elements */
-  @keyframes pulse-soft {
-    0%, 100% {
-      opacity: 0.4;
-      transform: scale(1);
-    }
-    50% {
-      opacity: 0.8;
-      transform: scale(1.05);
-    }
-  }
-
-  .pulse-soft {
-    animation: pulse-soft 3s ease-in-out infinite;
-  }
-
-  /* Question rotation for daily questions */
-  .question-set {
-    transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
-  }
-
-  .question-set.hidden {
-    opacity: 0;
-    transform: translateY(10px);
-    pointer-events: none;
-  }
-
-  /* Mobile safe area support */
-  .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 0);
-  }
-
-  .safe-area-top {
-    padding-top: env(safe-area-inset-top, 0);
-  }
-
-  /* Focus states for accessibility */
-  .focus-ring:focus {
-    outline: 2px solid var(--frestyl-fuschia);
-    outline-offset: 2px;
-    border-radius: 8px;
-  }
-
-  /* Loading skeleton animation */
-  @keyframes skeleton-loading {
-    0% {
-      background-position: 200% 0;
-    }
-    100% {
-      background-position: -200% 0;
-    }
-  }
-
-  .skeleton {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-    background-size: 200% 100%;
-    animation: skeleton-loading 1.5s infinite;
-  }
-
-  /* Brand gradient utilities */
-  .bg-brand-gradient {
-    background: linear-gradient(135deg, var(--frestyl-fuschia) 0%, var(--frestyl-purple) 50%, var(--frestyl-coral) 100%);
-  }
-
-  .text-brand-gradient {
-    background: linear-gradient(135deg, var(--frestyl-fuschia) 0%, var(--frestyl-purple) 50%, var(--frestyl-coral) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
-  /* Enhanced shadow utilities */
-  .shadow-brand-sm {
-    box-shadow: 0 1px 3px 0 rgba(194, 24, 91, 0.1), 0 1px 2px 0 rgba(194, 24, 91, 0.06);
-  }
-
-  .shadow-brand-md {
-    box-shadow: 0 4px 6px -1px rgba(194, 24, 91, 0.1), 0 2px 4px -1px rgba(194, 24, 91, 0.06);
-  }
-
-  .shadow-brand-lg {
-    box-shadow: 0 10px 15px -3px rgba(194, 24, 91, 0.1), 0 4px 6px -2px rgba(194, 24, 91, 0.05);
-  }
-
-  .shadow-brand-xl {
-    box-shadow: 0 20px 25px -5px rgba(194, 24, 91, 0.1), 0 10px 10px -5px rgba(194, 24, 91, 0.04);
-  }
-
-  /* Interactive hover glow */
-  .hover-glow:hover {
-    box-shadow: 0 0 20px rgba(194, 24, 91, 0.3), 0 0 40px rgba(106, 27, 154, 0.2);
-  }
-
-  /* Backdrop blur for mobile navigation */
-  .backdrop-blur-lg {
-    backdrop-filter: blur(16px);
-  }
-
-  /* Selection styling */
-  ::selection {
-    background: rgba(194, 24, 91, 0.2);
-    color: #1a1a1a;
-  }
-
-  ::-moz-selection {
-    background: rgba(194, 24, 91, 0.2);
-    color: #1a1a1a;
-  }
-
-  /* Reduced motion support */
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
-      scroll-behavior: auto !important;
-    }
-  }
-
-  /* Dark mode support (if needed) */
-  @media (prefers-color-scheme: dark) {
-    .dark-mode-adaptive {
-      background: rgba(17, 24, 39, 0.95);
-      color: #f9fafb;
-    }
-  }
-
-  /* Print styles */
-  @media print {
-    .no-print {
-      display: none !important;
-    }
-    
-    .print-friendly {
-      background: white !important;
-      color: black !important;
-      box-shadow: none !important;
-    }
-  }
-
-  /* High contrast mode support */
-  @media (prefers-contrast: high) {
-    .contrast-adaptive {
-      border: 2px solid currentColor;
-      background: white;
-      color: black;
-    }
-  }
-
-  /* Performance optimizations */
-  .will-change-transform {
-    will-change: transform;
-  }
-
-  .transform-gpu {
-    transform: translateZ(0);
-  }
-
-  /* Custom brand animations */
-  @keyframes brand-pulse {
-    0%, 100% {
-      background: linear-gradient(135deg, var(--frestyl-fuschia), var(--frestyl-purple));
-    }
-    25% {
-      background: linear-gradient(135deg, var(--frestyl-purple), var(--frestyl-teal));
-    }
-    50% {
-      background: linear-gradient(135deg, var(--frestyl-teal), var(--frestyl-coral));
-    }
-    75% {
-      background: linear-gradient(135deg, var(--frestyl-coral), var(--frestyl-fuschia));
-    }
-  }
-
-  .animate-brand-pulse {
-    animation: brand-pulse 4s ease-in-out infinite;
-  }
-
-  /* Micro-interactions */
-  .micro-bounce:hover {
-    animation: micro-bounce 0.3s ease-in-out;
-  }
-
-  @keyframes micro-bounce {
-    0%, 100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-2px);
-    }
-  }
-
-  /* Content reveal animations */
-  .reveal-up {
-    opacity: 0;
-    transform: translateY(20px);
-    animation: reveal-up 0.6s ease-out forwards;
-  }
-
-  @keyframes reveal-up {
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .reveal-up:nth-child(1) { animation-delay: 0.1s; }
-  .reveal-up:nth-child(2) { animation-delay: 0.2s; }
-  .reveal-up:nth-child(3) { animation-delay: 0.3s; }
-  .reveal-up:nth-child(4) { animation-delay: 0.4s; }
-
-  /* Typography enhancements */
-  .text-balance {
-    text-wrap: balance;
-  }
-
-  /* Interactive feedback */
-  .haptic-feedback:active {
-    transform: scale(0.98);
-  }
-</style>
-
-<!-- JavaScript for Question Rotation and Interactions -->
 <script>
-  // Question rotation functionality
-  document.addEventListener('DOMContentLoaded', function() {
-    const questionSets = document.querySelectorAll('.question-set');
-    let currentSet = 0;
-    
-    function rotateQuestions() {
-      // Hide current question set
-      if (questionSets[currentSet]) {
-        questionSets[currentSet].classList.add('hidden');
-      }
-      
-      // Move to next set
-      currentSet = (currentSet + 1) % questionSets.length;
-      
-      // Show next question set
-      setTimeout(() => {
-        if (questionSets[currentSet]) {
-          questionSets[currentSet].classList.remove('hidden');
-        }
-      }, 500);
+  // Survey questions
+  const surveyQuestions = [
+    {
+      type: 'multiple',
+      question: "What's your preferred creative medium?",
+      options: [
+        "Digital Art & Design",
+        "Music & Audio", 
+        "Video & Film",
+        "Writing & Literature"
+      ]
+    },
+    {
+      type: 'text',
+      question: "What's the most unconventional tool you've used for creative work?"
+    },
+    {
+      type: 'multiple',
+      question: "What time of day are you most creative?",
+      options: [
+        "Early morning (5-9 AM)",
+        "Late morning (9 AM-12 PM)",
+        "Afternoon (12-6 PM)",
+        "Evening/Night (6 PM+)"
+      ]
     }
-    
-    // Rotate questions every 30 seconds
-    if (questionSets.length > 1) {
-      setInterval(rotateQuestions, 30000);
-    }
-    
-    // Add floating animation to stats cards
-    const statsCards = document.querySelectorAll('.stats-card');
-    statsCards.forEach((card, index) => {
-      card.classList.add('floating-card');
-      card.style.animationDelay = `${index * 0.5}s`;
-    });
-    
-    // Add intersection observer for reveal animations
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('reveal-up');
-        }
-      });
-    }, {
-      threshold: 0.1,
-      rootMargin: '0px 0px -50px 0px'
-    });
-    
-    // Observe elements for reveal animation
-    const revealElements = document.querySelectorAll('.observe-reveal');
-    revealElements.forEach(el => observer.observe(el));
-    
-    // Add haptic feedback for mobile
-    const interactiveElements = document.querySelectorAll('.haptic-feedback');
-    interactiveElements.forEach(element => {
-      element.addEventListener('touchstart', function() {
-        if (navigator.vibrate) {
-          navigator.vibrate(50);
-        }
-      });
-    });
-    
-    // Smooth scroll behavior for navigation
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-      anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-          target.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start'
-          });
-        }
-      });
-    });
-    
-    // Add loading states for buttons
-    const actionButtons = document.querySelectorAll('.action-btn');
-    actionButtons.forEach(button => {
-      button.addEventListener('click', function() {
-        const originalText = this.innerHTML;
-        this.innerHTML = '<svg class="animate-spin h-4 w-4 mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
-        this.disabled = true;
-        
-        // Re-enable after 2 seconds (adjust based on your needs)
-        setTimeout(() => {
-          this.innerHTML = originalText;
-          this.disabled = false;
-        }, 2000);
-      });
-    });
-    
-    // Add parallax effect to background elements
-    const parallaxElements = document.querySelectorAll('.parallax');
-    
-    function updateParallax() {
-      const scrolled = window.pageYOffset;
-      const rate = scrolled * -0.5;
-      
-      parallaxElements.forEach(element => {
-        element.style.transform = `translateY(${rate}px)`;
-      });
-    }
-    
-    // Throttle parallax updates
-    let ticking = false;
-    function requestTick() {
-      if (!ticking) {
-        requestAnimationFrame(updateParallax);
-        ticking = true;
-        setTimeout(() => ticking = false, 16);
-      }
-    }
-    
-    window.addEventListener('scroll', requestTick);
-    
-    // Add keyboard navigation support
-    document.addEventListener('keydown', function(e) {
-      // Tab navigation enhancement
-      if (e.key === 'Tab') {
-        document.body.classList.add('keyboard-navigation');
-      }
-      
-      // Escape key to close modals/dropdowns
-      if (e.key === 'Escape') {
-        const openDropdowns = document.querySelectorAll('.dropdown-open');
-        openDropdowns.forEach(dropdown => {
-          dropdown.classList.remove('dropdown-open');
-        });
-      }
-    });
-    
-    // Remove keyboard navigation class on mouse use
-    document.addEventListener('mousedown', function() {
-      document.body.classList.remove('keyboard-navigation');
-    });
-    
-    // Add performance monitoring
-    if ('performance' in window) {
-      window.addEventListener('load', function() {
-        setTimeout(() => {
-          const perfData = performance.getEntriesByType('navigation')[0];
-          console.log('Page load time:', perfData.loadEventEnd - perfData.loadEventStart, 'ms');
-        }, 0);
-      });
-    }
-    
-    // Add error boundary for JavaScript errors
-    window.addEventListener('error', function(e) {
-      console.error('Dashboard Error:', e.error);
-      // Could send to error tracking service here
-    });
-    
-    // Add network status indicator
-    function updateNetworkStatus() {
-      const networkStatus = navigator.onLine ? 'online' : 'offline';
-      document.body.setAttribute('data-network', networkStatus);
-      
-      if (!navigator.onLine) {
-        // Show offline indicator
-        const offlineIndicator = document.createElement('div');
-        offlineIndicator.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 transition-all duration-300';
-        offlineIndicator.textContent = 'You are offline';
-        offlineIndicator.id = 'offline-indicator';
-        
-        if (!document.getElementById('offline-indicator')) {
-          document.body.appendChild(offlineIndicator);
-        }
-      } else {
-        // Remove offline indicator
-        const indicator = document.getElementById('offline-indicator');
-        if (indicator) {
-          indicator.remove();
-        }
-      }
-    }
-    
-    window.addEventListener('online', updateNetworkStatus);
-    window.addEventListener('offline', updateNetworkStatus);
-    updateNetworkStatus(); // Initial check
-    
-    // Add touch gesture support for mobile
-    let touchStartX = 0;
-    let touchStartY = 0;
-    
-    document.addEventListener('touchstart', function(e) {
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-    });
-    
-    document.addEventListener('touchend', function(e) {
-      const touchEndX = e.changedTouches[0].clientX;
-      const touchEndY = e.changedTouches[0].clientY;
-      
-      const deltaX = touchEndX - touchStartX;
-      const deltaY = touchEndY - touchStartY;
-      
-      // Swipe detection (adjust threshold as needed)
-      if (Math.abs(deltaX) > 50 && Math.abs(deltaY) < 100) {
-        if (deltaX > 0) {
-          // Swipe right
-          document.dispatchEvent(new CustomEvent('swipeRight'));
-        } else {
-          // Swipe left
-          document.dispatchEvent(new CustomEvent('swipeLeft'));
-        }
-      }
-    });
-    
-    // Add resize handler for responsive adjustments
-    function handleResize() {
-      // Update any size-dependent calculations
-      const vh = window.innerHeight * 0.01;
-      document.documentElement.style.setProperty('--vh', `${vh}px`);
-    }
-    
-    window.addEventListener('resize', handleResize);
-    handleResize(); // Initial call
-    
-    // Add focus trap for modals
-    function trapFocus(element) {
-      const focusableElements = element.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      );
-      
-      const firstFocusableElement = focusableElements[0];
-      const lastFocusableElement = focusableElements[focusableElements.length - 1];
-      
-      element.addEventListener('keydown', function(e) {
-        if (e.key === 'Tab') {
-          if (e.shiftKey) {
-            if (document.activeElement === firstFocusableElement) {
-              lastFocusableElement.focus();
-              e.preventDefault();
-            }
-          } else {
-            if (document.activeElement === lastFocusableElement) {
-              firstFocusableElement.focus();
-              e.preventDefault();
-            }
-          }
-        }
-      });
-    }
-    
-    // Initialize focus traps for any existing modals
-    const modals = document.querySelectorAll('.modal');
-    modals.forEach(modal => trapFocus(modal));
-  });
-  
-  // Phoenix LiveView specific enhancements
-  if (window.liveSocket) {
-    // Add custom hooks for enhanced interactivity
-    window.liveSocket.hooks = {
-      ...window.liveSocket.hooks,
-      
-      // Stats animation hook
-      StatsAnimation: {
-        mounted() {
-          this.el.classList.add('reveal-up');
-        },
-        updated() {
-          this.el.classList.add('pulse-soft');
-          setTimeout(() => {
-            this.el.classList.remove('pulse-soft');
-          }, 1000);
-        }
-      },
-      
-      // Card hover enhancement
-      CardHover: {
-        mounted() {
-          this.el.addEventListener('mouseenter', () => {
-            this.el.classList.add('hover-glow');
-          });
-          
-          this.el.addEventListener('mouseleave', () => {
-            this.el.classList.remove('hover-glow');
-          });
-        }
-      },
-      
-      // Question rotation
-      QuestionRotation: {
-        mounted() {
-          this.rotateQuestions();
-          this.interval = setInterval(() => this.rotateQuestions(), 30000);
-        },
-        destroyed() {
-          if (this.interval) clearInterval(this.interval);
-        },
-        rotateQuestions() {
-          const questions = this.el.querySelectorAll('.question-set');
-          if (questions.length <= 1) return;
-          
-          const current = this.el.querySelector('.question-set:not(.hidden)');
-          const currentIndex = Array.from(questions).indexOf(current);
-          const nextIndex = (currentIndex + 1) % questions.length;
-          
-          if (current) current.classList.add('hidden');
-          setTimeout(() => {
-            questions[nextIndex].classList.remove('hidden');
-          }, 500);
-        }
-      }
-    };
-  }
-</script>)
+  ];
 
+  let currentSurveyIndex = 0;
+  let dailyStreak = 7;
+
+  // Search functionality
+  function setupSearch() {
+    const toggle = document.getElementById('search-toggle');
+    const input = document.getElementById('search-input');
+    
+    if (toggle && input) {
+      toggle.addEventListener('click', function() {
+        input.classList.toggle('hidden');
+        if (!input.classList.contains('hidden')) {
+          input.focus();
+        }
+      });
+
+      document.addEventListener('click', function(event) {
+        if (!toggle.contains(event.target) && !input.contains(event.target)) {
+          input.classList.add('hidden');
+        }
+      });
+    }
+  }
+
+  // Survey functionality
+  function loadSurveyQuestion() {
+    const currentSurvey = surveyQuestions[currentSurveyIndex];
+    const questionEl = document.getElementById('survey-question');
+    const optionsEl = document.getElementById('survey-options');
+    
+    if (questionEl) {
+      questionEl.textContent = currentSurvey.question;
+    }
+
+    if (currentSurvey.type === 'multiple' && optionsEl) {
+      optionsEl.classList.remove('hidden');
+      const buttons = optionsEl.querySelectorAll('.survey-option');
+      buttons.forEach((button, index) => {
+        if (currentSurvey.options[index]) {
+          button.textContent = currentSurvey.options[index];
+          button.style.display = 'block';
+        } else {
+          button.style.display = 'none';
+        }
+      });
+    }
+  }
+
+  // Handle survey submission
+  function handleSurveySubmit() {
+    const contentEl = document.getElementById('survey-content');
+    const completedEl = document.getElementById('survey-completed');
+    
+    if (contentEl && completedEl) {
+      contentEl.classList.add('hidden');
+      completedEl.classList.remove('hidden');
+      
+      dailyStreak++;
+      updateProgressBar();
+      
+      setTimeout(() => {
+        contentEl.classList.remove('hidden');
+        completedEl.classList.add('hidden');
+        rotateSurvey();
+      }, 3000);
+    }
+  }
+
+  // Rotate to next survey
+  function rotateSurvey() {
+    currentSurveyIndex = (currentSurveyIndex + 1) % surveyQuestions.length;
+    loadSurveyQuestion();
+  }
+
+  // Update progress bar
+  function updateProgressBar() {
+    const progressBar = document.getElementById('progress-bar');
+    const streakEl = document.getElementById('streak-counter');
+    
+    if (progressBar) {
+      const progress = Math.min((dailyStreak * 10), 100);
+      progressBar.style.width = progress + '%';
+    }
+    
+    if (streakEl) {
+      streakEl.textContent = dailyStreak + ' days';
+    }
+  }
+
+  // Mobile sidebar functionality
+  function setupMobileSidebar() {
+    const button = document.getElementById('mobile-menu-button');
+    const sidebar = document.getElementById('mobile-sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+    
+    if (button && sidebar && overlay) {
+      button.addEventListener('click', function() {
+        sidebar.classList.remove('-translate-x-full');
+        overlay.classList.remove('hidden');
+      });
+
+      overlay.addEventListener('click', function() {
+        sidebar.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+      });
+    }
+  }
+
+  // User menu functionality
+  function setupUserMenu() {
+    const button = document.getElementById('user-menu-button');
+    const menu = document.getElementById('user-menu');
+    
+    if (button && menu) {
+      button.addEventListener('click', function() {
+        menu.classList.toggle('hidden');
+      });
+
+      document.addEventListener('click', function(event) {
+        if (!button.contains(event.target) && !menu.contains(event.target)) {
+          menu.classList.add('hidden');
+        }
+      });
+    }
+  }
+
+  // Initialize everything
+  document.addEventListener('DOMContentLoaded', function() {
+    setupMobileSidebar();
+    setupUserMenu();
+    setupSearch();
+    loadSurveyQuestion();
+    updateProgressBar();
+    
+    const submitButton = document.getElementById('survey-submit');
+    if (submitButton) {
+      submitButton.addEventListener('click', handleSurveySubmit);
+    }
+
+    const surveyOptions = document.querySelectorAll('.survey-option');
+    surveyOptions.forEach(option => {
+      option.addEventListener('click', function() {
+        surveyOptions.forEach(opt => {
+          opt.classList.remove('bg-blue-500', 'text-white');
+          opt.classList.add('bg-gray-50');
+        });
+        this.classList.remove('bg-gray-50');
+        this.classList.add('bg-blue-500', 'text-white');
+      });
+    });
+    
+    // Auto-rotate survey every 2 minutes
+    setInterval(rotateSurvey, 120000);
+  });
+</script>

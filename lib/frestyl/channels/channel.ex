@@ -15,31 +15,47 @@ defmodule Frestyl.Channels.Channel do
     field :category, :string
     field :owner_id, :id
 
+    # Existing fields
     has_many :memberships, ChannelMembership
     has_many :messages, Message
-
     field :member_count, :integer, virtual: true
-
     field :branding_media_enabled, :boolean, default: true
     field :presentation_media_enabled, :boolean, default: true
     field :performance_media_enabled, :boolean, default: true
     field :archived, :boolean, default: false
     field :archived_at, :utc_datetime
 
-    # Add WebRTC configuration
+    # NEW: Channel Customization Fields
+    field :hero_image_url, :string
+    field :color_scheme, :map, default: %{
+      "primary" => "#8B5CF6",
+      "secondary" => "#00D4FF",
+      "accent" => "#FF0080"
+    }
+    field :tagline, :string
+    field :featured_content, {:array, :map}, default: []
+    field :channel_type, :string, default: "general" # general, music, visual, collaborative, broadcast
+
+    # Channel behavior settings
+    field :auto_detect_type, :boolean, default: true
+    field :show_live_activity, :boolean, default: true
+    field :enable_transparency_mode, :boolean, default: false
+    field :custom_css, :string
+
+    # Social and engagement features
+    field :social_links, :map, default: %{}
+    field :fundraising_enabled, :boolean, default: false
+    field :fundraising_goal, :decimal
+    field :fundraising_description, :string
+
+    # Existing WebRTC and storage config
     field :webrtc_config, :map, default: %{
-      "ice_servers" => [
-        %{"urls" => "stun:stun.l.google.com:19302"}
-      ],
+      "ice_servers" => [%{"urls" => "stun:stun.l.google.com:19302"}],
       "max_quality" => "720p",
       "connection_limit" => 20
     }
-
-    # Add storage configuration
     field :storage_bucket, :string
     field :storage_prefix, :string
-
-    # Add active media references
     field :active_branding_media_id, :id
     field :active_presentation_media_id, :id
     field :active_performance_media_id, :id
@@ -51,13 +67,138 @@ defmodule Frestyl.Channels.Channel do
   @doc false
   def changeset(channel, attrs) do
     channel
-    |> cast(attrs, [:name, :description, :visibility, :icon_url, :category, :owner_id]) # Add category
+    |> cast(attrs, [
+      :name, :description, :visibility, :icon_url, :category, :owner_id,
+      :hero_image_url, :color_scheme, :tagline, :featured_content, :channel_type,
+      :auto_detect_type, :show_live_activity, :enable_transparency_mode, :custom_css,
+      :social_links, :fundraising_enabled, :fundraising_goal, :fundraising_description
+    ])
     |> validate_required([:name, :visibility, :owner_id])
     |> validate_length(:name, min: 2, max: 50)
     |> validate_length(:description, max: 500)
+    |> validate_length(:tagline, max: 100)
     |> validate_inclusion(:visibility, ["public", "private", "invite_only"])
+    |> validate_inclusion(:channel_type, ["general", "music", "visual", "collaborative", "broadcast"])
+    |> validate_color_scheme()
+    |> validate_featured_content()
     |> maybe_generate_slug()
   end
+
+  @doc """
+  Changeset for customization updates
+  """
+  def customization_changeset(channel, attrs) do
+    channel
+    |> cast(attrs, [
+      :hero_image_url, :color_scheme, :tagline, :featured_content, :channel_type,
+      :show_live_activity, :enable_transparency_mode, :custom_css,
+      :social_links, :fundraising_enabled, :fundraising_goal, :fundraising_description
+    ])
+    |> validate_color_scheme()
+    |> validate_featured_content()
+    |> validate_custom_css()
+  end
+
+  @doc """
+  Get channel type display name
+  """
+  def type_display_name("general"), do: "Community Hub"
+  def type_display_name("music"), do: "Music Studio"
+  def type_display_name("visual"), do: "Visual Arts"
+  def type_display_name("collaborative"), do: "Creative Collective"
+  def type_display_name("broadcast"), do: "Live Channel"
+  def type_display_name(_), do: "Creative Space"
+
+  @doc """
+  Get channel type icon
+  """
+  def type_icon("general"), do: "users"
+  def type_icon("music"), do: "music"
+  def type_icon("visual"), do: "camera"
+  def type_icon("collaborative"), do: "heart"
+  def type_icon("broadcast"), do: "video"
+  def type_icon(_), do: "star"
+
+  @doc """
+  Auto-detect channel type based on activity patterns
+  """
+  def detect_channel_type(channel_id) do
+    # This would analyze recent activity patterns
+    # For now, return current type or general
+    "general"
+  end
+
+  # Private validation functions
+
+  defp validate_color_scheme(changeset) do
+    case get_change(changeset, :color_scheme) do
+      %{"primary" => primary, "secondary" => secondary, "accent" => accent} = scheme ->
+        if valid_hex_colors?([primary, secondary, accent]) do
+          changeset
+        else
+          add_error(changeset, :color_scheme, "must contain valid hex colors")
+        end
+      nil -> changeset
+      _ -> add_error(changeset, :color_scheme, "must include primary, secondary, and accent colors")
+    end
+  end
+
+  defp validate_featured_content(changeset) do
+    case get_change(changeset, :featured_content) do
+      content when is_list(content) ->
+        if length(content) <= 10 do
+          changeset
+        else
+          add_error(changeset, :featured_content, "cannot have more than 10 featured items")
+        end
+      nil -> changeset
+      _ -> add_error(changeset, :featured_content, "must be a list")
+    end
+  end
+
+  defp validate_custom_css(changeset) do
+    case get_change(changeset, :custom_css) do
+      css when is_binary(css) ->
+        if String.length(css) <= 10_000 do
+          changeset
+        else
+          add_error(changeset, :custom_css, "cannot exceed 10,000 characters")
+        end
+      nil -> changeset
+      _ -> changeset
+    end
+  end
+
+  defp valid_hex_colors?(colors) do
+    Enum.all?(colors, fn color ->
+      Regex.match?(~r/^#[0-9A-Fa-f]{6}$/, color)
+    end)
+  end
+
+  # Existing helper functions...
+  defp maybe_generate_slug(%Ecto.Changeset{valid?: true, changes: %{name: name}} = changeset) do
+    if get_field(changeset, :slug) do
+      changeset
+    else
+      slug = name
+        |> String.downcase()
+        |> String.replace(~r/[^a-z0-9\s-]/, "")
+        |> String.replace(~r/\s+/, "-")
+        |> String.replace(~r/-+/, "-")
+        |> String.trim_leading("-")
+        |> String.trim_trailing("-")
+
+      # Ensure uniqueness by adding a timestamp if needed
+      slug = case Frestyl.Repo.get_by(__MODULE__, slug: slug) do
+        nil -> slug
+        _ -> "#{slug}-#{System.system_time(:second)}"
+      end
+
+      put_change(changeset, :slug, slug)
+    end
+  end
+
+  defp maybe_generate_slug(changeset), do: changeset
 
   @doc """
   Changeset for archiving/unarchiving channels

@@ -30,6 +30,7 @@ defmodule Frestyl.Sessions.Session do
     field :broadcast_type, :string
     field :waiting_room_enabled, :boolean, default: true
     field :waiting_room_open_time, :utc_datetime
+    field :started_at, :utc_datetime
 
     # Relationships
     belongs_to :channel, Channel

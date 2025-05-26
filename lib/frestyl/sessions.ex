@@ -15,13 +15,6 @@ defmodule Frestyl.Sessions do
 
 
   @doc """
-  Gets a single session.
-  """
-  def get_session(id) do
-    Repo.get(Session, id)
-  end
-
-  @doc """
   Gets a single session with preloaded associations.
   """
   def get_session_with_details!(id) do
@@ -334,6 +327,9 @@ defmodule Frestyl.Sessions do
             s.status == "active" and
             (is_nil(s.broadcast_type)) and  # Normal sessions, not broadcasts
             (is_nil(s.ended_at) or s.ended_at > ^now),
+      select_merge: %{
+        participants_count: fragment("(SELECT COUNT(*) FROM session_participants WHERE session_id = ?)", s.id)
+      },
       order_by: [desc: s.inserted_at])
     |> Repo.all()
   end
@@ -401,14 +397,6 @@ defmodule Frestyl.Sessions do
       role: role
     })
     |> Repo.insert(on_conflict: :nothing)
-  end
-
-  @doc """
-  Removes a participant from a session.
-  """
-  def remove_participant(session_id, user_id) do
-    from(p in SessionParticipant, where: p.session_id == ^session_id and p.user_id == ^user_id)
-    |> Repo.delete_all()
   end
 
   @doc """

@@ -1,86 +1,1388 @@
-<div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-  <div class="px-4 py-6 sm:px-0">
-    <h1 class="text-3xl font-bold leading-tight text-gray-900">
-      <%= if assigns[:channel], do: @channel.name, else: "Channel" %>
-    </h1>
-    <p class="mt-2 text-sm text-gray-500">
-      <%= if assigns[:channel], do: @channel.description, else: "Channel description" %>
-    </p>
+<!-- Chat Interface - Volt Plasma Fusion Design -->
+<div class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50/30">
+  
+  <!-- Navigation -->
+  <.nav current_user={@current_user} active_tab={:chat} />
+
+  <!-- Mobile Sidebar -->
+  <div id="mobile-sidebar" class="fixed top-16 left-0 bottom-0 w-80 bg-white z-40 lg:hidden shadow-lg transform -translate-x-full transition-transform duration-300">
+    <div class="p-6 space-y-6">
+      <!-- Mobile search -->
+      <div class="relative">
+        <input 
+          type="search" 
+          placeholder="Search..."
+          class="w-full h-10 pl-10 pr-4 bg-gray-50 border-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <svg class="absolute left-3 top-3 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+        </svg>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="space-y-3">
+        <h3 class="font-bold text-gray-900 text-sm uppercase tracking-wide">Quick Actions</h3>
+        <button class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl">
+          <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-pink-500 rounded-lg flex items-center justify-center">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+          </div>
+          <span class="font-semibold text-gray-900 text-sm">New Channel</span>
+        </button>
+        <button class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl">
+          <div class="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+            </svg>
+          </div>
+          <span class="font-semibold text-gray-900 text-sm">Upload Media</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay -->
+  <div id="mobile-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"></div>
+
+  <!-- Main Content -->
+  <div class="max-w-7xl mx-auto pt-16 h-screen flex">
     
-    <div class="mt-8">
-      <div class="bg-white shadow rounded-lg">
-        <div class="px-4 py-5 sm:p-6">
-          <div class="chat-messages h-96 overflow-y-auto mb-4" id="messages-container" phx-hook="MessagesContainer">
-            <%= if !assigns[:messages] || @messages == [] do %>
-              <p class="text-gray-500 text-center py-8">No messages yet. Be the first to say something!</p>
-            <% else %>
-              <%= for message <- @messages do %>
-                <div class="message mb-4">
-                  <div class="flex items-start">
-                    <div class="flex-shrink-0">
-                      <div class="h-8 w-8 rounded-full bg-[#DD1155] flex items-center justify-center text-white font-bold">
-                        <%= if message.user && message.user.email, do: String.at(message.user.email, 0) |> String.upcase(), else: "?" %>
-                      </div>
-                    </div>
-                    <div class="ml-3">
-                      <div class="text-sm font-medium text-gray-900">
-                        <%= if message.user, do: message.user.email || "Unknown", else: "Unknown User" %>
-                      </div>
-                      <div class="mt-1 text-sm text-gray-700">
-                        <%= message.content %>
-                      </div>
-                      <div class="mt-1 text-xs text-gray-500">
-                        <%= if message.inserted_at, do: Calendar.strftime(message.inserted_at, "%I:%M %p"), else: "Just now" %>
-                      </div>
-                    </div>
-                  </div>
+    <!-- Left Sidebar - Conversations & Channels -->
+    <div class="hidden lg:flex w-80 bg-white/80 backdrop-blur-xl border-r border-gray-100/50 shadow-xl flex-col">
+      <!-- Header -->
+      <div class="p-6 border-b border-gray-100/50">
+        <div class="h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-full mb-6"></div>
+        
+        <div class="flex items-center justify-between mb-6">
+          <h1 class="text-2xl font-black text-gray-900 flex items-center gap-3">
+            <div class="w-10 h-10 bg-gradient-to-br from-pink-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+              <svg class="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </div>
+            Chat
+          </h1>
+          <button 
+            onclick="showNewConversationModal()"
+            class="p-2 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white hover:shadow-lg transition-all duration-200 transform hover:scale-105">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="relative">
+          <input 
+            type="text" 
+            placeholder="Search conversations, channels..." 
+            class="w-full px-4 py-3 pl-12 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-600/20 focus:border-pink-600 transition-all duration-200"
+          />
+          <svg class="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="px-6 py-2 border-b border-gray-100/50">
+        <div class="flex bg-gray-50 rounded-xl p-1">
+          <button 
+            data-chat-tab="all"
+            onclick="switchChatTab('all')"
+            class="flex-1 px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 bg-white text-pink-600 shadow-sm">
+            All
+          </button>
+          <button 
+            data-chat-tab="channels"
+            onclick="switchChatTab('channels')"
+            class="flex-1 px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 text-gray-600 hover:text-gray-900">
+            Channels
+          </button>
+          <button 
+            data-chat-tab="direct"
+            onclick="switchChatTab('direct')"
+            class="flex-1 px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 text-gray-600 hover:text-gray-900">
+            Direct
+          </button>
+        </div>
+      </div>
+
+      <!-- Conversations List -->
+      <div class="flex-1 overflow-y-auto">
+        <!-- Active Channels Section -->
+        <div class="p-4">
+          <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+            Channels
+          </h3>
+
+          <!-- Beat Creators Lab -->
+          <div 
+            onclick="selectChannel('beat-creators')"
+            class="group mb-4 p-4 rounded-xl w-full text-left cursor-pointer transition-all duration-200 border-l-4 border-pink-600 bg-gradient-to-r from-pink-600/5 to-purple-600/5">
+            <div class="flex items-center gap-3">
+              <div class="relative">
+                <div class="w-12 h-12 bg-gradient-to-br from-pink-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <span class="text-white font-bold">#</span>
                 </div>
-              <% end %>
-            <% end %>
-          </div>
-          
-          <!-- Typing indicator -->
-          <div class="typing-indicator mt-2 mb-2 h-5">
-            <%= if assigns[:typing_users] && (!is_nil(@typing_users)) && MapSet.size(@typing_users) > 0 do %>
-              <div class="text-sm text-gray-500 italic">
-                <%= cond do %>
-                  <% MapSet.size(@typing_users) == 1 -> %>
-                    Someone is typing...
-                  <% MapSet.size(@typing_users) == 2 -> %>
-                    Two people are typing...
-                  <% MapSet.size(@typing_users) > 2 -> %>
-                    Several people are typing...
-                  <% true -> %>
-                    
-                <% end %>
+                <div class="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-white">
+                  <div class="w-2 h-2 bg-white rounded-full mx-auto mt-0.5"></div>
+                </div>
               </div>
-            <% end %>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h4 class="font-black text-gray-900">Beat Creators Lab</h4>
+                  <span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">Active</span>
+                </div>
+                <p class="text-sm text-gray-600">Share beats and get feedback from producers.</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <div class="flex -space-x-1">
+                    <div class="w-4 h-4 bg-blue-500 rounded-full border border-white"></div>
+                    <div class="w-4 h-4 bg-green-500 rounded-full border border-white"></div>
+                    <div class="w-4 h-4 bg-purple-500 rounded-full border border-white"></div>
+                  </div>
+                  <span class="text-xs text-gray-500">24 members • Active now</span>
+                </div>
+              </div>
+            </div>
           </div>
-          
-          <!-- Message form -->
-          <form phx-submit="send_message" class="mt-4">
-            <div class="flex">
-              <input
-                type="text" 
-                name="message" 
-                value={assigns[:draft_message] || ""}
-                placeholder="Type your message..."
-                class="flex-1 shadow-sm focus:ring-[#DD1155] focus:border-[#DD1155] block w-full sm:text-sm border-gray-300 rounded-md mr-2"
-                phx-keyup="typing"
-                phx-value-typing="true"
-                id="message-input"
-                phx-hook="TypingIndicator"
-              />
-              <button 
-                type="submit"
-                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-[#DD1155] hover:bg-[#d96857] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DD1155]"
-              >
-                Send
+
+          <!-- Visual Feedback Hub -->
+          <div 
+            onclick="selectChannel('visual-feedback')"
+            class="group mb-4 p-4 rounded-xl w-full text-left cursor-pointer transition-all duration-200 hover:bg-gradient-to-r hover:from-cyan-600/5 hover:to-blue-600/5">
+            <div class="flex items-center gap-3">
+              <div class="relative">
+                <div class="w-12 h-12 bg-gradient-to-br from-cyan-600 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <span class="text-white font-bold">#</span>
+                </div>
+                <div class="absolute -bottom-1 -right-1 w-5 h-5 bg-yellow-500 rounded-full border-2 border-white">
+                  <span class="text-xs font-bold text-white">2</span>
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h4 class="font-black text-gray-900">Visual Feedback Hub</h4>
+                  <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">Design</span>
+                </div>
+                <p class="text-sm text-gray-600">Get feedback on visual projects.</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <div class="flex -space-x-1">
+                    <div class="w-4 h-4 bg-orange-500 rounded-full border border-white"></div>
+                    <div class="w-4 h-4 bg-pink-500 rounded-full border border-white"></div>
+                  </div>
+                  <span class="text-xs text-gray-500">42 members • 1h ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Frestyl Official -->
+          <div 
+            onclick="selectChannel('frestyl-official')"
+            class="group mb-4 p-4 rounded-xl w-full text-left cursor-pointer transition-all duration-200 hover:bg-gradient-to-r hover:from-purple-600/5 hover:to-indigo-600/5">
+            <div class="flex items-center gap-3">
+              <div class="relative">
+                <div class="w-12 h-12 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <span class="text-white font-bold">F</span>
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h4 class="font-black text-gray-900">Frestyl Official</h4>
+                  <span class="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-bold rounded-full">Official</span>
+                </div>
+                <p class="text-sm text-gray-600">Official announcements and updates.</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-xs text-gray-500">1.2k members • 2h ago</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Direct Messages Section -->
+        <div class="p-4 border-t border-gray-100/50">
+          <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider mb-4">Direct Messages</h3>
+
+          <div 
+            onclick="selectConversation('maya-chen')"
+            class="group p-3 rounded-xl w-full text-left cursor-pointer transition-colors mb-2 hover:bg-gray-50">
+            <div class="flex items-center gap-3">
+              <div class="relative">
+                <div class="w-10 h-10 bg-gradient-to-br from-cyan-600 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
+                  <span class="text-white font-bold text-sm">M</span>
+                </div>
+                <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white"></div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <h4 class="font-bold text-gray-900 text-sm">Maya Chen</h4>
+                <p class="text-xs text-gray-500">Hey, loved your latest track! Can we collab?</p>
+              </div>
+              <div class="flex flex-col items-end gap-1">
+                <div class="text-xs text-gray-400">2m</div>
+                <div class="w-2 h-2 bg-pink-600 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+
+          <div 
+            onclick="selectConversation('josh-kim')"
+            class="group p-3 rounded-xl w-full text-left cursor-pointer transition-colors mb-2 hover:bg-gray-50">
+            <div class="flex items-center gap-3">
+              <div class="relative">
+                <div class="w-10 h-10 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-md">
+                  <span class="text-white font-bold text-sm">J</span>
+                </div>
+                <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-gray-300 rounded-full border-2 border-white"></div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <h4 class="font-bold text-gray-900 text-sm">Josh Kim</h4>
+                <p class="text-xs text-gray-500">Thanks for the feedback on the mix!</p>
+              </div>
+              <div class="flex flex-col items-end gap-1">
+                <div class="text-xs text-gray-400">1h</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="flex-1 flex flex-col bg-white/50">
+      <!-- Chat Header -->
+      <div class="px-6 py-4 border-b border-gray-100/50 bg-white/80 backdrop-blur-xl">
+        <div class="h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-full mb-4"></div>
+        
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <div class="relative">
+              <div class="w-12 h-12 bg-gradient-to-br from-pink-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <span class="text-white font-bold">#</span>
+              </div>
+              <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white animate-pulse"></div>
+            </div>
+            <div>
+              <h2 class="text-xl font-black text-gray-900">Beat Creators Lab</h2>
+              <div class="flex items-center gap-2 text-sm text-gray-600">
+                <div class="flex -space-x-1">
+                  <div class="w-5 h-5 bg-blue-500 rounded-full border-2 border-white"></div>
+                  <div class="w-5 h-5 bg-green-500 rounded-full border-2 border-white"></div>
+                  <div class="w-5 h-5 bg-purple-500 rounded-full border-2 border-white"></div>
+                </div>
+                <span>24 members online</span>
+                <span class="text-gray-400">•</span>
+                <span>Creative Channel</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <!-- Voice Call -->
+            <button 
+              onclick="startVoiceCall()"
+              class="p-3 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-colors hover:shadow-lg transform hover:scale-105">
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </button>
+
+            <!-- Video Call -->
+            <button 
+              onclick="startVideoCall()"
+              class="p-3 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-colors hover:shadow-lg transform hover:scale-105">
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+
+            <!-- Screen Share -->
+            <button 
+              onclick="startScreenShare()"
+              class="p-3 rounded-xl bg-yellow-500 text-white hover:bg-yellow-600 transition-colors hover:shadow-lg transform hover:scale-105">
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </button>
+
+            <!-- More Options -->
+            <button class="hidden lg:block p-3 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Messages Area -->
+      <div class="flex-1 overflow-y-auto p-6 space-y-6 pb-24 lg:pb-6">
+        <!-- Message 1 -->
+        <div class="flex items-start gap-4">
+          <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+            <span class="text-white font-bold">A</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3 mb-2">
+              <h4 class="font-black text-gray-900">Alex Rivera</h4>
+              <span class="text-sm text-gray-500">Today at 2:14 PM</span>
+            </div>
+            
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-3">
+              <p class="text-gray-800">Hey everyone! Just dropped a new lo-fi track. Would love to get your thoughts on the mix. 🎵</p>
+            </div>
+
+            <!-- Reactions -->
+            <div class="flex items-center gap-2">
+              <button class="inline-flex items-center px-3 py-1 bg-pink-100 text-pink-700 rounded-full text-xs font-bold hover:bg-pink-200 transition-colors">
+                🔥 4
+              </button>
+              <button class="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold hover:bg-blue-200 transition-colors">
+                💯 2
+              </button>
+              <button class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
               </button>
             </div>
-          </form>
+          </div>
+        </div>
+
+        <!-- Message 2 -->
+        <div class="flex items-start gap-4">
+          <div class="w-12 h-12 bg-gradient-to-br from-emerald-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-lg">
+            <span class="text-white font-bold">M</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3 mb-2">
+              <h4 class="font-black text-gray-900">Maya Chen</h4>
+              <span class="text-sm text-gray-500">Today at 2:16 PM</span>
+            </div>
+            
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-3">
+              <p class="text-gray-800">@Alex that beat is smooth! The reverb on the snare hits perfectly. Did you use any vintage plugins for that warmth?</p>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button class="inline-flex items-center px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-bold hover:bg-yellow-200 transition-colors">
+                🎵 1
+              </button>
+              <button class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Typing Indicator -->
+        <div class="flex items-start gap-4 opacity-75">
+          <div class="w-12 h-12 bg-gray-200 rounded-xl flex items-center justify-center">
+            <span class="text-gray-500 font-bold">•••</span>
+          </div>
+          <div class="flex-1">
+            <div class="flex items-center gap-3 mb-2">
+              <h4 class="font-bold text-gray-600">Josh Kim is typing...</h4>
+            </div>
+            <div class="bg-gray-100 rounded-xl p-4 flex items-center gap-2">
+              <div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+              <div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style="animation-delay: 0.2s;"></div>
+              <div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style="animation-delay: 0.4s;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Message Input -->
+      <div class="fixed bottom-0 left-0 right-0 lg:relative lg:bottom-auto p-6 border-t border-gray-100/50 bg-white/95 backdrop-blur-xl">
+        <div class="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden">
+          <div class="h-1 bg-gradient-to-r from-pink-600 to-purple-600"></div>
+          
+          <!-- Toolbar -->
+          <div class="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
+            <!-- File Upload -->
+            <button class="p-2 rounded-xl hover:bg-gray-100 transition-colors group">
+              <svg class="h-5 w-5 text-gray-500 group-hover:text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+
+            <!-- Image Upload -->
+            <button class="p-2 rounded-xl hover:bg-gray-100 transition-colors group">
+              <svg class="h-5 w-5 text-gray-500 group-hover:text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
+
+            <!-- Voice Message -->
+            <button class="p-2 rounded-xl hover:bg-gray-100 transition-colors group">
+              <svg class="h-5 w-5 text-gray-500 group-hover:text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+            </button>
+
+            <div class="flex-1"></div>
+
+            <!-- Emoji Picker -->
+            <button class="p-2 rounded-xl hover:bg-gray-100 transition-colors">
+              <span class="text-lg">😀</span>
+            </button>
+          </div>
+
+          <!-- Main Input -->
+          <div class="p-4">
+            <div class="flex items-end gap-3">
+              <div class="flex-1">
+                <textarea 
+                  id="message-input"
+                  placeholder="Type a message... Use *bold*, _italic_, `code`, or @mention someone"
+                  class="w-full resize-none border-0 focus:outline-none focus:ring-0 text-gray-800 placeholder-gray-500 bg-gray-50 text-base"
+                  rows="1"
+                  style="min-height: 24px; max-height: 120px;"
+                ></textarea>
+                
+                <!-- Quick Actions Row -->
+                <div class="flex items-center gap-2 mt-2">
+                  <span class="text-xs text-gray-400">Quick:</span>
+                  <button 
+                    onclick="addQuickReaction('🔥')"
+                    class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors">
+                    🔥 fire
+                  </button>
+                  <button 
+                    onclick="addQuickReaction('💯')"
+                    class="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-200 transition-colors">
+                    💯 perfect
+                  </button>
+                  <button 
+                    onclick="addQuickReaction('🎵')"
+                    class="px-2 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs font-bold hover:bg-purple-200 transition-colors">
+                    🎵 vibes
+                  </button>
+                </div>
+              </div>
+
+              <!-- Send Button -->
+              <button 
+                onclick="sendMessage()"
+                class="p-3 bg-gradient-to-r from-pink-600 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all duration-200 transform hover:scale-105">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Active Collaborators -->
+          <div class="flex items-center justify-between px-4 pb-4">
+            <div class="flex items-center gap-3">
+              <span class="text-sm text-gray-500 font-bold">Active now:</span>
+              <div class="flex -space-x-2">
+                <div class="w-8 h-8 bg-blue-500 rounded-full border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer"></div>
+                <div class="w-8 h-8 bg-green-500 rounded-full border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer"></div>
+                <div class="w-8 h-8 bg-purple-500 rounded-full border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer"></div>
+                <div class="w-8 h-8 bg-orange-500 rounded-full border-2 border-white shadow-sm hover:scale-110 transition-transform cursor-pointer"></div>
+                <div class="w-8 h-8 bg-gray-200 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-xs font-bold text-gray-600 hover:scale-110 transition-transform cursor-pointer">
+                  +4
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+              <span class="text-sm text-gray-500 font-bold">24 online</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- New Conversation Modal -->
+    <div id="new-conversation-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white/95 backdrop-blur-xl rounded-2xl max-w-md w-full p-8 shadow-2xl border border-white/20">
+        <div class="flex items-center justify-between mb-8">
+          <h3 class="text-2xl font-black text-gray-900 tracking-tight">Start New Conversation</h3>
+          <button onclick="hideNewConversationModal()" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Tab Selection -->
+        <div class="flex bg-gray-50 rounded-xl p-1 mb-6">
+          <button 
+            onclick="switchNewChatTab('direct')"
+            id="direct-tab"
+            class="flex-1 px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 bg-white text-pink-600 shadow-sm">
+            Direct Message
+          </button>
+          <button 
+            onclick="switchNewChatTab('channel')"
+            id="channel-tab"
+            class="flex-1 px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 text-gray-600 hover:text-gray-900">
+            New Channel
+          </button>
+        </div>
+
+        <!-- Direct Message Form -->
+        <div id="direct-form" class="space-y-6">
+          <div>
+            <label class="block text-sm font-black text-gray-700 mb-3">Send message to:</label>
+            <input 
+              type="text" 
+              id="user-search"
+              placeholder="Search for users..." 
+              class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-pink-600/50 focus:outline-none transition-all duration-200 font-semibold"
+            />
+            <!-- User suggestions will appear here -->
+            <div id="user-suggestions" class="mt-2 space-y-2 hidden">
+              <!-- Dynamic user suggestions -->
+            </div>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-black text-gray-700 mb-3">Message (optional):</label>
+            <textarea 
+              id="initial-message"
+              rows="3" 
+              placeholder="Hey! Want to collaborate?" 
+              class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-pink-600/50 focus:outline-none transition-all duration-200 font-semibold resize-none"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- Channel Form -->
+        <div id="channel-form" class="space-y-6 hidden">
+          <div>
+            <label class="block text-sm font-black text-gray-700 mb-3">Channel Name:</label>
+            <input 
+              type="text" 
+              id="channel-name"
+              placeholder="e.g., beat-makers-lounge" 
+              class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-purple-600/50 focus:outline-none transition-all duration-200 font-semibold"
+            />
+          </div>
+          
+          <div>
+            <label class="block text-sm font-black text-gray-700 mb-3">Description:</label>
+            <textarea 
+              id="channel-description"
+              rows="3" 
+              placeholder="What's this channel about?" 
+              class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-purple-600/50 focus:outline-none transition-all duration-200 font-semibold resize-none"
+            ></textarea>
+          </div>
+          
+          <div class="flex items-center gap-3">
+            <input type="checkbox" id="channel-private" class="rounded-lg border-gray-300 text-purple-600 focus:ring-purple-600/50">
+            <label for="channel-private" class="text-sm font-bold text-gray-700">Private channel (invite only)</label>
+          </div>
+        </div>
+        
+        <div class="flex gap-4 mt-8">
+          <button 
+            onclick="hideNewConversationModal()" 
+            class="flex-1 px-6 py-4 border-2 border-gray-300 text-gray-700 font-black rounded-2xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-300">
+            Cancel
+          </button>
+          <button 
+            onclick="createNewConversation()" 
+            class="relative overflow-hidden flex-1 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-black px-6 py-4 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-purple-500/30">
+            Start Chat
+            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 hover:opacity-20 transform -skew-x-12 translate-x-full hover:translate-x-[-200%] transition-transform duration-700"></div>
+          </button>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Mobile Bottom Navigation -->
+  <div class="fixed bottom-0 left-0 right-0 lg:hidden z-50 bg-white/90 backdrop-blur-lg border-t border-gray-200/50 shadow-2xl">
+    <div class="safe-area-bottom">
+      <div class="grid grid-cols-5 h-20">
+        
+        <!-- Dashboard Tab -->
+        <a href="/dashboard" class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-gray-500 hover:text-gray-700">
+          <div class="p-2 rounded-xl transition-all duration-300">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Dashboard</span>
+        </a>
+        
+        <!-- Channels Tab -->
+        <a href="/channels" class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-gray-500 hover:text-gray-700">
+          <div class="p-2 rounded-xl transition-all duration-300">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Channels</span>
+        </a>
+        
+        <!-- CENTER UPLOAD BUTTON -->
+        <div class="flex items-center justify-center">
+          <a href="/media/upload" class="w-16 h-16 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full flex items-center justify-center shadow-xl shadow-yellow-500/30 transform hover:scale-110 active:scale-95 transition-all duration-300 border-4 border-white">
+            <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+          </a>
+        </div>
+        
+        <!-- Chat Tab (Active) -->
+        <a href="/chat" class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-pink-600">
+          <div class="absolute top-0 w-12 h-1 bg-gradient-to-r from-pink-500 to-purple-500 rounded-b-full"></div>
+          <div class="p-2 rounded-xl transition-all duration-300 bg-gradient-to-br from-pink-600/10 to-purple-600/10 scale-110">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Chat</span>
+        </a>
+        
+        <!-- Portfolio Tab -->
+        <a href="/portfolios" class="flex flex-col items-center justify-center space-y-1 transition-all duration-300 relative text-gray-500 hover:text-gray-700">
+          <div class="p-2 rounded-xl transition-all duration-300">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <span class="text-xs font-bold">Portfolio</span>
+        </a>
+      </div>
+    </div>
+  </div>
 </div>
+
+<!-- Styles -->
+<style>
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  
+  /* Custom scrollbar for sidebar */
+  .overflow-y-auto::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .overflow-y-auto::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .overflow-y-auto::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #EC4899, #8B5CF6);
+    border-radius: 3px;
+  }
+</style>
+
+<script>
+  // Auto-resize textarea and improved visibility
+  document.addEventListener('DOMContentLoaded', function() {
+    const textarea = document.getElementById('message-input');
+    if (textarea) {
+      textarea.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+      });
+
+      // Auto-focus the textarea on desktop
+      if (window.innerWidth >= 1024) {
+        textarea.focus();
+      }
+    }
+    
+    // Setup mobile menu
+    setupMobileMenu();
+    setupUserMenu();
+    setupSearch();
+    
+    console.log('🎵 Frestyl Chat - Volt Plasma Fusion Design Loaded!');
+  });
+
+  // Mobile menu functionality
+  function setupMobileMenu() {
+    const button = document.getElementById('mobile-menu-button');
+    const sidebar = document.getElementById('mobile-sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+    
+    if (button && sidebar && overlay) {
+      button.addEventListener('click', function() {
+        sidebar.classList.remove('-translate-x-full');
+        overlay.classList.remove('hidden');
+      });
+
+      overlay.addEventListener('click', function() {
+        sidebar.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+      });
+    }
+  }
+
+  // User menu functionality
+  function setupUserMenu() {
+    const button = document.getElementById('user-menu-button');
+    const menu = document.getElementById('user-menu');
+    
+    if (button && menu) {
+      button.addEventListener('click', function() {
+        menu.classList.toggle('hidden');
+      });
+
+      document.addEventListener('click', function(event) {
+        if (!button.contains(event.target) && !menu.contains(event.target)) {
+          menu.classList.add('hidden');
+        }
+      });
+    }
+  }
+
+  // Search functionality
+  function setupSearch() {
+    const toggle = document.getElementById('search-toggle');
+    const input = document.getElementById('search-input');
+    
+    if (toggle && input) {
+      toggle.addEventListener('click', function() {
+        input.classList.toggle('hidden');
+        if (!input.classList.contains('hidden')) {
+          input.focus();
+        }
+      });
+
+      document.addEventListener('click', function(event) {
+        if (!toggle.contains(event.target) && !input.contains(event.target)) {
+          input.classList.add('hidden');
+        }
+      });
+    }
+  }
+
+  // Send message on Enter (but not Shift+Enter)
+  document.addEventListener('keydown', function(e) {
+    if (e.target.id === 'message-input' && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (e.target.value.trim() !== '') {
+        sendMessage();
+      }
+    }
+  });
+
+  // Tab switching functionality
+  function switchChatTab(tabName) {
+    // Update tab appearance
+    const tabs = document.querySelectorAll('[data-chat-tab]');
+    tabs.forEach(tab => {
+      tab.classList.remove('bg-white', 'text-pink-600', 'shadow-sm');
+      tab.classList.add('text-gray-600');
+    });
+    
+    const selectedTab = document.querySelector(`[data-chat-tab="${tabName}"]`);
+    if (selectedTab) {
+      selectedTab.classList.remove('text-gray-600');
+      selectedTab.classList.add('bg-white', 'text-pink-600', 'shadow-sm');
+    }
+    
+    // Filter content
+    const channelsSection = document.querySelector('.p-4'); // Channels section
+    const directSection = document.querySelector('.p-4.border-t'); // Direct messages section
+    
+    if (tabName === 'all') {
+      channelsSection.style.display = 'block';
+      directSection.style.display = 'block';
+    } else if (tabName === 'channels') {
+      channelsSection.style.display = 'block';
+      directSection.style.display = 'none';
+    } else if (tabName === 'direct') {
+      channelsSection.style.display = 'none';
+      directSection.style.display = 'block';
+    }
+    
+    console.log('Switched to tab:', tabName);
+}
+
+  // Channel/conversation selection
+  function selectChannel(channelId) {
+    console.log('Selected channel:', channelId);
+    // Add channel selection logic here
+  }
+
+  function selectConversation(conversationId) {
+    console.log('Selected conversation:', conversationId);
+    // Add conversation selection logic here
+  }
+
+  // Send message functionality
+  function sendMessage() {
+    const textarea = document.getElementById('message-input');
+    if (textarea && textarea.value.trim() !== '') {
+      const messageText = textarea.value.trim();
+      
+      // Add message to chat
+      addMessageToChat({
+        id: Date.now(),
+        author: 'You',
+        content: messageText,
+        timestamp: new Date(),
+        avatar: 'Y',
+        avatarColor: 'from-orange-500 to-pink-500'
+      });
+      
+      // Clear textarea
+      textarea.value = '';
+      textarea.style.height = 'auto';
+      
+      // Scroll to bottom
+      scrollToBottom();
+      
+      console.log('Message sent:', messageText);
+    }
+  }
+
+
+  // Add message to chat display
+  function addMessageToChat(message) {
+    const messagesArea = document.querySelector('.flex-1.overflow-y-auto.p-6.space-y-6');
+    if (!messagesArea) return;
+    
+    // Remove typing indicator if it exists
+    const typingIndicator = document.querySelector('.opacity-75');
+    if (typingIndicator) {
+      typingIndicator.remove();
+    }
+    
+    // Create message element
+    const messageElement = document.createElement('div');
+    messageElement.className = 'flex items-start gap-4';
+    messageElement.innerHTML = `
+      <div class="w-12 h-12 bg-gradient-to-br ${message.avatarColor} rounded-xl flex items-center justify-center shadow-lg">
+        <span class="text-white font-bold">${message.avatar}</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-3 mb-2">
+          <h4 class="font-black text-gray-900">${message.author}</h4>
+          <span class="text-sm text-gray-500">${formatTimestamp(message.timestamp)}</span>
+        </div>
+        
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-3">
+          <p class="text-gray-800">${escapeHtml(message.content)}</p>
+        </div>
+
+        <!-- Reactions -->
+        <div class="flex items-center gap-2">
+          <button onclick="addReaction(${message.id}, '🔥')" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    `;
+    
+    // Add message to chat
+    messagesArea.appendChild(messageElement);
+  }
+
+  // Helper functions
+  function formatTimestamp(date) {
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    
+    if (isToday) {
+      return `Today at ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+    } else {
+      return date.toLocaleDateString() + ' at ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function scrollToBottom() {
+    const messagesArea = document.querySelector('.flex-1.overflow-y-auto.p-6.space-y-6');
+    if (messagesArea) {
+      messagesArea.scrollTop = messagesArea.scrollHeight;
+    }
+  }
+
+  function addReaction(messageId, emoji) {
+    console.log(`Added ${emoji} reaction to message ${messageId}`);
+    // Add reaction logic here
+  }
+
+  // Enhanced quick reaction functionality
+  function addQuickReaction(reaction) {
+    const textarea = document.getElementById('message-input');
+    if (textarea) {
+      // If textarea is empty, send just the reaction
+      if (textarea.value.trim() === '') {
+        addMessageToChat({
+          id: Date.now(),
+          author: 'You',
+          content: reaction,
+          timestamp: new Date(),
+          avatar: 'Y',
+          avatarColor: 'from-orange-500 to-pink-500'
+        });
+        scrollToBottom();
+      } else {
+        // Otherwise add to current message
+        textarea.value += reaction + ' ';
+        textarea.focus();
+      }
+    }
+  }
+
+  // Show new conversation modal
+  function showNewConversationModal() {
+    const modal = document.getElementById('new-conversation-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      document.getElementById('user-search')?.focus();
+    }
+    console.log('Showing new conversation modal');
+  }
+
+  function hideNewConversationModal() {
+    const modal = document.getElementById('new-conversation-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      // Reset form
+      document.getElementById('user-search').value = '';
+      document.getElementById('initial-message').value = '';
+      document.getElementById('channel-name').value = '';
+      document.getElementById('channel-description').value = '';
+      document.getElementById('channel-private').checked = false;
+      document.getElementById('user-suggestions').classList.add('hidden');
+    }
+  }
+
+  function switchNewChatTab(tabType) {
+    const directTab = document.getElementById('direct-tab');
+    const channelTab = document.getElementById('channel-tab');
+    const directForm = document.getElementById('direct-form');
+    const channelForm = document.getElementById('channel-form');
+    
+    // Reset tab styles
+    [directTab, channelTab].forEach(tab => {
+      tab.classList.remove('bg-white', 'text-pink-600', 'shadow-sm');
+      tab.classList.add('text-gray-600');
+    });
+    
+    if (tabType === 'direct') {
+      directTab.classList.add('bg-white', 'text-pink-600', 'shadow-sm');
+      directTab.classList.remove('text-gray-600');
+      directForm.classList.remove('hidden');
+      channelForm.classList.add('hidden');
+    } else {
+      channelTab.classList.add('bg-white', 'text-purple-600', 'shadow-sm');
+      channelTab.classList.remove('text-gray-600');
+      channelForm.classList.remove('hidden');
+      directForm.classList.add('hidden');
+    }
+  }
+
+  // User search with suggestions
+  document.addEventListener('DOMContentLoaded', function() {
+    const userSearch = document.getElementById('user-search');
+    if (userSearch) {
+      userSearch.addEventListener('input', function() {
+        const query = this.value.trim();
+        if (query.length > 1) {
+          showUserSuggestions(query);
+        } else {
+          hideUserSuggestions();
+        }
+      });
+    }
+  });
+
+  function showUserSuggestions(query) {
+    // Mock user data - replace with real API call
+    const mockUsers = [
+      { name: 'Maya Chen', status: 'online' },
+      { name: 'Josh Kim', status: 'offline' },
+      { name: 'Alex Rivera', status: 'online' },
+      { name: 'Sam Johnson', status: 'busy' }
+    ];
+    
+    const filtered = mockUsers.filter(user => 
+      user.name.toLowerCase().includes(query.toLowerCase())
+    );
+    
+    const suggestionsDiv = document.getElementById('user-suggestions');
+    if (filtered.length > 0) {
+      suggestionsDiv.innerHTML = filtered.map(user => `
+        <div onclick="selectUser('${user.name}')" class="flex items-center gap-3 p-3 bg-white rounded-xl hover:bg-gray-50 cursor-pointer border border-gray-100">
+          <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+            <span class="text-white font-bold text-xs">${user.name.charAt(0)}</span>
+          </div>
+          <div class="flex-1">
+            <div class="font-bold text-gray-900 text-sm">${user.name}</div>
+            <div class="text-xs text-gray-500">${user.status}</div>
+          </div>
+        </div>
+      `).join('');
+      suggestionsDiv.classList.remove('hidden');
+    } else {
+      hideUserSuggestions();
+    }
+  }
+
+  function selectUser(userName) {
+    document.getElementById('user-search').value = userName;
+    hideUserSuggestions();
+  }
+
+  function hideUserSuggestions() {
+    document.getElementById('user-suggestions').classList.add('hidden');
+  }
+
+  function createNewConversation() {
+    const directForm = document.getElementById('direct-form');
+    const channelForm = document.getElementById('channel-form');
+    
+    if (!directForm.classList.contains('hidden')) {
+      // Creating direct message
+      const userSearch = document.getElementById('user-search').value.trim();
+      const initialMessage = document.getElementById('initial-message').value.trim();
+      
+      if (!userSearch) {
+        alert('Please enter a username to message');
+        return;
+      }
+      
+      // Create new direct conversation
+      createDirectConversation(userSearch, initialMessage);
+      
+    } else {
+      // Creating channel
+      const channelName = document.getElementById('channel-name').value.trim();
+      const channelDescription = document.getElementById('channel-description').value.trim();
+      const isPrivate = document.getElementById('channel-private').checked;
+      
+      if (!channelName) {
+        alert('Please enter a channel name');
+        return;
+      }
+      
+      // Create new channel
+      createNewChannel(channelName, channelDescription, isPrivate);
+    }
+    
+    hideNewConversationModal();
+  }
+
+  function createDirectConversation(username, initialMessage) {
+    // Add new conversation to sidebar
+    const directSection = document.querySelector('.p-4.border-t');
+    const newConversation = document.createElement('div');
+    newConversation.onclick = () => selectConversation(username.toLowerCase().replace(' ', '-'));
+    newConversation.className = 'group p-3 rounded-xl w-full text-left cursor-pointer transition-colors mb-2 hover:bg-gray-50';
+    
+    const avatarColor = getRandomAvatarColor();
+    newConversation.innerHTML = `
+      <div class="flex items-center gap-3">
+        <div class="relative">
+          <div class="w-10 h-10 bg-gradient-to-br ${avatarColor} rounded-xl flex items-center justify-center shadow-md">
+            <span class="text-white font-bold text-sm">${username.charAt(0).toUpperCase()}</span>
+          </div>
+          <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white"></div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h4 class="font-bold text-gray-900 text-sm">${username}</h4>
+          <p class="text-xs text-gray-500">${initialMessage || 'New conversation'}</p>
+        </div>
+        <div class="flex flex-col items-end gap-1">
+          <div class="text-xs text-gray-400">now</div>
+          ${initialMessage ? '<div class="w-2 h-2 bg-pink-600 rounded-full"></div>' : ''}
+        </div>
+      </div>
+    `;
+    
+    directSection.appendChild(newConversation);
+    
+    // Switch to this conversation
+    selectConversation(username.toLowerCase().replace(' ', '-'));
+    
+    // Send initial message if provided
+    if (initialMessage) {
+      setTimeout(() => {
+        addMessageToChat({
+          id: Date.now(),
+          author: 'You',
+          content: initialMessage,
+          timestamp: new Date(),
+          avatar: 'Y',
+          avatarColor: 'from-orange-500 to-pink-500'
+        });
+        scrollToBottom();
+      }, 500);
+    }
+    
+    console.log('Created direct conversation with:', username);
+  }
+
+  function createNewChannel(name, description, isPrivate) {
+    // Add new channel to sidebar
+    const channelsSection = document.querySelector('.p-4');
+    const newChannel = document.createElement('div');
+    newChannel.onclick = () => selectChannel(name.toLowerCase().replace(/\s+/g, '-'));
+    newChannel.className = 'group mb-4 p-4 rounded-xl w-full text-left cursor-pointer transition-all duration-200 hover:bg-gradient-to-r hover:from-purple-600/5 hover:to-indigo-600/5';
+    
+    const channelColor = getRandomChannelColor();
+    newChannel.innerHTML = `
+      <div class="flex items-center gap-3">
+        <div class="relative">
+          <div class="w-12 h-12 bg-gradient-to-br ${channelColor} rounded-xl flex items-center justify-center shadow-lg">
+            <span class="text-white font-bold">#</span>
+          </div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <h4 class="font-black text-gray-900">${name}</h4>
+            <span class="px-2 py-1 ${isPrivate ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'} text-xs font-bold rounded-full">
+              ${isPrivate ? 'Private' : 'Public'}
+            </span>
+          </div>
+          <p class="text-sm text-gray-600">${description || 'New channel'}</p>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="text-xs text-gray-500">1 member • Just created</span>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    channelsSection.appendChild(newChannel);
+    
+    // Switch to this channel
+    selectChannel(name.toLowerCase().replace(/\s+/g, '-'));
+    
+    console.log('Created new channel:', name);
+  }
+
+  // Helper functions for random colors
+  function getRandomAvatarColor() {
+    const colors = [
+      'from-blue-500 to-purple-600',
+      'from-emerald-500 to-cyan-600',
+      'from-yellow-500 to-orange-500',
+      'from-pink-500 to-rose-600',
+      'from-indigo-500 to-purple-600'
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  function getRandomChannelColor() {
+    const colors = [
+      'from-cyan-600 to-blue-600',
+      'from-purple-600 to-indigo-600',
+      'from-emerald-600 to-teal-600',
+      'from-orange-600 to-red-600'
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  // Quick reaction buttons
+  function addQuickReaction(reaction) {
+    const textarea = document.getElementById('message-input');
+    if (textarea) {
+      textarea.value += reaction + ' ';
+      textarea.focus();
+    }
+    console.log('Added reaction:', reaction);
+  }
+
+  // Chat functionality
+  function startVoiceCall() {
+    console.log('Starting voice call...');
+    
+    // Show calling indicator
+    const voiceBtn = document.querySelector('button[onclick*="voiceCall"]') || 
+                    document.querySelector('.bg-emerald-500');
+    if (voiceBtn) {
+      voiceBtn.innerHTML = `
+        <svg class="h-5 w-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2v6a2 2 0 01-2 2h-4a2 2 0 01-2-2V8a2 2 0 012-2h4a2 2 0 012 2z" />
+        </svg>
+      `;
+      voiceBtn.classList.add('animate-pulse');
+      
+      // Simulate call connection
+      setTimeout(() => {
+        alert('Voice call started! (This would integrate with your WebRTC service)');
+        voiceBtn.innerHTML = `
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+          </svg>
+        `;
+        voiceBtn.classList.remove('animate-pulse');
+      }, 2000);
+    }
+  }
+
+  function startVideoCall() {
+    console.log('Starting video call...');
+    
+    const videoBtn = document.querySelector('.bg-blue-500');
+    if (videoBtn) {
+      videoBtn.innerHTML = `
+        <svg class="h-5 w-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      `;
+      
+      setTimeout(() => {
+        alert('Video call started! (This would open a video call interface)');
+        videoBtn.innerHTML = `
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        `;
+      }, 2000);
+    }
+  }
+
+  function startScreenShare() {
+    console.log('Starting screen share...');
+    
+    const screenBtn = document.querySelector('.bg-yellow-500');
+    if (screenBtn) {
+      if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        navigator.mediaDevices.getDisplayMedia({ video: true })
+          .then(stream => {
+            alert('Screen sharing started! (Stream captured)');
+            // You would typically send this stream to other participants
+            console.log('Screen share stream:', stream);
+          })
+          .catch(err => {
+            console.error('Error starting screen share:', err);
+            alert('Screen sharing failed. Please allow screen sharing permissions.');
+          });
+      } else {
+        alert('Screen sharing not supported in this browser');
+      }
+    }
+  }
+
+  // Send message on Enter (but not Shift+Enter)
+  document.addEventListener('keydown', function(e) {
+    if (e.target.id === 'message-input') {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (e.target.value.trim() !== '') {
+          sendMessage();
+        }
+      }
+    }
+  });
+
+  let typingTimeout;
+
+  /<!-- New Conversation Modal -->
+<div id="new-conversation-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-white/95 backdrop-blur-xl rounded-2xl max-w-md w-full p-8 shadow-2xl border border-white/20">
+    <div class="flex items-center justify-between mb-8">
+      <h3 class="text-2xl font-black text-gray-900 tracking-tight">Start New Conversation</h3>
+      <button onclick="hideNewConversationModal()" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    
+    <!-- Tab Selection -->
+    <div class="flex bg-gray-50 rounded-xl p-1 mb-6">
+      <button 
+        onclick="switchNewChatTab('direct')"
+        id="direct-tab"
+        class="flex-1 px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 bg-white text-pink-600 shadow-sm">
+        Direct Message
+      </button>
+      <button 
+        onclick="switchNewChatTab('channel')"
+        id="channel-tab"
+        class="flex-1 px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 text-gray-600 hover:text-gray-900">
+        New Channel
+      </button>
+    </div>
+
+    <!-- Direct Message Form -->
+    <div id="direct-form" class="space-y-6">
+      <div>
+        <label class="block text-sm font-black text-gray-700 mb-3">Send message to:</label>
+        <input 
+          type="text" 
+          id="user-search"
+          placeholder="Search for users..." 
+          class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-pink-600/50 focus:outline-none transition-all duration-200 font-semibold"
+        />
+        <!-- User suggestions will appear here -->
+        <div id="user-suggestions" class="mt-2 space-y-2 hidden">
+          <!-- Dynamic user suggestions -->
+        </div>
+      </div>
+      
+      <div>
+        <label class="block text-sm font-black text-gray-700 mb-3">Message (optional):</label>
+        <textarea 
+          id="initial-message"
+          rows="3" 
+          placeholder="Hey! Want to collaborate?" 
+          class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-pink-600/50 focus:outline-none transition-all duration-200 font-semibold resize-none"
+        ></textarea>
+      </div>
+    </div>
+
+    <!-- Channel Form -->
+    <div id="channel-form" class="space-y-6 hidden">
+      <div>
+        <label class="block text-sm font-black text-gray-700 mb-3">Channel Name:</label>
+        <input 
+          type="text" 
+          id="channel-name"
+          placeholder="e.g., beat-makers-lounge" 
+          class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-purple-600/50 focus:outline-none transition-all duration-200 font-semibold"
+        />
+      </div>
+      
+      <div>
+        <label class="block text-sm font-black text-gray-700 mb-3">Description:</label>
+        <textarea 
+          id="channel-description"
+          rows="3" 
+          placeholder="What's this channel about?" 
+          class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-purple-600/50 focus:outline-none transition-all duration-200 font-semibold resize-none"
+        ></textarea>
+      </div>
+      
+      <div class="flex items-center gap-3">
+        <input type="checkbox" id="channel-private" class="rounded-lg border-gray-300 text-purple-600 focus:ring-purple-600/50">
+        <label for="channel-private" class="text-sm font-bold text-gray-700">Private channel (invite only)</label>
+      </div>
+    </div>
+    
+    <div class="flex gap-4 mt-8">
+      <button 
+        onclick="hideNewConversationModal()" 
+        class="flex-1 px-6 py-4 border-2 border-gray-300 text-gray-700 font-black rounded-2xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-300">
+        Cancel
+      </button>
+      <button 
+        onclick="createNewConversation()" 
+        class="relative overflow-hidden flex-1 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-black px-6 py-4 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-purple-500/30">
+        Start Chat
+        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 hover:opacity-20 transform -skew-x-12 translate-x-full hover:translate-x-[-200%] transition-transform duration-700"></div>
+      </button>
+    </div>
+  </div>
+</div>
+</script>

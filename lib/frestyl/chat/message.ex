@@ -8,6 +8,7 @@ defmodule Frestyl.Chat.Message do
     field :metadata, :map, default: %{}
 
     has_many :attachments, Frestyl.Chat.Attachment
+    has_many :reactions, Frestyl.Chat.Reaction
 
     belongs_to :user, Frestyl.Accounts.User
     belongs_to :conversation, Frestyl.Chat.Conversation
@@ -21,10 +22,11 @@ defmodule Frestyl.Chat.Message do
     message
     |> cast(attrs, [:content, :user_id, :conversation_id, :channel_id, :room_id, :message_type, :metadata])
     |> validate_required([:content, :user_id])
+    |> validate_length(:content, min: 1, max: 5000)
+    |> validate_inclusion(:message_type, ["text", "file", "system", "media"])
     |> validate_at_least_one_recipient()
   end
 
-  # Updated validation - room_id is not required for conversation messages
   defp validate_at_least_one_recipient(changeset) do
     conversation_id = get_field(changeset, :conversation_id)
     channel_id = get_field(changeset, :channel_id)

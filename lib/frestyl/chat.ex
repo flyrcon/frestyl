@@ -76,6 +76,51 @@ defmodule Frestyl.Chat do
     |> Enum.reverse()
   end
 
+  def list_recent_messages(channel_id, limit \\ 50) do
+    from(m in Message,
+      where: m.channel_id == ^channel_id,
+      order_by: [desc: m.inserted_at],
+      limit: ^limit,
+      preload: [:user]
+    )
+    |> Repo.all()
+  end
+
+  # For conversation messages
+  def list_conversation_messages(conversation_id, limit \\ 50) do
+    from(m in Message,
+      where: m.conversation_id == ^conversation_id,
+      order_by: [desc: m.inserted_at],
+      limit: ^limit,
+      preload: [:user]
+    )
+    |> Repo.all()
+  end
+
+  # Generic function for any message type
+  def list_messages(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+    channel_id = Keyword.get(opts, :channel_id)
+    conversation_id = Keyword.get(opts, :conversation_id)
+
+    base_query = from(m in Message,
+      order_by: [desc: m.inserted_at],
+      limit: ^limit,
+      preload: [:user]
+    )
+
+    cond do
+      channel_id ->
+        from(m in base_query, where: m.channel_id == ^channel_id)
+      conversation_id ->
+        from(m in base_query, where: m.conversation_id == ^conversation_id)
+      true ->
+        base_query
+    end
+    |> Repo.all()
+  end
+
+
   defp broadcast_channel_message(channel_id, message) do
     Phoenix.PubSub.broadcast(
       Frestyl.PubSub,

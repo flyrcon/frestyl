@@ -1,110 +1,218 @@
 <!-- lib/frestyl_web/live/media_live/upload.html.heex -->
-<div class="bg-white p-6 rounded-lg shadow-md">
-  <h1 class="text-2xl font-bold mb-6">Upload Media Files</h1>
-
-  <.form 
-    :let={f} 
-    for={%{}} 
-    phx-submit="save" 
-    phx-change="validate">
-    
-    <div class="mb-4">
-      <label class="block text-gray-700 mb-2">Channel</label>
-      <select name="channel" class="w-full p-2 border rounded" phx-change="change-channel">
-        <option value="">No Channel</option>
-        <%= for channel <- @user_channels do %>
-          <option value={channel.id} selected={@selected_channel == channel.id}>
-            <%= channel.name %>
-          </option>
-        <% end %>
-      </select>
-    </div>
-    
-    <div class="mb-4">
-      <label class="block text-gray-700 mb-2">Folder</label>
-      <select name="folder" class="w-full p-2 border rounded">
-        <option value="">No Folder</option>
-        <%= for folder <- @user_folders do %>
-          <option value={folder.id}>
-            <%= folder.name %>
-          </option>
-        <% end %>
-      </select>
-    </div>
-
-    <div id="media-upload-container" class="mb-6" phx-hook="FileUploader">
-      <label class="block text-gray-700 mb-2">
-        Select Files
-        <span class="text-sm text-gray-500 ml-2">
-          (Max <%= format_bytes(@uploads.media_files.max_file_size) %> each)
-        </span>
-      </label>
-      <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500 transition-colors cursor-pointer">
-        <.live_file_input upload={@uploads.media_files} class="hidden" />
-        <p class="mb-2">
-          <i class="fas fa-cloud-upload-alt text-3xl text-gray-400"></i>
-        </p>
-        <p class="text-sm text-gray-500">
-          Drag files here or click to browse
-        </p>
-        <p class="text-xs text-gray-400 mt-1">
-          Supported formats: Images, Videos, Audio, Documents
-        </p>
+<div class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header Section -->
+    <div class="text-center mb-12">
+      <div class="flex items-center justify-center mb-6">
+        <div class="w-2 h-16 bg-gradient-to-b from-[#FF6B47] to-[#C2185B] rounded-full mr-6"></div>
+        <h1 class="text-4xl lg:text-5xl font-black tracking-tight">
+          <span class="bg-gradient-to-r from-[#FF6B47] via-[#C2185B] to-[#6A1B9A] bg-clip-text text-transparent">
+            Upload Media Files
+          </span>
+        </h1>
       </div>
+      <p class="text-gray-600 text-lg leading-relaxed max-w-2xl mx-auto">
+        Share your creative work with the world. Upload images, videos, audio, and documents to showcase your talent.
+      </p>
     </div>
 
-    <!-- Preview of selected files -->
-    <div class="mb-6">
-      <h3 class="font-semibold mb-2">Selected Files (<%= Enum.count(@uploads.media_files.entries) %>)</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <%= for entry <- @uploads.media_files.entries do %>
-          <div class="border rounded-lg p-3 flex items-center">
-            <div class="flex-shrink-0 mr-3">
-              <%= if String.starts_with?(entry.client_type, "image/") do %>
-                <div class="w-12 h-12 bg-gray-100 rounded flex items-center justify-center">
-                  <i class="fas fa-image text-gray-400 text-xl"></i>
+    <!-- Main Upload Form -->
+    <div class="bg-white rounded-3xl shadow-xl border border-gray-100/50 overflow-hidden">
+      <div class="p-8 lg:p-12">
+        <.form 
+          :let={f} 
+          for={%{}} 
+          phx-submit="save" 
+          phx-change="validate"
+          class="space-y-8">
+          
+          <!-- Channel and Folder Selection -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Channel Selection -->
+            <div class="group">
+              <label class="block text-gray-900 font-bold text-lg mb-4 flex items-center">
+                <div class="w-8 h-8 bg-gradient-to-br from-[#6A1B9A] to-[#C2185B] rounded-xl flex items-center justify-center mr-3 group-hover:scale-110 transition-transform duration-300">
+                  <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
                 </div>
-              <% else %>
-                <div class="w-12 h-12 flex items-center justify-center bg-gray-100 rounded">
-                  <i class="fas fa-file text-gray-400 text-xl"></i>
+                Channel
+              </label>
+              <select 
+                name="channel" 
+                class="w-full p-4 border-2 border-gray-200 rounded-2xl text-gray-900 bg-white focus:border-[#C2185B] focus:ring-4 focus:ring-[#C2185B]/20 transition-all duration-300 hover:border-gray-300 font-medium"
+                phx-change="change-channel">
+                <option value="">No Channel</option>
+                <%= for channel <- @user_channels do %>
+                  <option value={channel.id} selected={@selected_channel == channel.id}>
+                    <%= channel.name %>
+                  </option>
+                <% end %>
+              </select>
+            </div>
+            
+            <!-- Folder Selection -->
+            <div class="group">
+              <label class="block text-gray-900 font-bold text-lg mb-4 flex items-center">
+                <div class="w-8 h-8 bg-gradient-to-br from-[#FF6B47] to-[#0891B2] rounded-xl flex items-center justify-center mr-3 group-hover:scale-110 transition-transform duration-300">
+                  <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
                 </div>
-              <% end %>
+                Folder
+              </label>
+              <select 
+                name="folder" 
+                class="w-full p-4 border-2 border-gray-200 rounded-2xl text-gray-900 bg-white focus:border-[#FF6B47] focus:ring-4 focus:ring-[#FF6B47]/20 transition-all duration-300 hover:border-gray-300 font-medium">
+                <option value="">No Folder</option>
+                <%= for folder <- @user_folders do %>
+                  <option value={folder.id}>
+                    <%= folder.name %>
+                  </option>
+                <% end %>
+              </select>
             </div>
-            <div class="flex-grow overflow-hidden">
-              <p class="font-medium truncate" title={entry.client_name}>
-                <%= entry.client_name %>
-              </p>
-              <p class="text-xs text-gray-500">
-                <%= format_bytes(entry.client_size) %>
-              </p>
-              <%= for err <- upload_errors(@uploads.media_files, entry) do %>
-                <p class="text-red-500 text-xs mt-1">
-                  <%= error_to_string(err) %>
-                </p>
-              <% end %>
-            </div>
-            <button type="button" 
-                    phx-click="remove-entry" 
-                    phx-value-ref={entry.ref} 
-                    class="text-red-500 ml-2"
-                    aria-label="Remove file">
-              <i class="fas fa-times"></i>
-            </button>
           </div>
-        <% end %>
+
+          <!-- File Upload Area -->
+          <div id="media-upload-container" phx-hook="FileUploader">
+            <label class="block text-gray-900 font-bold text-lg mb-4 flex items-center">
+              <div class="w-8 h-8 bg-gradient-to-br from-[#0891B2] to-[#6A1B9A] rounded-xl flex items-center justify-center mr-3">
+                <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              Select Files
+              <span class="text-sm font-medium text-gray-500 ml-4 px-3 py-1 bg-gray-100 rounded-full">
+                Max <%= format_bytes(@uploads.media_files.max_file_size) %> each
+              </span>
+            </label>
+            
+            <div class="relative group">
+              <div class="border-3 border-dashed border-gray-300 rounded-2xl p-12 text-center hover:border-[#C2185B] hover:bg-gradient-to-br hover:from-[#C2185B]/5 hover:to-[#6A1B9A]/5 transition-all duration-500 cursor-pointer group-hover:scale-[1.02] transform">
+                <.live_file_input upload={@uploads.media_files} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                
+                <!-- Upload Icon with Animation -->
+                <div class="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-[#C2185B]/10 to-[#6A1B9A]/10 rounded-3xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <svg class="h-10 w-10 text-[#C2185B] group-hover:text-[#6A1B9A] transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                </div>
+                
+                <h3 class="text-xl font-bold text-gray-900 mb-2 group-hover:text-[#C2185B] transition-colors duration-300">
+                  Drag files here or click to browse
+                </h3>
+                <p class="text-gray-600 mb-4 text-lg">
+                  Share your creative work with the community
+                </p>
+                <div class="flex flex-wrap justify-center gap-3">
+                  <span class="px-3 py-1 bg-gradient-to-r from-[#C2185B]/10 to-[#6A1B9A]/10 text-[#C2185B] text-sm font-bold rounded-full border border-[#C2185B]/20">Images</span>
+                  <span class="px-3 py-1 bg-gradient-to-r from-[#FF6B47]/10 to-[#C2185B]/10 text-[#FF6B47] text-sm font-bold rounded-full border border-[#FF6B47]/20">Videos</span>
+                  <span class="px-3 py-1 bg-gradient-to-r from-[#0891B2]/10 to-[#6A1B9A]/10 text-[#0891B2] text-sm font-bold rounded-full border border-[#0891B2]/20">Audio</span>
+                  <span class="px-3 py-1 bg-gradient-to-r from-[#6A1B9A]/10 to-[#C2185B]/10 text-[#6A1B9A] text-sm font-bold rounded-full border border-[#6A1B9A]/20">Documents</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Selected Files Preview -->
+          <%= if Enum.count(@uploads.media_files.entries) > 0 do %>
+            <div class="bg-gradient-to-br from-gray-50 to-purple-50/30 rounded-2xl p-8 border border-gray-100">
+              <h3 class="text-xl font-bold text-gray-900 mb-6 flex items-center">
+                <div class="w-6 h-6 bg-gradient-to-br from-[#C2185B] to-[#6A1B9A] rounded-lg flex items-center justify-center mr-3">
+                  <span class="text-white text-sm font-bold"><%= Enum.count(@uploads.media_files.entries) %></span>
+                </div>
+                Selected Files
+              </h3>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <%= for entry <- @uploads.media_files.entries do %>
+                  <div class="group bg-white rounded-2xl p-6 border border-gray-200 hover:border-[#C2185B]/30 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
+                    <div class="flex items-center">
+                      <!-- File Type Icon -->
+                      <div class="flex-shrink-0 mr-4">
+                        <%= if String.starts_with?(entry.client_type, "image/") do %>
+                          <div class="w-16 h-16 bg-gradient-to-br from-[#C2185B]/20 to-[#6A1B9A]/20 rounded-2xl flex items-center justify-center border border-[#C2185B]/30">
+                            <svg class="h-8 w-8 text-[#C2185B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                        <% else %>
+                          <div class="w-16 h-16 bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl flex items-center justify-center">
+                            <svg class="h-8 w-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </div>
+                        <% end %>
+                      </div>
+                      
+                      <!-- File Info -->
+                      <div class="flex-grow overflow-hidden mr-4">
+                        <h4 class="font-bold text-gray-900 truncate group-hover:text-[#C2185B] transition-colors duration-300" title={entry.client_name}>
+                          <%= entry.client_name %>
+                        </h4>
+                        <p class="text-sm text-gray-500 mb-2">
+                          <%= format_bytes(entry.client_size) %>
+                        </p>
+                        
+                        <!-- Error Messages -->
+                        <%= for err <- upload_errors(@uploads.media_files, entry) do %>
+                          <p class="text-red-500 text-sm mt-1 flex items-center">
+                            <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <%= error_to_string(err) %>
+                          </p>
+                        <% end %>
+                      </div>
+                      
+                      <!-- Remove Button -->
+                      <button 
+                        type="button" 
+                        phx-click="remove-entry" 
+                        phx-value-ref={entry.ref} 
+                        class="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all duration-300 transform hover:scale-110"
+                        aria-label="Remove file">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+
+          <!-- Action Buttons -->
+          <div class="flex flex-col sm:flex-row gap-4 justify-center pt-8">
+            <button 
+              type="submit" 
+              class="group relative px-8 py-4 bg-gradient-to-r from-[#C2185B] to-[#6A1B9A] hover:from-[#A91B56] hover:to-[#5C178B] text-white font-bold rounded-2xl shadow-xl shadow-[#C2185B]/25 hover:shadow-[#C2185B]/40 transform hover:scale-105 transition-all duration-300 overflow-hidden text-lg flex items-center justify-center min-w-[200px]">
+              <!-- Button shine effect -->
+              <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 translate-x-full group-hover:translate-x-[-200%] transition-transform duration-700"></div>
+              <div class="relative flex items-center">
+                <svg class="h-5 w-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Upload 
+                <%= if Enum.count(@uploads.media_files.entries) > 0 do %>
+                  (<%= Enum.count(@uploads.media_files.entries) %> files)
+                <% end %>
+              </div>
+            </button>
+            
+            <.link 
+              navigate={~p"/media"}
+              class="group px-8 py-4 text-gray-700 hover:text-gray-900 font-bold rounded-2xl border-2 border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 transition-all duration-300 transform hover:scale-105 text-lg flex items-center justify-center min-w-[200px]">
+              <svg class="h-5 w-5 mr-3 group-hover:-translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Cancel
+            </.link>
+          </div>
+        </.form>
       </div>
     </div>
-
-    <div>
-      <button type="submit" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors">
-        Upload 
-        <%= if Enum.count(@uploads.media_files.entries) > 0 do %>
-          (<%= Enum.count(@uploads.media_files.entries) %> files)
-        <% end %>
-      </button>
-      <a href={~p"/media"} class="ml-2 text-gray-500 hover:text-gray-700">
-        Cancel
-      </a>
-    </div>
-  </.form>
+  </div>
 </div>

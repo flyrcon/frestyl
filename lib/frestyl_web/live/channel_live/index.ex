@@ -6,6 +6,7 @@ defmodule FrestylWeb.ChannelLive.Index do
 
   alias Frestyl.Channels
   alias Frestyl.Channels.Channel
+  import FrestylWeb.Navigation, only: [nav: 1]
 
   @impl true
   def mount(_params, _session, socket) do

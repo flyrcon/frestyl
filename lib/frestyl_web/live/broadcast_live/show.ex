@@ -4,8 +4,13 @@ defmodule FrestylWeb.BroadcastLive.Show do
   alias Frestyl.Sessions
 
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
-    broadcast_id = String.to_integer(id)
+  def mount(%{"broadcast_id" => broadcast_id} = params, _session, socket) do
+    # Convert string to integer
+    broadcast_id = String.to_integer(broadcast_id)
+
+    # You can also access channel_slug if needed:
+    # channel_slug = Map.get(params, "channel_slug")
+
     broadcast = Sessions.get_session_with_details!(broadcast_id)
     current_user = socket.assigns.current_user
 

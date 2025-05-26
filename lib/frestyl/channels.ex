@@ -4,14 +4,12 @@ defmodule Frestyl.Channels do
   """
 
   import Ecto.Query, warn: false
+  alias Frestyl.Sessions
   alias Frestyl.Repo
-  alias Frestyl.Channels.{Channel, ChannelMembership, BlockedUser}
-  alias Frestyl.Channels.Message
-  alias Frestyl.Channels.{Channel, ChannelMembership}
+  alias Frestyl.Channels.{Channel, ChannelMembership, Message, BlockedUser}
   alias Frestyl.Accounts.User
   alias Frestyl.Channels.Room
   alias Frestyl.Channels.ChannelInvitation
-  alias Frestyl.Sessions
 
   ## Channel functions
 
@@ -961,19 +959,6 @@ defmodule Frestyl.Channels do
     end
   end
 
-  @doc """
-  Creates a session changeset for form validation.
-  """
-  def change_session(session) do
-    Sessions.Session.changeset(session || %Sessions.Session{}, %{})
-  end
-
-  @doc """
-  Creates a broadcast changeset for form validation.
-  """
-  def change_broadcast(broadcast) do
-    Sessions.Session.broadcast_changeset(broadcast || %Sessions.Session{}, %{})
-  end
 
   @doc """
   Creates a new session.
@@ -1018,58 +1003,402 @@ defmodule Frestyl.Channels do
   end
 
   @doc """
-  Creates a session changeset for form validation.
+  Creates a changeset for session forms
   """
-  def change_session(session) do
-    Sessions.Session.changeset(session || %Sessions.Session{}, %{})
+  def change_session(session, attrs \\ %{})
+
+  def change_session(nil, attrs) do
+    session_defaults = %{
+      title: nil,
+      description: nil,
+      is_public: true,
+      session_type: "session"
+    }
+
+    Ecto.Changeset.cast({session_defaults, %{
+      title: :string,
+      description: :string,
+      is_public: :boolean,
+      session_type: :string
+    }}, attrs, [:title, :description, :is_public, :session_type])
+  end
+
+  def change_session(session, attrs) when is_map(session) do
+    Ecto.Changeset.cast({session, %{
+      title: :string,
+      description: :string,
+      is_public: :boolean,
+      session_type: :string
+    }}, attrs, [:title, :description, :is_public, :session_type])
   end
 
   @doc """
-  Creates a broadcast changeset for form validation.
+  Creates a changeset for broadcast forms
   """
-  def change_broadcast(broadcast) do
-    Sessions.Session.broadcast_changeset(broadcast || %Sessions.Session{}, %{})
+  def change_broadcast(broadcast, attrs \\ %{})
+
+  def change_broadcast(nil, attrs) do
+    broadcast_defaults = %{
+      title: nil,
+      description: nil,
+      scheduled_for: nil,
+      is_public: true,
+      broadcast_type: "broadcast"
+    }
+
+    Ecto.Changeset.cast({broadcast_defaults, %{
+      title: :string,
+      description: :string,
+      scheduled_for: :utc_datetime,
+      is_public: :boolean,
+      broadcast_type: :string
+    }}, attrs, [:title, :description, :scheduled_for, :is_public, :broadcast_type])
+  end
+
+  def change_broadcast(broadcast, attrs) when is_map(broadcast) do
+    Ecto.Changeset.cast({broadcast, %{
+      title: :string,
+      description: :string,
+      scheduled_for: :utc_datetime,
+      is_public: :boolean,
+      broadcast_type: :string
+    }}, attrs, [:title, :description, :scheduled_for, :is_public, :broadcast_type])
+  end
+
+    @doc """
+  Updates channel customization settings.
+  """
+  def update_channel_customization(%Channel{} = channel, attrs) do
+    channel
+    |> Channel.customization_changeset(attrs)
+    |> Repo.update()
+    |> case do
+      {:ok, updated_channel} ->
+        # Broadcast customization update
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "channel:#{channel.id}",
+          {:channel_customization_updated, updated_channel}
+        )
+
+        # Auto-detect channel type if enabled
+        updated_channel = if updated_channel.auto_detect_type do
+          detected_type = Channel.detect_channel_type(updated_channel.id)
+          if detected_type != updated_channel.channel_type do
+            case update_channel(updated_channel, %{channel_type: detected_type}) do
+              {:ok, channel_with_type} -> channel_with_type
+              {:error, _} -> updated_channel
+            end
+          else
+            updated_channel
+          end
+        else
+          updated_channel
+        end
+
+        {:ok, updated_channel}
+      error -> error
+    end
   end
 
   @doc """
-  Creates a new session.
+  Gets channel customization data for the frontend.
   """
-  def create_session(attrs) do
-    Sessions.create_session(attrs)
+  def get_channel_customization(%Channel{} = channel) do
+    %{
+      hero_image_url: channel.hero_image_url,
+      color_scheme: channel.color_scheme || %{
+        "primary" => "#8B5CF6",
+        "secondary" => "#00D4FF",
+        "accent" => "#FF0080"
+      },
+      tagline: channel.tagline,
+      channel_type: channel.channel_type || "general",
+      show_live_activity: channel.show_live_activity,
+      enable_transparency_mode: channel.enable_transparency_mode,
+      social_links: channel.social_links || %{},
+      fundraising_enabled: channel.fundraising_enabled,
+      fundraising_goal: channel.fundraising_goal,
+      fundraising_description: channel.fundraising_description
+    }
   end
 
   @doc """
-  Creates a new broadcast.
+  Updates featured content for a channel.
   """
-  def create_broadcast(attrs) do
-    Sessions.create_broadcast(attrs)
+  def update_featured_content(%Channel{} = channel, featured_items) when is_list(featured_items) do
+    # Validate featured items structure
+    validated_items = Enum.map(featured_items, &validate_featured_item/1)
+
+    if Enum.any?(validated_items, &is_nil/1) do
+      {:error, "Invalid featured content format"}
+    else
+      update_channel(channel, %{featured_content: validated_items})
+    end
   end
 
   @doc """
-  Gets a session by ID.
+  Adds an item to featured content.
   """
-  def get_session!(id) do
-    Sessions.get_session_with_details!(id)
+  def add_featured_content(%Channel{} = channel, item) do
+    current_content = channel.featured_content || []
+
+    # Limit to 10 featured items
+    if length(current_content) >= 10 do
+      {:error, "Maximum 10 featured items allowed"}
+    else
+      validated_item = validate_featured_item(item)
+      if validated_item do
+        new_content = current_content ++ [validated_item]
+        update_channel(channel, %{featured_content: new_content})
+      else
+        {:error, "Invalid featured content item"}
+      end
+    end
   end
 
   @doc """
-  Gets a broadcast by ID.
+  Removes an item from featured content by index.
   """
-  def get_broadcast!(id) do
-    Sessions.get_session_with_details!(id)
+  def remove_featured_content(%Channel{} = channel, index) when is_integer(index) do
+    current_content = channel.featured_content || []
+
+    if index >= 0 and index < length(current_content) do
+      new_content = List.delete_at(current_content, index)
+      update_channel(channel, %{featured_content: new_content})
+    else
+      {:error, "Invalid featured content index"}
+    end
   end
 
   @doc """
-  Starts a session.
+  Gets channel analytics for type detection.
   """
-  def start_session(session) do
-    Sessions.update_session(session, %{status: "active", started_at: DateTime.utc_now()})
+  def get_channel_analytics(channel_id, days_back \\ 30) do
+    end_date = DateTime.utc_now()
+    start_date = DateTime.add(end_date, -days_back, :day)
+
+    # This would analyze:
+    # - Session types and frequency
+    # - Media uploads by type
+    # - User activity patterns
+    # - Broadcast vs session ratio
+
+    # For now, return basic structure
+    %{
+      session_count: 0,
+      broadcast_count: 0,
+      media_uploads: %{audio: 0, visual: 0, documents: 0},
+      peak_activity_hours: [],
+      collaboration_score: 0.0,
+      suggested_type: "general"
+    }
   end
 
   @doc """
-  Starts a broadcast.
+  Auto-detects optimal channel type based on activity patterns.
   """
-  def start_broadcast(broadcast) do
-    Sessions.start_broadcast(broadcast)
+  def detect_optimal_channel_type(channel_id) do
+    analytics = get_channel_analytics(channel_id)
+
+    cond do
+      analytics.media_uploads.audio > analytics.media_uploads.visual * 2 ->
+        "music"
+
+      analytics.media_uploads.visual > analytics.session_count ->
+        "visual"
+
+      analytics.broadcast_count > analytics.session_count ->
+        "broadcast"
+
+      analytics.collaboration_score > 0.7 ->
+        "collaborative"
+
+      true ->
+        "general"
+    end
   end
+
+  @doc """
+  Gets channel theme CSS variables based on customization.
+  """
+  def get_channel_theme_css(%Channel{} = channel) do
+    color_scheme = channel.color_scheme || %{
+      "primary" => "#8B5CF6",
+      "secondary" => "#00D4FF",
+      "accent" => "#FF0080"
+    }
+
+    css_vars = """
+    :root {
+      --channel-primary: #{color_scheme["primary"]};
+      --channel-secondary: #{color_scheme["secondary"]};
+      --channel-accent: #{color_scheme["accent"]};
+      --channel-hero-bg: url('#{channel.hero_image_url || ""}');
+    }
+
+    .channel-theme {
+      --primary-color: var(--channel-primary);
+      --secondary-color: var(--channel-secondary);
+      --accent-color: var(--channel-accent);
+    }
+
+    .channel-hero {
+      background-image: var(--channel-hero-bg);
+      background-size: cover;
+      background-position: center;
+    }
+    """
+
+    # Add custom CSS if provided
+    if channel.custom_css do
+      css_vars <> "\n\n/* Custom CSS */\n" <> channel.custom_css
+    else
+      css_vars
+    end
+  end
+
+  @doc """
+  Validates and sanitizes custom CSS.
+  """
+  def validate_custom_css(css) when is_binary(css) do
+    # Basic CSS validation - remove dangerous content
+    sanitized = css
+    |> String.replace(~r/@import\s+/i, "")  # Remove imports
+    |> String.replace(~r/javascript:/i, "") # Remove javascript URLs
+    |> String.replace(~r/expression\s*\(/i, "") # Remove IE expressions
+
+    # Limit length
+    if String.length(sanitized) <= 10_000 do
+      {:ok, sanitized}
+    else
+      {:error, "CSS too long (max 10,000 characters)"}
+    end
+  end
+
+  def validate_custom_css(_), do: {:error, "Invalid CSS format"}
+
+  @doc """
+  Broadcasts live activity update to channel subscribers.
+  """
+  def broadcast_live_activity(channel_id, activity_type, data) do
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "channel:#{channel_id}:activity",
+      {:live_activity_update, %{type: activity_type, data: data}}
+    )
+  end
+
+  @doc """
+  Gets live activity summary for a channel.
+  """
+  def get_live_activity_summary(channel_id) do
+    # Get current active sessions and broadcasts
+    active_sessions = Sessions.list_active_sessions_for_channel(channel_id)
+    active_broadcasts = Sessions.list_active_broadcasts_for_channel(channel_id)
+    upcoming_events = Sessions.list_upcoming_broadcasts_for_channel(channel_id)
+
+    # Calculate online members (this would use presence data in real implementation)
+    online_members = get_online_member_count(channel_id)
+
+    %{
+      active_sessions: length(active_sessions),
+      active_broadcasts: length(active_broadcasts),
+      upcoming_events: length(upcoming_events),
+      online_members: online_members,
+      total_activity: length(active_sessions) + length(active_broadcasts)
+    }
+  end
+
+  @doc """
+  Gets transparency mode data for a channel.
+  """
+  def get_transparency_data(%Channel{enable_transparency_mode: true} = channel) do
+    # Return detailed channel metrics when transparency is enabled
+    %{
+      member_activity: get_member_activity_stats(channel.id),
+      content_stats: get_content_creation_stats(channel.id),
+      session_history: get_recent_session_stats(channel.id),
+      financial_transparency: get_financial_transparency(channel)
+    }
+  end
+
+  def get_transparency_data(_channel), do: %{}
+
+  # Private helper functions
+
+  defp validate_featured_item(%{"type" => "media", "id" => id}) when is_integer(id) do
+    if Media.media_exists?(id) do
+      %{"type" => "media", "id" => id}
+    else
+      nil
+    end
+  end
+
+  defp validate_featured_item(%{"type" => "session", "id" => id}) when is_integer(id) do
+    if Sessions.session_exists?(id) do
+      %{"type" => "session", "id" => id}
+    else
+      nil
+    end
+  end
+
+  defp validate_featured_item(%{"type" => "custom", "title" => title, "description" => desc, "image_url" => url})
+       when is_binary(title) and is_binary(desc) and is_binary(url) do
+    %{
+      "type" => "custom",
+      "title" => String.slice(title, 0, 100),
+      "description" => String.slice(desc, 0, 500),
+      "image_url" => url
+    }
+  end
+
+  defp validate_featured_item(_), do: nil
+
+  defp get_online_member_count(channel_id) do
+    # This would integrate with Phoenix Presence
+    # For now, return a placeholder
+    0
+  end
+
+  defp get_member_activity_stats(channel_id) do
+    # Return member activity statistics
+    %{
+      daily_active: 0,
+      weekly_active: 0,
+      content_creators: 0,
+      session_participants: 0
+    }
+  end
+
+  defp get_content_creation_stats(channel_id) do
+    # Return content creation statistics
+    %{
+      uploads_this_week: 0,
+      total_content_size: 0,
+      most_active_creators: []
+    }
+  end
+
+  defp get_recent_session_stats(channel_id) do
+    # Return recent session statistics
+    %{
+      sessions_this_week: 0,
+      average_duration: 0,
+      total_participants: 0
+    }
+  end
+
+  defp get_financial_transparency(%Channel{fundraising_enabled: true} = channel) do
+    # Return fundraising transparency data
+    %{
+      current_funding: 0,
+      goal: channel.fundraising_goal,
+      expenses: [],
+      transparency_report_url: nil
+    }
+  end
+
+  defp get_financial_transparency(_), do: %{}
+
 end

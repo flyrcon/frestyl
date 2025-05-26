@@ -1,6 +1,6 @@
 # lib/frestyl/accounts.ex
 defmodule Frestyl.Accounts do
-  import Ecto.Query
+  import Ecto.Query, warn: false
   alias Frestyl.Repo
   alias Frestyl.Accounts.User
   alias Frestyl.Accounts.UserToken
@@ -202,6 +202,12 @@ defmodule Frestyl.Accounts do
     @doc """
   Gets users by a list of IDs.
   """
+
+  def get_users_by_ids(user_ids) when is_list(user_ids) do
+    from(u in User, where: u.id in ^user_ids)
+    |> Repo.all()
+  end
+
   def get_users_by_ids(ids) do
     User
     |> where([u], u.id in ^ids)
@@ -216,6 +222,9 @@ defmodule Frestyl.Accounts do
   end
 
   def get_user!(id), do: Repo.get!(User, id)
+
+  def get_user(id), do: Repo.get(User, id)
+
 
   def create_user(attrs \\ %{}) do
     %User{}
