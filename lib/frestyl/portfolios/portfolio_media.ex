@@ -6,18 +6,16 @@ defmodule Frestyl.Portfolios.PortfolioMedia do
   schema "portfolio_media" do
     field :title, :string
     field :description, :string
-    field :media_type, Ecto.Enum, values: [:image, :video, :audio, :document]
+    field :media_type, :string
     field :file_path, :string
     field :file_size, :integer
     field :mime_type, :string
     field :visible, :boolean, default: true
-    field :position, :integer
+    field :position, :integer, default: 0
 
     belongs_to :portfolio, Frestyl.Portfolios.Portfolio
-    belongs_to :section, Frestyl.Portfolios.PortfolioSection, foreign_key: :section_id
-
-    # This allows us to link existing media files
-    belongs_to :media_file, Frestyl.Media.MediaFile, foreign_key: :media_file_id
+    belongs_to :section, Frestyl.Portfolios.PortfolioSection
+    belongs_to :media_file, Frestyl.Media.MediaFile
 
     timestamps()
   end
@@ -26,11 +24,9 @@ defmodule Frestyl.Portfolios.PortfolioMedia do
     media
     |> cast(attrs, [:title, :description, :media_type, :file_path, :file_size,
                     :mime_type, :visible, :position, :portfolio_id, :section_id, :media_file_id])
-    |> validate_required([:title, :media_type, :file_path, :portfolio_id])
-    |> validate_length(:title, max: 100)
-    |> validate_length(:description, max: 1000)
+    |> validate_required([:media_type])
+    |> validate_inclusion(:media_type, ["image", "video", "audio", "document"])
     |> foreign_key_constraint(:portfolio_id)
     |> foreign_key_constraint(:section_id)
-    |> foreign_key_constraint(:media_file_id)
   end
 end

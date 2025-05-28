@@ -6,13 +6,14 @@ import topbar from "../vendor/topbar";
 // Import only the hooks we need, avoiding conflicts
 import SessionHooks from "./hooks/session_hooks";
 import StreamQualityHook from "./hooks/stream_quality";
-import MediaUploadHooks from "./hooks/upload_hooks";
+import { VideoCapture } from "./video_capture_hook";
 
 // Import utilities
 import { setupImageProcessing } from "./image_processor";
 import "./analytics";
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
+import { VideoCapture } from "./hooks/video_capture";
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
 
@@ -503,6 +504,40 @@ const SoundCheck = {
   }
 };
 
+const Hooks = {
+  ColorPicker: {
+    mounted() {
+      console.log("ColorPicker hook mounted"); // Debug log
+      const element = this.el;
+      
+      element.addEventListener("input", (ev) => {
+        const color = ev.target.value;
+        console.log("Color picker input:", color); // Debug log
+        
+        // Update CSS custom property immediately for preview
+        document.documentElement.style.setProperty('--theme-color', color);
+        
+        // Update the text input
+        const textInput = document.querySelector('input[type="text"][phx-value-field="theme_color"]');
+        if (textInput) {
+          textInput.value = color;
+        }
+      });
+      
+      element.addEventListener("change", (ev) => {
+        const color = ev.target.value;
+        console.log("Color picker change:", color); // Debug log
+        
+        // Push the final color value to LiveView
+        this.pushEvent("update_color", {
+          color: color,
+          name: "Custom"
+        });
+      });
+    }
+  }
+};
+
 // Combine all hooks - NO DUPLICATES
 let Hooks = {
   // Chat hooks
@@ -529,8 +564,27 @@ let Hooks = {
   StackedBarChart: StackedBarChartHook,
   PieChart: PieChartHook,
   ImageProcessor: ImageProcessorHook,
-  StreamQuality: StreamQualityHook
+  StreamQuality: StreamQualityHook,
+  VideoCapture: VideoCapture
 };
+
+window.addEventListener('phx:download_pdf', (event) => {
+  const { data, filename } = event.detail;
+  const blob = new Blob([Uint8Array.from(atob(data), c => c.charCodeAt(0))], {
+    type: 'application/pdf'
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+});
+
+window.addEventListener('phx:show_export_loading', () => {
+  // Show loading indicator
+  showToast('Generating PDF...', 'info');
+});
 
 // Initialize LiveSocket
 let liveSocket = new LiveSocket("/live", Socket, {

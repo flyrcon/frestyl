@@ -51,5 +51,8 @@ config :ex_aws,
   secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY")
 
 config :frestyl, :cdn,
-enabled: true,
-host: "https://your-cdn-domain.com"
+  enabled: true,
+  host: "https://your-cdn-domain.com"
+
+config :chromic_pdf,
+  chrome_executable: System.get_env("GOOGLE_CHROME_BIN")

@@ -128,6 +128,16 @@ defmodule FrestylWeb.Router do
     resources "/users", UserController, except: [:new, :create, :show]
   end
 
+  # Public portfolio viewing routes (before authenticated routes)
+  scope "/", FrestylWeb do
+    pipe_through [:browser]
+
+    # Public portfolio sharing routes
+    live "/p/:slug", PortfolioLive.View, :view
+    live "/portfolios/:slug", PortfolioLive.View, :view
+    live "/portfolios/share/:token", PortfolioLive.View, :shared
+  end
+
   # Authenticated routes
   scope "/", FrestylWeb do
     pipe_through [:browser, :require_auth]
@@ -136,64 +146,49 @@ defmodule FrestylWeb.Router do
     live_session :require_auth, on_mount: [{FrestylWeb.UserAuth, :ensure_authenticated}] do
       live "/dashboard", DashboardLive, :index
 
-      # ENHANCED: Channel routes with new features
+      # Channels - Use slug consistently
       live "/channels", ChannelLive.Index, :index
       live "/channels/new", ChannelLive.Index, :new
-
-      # Enhanced channel show with customization support
       live "/channels/:slug", ChannelLive.Show, :show
-      live "/channels/:id", ChannelLive.Show, :show
-      live "/channels/:id/edit", ChannelLive.Form, :edit
+      live "/channels/:slug/edit", ChannelLive.Form, :edit
+      live "/channels/:slug/media", ChannelLive.MediaTab, :media
 
-      # NEW: Channel customization and management
+      # Channel customization routes
       live "/channels/:slug/customize", ChannelLive.Customize, :edit
       live "/channels/:slug/settings", ChannelLive.Settings, :edit
       live "/channels/:slug/members", ChannelLive.Members, :index
       live "/channels/:slug/analytics", ChannelLive.Analytics, :index
 
-      # Enhanced media with channel context
-      live "/channels/:id/media", ChannelLive.MediaTab, :media
+      # Enhanced content management
       live "/channels/:slug/content", ContentLive.Index, :index
       live "/channels/:slug/content/upload", ContentLive.Upload, :new
       live "/channels/:slug/content/:id", ContentLive.Show, :show
 
-      # Enhanced sessions with channel context
+      # Sessions - Consistent slug usage
       live "/channels/:slug/sessions", SessionLive.Index, :index
-      live "/channels/:slug/sessions/new", SessionLive.Index, :new
-      live "/channels/:slug/sessions/:id", SessionLive.Show, :show
-      live "/channels/:slug/sessions/:id/edit", SessionLive.Show, :edit
-      live "/channels/:channel_slug/sessions/:session_id", StudioLive, :show
-      live "/channels/:channel_slug/sessions/:session_id/edit", StudioLive, :edit_session
+      live "/channels/:slug/sessions/:session_id", StudioLive, :show
+      live "/channels/:slug/sessions/:session_id/edit", StudioLive, :edit_session
 
-      # Enhanced broadcasts with channel context
+      # Broadcasts - Consistent slug usage
       live "/channels/:slug/broadcasts", BroadcastLive.Index, :index
       live "/channels/:slug/broadcasts/new", BroadcastLive.Index, :new
       live "/channels/:slug/broadcasts/:id", BroadcastLive.Show, :show
       live "/channels/:slug/broadcasts/:id/edit", BroadcastLive.Show, :edit
       live "/channels/:slug/broadcasts/:id/manage", BroadcastLive.Manage, :show
-      live "/channels/:channel_slug/broadcasts", BroadcastLive.Index, :index
 
-      # Sound check before joining (both channel context and direct access)
-      live "/channels/:channel_slug/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
+      # Keep existing broadcast routes with slug consistency
+      live "/channels/:slug/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
       live "/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
-
-      # Waiting room for scheduled broadcasts
-      live "/channels/:channel_slug/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
+      live "/channels/:slug/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
       live "/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
-
-      # Live broadcast view
-      live "/channels/:channel_slug/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
+      live "/channels/:slug/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
       live "/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
-
-      # Host management dashboard
-      live "/channels/:channel_id/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
+      live "/channels/:slug/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
       live "/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
 
-      # NEW: Studio and live streaming routes
+      # Studio routes
       live "/channels/:slug/studio", StudioLive.Index, :index
-      live "/channels/:slug/studio/:session_id", StudioLive.Session, :show
       live "/channels/:slug/go-live", StudioLive.Broadcast, :new
-      live "/channels/:slug/live/:broadcast_id", StudioLive.Broadcast, :show
 
       # Chat
       live "/chat", ChatLive.Show
@@ -215,6 +210,17 @@ defmodule FrestylWeb.Router do
       live "/events/:id/edit", EventLive.Index, :edit
       live "/events/:id/attend", EventAttendanceLive, :show
 
+      # Portfolio routes - Clean module names
+      live "/portfolios", PortfolioLive.Index, :index
+            live "/p/:slug", PortfolioLive.View, :show
+      live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
+
+      live "/portfolios/:id/share", PortfolioLive.Share, :share
+      live "/portfolios/:id/analytics", PortfolioLive.Analytics, :analytics
+      live "/portfolios/:portfolio_id/resume-parser", PortfolioLive.ResumeParser, :parse
+      live "/portfolios/:portfolio_id/sections/new", PortfolioLive.SectionEdit, :new
+      live "/portfolios/:portfolio_id/sections/:id/edit", PortfolioLive.SectionEdit, :edit
+
       # Users and Profile
       live "/invite", InviteUserLive, :index
       live "/collaborations", CollaborationLive, :index
@@ -227,19 +233,13 @@ defmodule FrestylWeb.Router do
       live "/users/settings/two_factor", UserLive.TwoFactorSetupLive, :index
       live "/account/sessions", UserLive.SessionManagementLive, :index
       live "/account/privacy", UserLive.PrivacySettingsLive, :index
-
-      # Portfolio routes
-      live "/portfolios", PortfolioLive.IndexLive, :index
-      live "/portfolios/:id/edit", PortfolioLive.EditLive, :edit
-      live "/portfolios/:id/share", PortfolioLive.ShareLive, :share
-      live "/portfolios/:id/analytics", PortfolioLive.AnalyticsLive, :analytics
-      live "/portfolios/:portfolio_id/resume-parser", PortfolioLive.ResumeParserLive, :parse
     end
 
     get "/dashboard", DashboardController, :index
     get "/users/log_in_success", UserSessionController, :log_in_success
     get "/users/create_from_2fa", UserSessionController, :create_from_2fa
     get "/session/create_from_liveview", UserSessionController, :create_from_liveview
+
 
     # Tickets
     get "/events/:event_id/tickets", TicketController, :buy
@@ -252,54 +252,40 @@ defmodule FrestylWeb.Router do
     get "/profile/edit", UserProfileController, :edit
     put "/profile", UserProfileController, :update
 
-    get "/account/subscription", AccountController, :subscription
+    # FIXED: Add missing subscription route
+    get "/account/subscription", SubscriptionController, :index
 
     resources "/subscriptions", SubscriptionController, except: [:new, :create]
     get "/subscriptions/new/:plan_id", SubscriptionController, :new
     post "/subscriptions", SubscriptionController, :create
 
     resources "/channels", ChannelController, param: "slug", except: [:index, :show]
-    get "/channels/:slug", ChannelController, :show
-
-    # NEW: Enhanced channel management endpoints
-    post "/channels/:slug/join", ChannelController, :join
-    delete "/channels/:slug/leave", ChannelController, :leave
-    post "/channels/:slug/invite", ChannelController, :invite
-
-    # NEW: Customization endpoints
-    put "/channels/:slug/customization", ChannelController, :update_customization
-    post "/channels/:slug/featured-content", ChannelController, :add_featured_content
-    delete "/channels/:slug/featured-content/:index", ChannelController, :remove_featured_content
-
-    # NEW: Live activity endpoints
-    get "/channels/:slug/activity", ChannelController, :live_activity
-    post "/channels/:slug/activity/broadcast", ChannelController, :broadcast_activity
 
     get "/broadcasts/:id", BroadcastController, :show
-    resources "/channels/:channel_slug/rooms", RoomController, param: "slug", except: [:index]
+    resources "/channels/:slug/rooms", RoomController, param: "slug", except: [:index]
 
-    delete "/channels/:channel_slug/rooms/:room_slug/messages/:id", MessageController, :delete
+    delete "/channels/:slug/rooms/:room_slug/messages/:id", MessageController, :delete
 
-    resources "/channels/:channel_slug/members", MembershipController, only: [:index, :create, :delete]
-    put "/channels/:channel_slug/members/:id/role", MembershipController, :update
+    resources "/channels/:slug/members", MembershipController, only: [:index, :create, :delete]
+    put "/channels/:slug/members/:id/role", MembershipController, :update
 
-    resources "/channels/:channel_slug/invitations", InvitationController, only: [:index, :create]
-    post "/channels/:channel_slug/invitations/:id/cancel", InvitationController, :cancel
+    resources "/channels/:slug/invitations", InvitationController, only: [:index, :create]
+    post "/channels/:slug/invitations/:id/cancel", InvitationController, :cancel
 
     resources "/media", MediaController
     post "/media/:asset_id/version", MediaController, :upload_version
     get "/media/stream/:asset_id/:version_id", MediaController, :stream
     get "/media/:id", MediaController, :download
 
-    get "/channels/:channel_slug/files", FileController, :index
-    get "/channels/:channel_slug/files/new", FileController, :new
-    post "/channels/:channel_slug/files", FileController, :create
-    delete "/channels/:channel_slug/files/:id", FileController, :delete
+    get "/channels/:slug/files", FileController, :index
+    get "/channels/:slug/files/new", FileController, :new
+    post "/channels/:slug/files", FileController, :create
+    delete "/channels/:slug/files/:id", FileController, :delete
 
-    get "/channels/:channel_slug/rooms/:room_slug/files", FileController, :index
-    get "/channels/:channel_slug/rooms/:room_slug/files/new", FileController, :new
-    post "/channels/:channel_slug/rooms/:room_slug/files", FileController, :create
-    delete "/channels/:channel_slug/rooms/:room_slug/files/:id", FileController, :delete
+    get "/channels/:slug/rooms/:room_slug/files", FileController, :index
+    get "/channels/:slug/rooms/:room_slug/files/new", FileController, :new
+    post "/channels/:slug/rooms/:room_slug/files", FileController, :create
+    delete "/channels/:slug/rooms/:room_slug/files/:id", FileController, :delete
 
     resources "/sessions", SessionController, except: [:new, :create, :delete]
     post "/sessions/:id/join", SessionController, :join
@@ -336,44 +322,8 @@ defmodule FrestylWeb.Router do
 
     get "/users/me", UserController, :me
     resources "/profiles", ProfileController, only: [:index, :show]
-
-    # ENHANCED: Channel API with new features
-    resources "/channels", ChannelController, only: [:index, :show] do
-      # Nested resources for channel-specific data
-      resources "/sessions", SessionController, except: [:new, :edit]
-      resources "/broadcasts", BroadcastController, except: [:new, :edit]
-      resources "/members", MemberController, only: [:index, :show, :create, :delete]
-      resources "/invitations", InvitationController, only: [:index, :create, :show, :update]
-
-      # Content management
-      resources "/content", ContentController, except: [:new, :edit]
-      post "/content/upload", ContentController, :upload
-
-      # Real-time endpoints
-      get "/activity", ChannelController, :activity_feed
-      post "/join", ChannelController, :join
-      post "/leave", ChannelController, :leave
-
-      # Customization endpoints
-      get "/customization", ChannelController, :get_customization
-      put "/customization", ChannelController, :update_customization
-      get "/theme", ChannelController, :get_theme_css
-
-      # Analytics endpoints (for channel owners/admins)
-      get "/analytics", AnalyticsController, :channel_stats
-      get "/analytics/activity", AnalyticsController, :activity_stats
-      get "/analytics/members", AnalyticsController, :member_stats
-
-      # Transparency and fundraising endpoints
-      get "/transparency", ChannelController, :transparency_data
-      get "/fundraising", ChannelController, :fundraising_status
-      post "/donate", FundraisingController, :donate
-    end
-
+    resources "/channels", ChannelController, only: [:index, :show]
     get "/media/public", MediaController, :public
-
-    # WebSocket endpoints for real-time features
-    get "/channels/:id/subscribe", ChannelController, :subscribe_info
   end
 
   # API: Auth + 2FA
@@ -406,13 +356,6 @@ defmodule FrestylWeb.Router do
   scope "/uploads", FrestylWeb do
     pipe_through [:browser, :require_auth, :media_cache]
     get "/*path", MediaController, :serve_file
-  end
-
-  scope "/", FrestylWeb do
-    pipe_through [:browser]
-
-    # Catch-all route for custom portfolio URLs
-    live "/:slug", PortfolioLive.ViewLive, :portfolio
   end
 
   defp debug_request(conn, _opts) do

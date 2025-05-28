@@ -1,5 +1,5 @@
-# lib/frestyl_web/live/portfolio_live/share_live.ex
-defmodule FrestylWeb.PortfolioLive.ShareLive do
+# lib/frestyl_web/live/portfolio_live/share.ex
+defmodule FrestylWeb.PortfolioLive.Share do
   use FrestylWeb, :live_view
 
   alias Frestyl.Portfolios

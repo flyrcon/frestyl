@@ -1,0 +1,991 @@
+<!-- Portfolio Edit - Volt Plasma Fusion Design -->
+<div class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50">
+  <!-- Navigation -->
+  <nav class="fixed top-0 left-0 right-0 z-50 bg-white bg-opacity-95 backdrop-blur border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <!-- Logo -->
+        <div class="flex items-center">
+          <img src="/images/logo.svg" alt="Frestyl" class="w-24 h-24" />
+        </div>
+        
+        <!-- Navigation Links -->
+        <div class="hidden md:flex items-center space-x-8">
+          <a href="/dashboard" class="font-bold text-gray-600 hover:text-gray-900 relative pb-1 group">
+            Dashboard
+            <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-500 to-purple-500 group-hover:w-full transition-all duration-300"></span>
+          </a>
+          <a href="/channels" class="font-semibold text-gray-600 hover:text-gray-900 relative pb-1 group">
+            Channels
+            <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-500 to-purple-500 group-hover:w-full transition-all duration-300"></span>
+          </a>
+          <.link navigate={~p"/portfolios"} class="font-bold text-gray-900 hover:text-gray-700 relative pb-1">
+            Portfolios
+            <span class="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-pink-500 to-purple-500"></span>
+          </.link>
+          <a href="/chat" class="font-semibold text-gray-600 hover:text-gray-900 relative pb-1 group">
+            Chat
+            <span class="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-pink-500 to-purple-500 group-hover:w-full transition-all duration-300"></span>
+          </a>
+        </div>
+        
+        <!-- User Menu -->
+        <div class="flex items-center space-x-4">
+          <button class="relative p-2 text-gray-600 hover:text-blue-500">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+            </svg>
+            <span class="absolute top-1 right-1 w-2 h-2 bg-pink-500 rounded-full"></span>
+          </button>
+          
+          <div class="w-8 h-8 bg-gradient-to-r from-orange-500 to-pink-500 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+            U
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="pt-16 min-h-screen">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      
+      <!-- Header -->
+      <div class="bg-white rounded-xl shadow-md mb-8 overflow-hidden">
+        <div class="h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-t-xl"></div>
+        
+        <div class="p-8 lg:p-12">
+          <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+            <div class="mb-6 lg:mb-0">
+              <h1 class="text-4xl font-black text-gray-900 mb-4">
+                <span class="bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                  Edit Portfolio
+                </span>
+              </h1>
+              <p class="text-gray-600 text-lg font-medium">
+                Customize your portfolio to showcase your professional experience.
+              </p>
+            </div>
+            
+            <div class="flex flex-wrap gap-4">
+              <.link navigate={~p"/portfolios"} class="group inline-flex items-center px-4 py-3 border-2 border-gray-300 shadow-sm text-sm font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-300 transform hover:scale-105">
+                <svg class="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+                </svg>
+                Back to Portfolios
+              </.link>
+              
+              <.link navigate={~p"/portfolios/#{@portfolio.id}/share"} class="group inline-flex items-center px-4 py-3 border border-transparent shadow-sm text-sm font-bold rounded-xl text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 transition-all duration-300 transform hover:scale-105">
+                <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+                Share Portfolio
+              </.link>
+              
+              <.link navigate={~p"/p/#{@portfolio.slug}"} target="_blank" class="group inline-flex items-center px-4 py-3 border border-transparent shadow-sm text-sm font-bold rounded-xl text-white bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition-all duration-300 transform hover:scale-105">
+                <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                Preview
+              </.link>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Tabs -->
+      <div class="bg-white rounded-xl shadow-md mb-8 overflow-hidden">
+        <div class="h-1 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-t-xl"></div>
+        
+        <div class="border-b border-gray-200">
+          <nav class="flex space-x-8 px-8 lg:px-12" aria-label="Tabs">
+            <button 
+              phx-click="change_tab" 
+              phx-value-tab="details" 
+              class={"relative py-6 px-1 font-bold text-lg transition-all duration-300 border-b-4 #{if @active_tab == :details, do: "text-pink-600 border-pink-600", else: "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"}"}
+            >
+              Portfolio Details
+              <%= if @active_tab == :details do %>
+                <div class="absolute -bottom-1 left-0 right-0 h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-full"></div>
+              <% end %>
+            </button>
+            
+            <button 
+              phx-click="change_tab" 
+              phx-value-tab="sections" 
+              class={"relative py-6 px-1 font-bold text-lg transition-all duration-300 border-b-4 #{if @active_tab == :sections, do: "text-pink-600 border-pink-600", else: "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"}"}
+            >
+              Content Sections
+              <%= if @active_tab == :sections do %>
+                <div class="absolute -bottom-1 left-0 right-0 h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-full"></div>
+              <% end %>
+            </button>
+            
+            <button 
+              phx-click="change_tab" 
+              phx-value-tab="media" 
+              class={"relative py-6 px-1 font-bold text-lg transition-all duration-300 border-b-4 #{if @active_tab == :media, do: "text-pink-600 border-pink-600", else: "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"}"}
+            >
+              Media & Attachments
+              <%= if @active_tab == :media do %>
+                <div class="absolute -bottom-1 left-0 right-0 h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-full"></div>
+              <% end %>
+            </button>
+            
+            <button 
+              phx-click="change_tab" 
+              phx-value-tab="theme" 
+              class={"relative py-6 px-1 font-bold text-lg transition-all duration-300 border-b-4 #{if @active_tab == :theme, do: "text-pink-600 border-pink-600", else: "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"}"}
+            >
+              Theme & Layout
+              <%= if @active_tab == :theme do %>
+                <div class="absolute -bottom-1 left-0 right-0 h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-full"></div>
+              <% end %>
+            </button>
+            
+            <button 
+              phx-click="change_tab" 
+              phx-value-tab="import" 
+              class={"py-6 px-1 font-bold text-lg transition-all duration-300 border-b-4 #{if @active_tab == :import, do: "text-pink-600 border-pink-600", else: "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"}"}
+            >
+              Import Resume
+              <%= if @active_tab == :import do %>
+                <div class="absolute -bottom-1 left-0 right-0 h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-full"></div>
+              <% end %>
+            </button>
+          </nav>
+        </div>
+      </div>
+      
+      <!-- Tab Content -->
+      
+      <!-- Portfolio Details Tab -->
+      <%= if @active_tab == :details do %>
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+          <div class="h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-t-xl"></div>
+          
+          <div class="p-8 lg:p-12">
+            <h2 class="text-3xl font-black text-gray-900 mb-8">Portfolio Details</h2>
+            
+            <.simple_form for={@form} phx-change="validate_portfolio" phx-submit="update_portfolio">
+              <div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
+                <div class="lg:col-span-2">
+                  <.input field={@form[:title]} label="Portfolio Title" class="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-pink-500 focus:border-pink-500 text-lg font-medium" />
+                </div>
+                
+                <!-- Custom URL Field - FIXED VERSION -->
+                <div class="lg:col-span-2">
+                  <div class="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
+                    <label class="block text-lg font-bold text-gray-900 mb-4">Custom Portfolio URL</label>
+                    <div class="flex rounded-xl shadow-sm overflow-hidden">
+                      <span class="inline-flex items-center px-4 py-3 bg-gray-100 border border-r-0 border-gray-300 text-gray-700 text-sm font-bold">
+                        <%= FrestylWeb.Endpoint.url() %>/p/
+                      </span>
+                      <.input 
+                        field={@form[:slug]} 
+                        placeholder="my-awesome-portfolio" 
+                        class="flex-1 min-w-0 block w-full px-4 py-3 rounded-none rounded-r-xl focus:ring-pink-600 focus:border-pink-600 border-gray-300" 
+                      />
+                    </div>
+                    <p class="mt-3 text-sm text-gray-600">
+                      This will be your portfolio's URL. Use only lowercase letters, numbers, and hyphens. Must be 3-50 characters.
+                    </p>
+                    
+                    <!-- Live URL Preview -->
+                    <div class="mt-4 p-4 bg-gradient-to-r from-pink-600/10 to-purple-600/10 border border-pink-600/30 rounded-xl">
+                      <p class="text-sm text-pink-600 font-medium">
+                        <strong>Your portfolio will be available at:</strong><br>
+                        <code class="text-purple-600 font-mono text-base"><%= FrestylWeb.Endpoint.url() %>/p/<%= if @form[:slug].value, do: @form[:slug].value, else: "your-portfolio-slug" %></code>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <.input field={@form[:visibility]} type="select" label="Visibility" options={[
+                    {"Public - Anyone can view", "public"},
+                    {"Private - Only you can view", "private"},
+                    {"Link only - People with the link can view", "link_only"}
+                  ]} class="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-pink-500 focus:border-pink-500 text-base" />
+                </div>
+                
+                <div>
+                  <.input field={@form[:require_approval]} type="checkbox" label="Require approval before viewing" />
+                  <p class="mt-2 text-sm text-gray-600">
+                    When enabled, you'll need to approve each person before they can view your portfolio.
+                  </p>
+                </div>
+                
+                <div class="lg:col-span-2">
+                  <.input field={@form[:description]} type="textarea" label="Description" placeholder="Briefly describe what this portfolio showcases..." rows="4" class="block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-pink-500 focus:border-pink-500" />
+                </div>
+              </div>
+              
+              <div class="flex justify-end pt-6">
+                <.button type="submit" class="px-8 py-4 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-xl shadow-pink-600/25 hover:shadow-pink-600/40 transform hover:scale-105 transition-all duration-300 text-lg">
+                  Save Changes
+                </.button>
+              </div>
+            </.simple_form>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Content Sections Tab -->
+      <%= if @active_tab == :sections do %>
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+          <div class="h-1 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-t-xl"></div>
+          
+          <div class="p-8 lg:p-12">
+            <div class="flex items-center justify-between mb-8">
+              <h2 class="text-3xl font-black text-gray-900">Portfolio Sections</h2>
+              <button phx-click="add_section" class="group inline-flex items-center px-6 py-4 border border-transparent shadow-sm text-sm font-bold rounded-xl text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-300 transform hover:scale-105">
+                <svg class="mr-2 h-4 w-4 group-hover:scale-110 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Add Section
+              </button>
+            </div>
+            
+            <div class="space-y-6">
+              <%= for section <- @sections do %>
+                <div class="group bg-white border-2 border-gray-200 rounded-xl hover:border-purple-600/30 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
+                  <div class={"h-1 #{section_gradient_class(section.section_type)}"}></div>
+                  
+                  <div class="p-8 flex justify-between items-start">
+                    <div class="flex-1">
+                      <div class="flex items-center mb-3">
+                        <h4 class="text-xl font-black text-gray-900 group-hover:text-purple-600 transition-colors duration-300">
+                          <%= section.title %>
+                        </h4>
+                        <span class={"ml-4 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border #{if section.visible, do: "bg-green-100 text-green-800 border-green-200", else: "bg-gray-100 text-gray-600 border-gray-200"}"}>
+                          <svg class="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <%= if section.visible do %>
+                              <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                              <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                            <% else %>
+                              <path stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L12 12l-3.29-3.29m7.532 7.532L12 12m3.29 3.29a3 3 0 01-4.243-4.243m0 0L9.878 9.878" />
+                            <% end %>
+                          </svg>
+                          <%= if section.visible, do: "Visible", else: "Hidden" %>
+                        </span>
+                      </div>
+                      <p class="text-gray-600 flex items-center">
+                        <span class={"w-2 h-2 rounded-full mr-2 #{section_color_class(section.section_type)}"}></span>
+                        <%= section_type_label(section.section_type) %>
+                      </p>
+                    </div>
+                    
+                    <div class="flex space-x-3 ml-6">
+                      <button phx-click="edit_section" phx-value-id={section.id} class={"group inline-flex items-center px-4 py-2 border-2 shadow-sm text-sm font-bold rounded-xl bg-white hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 #{section_button_class(section.section_type)}"}>
+                        <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Edit
+                      </button>
+                      
+                      <button phx-click="delete_section" phx-value-id={section.id} data-confirm="Are you sure you want to delete this section?" class="group inline-flex items-center px-4 py-2 border-2 border-red-300 shadow-sm text-sm font-bold rounded-xl text-red-600 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-300 transform hover:scale-105">
+                        <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Media & Attachments Tab -->
+      <%= if @active_tab == :media do %>
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+          <div class="h-1 bg-gradient-to-r from-green-600 to-teal-600 rounded-t-xl"></div>
+          
+          <div class="p-8 lg:p-12">
+            <div class="flex items-center justify-between mb-8">
+              <h2 class="text-3xl font-black text-gray-900">Media & Attachments</h2>
+            </div>
+            
+            <!-- File Upload Area -->
+            <div class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-green-500 transition-colors duration-300" phx-drop-target={@uploads.media.ref}>
+              <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <div class="mt-4">
+                <label for={@uploads.media.ref} class="cursor-pointer">
+                  <span class="mt-2 block text-sm font-medium text-gray-900">
+                    Drop files here or click to browse
+                  </span>
+                  <.live_file_input upload={@uploads.media} class="sr-only" />
+                </label>
+                <p class="mt-1 text-xs text-gray-500">PNG, JPG, GIF, PDF, MP4 up to <%= @limits.max_media_size_mb %>MB each</p>
+              </div>
+            </div>
+            
+            <!-- Upload Progress -->
+            <%= for entry <- @uploads.media.entries do %>
+              <div class="mt-4 bg-gray-50 rounded-xl p-4">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center">
+                    <div class="w-8 h-8 bg-blue-500 rounded flex items-center justify-center">
+                      <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" />
+                      </svg>
+                    </div>
+                    <div class="ml-3">
+                      <p class="text-sm font-medium text-gray-900"><%= entry.client_name %></p>
+                      <p class="text-xs text-gray-500"><%= Float.round(entry.client_size / 1_048_576, 1) %> MB</p>
+                    </div>
+                  </div>
+                  
+                  <button phx-click="cancel_upload" phx-value-ref={entry.ref} class="text-red-600 hover:text-red-800">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div class="mt-2 w-full bg-gray-200 rounded-full h-2">
+                  <div class="bg-green-600 h-2 rounded-full" style={"width: #{entry.progress}%"}></div>
+                </div>
+              </div>
+              
+              <!-- Show errors -->
+              <%= for error <- upload_errors(@uploads.media, entry) do %>
+                <p class="mt-2 text-sm text-red-600"><%= error_to_string(error) %></p>
+              <% end %>
+            <% end %>
+            
+            <!-- General upload errors -->
+            <%= for error <- upload_errors(@uploads.media) do %>
+              <p class="mt-2 text-sm text-red-600"><%= error_to_string(error) %></p>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- ENHANCED THEME & LAYOUT TAB - WORKING VERSION -->
+      <%= if @active_tab == :theme do %>
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+          <div class="h-1 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-t-xl"></div>
+          
+          <div class="p-8 lg:p-12">
+            <h2 class="text-3xl font-black text-gray-900 mb-8">Theme & Layout</h2>
+            
+            <div class="space-y-8">
+              <!-- Theme Selection -->
+              <div>
+                <h3 class="text-xl font-bold text-gray-900 mb-4">Choose Theme</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div class="relative group cursor-pointer" phx-click="select_theme" phx-value-theme="creative">
+                    <div class={[
+                      "border-2 rounded-xl p-4 bg-white shadow-lg transition-all duration-300",
+                      if(@portfolio.theme == "creative", do: "border-purple-600 ring-4 ring-purple-200", else: "border-gray-200 hover:border-purple-300")
+                    ]}>
+                      <div class="h-32 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg mb-3 flex items-center justify-center">
+                        <div class="text-center">
+                          <div class="w-16 h-2 bg-purple-400 rounded mb-2"></div>
+                          <div class="w-12 h-2 bg-purple-300 rounded mb-2"></div>
+                          <div class="w-8 h-2 bg-purple-200 rounded"></div>
+                        </div>
+                      </div>
+                      <h4 class="font-bold text-gray-900">Creative</h4>
+                      <p class="text-sm text-gray-600">Pinterest-style masonry layout</p>
+                    </div>
+                    <%= if @portfolio.theme == "creative" do %>
+                      <div class="absolute top-2 right-2 w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center">
+                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                        </svg>
+                      </div>
+                    <% end %>
+                  </div>
+
+                  <div class="relative group cursor-pointer" phx-click="select_theme" phx-value-theme="corporate">
+                    <div class={[
+                      "border-2 rounded-xl p-4 bg-white shadow-lg transition-all duration-300",
+                      if(@portfolio.theme == "corporate", do: "border-blue-600 ring-4 ring-blue-200", else: "border-gray-200 hover:border-blue-300")
+                    ]}>
+                      <div class="h-32 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-lg mb-3 flex items-center justify-center">
+                        <div class="text-center">
+                          <div class="w-20 h-3 bg-blue-400 rounded-full mb-2"></div>
+                          <div class="w-16 h-2 bg-blue-300 rounded mb-1"></div>
+                          <div class="w-14 h-2 bg-blue-200 rounded"></div>
+                        </div>
+                      </div>
+                      <h4 class="font-bold text-gray-900">Corporate</h4>
+                      <p class="text-sm text-gray-600">Structured dashboard layout</p>
+                    </div>
+                    <%= if @portfolio.theme == "corporate" do %>
+                      <div class="absolute top-2 right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                        </svg>
+                      </div>
+                    <% end %>
+                  </div>
+
+                  <div class="relative group cursor-pointer" phx-click="select_theme" phx-value-theme="minimalist">
+                    <div class={[
+                      "border-2 rounded-xl p-4 bg-white shadow-lg transition-all duration-300",
+                      if(@portfolio.theme == "minimalist", do: "border-gray-600 ring-4 ring-gray-200", else: "border-gray-200 hover:border-gray-400")
+                    ]}>
+                      <div class="h-32 bg-gradient-to-br from-green-100 to-teal-100 rounded-lg mb-3 flex items-center justify-center">
+                        <div class="text-center space-y-2">
+                          <div class="w-12 h-1 bg-green-400 rounded mx-auto"></div>
+                          <div class="w-16 h-1 bg-green-300 rounded mx-auto"></div>
+                          <div class="w-10 h-1 bg-green-200 rounded mx-auto"></div>
+                        </div>
+                      </div>
+                      <h4 class="font-bold text-gray-900">Minimalist</h4>
+                      <p class="text-sm text-gray-600">Clean grid layout</p>
+                    </div>
+                    <%= if @portfolio.theme == "minimalist" do %>
+                      <div class="absolute top-2 right-2 w-6 h-6 bg-gray-600 rounded-full flex items-center justify-center">
+                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                        </svg>
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Color Scheme - NOW FUNCTIONAL -->
+              <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">Color Theme</h3>
+                
+                <!-- Color Palette Grid -->
+                <div class="grid grid-cols-5 gap-3 mb-6">
+                  <%= for {color_name, color_value} <- [
+                    {"Purple", "#8b5cf6"}, 
+                    {"Blue", "#3b82f6"}, 
+                    {"Green", "#10b981"}, 
+                    {"Red", "#ef4444"}, 
+                    {"Orange", "#f97316"},
+                    {"Pink", "#ec4899"},
+                    {"Indigo", "#6366f1"},
+                    {"Teal", "#14b8a6"},
+                    {"Yellow", "#eab308"},
+                    {"Gray", "#6b7280"}
+                  ] do %>
+                    <button 
+                      phx-click="update_color" 
+                      phx-value-color={color_value}
+                      phx-value-name={color_name}
+                      class={[
+                        "w-12 h-12 rounded-lg border-2 transition-all duration-200 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2",
+                        if(Map.get(@portfolio, :theme_color) == color_value, do: "border-gray-800 ring-2 ring-gray-800", else: "border-gray-300")
+                      ]}
+                      style={"background-color: #{color_value}"}
+                      title={color_name}
+                      type="button"
+                    >
+                      <%= if Map.get(@portfolio, :theme_color) == color_value do %>
+                        <svg class="w-6 h-6 text-white mx-auto" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                        </svg>
+                      <% end %>
+                    </button>
+                  <% end %>
+                </div>
+              </div>
+
+                <!-- Custom Color Input -->
+                <div class="flex items-center space-x-3">
+                  <label class="text-sm font-medium text-gray-700">Custom:</label>
+                  <input 
+                    type="color" 
+                    id="custom-color-picker"
+                    phx-hook="ColorPicker"
+                    value={Map.get(@portfolio, :theme_color, "#8b5cf6")}
+                    class="w-12 h-12 border border-gray-300 rounded-lg cursor-pointer"
+                    data-property-name="theme"
+                  />
+                  <input 
+                    type="text" 
+                    phx-blur="update_color_text"
+                    phx-value-field="theme_color"
+                    value={Map.get(@portfolio, :theme_color, "#8b5cf6")}
+                    placeholder="#8b5cf6"
+                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono w-32"
+                  />
+                </div>
+              
+              <!-- Layout Options - NOW FUNCTIONAL -->
+              <div>
+                <h3 class="text-xl font-bold text-gray-900 mb-4">Layout Options</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div class="space-y-4">
+                    <div class="flex items-center">
+                      <input 
+                        type="radio" 
+                        name="layout" 
+                        id="layout_single"
+                        phx-click="update_layout_option"
+                        phx-value-option="layout_style"
+                        phx-value-value="single_page"
+                        checked={Map.get(@customization, :layout_style) == "single_page"}
+                        class="h-4 w-4 text-purple-600 border-gray-300" 
+                      />
+                      <label for="layout_single" class="ml-3 text-gray-900 font-medium">Single Page Layout</label>
+                    </div>
+                    <div class="flex items-center">
+                      <input 
+                        type="radio" 
+                        name="layout" 
+                        id="layout_multi"
+                        phx-click="update_layout_option"
+                        phx-value-option="layout_style"
+                        phx-value-value="multi_page"
+                        checked={Map.get(@customization, :layout_style) == "multi_page"}
+                        class="h-4 w-4 text-purple-600 border-gray-300" 
+                      />
+                      <label for="layout_multi" class="ml-3 text-gray-900 font-medium">Multi Page Layout</label>
+                    </div>
+                    <div class="flex items-center">
+                      <input 
+                        type="checkbox" 
+                        id="fixed_nav"
+                        phx-click="update_layout_option"
+                        phx-value-option="fixed_navigation"
+                        phx-value-value={!Map.get(@customization, :fixed_navigation, true)}
+                        checked={Map.get(@customization, :fixed_navigation, true)}
+                        class="h-4 w-4 text-purple-600 border-gray-300 rounded" 
+                      />
+                      <label for="fixed_nav" class="ml-3 text-gray-900 font-medium">Fixed Navigation</label>
+                    </div>
+                    <div class="flex items-center">
+                      <input 
+                        type="checkbox" 
+                        id="dark_mode"
+                        phx-click="update_layout_option"
+                        phx-value-option="dark_mode_support"
+                        phx-value-value={!Map.get(@customization, :dark_mode_support, false)}
+                        checked={Map.get(@customization, :dark_mode_support, false)}
+                        class="h-4 w-4 text-purple-600 border-gray-300 rounded" 
+                      />
+                      <label for="dark_mode" class="ml-3 text-gray-900 font-medium">Dark Mode Support</label>
+                    </div>
+                  </div>
+                  
+                  <div class="space-y-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-900 mb-2">Section Spacing</label>
+                      <select 
+                        phx-change="update_section_spacing"
+                        name="spacing"
+                        class="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500">
+                        <option value="compact" selected={Map.get(@customization, :section_spacing) == "compact"}>Compact</option>
+                        <option value="normal" selected={Map.get(@customization, :section_spacing) == "normal"}>Normal</option>
+                        <option value="spacious" selected={Map.get(@customization, :section_spacing) == "spacious"}>Spacious</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-900 mb-2">Font Style</label>
+                      <select 
+                        phx-change="update_font_style"
+                        name="font"
+                        class="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500">
+                        <option value="inter" selected={Map.get(@customization, :font_style) == "inter"}>Inter (Modern)</option>
+                        <option value="merriweather" selected={Map.get(@customization, :font_style) == "merriweather"}>Merriweather (Classic)</option>
+                        <option value="roboto" selected={Map.get(@customization, :font_style) == "roboto"}>Roboto (Clean)</option>
+                        <option value="playfair" selected={Map.get(@customization, :font_style) == "playfair"}>Playfair Display (Elegant)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Live Preview Panel -->
+              <div class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-200">
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                  Live Preview
+                </h3>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <!-- Current Settings Summary -->
+                  <div>
+                    <h4 class="font-semibold text-gray-900 mb-3">Current Settings</h4>
+                    <dl class="space-y-2 text-sm">
+                      <div class="flex justify-between">
+                        <dt class="text-gray-600">Theme:</dt>
+                        <dd class="font-medium text-gray-900 capitalize"><%= @portfolio.theme %></dd>
+                      </div>
+                      <div class="flex justify-between">
+                        <dt class="text-gray-600">Color Scheme:</dt>
+                        <dd class="font-medium text-gray-900 capitalize">
+                          <%= String.replace(Map.get(@customization, :color_scheme, "purple-pink"), "-", " to ") %>
+                        </dd>
+                      </div>
+                      <div class="flex justify-between">
+                        <dt class="text-gray-600">Layout:</dt>
+                        <dd class="font-medium text-gray-900 capitalize">
+                          <%= String.replace(Map.get(@customization, :layout_style, "single_page"), "_", " ") %>
+                        </dd>
+                      </div>
+                      <div class="flex justify-between">
+                        <dt class="text-gray-600">Spacing:</dt>
+                        <dd class="font-medium text-gray-900 capitalize"><%= Map.get(@customization, :section_spacing, "normal") %></dd>
+                      </div>
+                      <div class="flex justify-between">
+                        <dt class="text-gray-600">Font:</dt>
+                        <dd class="font-medium text-gray-900 capitalize"><%= Map.get(@customization, :font_style, "inter") %></dd>
+                      </div>
+                    </dl>
+                  </div>
+                  
+                  <!-- Preview Actions -->
+                  <div class="flex flex-col justify-center space-y-3">
+                    <.link 
+                      navigate={~p"/p/#{@portfolio.slug}"} 
+                      target="_blank"
+                      class="inline-flex items-center justify-center px-4 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors">
+                      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      </svg>
+                      Preview Changes
+                    </.link>
+                    
+                    <button 
+                      type="button"
+                      onclick="resetToDefaults()"
+                      class="inline-flex items-center justify-center px-4 py-2 border border-gray-300 bg-white text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                      </svg>
+                      Reset to Defaults
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="flex justify-end pt-8">
+              <button 
+                phx-click="apply_theme_changes"
+                class="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-xl shadow-purple-600/25 hover:shadow-purple-600/40 transform hover:scale-105 transition-all duration-300 text-lg">
+                Save All Changes
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- JavaScript for Reset Function -->
+        <script>
+          function resetToDefaults() {
+            if (confirm('Reset all theme and layout settings to defaults?')) {
+              // Trigger Phoenix event to reset customization
+              window.dispatchEvent(new CustomEvent('phx:reset_customization'));
+            }
+          }
+        </script>
+      <% end %>
+
+      <!-- Import Resume Tab -->
+      <%= if @active_tab == :import do %>
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+          <div class="h-1 bg-gradient-to-r from-orange-600 to-red-600 rounded-t-xl"></div>
+          
+          <div class="p-8 lg:p-12">
+            <h2 class="text-3xl font-black text-gray-900 mb-8">Import Resume</h2>
+            
+            <div class="space-y-8">
+              <!-- Upload Resume -->
+              <div class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-orange-500 transition-colors duration-300">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <div class="mt-4">
+                  <label class="cursor-pointer">
+                    <span class="mt-2 block text-sm font-medium text-gray-900">
+                      Upload your resume (PDF, DOC, DOCX)
+                    </span>
+                    <input type="file" accept=".pdf,.doc,.docx" class="sr-only" />
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500">We'll automatically extract and organize your information</p>
+                </div>
+              </div>
+              
+              <!-- Import Options -->
+              <div class="bg-orange-50 border border-orange-200 rounded-xl p-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">Import Options</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div class="space-y-3">
+                    <div class="flex items-center">
+                      <input type="checkbox" class="h-4 w-4 text-orange-600 border-gray-300 rounded" checked />
+                      <label class="ml-3 text-gray-900">Import work experience</label>
+                    </div>
+                    <div class="flex items-center">
+                      <input type="checkbox" class="h-4 w-4 text-orange-600 border-gray-300 rounded" checked />
+                      <label class="ml-3 text-gray-900">Import education</label>
+                    </div>
+                    <div class="flex items-center">
+                      <input type="checkbox" class="h-4 w-4 text-orange-600 border-gray-300 rounded" checked />
+                      <label class="ml-3 text-gray-900">Import skills</label>
+                    </div>
+                    <div class="flex items-center">
+                      <input type="checkbox" class="h-4 w-4 text-orange-600 border-gray-300 rounded" />
+                      <label class="ml-3 text-gray-900">Import contact information</label>
+                    </div>
+                  </div>
+                  
+                  <div class="space-y-3">
+                    <div class="flex items-center">
+                      <input type="checkbox" class="h-4 w-4 text-orange-600 border-gray-300 rounded" />
+                      <label class="ml-3 text-gray-900">Replace existing sections</label>
+                    </div>
+                    <div class="flex items-center">
+                      <input type="checkbox" class="h-4 w-4 text-orange-600 border-gray-300 rounded" checked />
+                      <label class="ml-3 text-gray-900">Merge with existing content</label>
+                    </div>
+                    <div class="flex items-center">
+                      <input type="checkbox" class="h-4 w-4 text-orange-600 border-gray-300 rounded" />
+                      <label class="ml-3 text-gray-900">Auto-format content</label>
+                    </div>
+                    <div class="flex items-center">
+                      <input type="checkbox" class="h-4 w-4 text-orange-600 border-gray-300 rounded" checked />
+                      <label class="ml-3 text-gray-900">Preserve original formatting</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- LinkedIn Import -->
+              <div class="border border-gray-200 rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 class="text-lg font-bold text-gray-900 flex items-center">
+                      <svg class="w-6 h-6 text-blue-600 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                      </svg>
+                      Import from LinkedIn
+                    </h3>
+                    <p class="text-gray-600">Connect your LinkedIn profile to automatically import your professional information</p>
+                  </div>
+                  <button class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors duration-300 flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                    </svg>
+                    Connect LinkedIn
+                  </button>
+                </div>
+                
+                <div class="bg-blue-50 rounded-lg p-4">
+                  <h4 class="font-medium text-gray-900 mb-2">What we'll import:</h4>
+                  <ul class="text-sm text-gray-600 space-y-1">
+                    <li>• Professional headline and summary</li>
+                    <li>• Work experience with descriptions</li>
+                    <li>• Education and certifications</li>
+                    <li>• Skills and endorsements</li>
+                    <li>• Profile photo (if public)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            
+            <div class="flex justify-end pt-8">
+              <button class="px-8 py-4 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-bold rounded-xl shadow-xl shadow-orange-600/25 hover:shadow-orange-600/40 transform hover:scale-105 transition-all duration-300 text-lg">
+                Import Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Tab switching functionality
+  function switchTab(tabName) {
+    // Hide all tab content
+    document.querySelectorAll('[data-tab-content]').forEach(content => {
+      content.style.display = 'none';
+    });
+    
+    // Show selected tab content
+    const selectedContent = document.querySelector(`[data-tab-content="${tabName}"]`);
+    if (selectedContent) {
+      selectedContent.style.display = 'block';
+    }
+    
+    // Update tab styles
+    document.querySelectorAll('[data-tab]').forEach(tab => {
+      tab.classList.remove('text-pink-600', 'border-pink-600');
+      tab.classList.add('text-gray-500', 'border-transparent');
+      // Remove the gradient indicator
+      const indicator = tab.querySelector('div');
+      if (indicator) {
+        indicator.style.display = 'none';
+      }
+    });
+    
+    const selectedTab = document.querySelector(`[data-tab="${tabName}"]`);
+    if (selectedTab) {
+      selectedTab.classList.remove('text-gray-500', 'border-transparent');
+      selectedTab.classList.add('text-pink-600', 'border-pink-600');
+      // Show the gradient indicator
+      const indicator = selectedTab.querySelector('div');
+      if (indicator) {
+        indicator.style.display = 'block';
+      }
+    }
+  }
+  
+  // Navigation functions
+  function goToPortfolios() {
+    // In a real Phoenix app, this would be handled by LiveView navigation
+    // For demo purposes, we'll use window.location
+    if (typeof window !== 'undefined') {
+      window.location.href = '/portfolios';
+    }
+    console.log('Navigating to portfolios page...');
+  }
+  
+  function sharePortfolio() {
+    // In a real Phoenix app, this would trigger a LiveView event
+    // For demo purposes, we'll show an alert
+    alert('Share functionality would open sharing options modal');
+    console.log('Opening share portfolio modal...');
+  }
+  
+  function previewPortfolio() {
+    // In a real Phoenix app, this would open the portfolio in a new tab
+    // For demo purposes, we'll simulate opening in new tab
+    if (typeof window !== 'undefined') {
+      window.open('/p/creative-work', '_blank');
+    }
+    console.log('Opening portfolio preview in new tab...');
+  }
+  
+  // File upload handling
+  document.addEventListener('DOMContentLoaded', function() {
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    
+    fileInputs.forEach(input => {
+      input.addEventListener('change', function(e) {
+        const files = e.target.files;
+        console.log('Files selected:', files);
+        
+        // Show import progress for resume upload
+        if (this.id === 'resume-upload' && files.length > 0) {
+          const progressDiv = document.getElementById('import-progress');
+          if (progressDiv) {
+            progressDiv.style.display = 'block';
+            
+            // Simulate progress
+            const progressBar = progressDiv.querySelector('.bg-orange-600');
+            const progressText = progressDiv.querySelector('p');
+            let progress = 0;
+            
+            const interval = setInterval(() => {
+              progress += Math.random() * 15;
+              if (progress >= 100) {
+                progress = 100;
+                clearInterval(interval);
+                progressText.textContent = 'Resume processed successfully!';
+                setTimeout(() => {
+                  progressDiv.style.display = 'none';
+                }, 2000);
+              }
+              progressBar.style.width = progress + '%';
+            }, 500);
+          }
+        }
+        
+        // Handle file upload logic here
+      });
+    });
+    
+    // Drag and drop functionality for upload areas
+    const uploadAreas = document.querySelectorAll('.border-dashed');
+    
+    uploadAreas.forEach(area => {
+      area.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('border-green-500', 'bg-green-50');
+      });
+      
+      area.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('border-green-500', 'bg-green-50');
+      });
+      
+      area.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('border-green-500', 'bg-green-50');
+        const files = e.dataTransfer.files;
+        console.log('Files dropped:', files);
+        // Handle dropped files here
+      });
+    });
+    
+    // Theme selection
+    const themeCards = document.querySelectorAll('.cursor-pointer');
+    themeCards.forEach(card => {
+      card.addEventListener('click', function() {
+        // Remove selection from all cards
+        themeCards.forEach(c => {
+          const border = c.querySelector('div');
+          const checkmark = c.querySelector('.absolute');
+          if (border) border.classList.remove('border-purple-600');
+          if (border) border.classList.add('border-gray-200');
+          if (checkmark) checkmark.style.display = 'none';
+        });
+        
+        // Add selection to clicked card
+        const border = this.querySelector('div');
+        const checkmark = this.querySelector('.absolute');
+        if (border) {
+          border.classList.remove('border-gray-200');
+          border.classList.add('border-purple-600');
+        }
+        if (checkmark) checkmark.style.display = 'flex';
+      });
+    });
+    
+    // Color scheme selection
+    const colorButtons = document.querySelectorAll('[class*="w-12 h-12"]');
+    colorButtons.forEach(button => {
+      button.addEventListener('click', function() {
+        // Remove selection from all color buttons
+        colorButtons.forEach(btn => {
+          btn.classList.remove('border-purple-600', 'border-blue-600', 'border-green-600', 'border-orange-600', 'border-gray-600');
+          btn.classList.add('border-gray-200');
+        });
+        
+        // Add selection to clicked button
+        if (this.classList.contains('from-purple-500')) {
+          this.classList.add('border-purple-600');
+        } else if (this.classList.contains('from-blue-500')) {
+          this.classList.add('border-blue-600');
+        } else if (this.classList.contains('from-green-500')) {
+          this.classList.add('border-green-600');
+        } else if (this.classList.contains('from-orange-500')) {
+          this.classList.add('border-orange-600');
+        } else if (this.classList.contains('from-gray-600')) {
+          this.classList.add('border-gray-600');
+        }
+        this.classList.remove('border-gray-200');
+      });
+    });
+    
+    // File deletion
+    const deleteButtons = document.querySelectorAll('.text-red-600');
+    deleteButtons.forEach(button => {
+      button.addEventListener('click', function() {
+        const fileItem = this.closest('.flex');
+        if (fileItem && confirm('Are you sure you want to delete this file?')) {
+          fileItem.remove();
+        }
+      });
+    });
+  });
+</script>

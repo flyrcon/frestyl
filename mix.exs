@@ -64,6 +64,7 @@ defmodule Frestyl.MixProject do
       {:uuid, "~> 1.1"},
       {:jason, "~> 1.4"},
       {:dns_cluster, "~> 0.1.1"},
+      {:chromic_pdf, "~> 1.15"},
       {:bandit, "~> 1.5"},
       {:timex, "~> 3.7"},
       {:tzdata, "~> 1.1"},

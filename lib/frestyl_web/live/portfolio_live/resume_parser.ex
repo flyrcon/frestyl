@@ -1,5 +1,5 @@
 # lib/frestyl_web/live/portfolio_live/resume_parser.ex
-defmodule FrestylWeb.PortfolioLive.ResumeParserLive do
+defmodule FrestylWeb.PortfolioLive.ResumeParser do
   use FrestylWeb, :live_view
 
   alias Frestyl.Portfolios

@@ -18,6 +18,9 @@ config :frestyl,
   generators: [timestamp_type: :utc_datetime]
 
 config :frestyl,
+  pdf_generator: :chromic_pdf
+
+config :frestyl,
   upload_dir: Path.join(["priv", "static", "uploads"]),
   base_url: "http://localhost:4000"  # Change in production
 

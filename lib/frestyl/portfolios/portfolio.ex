@@ -12,6 +12,20 @@ defmodule Frestyl.Portfolios.Portfolio do
     field :approval_required, :boolean, default: false
     field :theme, :string, default: "default"
     field :custom_css, :string
+    field :allow_resume_export, :boolean, default: false
+    field :resume_template, :string, default: "ats_friendly"
+    field :resume_config, :map, default: %{}
+    field :require_approval, :boolean, default: false
+
+    field :customization, :map, default: %{
+      "color_scheme" => "purple-pink",
+      "layout_style" => "single_page",
+      "section_spacing" => "normal",
+      "font_style" => "inter",
+      "fixed_navigation" => true,
+      "dark_mode_support" => false
+    }
+
 
     # Relations
     belongs_to :user, Frestyl.Accounts.User
@@ -26,12 +40,18 @@ defmodule Frestyl.Portfolios.Portfolio do
   def changeset(portfolio, attrs) do
     portfolio
     |> cast(attrs, [:title, :slug, :description, :visibility, :expires_at,
-                    :approval_required, :theme, :custom_css, :user_id])
-    |> validate_required([:title, :user_id])
+                    :approval_required, :require_approval, :theme, :custom_css,
+                    :user_id, :allow_resume_export, :resume_template, :resume_config,
+                    :customization])
+    |> validate_required([:title, :slug])
     |> validate_length(:title, min: 3, max: 100)
-    |> validate_length(:description, max: 2000)
+    |> validate_length(:description, max: 500)
+    |> validate_length(:slug, min: 5, max: 50)
     |> validate_slug()
-    |> unique_constraint([:slug, :user_id], message: "This URL is already taken for your account")
+    |> validate_inclusion(:visibility, [:public, :private, :link_only])
+    |> validate_inclusion(:theme, ["default", "creative", "corporate", "minimalist"])
+    |> validate_inclusion(:resume_template, ["ats_friendly", "modern", "creative"])
+    |> validate_customization()
     |> unique_constraint(:slug, message: "This URL is already taken")
   end
 
@@ -56,6 +76,57 @@ defmodule Frestyl.Portfolios.Portfolio do
         |> validate_slug_format(slug)
         |> put_change(:slug, normalize_slug(slug))
     end
+  end
+
+  defp validate_customization(changeset) do
+    validate_change(changeset, :customization, fn :customization, customization ->
+      case customization do
+        %{} = custom when is_map(custom) ->
+          # Validate that customization is a map with expected keys
+          valid_color_schemes = ["purple-pink", "blue-cyan", "green-teal", "orange-red", "gray-slate"]
+          valid_layout_styles = ["single_page", "multi_page"]
+          valid_section_spacing = ["compact", "normal", "spacious"]
+          valid_font_styles = ["inter", "merriweather", "roboto", "playfair"]
+
+          errors = []
+
+          # Validate color_scheme
+          color_scheme = Map.get(custom, "color_scheme", "purple-pink")
+          errors = if color_scheme in valid_color_schemes do
+            errors
+          else
+            [{:customization, "invalid color scheme"} | errors]
+          end
+
+          # Validate layout_style
+          layout_style = Map.get(custom, "layout_style", "single_page")
+          errors = if layout_style in valid_layout_styles do
+            errors
+          else
+            [{:customization, "invalid layout style"} | errors]
+          end
+
+          # Validate section_spacing
+          section_spacing = Map.get(custom, "section_spacing", "normal")
+          errors = if section_spacing in valid_section_spacing do
+            errors
+          else
+            [{:customization, "invalid section spacing"} | errors]
+          end
+
+          # Validate font_style
+          font_style = Map.get(custom, "font_style", "inter")
+          errors = if font_style in valid_font_styles do
+            errors
+          else
+            [{:customization, "invalid font style"} | errors]
+          end
+
+          errors
+        _ ->
+          [{:customization, "must be a map"}]
+      end
+    end)
   end
 
   defp validate_slug_format(changeset, slug) do

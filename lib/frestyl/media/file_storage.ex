@@ -133,6 +133,140 @@ defmodule Frestyl.Media.FileStorage do
     "https://#{bucket}.s3.#{region}.amazonaws.com/#{file_path}"
   end
 
+  def store_locally(file_data, attrs) when is_binary(file_data) do
+    # Create a unique filename based on a timestamp and random string
+    timestamp = DateTime.utc_now() |> DateTime.to_unix()
+    random_string = for _ <- 1..8, into: "", do: <<Enum.random('0123456789abcdef')>>
+
+    # Clean up filename
+    original_filename = attrs.original_filename || attrs.filename
+    file_ext = Path.extname(original_filename)
+    clean_name = original_filename
+                |> Path.basename(file_ext)
+                |> String.replace(~r/[^\w.-]/, "_")
+
+    # Combine for unique filename
+    unique_filename = "#{clean_name}_#{timestamp}_#{random_string}#{file_ext}"
+
+    # Determine the directory based on media type
+    media_type = determine_media_type(attrs.content_type || "application/octet-stream")
+    dir_path = Path.join(@upload_path, media_type)
+
+    # Create the directory if it doesn't exist
+    File.mkdir_p!(dir_path)
+
+    # Full path to the file
+    file_path = Path.join(dir_path, unique_filename)
+
+    # Write the binary data directly to file
+    case File.write(file_path, file_data) do
+      :ok ->
+        {:ok, %{
+          file_path: Path.join(media_type, unique_filename),
+          storage_type: "local"
+        }}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Keep the existing store_locally function for file uploads
+  def store_locally(%{path: source_path}, attrs) do
+    # Create a unique filename based on a timestamp and random string
+    timestamp = DateTime.utc_now() |> DateTime.to_unix()
+    random_string = for _ <- 1..8, into: "", do: <<Enum.random('0123456789abcdef')>>
+
+    # Clean up filename
+    original_filename = attrs.original_filename || attrs.filename
+    file_ext = Path.extname(original_filename)
+    clean_name = original_filename
+                |> Path.basename(file_ext)
+                |> String.replace(~r/[^\w.-]/, "_")
+
+    # Combine for unique filename
+    unique_filename = "#{clean_name}_#{timestamp}_#{random_string}#{file_ext}"
+
+    # Determine the directory based on media type
+    media_type = determine_media_type(attrs.content_type || "application/octet-stream")
+    dir_path = Path.join(@upload_path, media_type)
+
+    # Create the directory if it doesn't exist
+    File.mkdir_p!(dir_path)
+
+    # Full path to the file
+    file_path = Path.join(dir_path, unique_filename)
+
+    # Copy the uploaded file
+    case File.cp(source_path, file_path) do
+      :ok ->
+        {:ok, %{
+          file_path: Path.join(media_type, unique_filename),
+          storage_type: "local"
+        }}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Update S3 storage to handle binary data
+  def store_on_s3(file_data, attrs) when is_binary(file_data) do
+    # Similar to local storage, but using S3 instead
+    timestamp = DateTime.utc_now() |> DateTime.to_unix()
+    random_string = for _ <- 1..8, into: "", do: <<Enum.random('0123456789abcdef')>>
+
+    original_filename = attrs.original_filename || attrs.filename
+    file_ext = Path.extname(original_filename)
+    clean_name = original_filename
+                |> Path.basename(file_ext)
+                |> String.replace(~r/[^\w.-]/, "_")
+
+    unique_filename = "#{clean_name}_#{timestamp}_#{random_string}#{file_ext}"
+
+    media_type = determine_media_type(attrs.content_type || "application/octet-stream")
+
+    # Construct the S3 key (path in the bucket)
+    s3_key = "#{media_type}/#{unique_filename}"
+
+    # Upload binary data directly to S3
+    bucket = Application.get_env(:frestyl, :s3_bucket)
+
+    case upload_binary_to_s3(bucket, s3_key, file_data, attrs.content_type) do
+      :ok ->
+        {:ok, %{
+          file_path: s3_key,
+          storage_type: "s3"
+        }}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Keep existing S3 function for file uploads
+  def store_on_s3(%{path: source_path}, attrs) do
+    # Read file and call binary version
+    case File.read(source_path) do
+      {:ok, file_data} ->
+        store_on_s3(file_data, attrs)
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Private helper for S3 binary uploads
+  defp upload_binary_to_s3(bucket, key, binary_data, content_type) do
+    ExAws.S3.put_object(bucket, key, binary_data, [
+      {:content_type, content_type},
+      {:acl, :public_read}
+    ])
+    |> ExAws.request()
+    |> case do
+      {:ok, _} -> :ok
+      {:error, error} ->
+        Logger.error("Failed to upload binary data to S3: #{inspect(error)}")
+        {:error, "Failed to upload file to S3"}
+    end
+  end
+
   # Private helpers
 
   defp write_file(file_data, file_path) when is_binary(file_data) do

@@ -1,0 +1,450 @@
+<!-- Enhanced Portfolio Index Template - Part 1: Header & Hero Section -->
+<!-- File: lib/frestyl_web/live/portfolio_live/index_live.html.heex -->
+
+<div class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50">
+  <!-- Navigation -->
+  <.nav current_user={@current_user} active_tab={:portfolios} />
+
+  <!-- Main Content -->
+  <div class="pt-16 min-h-screen">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      
+      <!-- Hero Section -->
+      <div class="bg-white rounded-xl p-8 lg:p-12 shadow-md mb-8 relative overflow-hidden">
+        <!-- Background pattern -->
+        <div class="absolute inset-0 bg-gradient-to-r from-pink-50 to-purple-50 opacity-50"></div>
+        <div class="h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-full mb-8 relative z-10"></div>
+        
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between relative z-10">
+          <div class="mb-6 lg:mb-0">
+            <h1 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">
+              <span class="bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                Your Professional Story
+              </span>
+            </h1>
+            <p class="text-gray-600 text-lg font-medium leading-relaxed max-w-2xl">
+              Create dynamic portfolios that go beyond traditional resumes. Show your work, tell your story, and connect with opportunities.
+            </p>
+          </div>
+          
+          <!-- Quick Stats -->
+          <div class="grid grid-cols-2 gap-4 lg:gap-6">
+            <div class="text-center">
+              <div class="text-2xl font-black text-pink-600"><%= length(@portfolios) %></div>
+              <div class="text-sm text-gray-600 font-medium">Portfolios</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-black text-purple-600">
+                <%= @portfolios |> Enum.map(&get_portfolio_stats/1) |> Enum.map(& &1.views) |> Enum.sum() %>
+              </div>
+              <div class="text-sm text-gray-600 font-medium">Total Views</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Portfolio Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        
+        <!-- Existing Portfolio Cards -->
+        <%= for portfolio <- @portfolios do %>
+          <div class="group bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden border border-gray-100">
+            <!-- Theme Color Header -->
+            <div class={["h-1 bg-gradient-to-r rounded-t-xl",
+              case portfolio.theme do
+                "minimalist" -> "from-gray-600 to-gray-800"
+                "creative" -> "from-purple-600 to-pink-600"
+                "corporate" -> "from-blue-600 to-indigo-600"
+                _ -> "from-cyan-600 to-blue-600"
+              end
+            ]}></div>
+            
+            <!-- Portfolio Preview -->
+            <div class={["h-32 flex items-center justify-center relative overflow-hidden bg-gradient-to-r",
+              case portfolio.theme do
+                "minimalist" -> "from-gray-600 to-gray-800"
+                "creative" -> "from-purple-600 to-pink-600"
+                "corporate" -> "from-blue-600 to-indigo-600"
+                _ -> "from-cyan-600 to-blue-600"
+              end
+            ]}>
+              <div class="absolute inset-0 bg-black bg-opacity-10"></div>
+              
+              <!-- Video Introduction Indicator -->
+              <%= if has_intro_video?(portfolio) do %>
+                <div class="absolute top-3 left-3 bg-white bg-opacity-90 text-gray-800 text-xs font-bold px-2 py-1 rounded-full flex items-center">
+                  <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                  </svg>
+                  Video Intro
+                </div>
+              <% end %>
+              
+              <!-- Discovery Status -->
+              <div class="absolute top-3 right-3">
+                <%= if portfolio.visibility == :public do %>
+                  <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                      <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                    </svg>
+                    Discoverable
+                  </span>
+                <% else %>
+                  <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"/>
+                    </svg>
+                    Link Only
+                  </span>
+                <% end %>
+              </div>
+              
+              <div class="relative z-10 text-center px-6">
+                <h3 class="text-xl font-black text-white mb-1"><%= portfolio.title %></h3>
+                <div class="text-white text-opacity-80 text-sm">/<%= portfolio.slug %></div>
+              </div>
+            </div>
+            
+            <div class="p-6">
+              <!-- Stats -->
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center text-xs text-gray-500 space-x-4">
+                  <span class="flex items-center">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    <%= get_portfolio_stats(portfolio).views %>
+                  </span>
+                  <span class="flex items-center">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+                    </svg>
+                    <%= get_portfolio_stats(portfolio).shares %>
+                  </span>
+                </div>
+                <div class="text-xs text-gray-500 font-medium">
+                  Updated <%= format_date(portfolio.updated_at) %>
+                </div>
+              </div>
+              
+              <!-- Description -->
+              <%= if portfolio.description do %>
+                <p class="text-gray-600 text-sm mb-6 leading-relaxed line-clamp-2">
+                  <%= portfolio.description %>
+                </p>
+              <% else %>
+                <p class="text-gray-400 text-sm mb-6 leading-relaxed italic">
+                  Add a description to help others understand your portfolio
+                </p>
+              <% end %>
+              <!-- Actions -->
+              <div class="flex flex-wrap gap-2">
+                <!-- Primary Actions -->
+                <.link navigate={"/portfolios/#{portfolio.id}/edit"} 
+                      class="inline-flex items-center px-3 py-2 text-xs font-bold text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 transition-all border border-purple-200">
+                  <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                  </svg>
+                  Edit
+                </.link>
+                
+                <a href={portfolio_url(portfolio)} target="_blank" 
+                   class="inline-flex items-center px-3 py-2 text-xs font-bold text-cyan-600 bg-cyan-50 rounded-lg hover:bg-cyan-100 transition-all border border-cyan-200">
+                  <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                  View
+                </a>
+                
+                <!-- Video Introduction -->
+                <%= if has_intro_video?(portfolio) do %>
+                  <button phx-click="show_video_intro" phx-value-portfolio_id={portfolio.id}
+                          class="inline-flex items-center px-3 py-2 text-xs font-bold text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-all border border-green-200">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                    </svg>
+                    Update Video
+                  </button>
+                <% else %>
+                  <button phx-click="show_video_intro" phx-value-portfolio_id={portfolio.id}
+                          class="inline-flex items-center px-3 py-2 text-xs font-bold text-orange-600 bg-orange-50 rounded-lg hover:bg-orange-100 transition-all border border-orange-200">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    Add Video
+                  </button>
+                <% end %>
+                
+                <!-- Discovery Toggle -->
+                <button phx-click="toggle_discovery" phx-value-portfolio_id={portfolio.id}
+                        class={["inline-flex items-center px-3 py-2 text-xs font-bold rounded-lg transition-all border",
+                          if portfolio.visibility == :public do
+                            "text-green-600 bg-green-50 hover:bg-green-100 border-green-200"
+                          else
+                            "text-gray-600 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                          end
+                        ]}>
+                  <%= if portfolio.visibility == :public do %>
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    Hide from Discovery
+                  <% else %>
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9"/>
+                    </svg>
+                    Make Discoverable
+                  <% end %>
+                </button>
+                
+                <!-- Delete -->
+                <button phx-click="delete_portfolio" phx-value-id={portfolio.id}
+                        data-confirm="Are you sure you want to delete this portfolio? This action cannot be undone."
+                        class="inline-flex items-center px-3 py-2 text-xs font-bold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-all border border-red-200">
+                  <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Create New Portfolio Card -->
+        <%= if @can_create do %>
+          <div class="group bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden border-2 border-dashed border-gray-300 hover:border-pink-400 cursor-pointer"
+               phx-click="show_create_modal">
+            <div class="h-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-t-xl"></div>
+            
+            <div class="h-full flex items-center justify-center p-12">
+              <div class="text-center">
+                <div class="w-16 h-16 mx-auto mb-6 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                  <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                  </svg>
+                </div>
+                <h3 class="text-xl font-black text-gray-900 mb-2">Create New Portfolio</h3>
+                <p class="text-gray-600 text-sm">Start showcasing your professional story</p>
+              </div>
+            </div>
+          </div>
+        <% else %>
+          <!-- Upgrade Prompt Card -->
+          <div class="group bg-gradient-to-br from-purple-600 to-indigo-600 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
+            <div class="h-full flex items-center justify-center p-12 text-center">
+              <div>
+                <div class="w-16 h-16 mx-auto mb-6 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                  <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                </div>
+                <h3 class="text-xl font-black text-white mb-2">Upgrade Your Plan</h3>
+                <p class="text-purple-100 text-sm mb-4">Create more portfolios and unlock premium features</p>
+                <.link navigate="/account/subscription" 
+                      class="inline-flex items-center px-4 py-2 bg-white text-purple-600 font-bold text-sm rounded-lg hover:bg-gray-50 transition-all">
+                  Upgrade Now
+                </.link>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+      <!-- Plan Information -->
+      <div class="bg-white rounded-xl shadow-md overflow-hidden">
+        <div class="h-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-t-xl"></div>
+        
+        <div class="p-8 lg:p-12">
+          <h2 class="text-3xl font-black text-gray-900 mb-8">Your Portfolio Plan</h2>
+          
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <!-- Portfolios Limit -->
+            <div class="bg-gradient-to-br from-pink-50 to-purple-50 rounded-xl p-6 border border-pink-200">
+              <div class="flex items-center mb-4">
+                <div class="w-12 h-12 bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl flex items-center justify-center mr-4">
+                  <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                  </svg>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900">Portfolios</h3>
+              </div>
+              <p class="text-2xl font-black text-pink-600 mb-2">
+                <%= length(@portfolios) %> / <%= if @limits.max_portfolios == -1, do: "∞", else: @limits.max_portfolios %>
+              </p>
+              <p class="text-sm text-gray-600">Active portfolios</p>
+            </div>
+            
+            <!-- File Storage -->
+            <div class="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-xl p-6 border border-cyan-200">
+              <div class="flex items-center mb-4">
+                <div class="w-12 h-12 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl flex items-center justify-center mr-4">
+                  <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900">File Storage</h3>
+              </div>
+              <p class="text-2xl font-black text-cyan-600 mb-2"><%= @limits.max_media_size_mb %>MB</p>
+              <p class="text-sm text-gray-600">Per upload limit</p>
+            </div>
+            
+            <!-- Video Introductions -->
+            <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+              <div class="flex items-center mb-4">
+                <div class="w-12 h-12 bg-gradient-to-r from-green-600 to-emerald-600 rounded-xl flex items-center justify-center mr-4">
+                  <svg class="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                  </svg>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900">Video Intros</h3>
+              </div>
+              <p class="text-2xl font-black text-green-600 mb-2">
+                <%= @portfolios |> Enum.count(&has_intro_video?/1) %>
+              </p>
+              <p class="text-sm text-gray-600">Portfolios with video</p>
+            </div>
+            
+            <!-- ATS Optimization -->
+            <div class="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-6 border border-yellow-200">
+              <div class="flex items-center mb-4">
+                <div class="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center mr-4">
+                  <svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                  </svg>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900">ATS Optimization</h3>
+              </div>
+              <p class="text-lg font-black text-yellow-600 mb-2">
+                <%= if @limits.ats_optimization, do: "✓ Available", else: "Upgrade Required" %>
+              </p>
+              <p class="text-sm text-gray-600">Resume optimization</p>
+            </div>
+          </div>
+          
+          <!-- Feature Comparison -->
+          <%= if @current_user.subscription_tier == "free" do %>
+            <div class="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-8 text-center">
+              <h3 class="text-2xl font-black text-white mb-4">Ready to go Pro?</h3>
+              <p class="text-purple-100 mb-6 text-lg font-medium">Unlock unlimited portfolios, custom domains, and advanced analytics.</p>
+              
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-left">
+                <div class="bg-white bg-opacity-10 rounded-lg p-4">
+                  <div class="text-white font-bold mb-2">✨ Unlimited Portfolios</div>
+                  <div class="text-purple-100 text-sm">Create as many portfolios as you need</div>
+                </div>
+                <div class="bg-white bg-opacity-10 rounded-lg p-4">
+                  <div class="text-white font-bold mb-2">🌐 Custom Domains</div>
+                  <div class="text-purple-100 text-sm">Use your own domain for portfolios</div>
+                </div>
+                <div class="bg-white bg-opacity-10 rounded-lg p-4">
+                  <div class="text-white font-bold mb-2">📊 Advanced Analytics</div>
+                  <div class="text-purple-100 text-sm">Detailed insights and visitor tracking</div>
+                </div>
+              </div>
+              
+              <.link navigate="/account/subscription" 
+                    class="inline-flex items-center px-8 py-4 border border-transparent shadow-sm text-lg font-bold rounded-xl text-purple-600 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white transition-all duration-300 transform hover:scale-105">
+                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                Upgrade Plan
+              </.link>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Create Portfolio Modal -->
+<%= if @show_create_modal do %>
+  <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" phx-click="hide_create_modal"></div>
+      
+      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+      
+      <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+        <div class="bg-white px-6 pt-6 pb-4">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-2xl font-black text-gray-900">Create New Portfolio</h3>
+            <button phx-click="hide_create_modal" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          
+          <!-- Template Selection -->
+          <div class="mb-6">
+            <h4 class="text-lg font-bold text-gray-900 mb-4">Choose a Template</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <%= for template <- ["minimalist", "creative", "corporate"] do %>
+                <% preview = template_preview(template) %>
+                <div class={["cursor-pointer border-2 rounded-xl p-4 transition-all duration-200",
+                  if @selected_template == template do
+                    "border-purple-500 bg-purple-50"
+                  else
+                    "border-gray-200 hover:border-purple-300"
+                  end
+                ]} phx-click="select_template" phx-value-template={template}>
+                  <div class={["w-full h-24 rounded-lg mb-3 flex items-center justify-center text-2xl bg-gradient-to-r", preview.color]}>
+                    <span class="text-white"><%= preview.icon %></span>
+                  </div>
+                  <h5 class="font-bold text-gray-900 mb-1"><%= preview.name %></h5>
+                  <p class="text-sm text-gray-600"><%= preview.description %></p>
+                </div>
+              <% end %>
+            </div>
+          </div>
+          
+          <!-- Portfolio Title -->
+          <form phx-submit="create_portfolio" class="space-y-4">
+            <div>
+              <label for="portfolio_title" class="block text-sm font-bold text-gray-700 mb-2">Portfolio Title</label>
+              <input type="text" 
+                     id="portfolio_title" 
+                     name="title" 
+                     required
+                     placeholder="My Professional Portfolio"
+                     class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+            </div>
+            
+            <div class="flex justify-end space-x-3 pt-4">
+              <button type="button" 
+                      phx-click="hide_create_modal"
+                      class="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 font-semibold hover:bg-gray-50 transition-all">
+                Cancel
+              </button>
+              <button type="submit" 
+                      class="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all">
+                Create Portfolio
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+<% end %>
+
+<!-- Video Introduction Modal -->
+<%= if @show_video_intro_modal and @current_portfolio_for_video do %>
+  <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" phx-click="hide_video_intro"></div>
+      
+      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+      
+      <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+        <.live_component 
+          module={FrestylWeb.PortfolioLive.VideoIntroComponent}
+          id="video-intro-capture"
+          portfolio={@current_portfolio_for_video}
+          current_user={@current_user}
+          on_complete="video_intro_complete"
+          on_cancel="hide_video_intro" />
+      </div>
+    </div>
+  </div>
+<% end %>

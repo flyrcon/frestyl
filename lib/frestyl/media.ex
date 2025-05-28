@@ -248,6 +248,62 @@ defmodule Frestyl.Media do
     result
   end
 
+  def create_media_file_from_binary(attrs, binary_data) do
+    # Generate a unique filename if not provided
+    filename = attrs[:filename] || "upload_#{System.unique_integer([:positive])}.webm"
+
+    # Store the binary data using your file storage system
+    storage_attrs = %{
+      filename: filename,
+      original_filename: attrs[:original_filename] || filename,
+      content_type: attrs[:content_type] || "video/webm"
+    }
+
+    # Use your existing storage system
+    storage_result = if Application.get_env(:frestyl, :use_s3, false) do
+      Frestyl.Media.FileStorage.store_on_s3(binary_data, storage_attrs)
+    else
+      Frestyl.Media.FileStorage.store_locally(binary_data, storage_attrs)
+    end
+
+    case storage_result do
+      {:ok, storage_data} ->
+        # Create the media file record using your existing MediaFile schema
+        media_file_attrs = %{
+          filename: Path.basename(storage_data.file_path),
+          original_filename: storage_attrs.original_filename,
+          content_type: storage_attrs.content_type,
+          file_size: byte_size(binary_data),
+          media_type: attrs[:media_type] || determine_media_type_from_content(storage_attrs.content_type),
+          file_path: storage_data.file_path,
+          storage_type: storage_data.storage_type,
+          user_id: attrs[:user_id],
+          title: attrs[:title],
+          description: attrs[:description],
+          status: "active"
+        }
+
+        # Create and insert the MediaFile record
+        %MediaFile{}
+        |> MediaFile.changeset(media_file_attrs)
+        |> Repo.insert()
+        |> broadcast_created()
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Helper function that doesn't conflict with your existing private function
+  defp determine_media_type_from_content(content_type) do
+    cond do
+      String.starts_with?(content_type, "image/") -> "image"
+      String.starts_with?(content_type, "video/") -> "video"
+      String.starts_with?(content_type, "audio/") -> "audio"
+      true -> "document"
+    end
+  end
+
   @doc """
   Extract metadata from a media file based on its type.
   """
