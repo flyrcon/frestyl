@@ -1,603 +1,512 @@
-import "phoenix_html";
-import { Socket } from "phoenix";
-import { LiveSocket } from "phoenix_live_view";
-import topbar from "../vendor/topbar";
+// assets/js/app.js
+import "phoenix_html"
+import { Socket } from "phoenix"
+import { LiveSocket } from "phoenix_live_view"
+import topbar from "../vendor/topbar"
 
-// Import only the hooks we need, avoiding conflicts
-import SessionHooks from "./hooks/session_hooks";
-import StreamQualityHook from "./hooks/stream_quality";
-import { VideoCapture } from "./video_capture_hook";
+// Import hooks
+import { CipherCanvas } from "./cipher_canvas_hook"
 
-// Import utilities
-import { setupImageProcessing } from "./image_processor";
-import "./analytics";
-import Chart from 'chart.js/auto';
-import 'chartjs-adapter-date-fns';
-import { VideoCapture } from "./hooks/video_capture";
+import { AutoScrollComments } from "./hooks/comments_hooks"
 
-const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content");
+let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
-// Chat hooks for the chat system
-const ChatHooks = {
-  AutoResize: {
-    mounted() {
-      console.log("AutoResize hook mounted");
-      this.setupAutoResize();
-      this.setupKeyHandlers();
-      this.setupTypingIndicator();
-    },
+import { SupremeDiscoveryInterface } from "./supreme_discovery_hook"
+import RevolutionaryDiscoveryInterface from "./components/revolutionary_discovery_interface.jsx"
+window.RevolutionaryDiscoveryInterface = RevolutionaryDiscoveryInterface;
 
-    setupAutoResize() {
-      const textarea = this.el;
-      if (!textarea) return;
-      
-      const resize = () => {
-        textarea.style.height = 'auto';
-        textarea.style.height = textarea.scrollHeight + 'px';
-      };
-      
-      textarea.addEventListener('input', resize);
-      resize(); // Initial resize
-    },
 
-    setupKeyHandlers() {
-      const textarea = this.el;
-      if (!textarea) return;
-      
-      textarea.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          const form = textarea.closest('form');
-          if (form) {
-            const hasContent = textarea.value.trim().length > 0;
-            const fileInput = form.querySelector('[data-phx-upload-ref]');
-            const hasFiles = fileInput && fileInput.files && fileInput.files.length > 0;
-            
-            if (hasContent || hasFiles) {
-              const submitEvent = new Event('submit', { 
-                bubbles: true, 
-                cancelable: true 
-              });
-              form.dispatchEvent(submitEvent);
-            }
-          }
-        }
-      });
-    },
-
-    setupTypingIndicator() {
-      const textarea = this.el;
-      if (!textarea) {
-        console.log("No textarea found for typing indicator!");
-        return;
-      }
-      
-      console.log("Setting up typing indicator on:", textarea);
-      
-      let typingTimer;
-      const TYPING_TIMEOUT = 1000;
-      
-      textarea.addEventListener('input', (e) => {
-        console.log("Input detected:", e.target.value);
-        
-        if (e.target.value.trim().length > 0) {
-          console.log("Sending typing_start event");
-          this.pushEvent("typing_start", {});
-          
-          clearTimeout(typingTimer);
-          
-          typingTimer = setTimeout(() => {
-            console.log("Sending typing_stop event (timeout)");
-            this.pushEvent("typing_stop", {});
-          }, TYPING_TIMEOUT);
-        } else {
-          console.log("Sending typing_stop event (empty field)");
-          this.pushEvent("typing_stop", {});
-          clearTimeout(typingTimer);
-        }
-      });
-      
-      textarea.addEventListener('blur', () => {
-        console.log("Sending typing_stop event (blur)");
-        this.pushEvent("typing_stop", {});
-        clearTimeout(typingTimer);
-      });
-    }
-  },
-
-  DragAndDrop: {
-    mounted() {
-      this.dragCounter = 0;
-      this.overlay = document.getElementById('drag-overlay');
-      
-      document.addEventListener('dragenter', this.handleDragEnter.bind(this));
-      document.addEventListener('dragleave', this.handleDragLeave.bind(this));
-      document.addEventListener('dragover', this.handleDragOver.bind(this));
-      document.addEventListener('drop', this.handleDrop.bind(this));
-    },
-
-    destroyed() {
-      document.removeEventListener('dragenter', this.handleDragEnter);
-      document.removeEventListener('dragleave', this.handleDragLeave);
-      document.removeEventListener('dragover', this.handleDragOver);
-      document.removeEventListener('drop', this.handleDrop);
-    },
-
-    handleDragEnter(e) {
-      e.preventDefault();
-      this.dragCounter++;
-      if (this.dragCounter === 1) {
-        this.overlay.classList.remove('hidden');
-      }
-    },
-
-    handleDragLeave(e) {
-      e.preventDefault();
-      this.dragCounter--;
-      if (this.dragCounter === 0) {
-        this.overlay.classList.add('hidden');
-      }
-    },
-
-    handleDragOver(e) {
-      e.preventDefault();
-    },
-
-    handleDrop(e) {
-      e.preventDefault();
-      this.dragCounter = 0;
-      this.overlay.classList.add('hidden');
-      
-      const dropTarget = document.querySelector('[phx-drop-target]');
-      if (dropTarget && (dropTarget.contains(e.target) || e.target === dropTarget)) {
-        return;
-      }
-    }
-  },
-
-  MessageForm: {
-    mounted() {
-      console.log("MessageForm hook mounted!");
-      
-      this.handleEvent("reset-form", () => {
-        const textarea = this.el.querySelector('textarea[name="content"]');
-        if (textarea) {
-          textarea.value = '';
-          textarea.style.height = 'auto';
-          textarea.focus();
-          
-          console.log("Sending typing_stop event (form reset)");
-          this.pushEvent("typing_stop", {});
-        }
-      });
-    }
-  }
-};
-
-// File test hook for debugging
-const SimpleFileTest = {
-  mounted() {
-    console.log("SimpleFileTest hook mounted");
-    
-    const fileInput = document.getElementById('basic-file-input');
-    const fileInfo = document.getElementById('file-info');
-    
-    if (fileInput && fileInfo) {
-      fileInput.addEventListener('change', function(e) {
-        console.log('File input changed', e.target.files);
-        if (e.target.files.length > 0) {
-          fileInfo.textContent = 'Selected: ' + e.target.files[0].name;
-          fileInfo.style.color = 'green';
-        } else {
-          fileInfo.textContent = 'No files selected';
-          fileInfo.style.color = 'red';
-        }
-      });
-    }
-    
-    const clickArea = document.getElementById('click-test-area');
-    const clickResult = document.getElementById('click-result');
-    
-    if (clickArea && clickResult) {
-      clickArea.addEventListener('click', function() {
-        console.log('Click test triggered');
-        clickResult.textContent = '✅ JavaScript working! ' + new Date().toLocaleTimeString();
-        clickResult.style.color = 'green';
-      });
-    }
-  }
-};
-
-// Create file uploader hook
-function createFileUploaderHook() {
-  return {
-    mounted() {
-      console.log("FileUploader hook mounted - but this may conflict with LiveView uploads");
-    }
-  };
+// Also ensure React is available
+if (typeof window.React === 'undefined') {
+  import('react').then(React => {
+    window.React = React;
+  });
 }
 
-// Other utility hooks
-const MessagesContainerHook = {
-  mounted() {
-    this.scrollToBottom();
-  },
-  updated() {
-    this.scrollToBottom();
-  },
-  scrollToBottom() {
-    this.el.scrollTop = this.el.scrollHeight;
-  }
-};
-
-const TypingIndicatorHook = {
-  mounted() {
-    // Typing indicator logic if needed
-  }
-};
-
-const AutoResizeTextareaHook = {
-  mounted() {
-    this.resize();
-    this.el.addEventListener('input', () => this.resize());
-  },
-  resize() {
-    this.el.style.height = 'auto';
-    this.el.style.height = (this.el.scrollHeight) + 'px';
-  }
-};
-
-const MessageTextareaHook = {
-  mounted() {
-    this.el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        const form = this.el.closest('form');
-        if (form) {
-          form.submit();
-        }
-      }
-    });
-  }
-};
-
-// Chart hooks
-const ShowHidePriceHook = {
-  mounted() {
-    // Existing logic
-  }
-};
-
-const ShowHideMaxAttendeesHook = {
-  mounted() {
-    // Existing logic
-  }
-};
-
-const TimeSeriesChartHook = {
-  mounted() {
-    // Chart logic
-  }
-};
-
-const StackedBarChartHook = {
-  mounted() {
-    // Chart logic
-  }
-};
-
-const PieChartHook = {
-  mounted() {
-    // Chart logic
-  }
-};
-
-const ImageProcessorHook = {
-  mounted() {
-    // Image processing logic
-  }
-};
-
-// Chat auto-scroll hook
-const ChatScroll = {
-  mounted() {
-    this.scrollToBottom();
-  },
-  updated() {
-    this.scrollToBottom();
-  },
-  scrollToBottom() {
-    this.el.scrollTop = this.el.scrollHeight;
-  }
-};
-
-const SoundCheck = {
-  mounted() {
-    console.log("SoundCheck hook mounted");
-    
-    // Auto-start network test
-    setTimeout(() => {
-      this.testNetwork();
-    }, 1000);
-    
-    // Handle permission requests
-    this.handleEvent("request_media_permissions", () => {
-      this.requestPermissions();
-    });
-    
-    // Handle speaker tests
-    this.handleEvent("test_speaker_audio", () => {
-      this.testSpeakers();
-    });
-  },
-
-  async requestPermissions() {
-    try {
-      console.log("Requesting media permissions...");
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true
-      });
-      
-      console.log("Got stream:", stream);
-      
-      // Check what we got
-      const audioTracks = stream.getAudioTracks();
-      const videoTracks = stream.getVideoTracks();
-      
-      // Set up microphone monitoring
-      if (audioTracks.length > 0) {
-        this.monitorMicrophone(stream);
-      }
-      
-      // Send success
-      this.pushEvent("permissions_granted", {
-        audio: audioTracks.length > 0,
-        video: videoTracks.length > 0
-      });
-      
-      // Store for cleanup
-      this.mediaStream = stream;
-      
-    } catch (error) {
-      console.error("Permission denied:", error);
-      this.pushEvent("permissions_denied", {});
-    }
-  },
-
-  monitorMicrophone(stream) {
-    try {
-      if (!window.AudioContext && !window.webkitAudioContext) {
-        console.log("AudioContext not supported");
-        return;
-      }
-      
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const analyser = audioContext.createAnalyser();
-      const microphone = audioContext.createMediaStreamSource(stream);
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-      microphone.connect(analyser);
-      analyser.fftSize = 256;
-
-      const updateLevel = () => {
-        analyser.getByteFrequencyData(dataArray);
-        
-        // Calculate average
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
-        }
-        const average = sum / dataArray.length;
-        const level = Math.round((average / 255) * 100);
-        
-        // Send update
-        this.pushEvent("microphone_level_update", { level: level });
-        
-        if (this.mediaStream && this.mediaStream.active) {
-          requestAnimationFrame(updateLevel);
-        }
-      };
-
-      updateLevel();
-      
-    } catch (error) {
-      console.error("Error monitoring microphone:", error);
-    }
-  },
-
-  testSpeakers() {
-    console.log("Testing speakers...");
-    
-    try {
-      // Create AudioContext
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      
-      // Resume context if suspended
-      if (audioContext.state === 'suspended') {
-        audioContext.resume();
-      }
-      
-      // Create oscillator
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      // Configure
-      oscillator.frequency.value = 440; // A4 note
-      gainNode.gain.value = 0.1; // Quiet
-      
-      // Play for 1 second
-      oscillator.start();
-      
-      setTimeout(() => {
-        oscillator.stop();
-        this.pushEvent("speakers_test_complete", { success: true });
-      }, 1000);
-      
-    } catch (error) {
-      console.error("Speaker test failed:", error);
-      this.pushEvent("speakers_test_complete", { success: false });
-    }
-  },
-
-  testNetwork() {
-    console.log("Testing network...");
-    
-    const startTime = performance.now();
-    
-    // Use a small image test
-    fetch('/favicon.ico?' + Date.now())
-      .then(response => {
-        if (!response.ok) throw new Error('Network error');
-        return response.blob();
-      })
-      .then(() => {
-        const endTime = performance.now();
-        const duration = endTime - startTime;
-        
-        // Determine quality
-        let quality;
-        if (duration < 200) {
-          quality = "good";
-        } else if (duration < 1000) {
-          quality = "fair";
-        } else {
-          quality = "poor";
-        }
-        
-        console.log(`Network test: ${duration}ms = ${quality}`);
-        this.pushEvent("network_test_complete", { quality: quality });
-      })
-      .catch(error => {
-        console.error("Network test failed:", error);
-        this.pushEvent("network_test_complete", { quality: "poor" });
-      });
-  },
-
-    Hooks.SkillsInput = {
-    mounted() {
-      this.el.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault()
-          const value = e.target.value.trim()
-          if (value) {
-            // Clear the input after adding
-            setTimeout(() => {
-              e.target.value = ""
-            }, 100)
-          }
-        }
-      })
-    }
-  }
-
-
-  destroyed() {
-    // Clean up
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach(track => track.stop());
-    }
-  }
-};
-
-const Hooks = {
-  ColorPicker: {
-    mounted() {
-      console.log("ColorPicker hook mounted"); // Debug log
-      const element = this.el;
-      
-      element.addEventListener("input", (ev) => {
-        const color = ev.target.value;
-        console.log("Color picker input:", color); // Debug log
-        
-        // Update CSS custom property immediately for preview
-        document.documentElement.style.setProperty('--theme-color', color);
-        
-        // Update the text input
-        const textInput = document.querySelector('input[type="text"][phx-value-field="theme_color"]');
-        if (textInput) {
-          textInput.value = color;
-        }
-      });
-      
-      element.addEventListener("change", (ev) => {
-        const color = ev.target.value;
-        console.log("Color picker change:", color); // Debug log
-        
-        // Push the final color value to LiveView
-        this.pushEvent("update_color", {
-          color: color,
-          name: "Custom"
-        });
-      });
-    }
-  }
-};
-
-// Combine all hooks - NO DUPLICATES
-let Hooks = {
-  // Chat hooks
-  ...ChatHooks,
-  ChatScroll,
-  
-  // Media upload hooks
-  ...MediaUploadHooks,
-  
-  // Session hooks
-  ...SessionHooks,
-  
-  // Other hooks
-  FileUploader: createFileUploaderHook(),
-  MessagesContainer: MessagesContainerHook,
-  SimpleFileTest: SimpleFileTest,
-  TypingIndicator: TypingIndicatorHook,
-  AutoResizeTextarea: AutoResizeTextareaHook,
-  MessageTextarea: MessageTextareaHook,
-  ShowHidePrice: ShowHidePriceHook,
-  SoundCheck: SoundCheck,
-  ShowHideMaxAttendees: ShowHideMaxAttendeesHook,
-  TimeSeriesChart: TimeSeriesChartHook,
-  StackedBarChart: StackedBarChartHook,
-  PieChart: PieChartHook,
-  ImageProcessor: ImageProcessorHook,
-  StreamQuality: StreamQualityHook,
-  VideoCapture: VideoCapture
-};
-
-window.addEventListener('phx:download_pdf', (event) => {
-  const { data, filename } = event.detail;
-  const blob = new Blob([Uint8Array.from(atob(data), c => c.charCodeAt(0))], {
-    type: 'application/pdf'
+if (typeof window.ReactDOM === 'undefined') {
+  import('react-dom').then(ReactDOM => {
+    window.ReactDOM = ReactDOM;
   });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-});
+}
 
-window.addEventListener('phx:show_export_loading', () => {
-  // Show loading indicator
-  showToast('Generating PDF...', 'info');
-});
+
+// Define all hooks
+let Hooks = {
+    AutoScrollComments,
+    SupremeDiscoveryInterface: SupremeDiscoveryInterface,
+    CipherCanvas: CipherCanvas,
+  
+  // Analytics Dashboard Hook for smooth animations
+  AnalyticsDashboard: {
+    mounted() {
+      this.initializeAnimations();
+      this.bindEvents();
+    },
+
+    updated() {
+      this.initializeAnimations();
+    },
+
+    initializeAnimations() {
+      // Animate counters
+      this.animateCounters();
+      
+      // Animate progress bars
+      this.animateProgressBars();
+      
+      // Animate charts
+      this.animateCharts();
+    },
+
+    animateCounters() {
+      this.el.querySelectorAll('[data-counter]').forEach(counter => {
+        const target = parseInt(counter.dataset.counter);
+        const duration = 2000;
+        const increment = target / (duration / 16);
+        let current = 0;
+
+        const updateCounter = () => {
+          current += increment;
+          if (current < target) {
+            counter.textContent = Math.floor(current);
+            requestAnimationFrame(updateCounter);
+          } else {
+            counter.textContent = target;
+          }
+        };
+
+        updateCounter();
+      });
+    },
+
+    animateProgressBars() {
+      this.el.querySelectorAll('.progress-bar').forEach(bar => {
+        const fill = bar.querySelector('.progress-fill');
+        if (fill) {
+          const percentage = fill.dataset.percentage || 0;
+          setTimeout(() => {
+            fill.style.width = percentage + '%';
+          }, 100);
+        }
+      });
+    },
+
+    animateCharts() {
+      // Animate mini charts with CSS animations
+      this.el.querySelectorAll('.mini-chart').forEach(chart => {
+        chart.style.opacity = '0';
+        chart.style.transform = 'translateY(20px)';
+        
+        setTimeout(() => {
+          chart.style.transition = 'all 0.6s ease';
+          chart.style.opacity = '1';
+          chart.style.transform = 'translateY(0)';
+        }, 200);
+      });
+    },
+
+    bindEvents() {
+      // Toggle detailed analytics
+      const toggleBtn = this.el.querySelector('#toggleAnalytics');
+      const detailsPanel = this.el.querySelector('#analyticsDetails');
+      
+      if (toggleBtn && detailsPanel) {
+        toggleBtn.addEventListener('click', () => {
+          const isExpanded = detailsPanel.style.maxHeight !== '0px';
+          
+          if (isExpanded) {
+            detailsPanel.style.maxHeight = '0px';
+            detailsPanel.style.opacity = '0';
+            toggleBtn.textContent = 'Show Details ▼';
+          } else {
+            detailsPanel.style.maxHeight = detailsPanel.scrollHeight + 'px';
+            detailsPanel.style.opacity = '1';
+            toggleBtn.textContent = 'Hide Details ▲';
+          }
+        });
+      }
+    }
+  },
+
+  // File Upload Hook for enhanced drag and drop
+  FileUpload: {
+    mounted() {
+      this.uploadArea = this.el.querySelector('.upload-area');
+      this.fileInput = this.el.querySelector('input[type="file"]');
+      
+      if (this.uploadArea && this.fileInput) {
+        this.bindDragEvents();
+        this.bindClickEvents();
+      }
+    },
+
+    bindDragEvents() {
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        this.uploadArea.addEventListener(eventName, this.preventDefaults, false);
+      });
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        this.uploadArea.addEventListener(eventName, () => {
+          this.uploadArea.classList.add('drag-over');
+        }, false);
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        this.uploadArea.addEventListener(eventName, () => {
+          this.uploadArea.classList.remove('drag-over');
+        }, false);
+      });
+
+      this.uploadArea.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        this.handleFiles(files);
+      }, false);
+    },
+
+    bindClickEvents() {
+      this.uploadArea.addEventListener('click', () => {
+        this.fileInput.click();
+      });
+
+      this.fileInput.addEventListener('change', (e) => {
+        this.handleFiles(e.target.files);
+      });
+    },
+
+    preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    },
+
+    handleFiles(files) {
+      // Add visual feedback for file selection
+      const fileList = Array.from(files);
+      const preview = this.el.querySelector('.file-preview');
+      
+      if (preview) {
+        preview.innerHTML = '';
+        fileList.forEach(file => {
+          const fileItem = document.createElement('div');
+          fileItem.className = 'file-item';
+          fileItem.innerHTML = `
+            <span class="file-name">${file.name}</span>
+            <span class="file-size">${this.formatFileSize(file.size)}</span>
+          `;
+          preview.appendChild(fileItem);
+        });
+      }
+    },
+
+    formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+  },
+
+  // View Mode Switcher Hook
+  ViewModeSwitcher: {
+    mounted() {
+      this.updateToggleIndicator();
+      this.addKeyboardShortcuts();
+    },
+
+    updated() {
+      this.updateToggleIndicator();
+    },
+
+    updateToggleIndicator() {
+      const toggle = document.querySelector('.view-toggle');
+      const activeBtn = document.querySelector('.view-btn.active');
+      
+      if (toggle && activeBtn) {
+        const mode = activeBtn.getAttribute('phx-value-mode');
+        toggle.setAttribute('data-active', mode);
+      }
+    },
+
+    addKeyboardShortcuts() {
+      document.addEventListener('keydown', (e) => {
+        // Only trigger if not in an input field
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        
+        switch(e.key) {
+          case '1':
+            e.preventDefault();
+            this.switchView('cipher_canvas');
+            break;
+          case '2':
+            e.preventDefault();
+            this.switchView('grid');
+            break;
+          case '3':
+            e.preventDefault();
+            this.switchView('list');
+            break;
+          case '4':
+            e.preventDefault();
+            this.switchView('analytics');
+            break;
+        }
+      });
+    },
+
+    switchView(mode) {
+      const btn = document.querySelector(`[phx-value-mode="${mode}"]`);
+      if (btn) {
+        btn.click();
+      }
+    }
+  },
+    mounted() {
+      this.card = this.el;
+      this.bindHoverEffects();
+    },
+
+    bindHoverEffects() {
+      this.card.addEventListener('mouseenter', () => {
+        this.card.style.transform = 'translateY(-10px) scale(1.02)';
+        this.card.style.boxShadow = '0 20px 40px rgba(0,0,0,0.2)';
+      });
+
+      this.card.addEventListener('mouseleave', () => {
+        this.card.style.transform = 'translateY(0) scale(1)';
+        this.card.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+      });
+
+      // Add ripple effect on click
+      this.card.addEventListener('click', (e) => {
+        const ripple = document.createElement('div');
+        const rect = this.card.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height);
+        const x = e.clientX - rect.left - size / 2;
+        const y = e.clientY - rect.top - size / 2;
+
+        ripple.style.cssText = `
+          position: absolute;
+          width: ${size}px;
+          height: ${size}px;
+          left: ${x}px;
+          top: ${y}px;
+          background: rgba(255,255,255,0.3);
+          border-radius: 50%;
+          transform: scale(0);
+          animation: ripple 0.6s ease-out;
+          pointer-events: none;
+        `;
+
+        this.card.style.position = 'relative';
+        this.card.style.overflow = 'hidden';
+        this.card.appendChild(ripple);
+
+        setTimeout(() => ripple.remove(), 600);
+      });
+    }
+  },
+
+  // Search Enhancement Hook
+  SearchEnhancement: {
+    mounted() {
+      this.searchInput = this.el.querySelector('input[type="text"]');
+      this.searchResults = this.el.querySelector('.search-results');
+      
+      if (this.searchInput) {
+        this.bindSearchEvents();
+      }
+    },
+
+    bindSearchEvents() {
+      let searchTimeout;
+      
+      this.searchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        
+        // Add loading state
+        this.searchInput.classList.add('searching');
+        
+        searchTimeout = setTimeout(() => {
+          this.searchInput.classList.remove('searching');
+          // Trigger search after 300ms delay
+          this.pushEvent('search', { query: e.target.value });
+        }, 300);
+      });
+
+      // Enhanced focus states
+      this.searchInput.addEventListener('focus', () => {
+        this.searchInput.parentElement.classList.add('focused');
+      });
+
+      this.searchInput.addEventListener('blur', () => {
+        this.searchInput.parentElement.classList.remove('focused');
+      });
+    }
+  },
+
+  // Notification System
+  NotificationSystem: {
+    mounted() {
+      this.showNotification();
+    },
+
+    updated() {
+      this.showNotification();
+    },
+
+    showNotification() {
+      const notification = this.el;
+      
+      // Slide in animation
+      setTimeout(() => {
+        notification.classList.add('show');
+      }, 100);
+
+      // Auto-hide after 5 seconds
+      setTimeout(() => {
+        notification.classList.add('hide');
+        setTimeout(() => {
+          notification.remove();
+        }, 300);
+      }, 5000);
+    }
+  }
+}
 
 // Initialize LiveSocket
 let liveSocket = new LiveSocket("/live", Socket, {
   params: { _csrf_token: csrfToken },
-  hooks: Hooks
-});
+  hooks: Hooks,
+  dom: {
+    onBeforeElUpdated(from, to) {
+      if (from._x_dataStack) {
+        window.Alpine.clone(from, to)
+      }
+    }
+  }
+})
 
-// Topbar Progress Indicator
-topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" });
-window.addEventListener("phx:page-loading-start", () => topbar.show());
-window.addEventListener("phx:page-loading-stop", () => topbar.hide());
+// Show progress bar on live navigation and form submits
+topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" })
+window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
+window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
-// Connect LiveSocket
-liveSocket.connect();
-window.liveSocket = liveSocket;
-window.Hooks = Hooks
+// Connect if there are any LiveViews on the page
+liveSocket.connect()
+
+// Expose liveSocket on window for web console debug logs and latency simulation
+window.liveSocket = liveSocket
+
+// Add global styles for enhanced UI effects
+const globalStyles = `
+  @keyframes ripple {
+    to {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .searching {
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .drag-over {
+    transform: scale(1.02);
+    border-color: #3b82f6 !important;
+    background-color: rgba(59, 130, 246, 0.1) !important;
+  }
+
+  .notification.show {
+    animation: slideInRight 0.3s ease-out;
+  }
+
+  .notification.hide {
+    animation: slideInRight 0.3s ease-out reverse;
+  }
+
+  .fade-in {
+    animation: fadeInUp 0.6s ease-out;
+  }
+
+  .search-results {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+  }
+
+  .search-results.show {
+    max-height: 400px;
+  }
+
+  .focused {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  /* Smooth transitions for all interactive elements */
+  button, .btn, .card, .media-node {
+    transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+
+  /* Enhanced focus states for accessibility */
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+`;
+
+// Inject global styles
+const styleSheet = document.createElement('style');
+styleSheet.textContent = globalStyles;
+document.head.appendChild(styleSheet);

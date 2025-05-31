@@ -52,19 +52,10 @@ defmodule Frestyl.Channels do
     user_id = if is_map(user), do: user.id, else: user
 
     query = from c in Channel,
-            join: cm in ChannelMembership, on: c.id == cm.channel_id,
-            where: cm.user_id == ^user_id, # Now using just the ID
-            order_by: [desc: c.updated_at],
-            select: %{
-              id: c.id,
-              name: c.name,
-              description: c.description,
-              visibility: c.visibility,
-              category: c.category,
-              icon_url: c.icon_url,
-              archived: c.archived,
-              member_count: fragment("(SELECT COUNT(*) FROM channel_memberships WHERE channel_id = ?)", c.id)
-            }
+      join: cm in ChannelMembership, on: c.id == cm.channel_id,
+      where: cm.user_id == ^user_id,
+      order_by: [desc: c.updated_at],
+      select: {c, fragment("(SELECT COUNT(*) FROM channel_memberships WHERE channel_id = ?)", c.id)}
 
     query = exclude_archived(query, include_archived)
     Repo.all(query)

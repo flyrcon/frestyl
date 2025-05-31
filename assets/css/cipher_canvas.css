@@ -1,0 +1,129 @@
+/* assets/css/cipher_canvas.css - Add this new file */
+
+/* Cipher Canvas Specific Styles */
+#cipher-canvas-container {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+#cipher-canvas {
+  cursor: grab;
+  transition: cursor 0.2s ease;
+}
+
+#cipher-canvas:active {
+  cursor: grabbing;
+}
+
+/* Loading Animation */
+#canvas-loading {
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Canvas Performance Optimizations */
+#cipher-canvas {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
+
+/* Mobile Touch Optimizations */
+@media (hover: none) and (pointer: coarse) {
+  #cipher-canvas-container {
+    /* Prevent iOS bounce scroll */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
+  }
+  
+  /* Larger touch targets on mobile */
+  .canvas-control-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* High DPI Display Support */
+@media (-webkit-min-device-pixel-ratio: 2),
+       (min-resolution: 2dppx) {
+  #cipher-canvas {
+    /* Ensure crisp rendering on high DPI displays */
+    image-rendering: -webkit-optimize-contrast;
+  }
+}
+
+/* Accessibility Improvements */
+@media (prefers-reduced-motion: reduce) {
+  #cipher-canvas-container *,
+  #cipher-canvas-container *::before,
+  #cipher-canvas-container *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  #cipher-canvas-container {
+    background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #312e81 100%);
+  }
+}
+
+/* Focus States for Accessibility */
+.canvas-control-button:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* Loading Spinner Animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.canvas-loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Gesture Hint Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.gesture-hint {
+  animation: pulse 2s infinite;
+}
+
+/* Canvas Container Transitions */
+.canvas-mode-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Mobile Specific Adjustments */
+@media (max-width: 768px) {
+  #cipher-canvas-container {
+    /* Optimize for mobile performance */
+    will-change: transform;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+  
+  /* Prevent zoom on double tap */
+  #cipher-canvas {
+    touch-action: manipulation;
+  }
+}

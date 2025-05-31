@@ -4,6 +4,7 @@ defmodule FrestylWeb.ChannelLive.Show do
 
   alias Frestyl.Channels
   alias Frestyl.Channels.Channel
+  alias Frestyl.Chat
   alias Frestyl.Accounts
   alias Frestyl.Media
   alias Frestyl.Sessions

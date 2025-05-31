@@ -125,24 +125,33 @@ defmodule FrestylWeb.PortfolioLive.Index do
   end
 
   @impl true
-  def handle_event("video_intro_complete", %{"media_file_id" => media_file_id}, socket) do
-    portfolio = socket.assigns.current_portfolio_for_video
+  def handle_info({:video_intro_complete, %{"media_file_id" => media_file_id, "file_path" => file_path}}, socket) do
+    IO.inspect("Video intro completed successfully", label: "VIDEO_COMPLETE")
+    IO.inspect("Media file ID: #{media_file_id}", label: "MEDIA_ID")
+    IO.inspect("File path: #{file_path}", label: "FILE_PATH")
 
-    case Portfolios.update_portfolio(portfolio, %{intro_video_id: media_file_id}) do
-      {:ok, updated_portfolio} ->
-        # Refresh portfolios list
-        portfolios = Portfolios.list_user_portfolios(socket.assigns.current_user.id)
+    # Hide the video intro component
+    socket =
+      socket
+      |> assign(show_video_intro: false)
+      |> put_flash(:info, "Video introduction saved! You can now view it in your portfolio.")
 
-        {:noreply,
-         socket
-         |> assign(:portfolios, portfolios)
-         |> assign(:show_video_intro_modal, false)
-         |> assign(:current_portfolio_for_video, nil)
-         |> put_flash(:info, "Video introduction added successfully!")}
+    {:noreply, socket}
+  end
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to add video introduction.")}
-    end
+  @impl true
+  def handle_event("test_preview", _params, socket) do
+    IO.inspect("Testing preview state", label: "TEST_PREVIEW")
+
+    socket = assign(socket, recording_state: :preview)
+
+    {:noreply, socket}
+  end
+
+  # Also handle the string version of the event
+  @impl true
+  def handle_info({"video_intro_complete", params}, socket) do
+    handle_info({:video_intro_complete, params}, socket)
   end
 
   @impl true
@@ -176,6 +185,35 @@ defmodule FrestylWeb.PortfolioLive.Index do
     else
       {:noreply, put_flash(socket, :error, "Unauthorized action.")}
     end
+  end
+
+  @impl true
+  def handle_info({:countdown_tick, component_id}, socket) do
+    IO.inspect("=== PARENT: Countdown tick for #{component_id} ===", label: "PARENT_TIMER")
+
+    # Send update with explicit action and force re-render
+    send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+      id: component_id,
+      action: :countdown_tick,
+      force_update: System.unique_integer(),
+      timestamp: System.system_time(:millisecond)
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:recording_tick, component_id}, socket) do
+    IO.inspect("=== PARENT: Recording tick for #{component_id} ===", label: "PARENT_TIMER")
+
+    send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+      id: component_id,
+      action: :recording_tick,
+      force_update: System.unique_integer(),
+      timestamp: System.system_time(:millisecond)
+    )
+
+    {:noreply, socket}
   end
 
   # Helper functions

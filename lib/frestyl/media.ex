@@ -1,684 +1,1315 @@
-# lib/frestyl/media.ex
+# lib/frestyl/media.ex - Enhanced Media Context
 defmodule Frestyl.Media do
+  @moduledoc """
+  Enhanced Media context with intelligent grouping, discussions, and revolutionary discovery features.
+  """
+
   import Ecto.Query, warn: false
   alias Frestyl.Repo
-  alias Frestyl.Media.{MediaFile, ThumbnailProcessor, VideoTranscoder}
-  alias Frestyl.Storage
-  alias Frestyl.Media.MediaItem
+  alias Frestyl.Accounts.User
+  alias Frestyl.Channels.Channel
+
+  alias Frestyl.Media.{
+    MediaFile, MediaGroup, MediaGroupFile, MediaDiscussion, DiscussionMessage,
+    MediaReaction, UserThemePreferences, MusicMetadata, ViewHistory, SavedFilter
+  }
+
+  # ==================
+  # MEDIA GROUPS
+  # ==================
 
   @doc """
-  Creates a new media file from an uploaded file.
+  Gets intelligent media groups for a user with optional filtering.
   """
-  def create_file(attrs, uploaded_file_path) do
-    # Determine media type from content type
-    media_type = determine_media_type(attrs[:content_type] || attrs["content_type"])
+  def get_media_groups_for_user(user_id, opts \\ []) do
+    channel_id = opts[:channel_id]
+    group_type = opts[:group_type]
+    auto_create = Keyword.get(opts, :auto_create, true)
 
-    # Generate a unique filename for storage
-    original_filename = attrs[:original_filename] || attrs["original_filename"] || attrs[:filename] || attrs["filename"]
-    filename = generate_unique_filename(original_filename)
+    query = from g in MediaGroup,
+      where: g.user_id == ^user_id,
+      preload: [
+        :primary_file,
+        :channel,
+        media_group_files: [:media_file],
+        media_files: []
+      ],
+      order_by: [desc: g.updated_at]
 
-    # Set up storage path - maintaining compatibility with your current approach
-    # and providing upgrade path to Storage module
-    destination_path = if function_exported?(Storage, :generate_key, 2) do
-      # Use new Storage module if available
-      key = Storage.generate_key(original_filename)
+    query = if channel_id, do: where(query, [g], g.channel_id == ^channel_id), else: query
+    query = if group_type, do: where(query, [g], g.group_type == ^group_type), else: query
 
-      case Storage.upload(uploaded_file_path, key, content_type: attrs[:content_type] || attrs["content_type"]) do
-        {:ok, file_url} ->
-          # File uploaded to storage, return the URL
-          {:ok, file_url}
-        _ ->
-          # Fall back to your existing method
-          upload_path = Application.get_env(:frestyl, :upload_path, "priv/static/uploads")
-          dest_path = Path.join(upload_path, filename)
-          File.cp!(uploaded_file_path, dest_path)
-          {:ok, dest_path}
-      end
+    groups = Repo.all(query)
+
+    if auto_create and Enum.empty?(groups) do
+      auto_create_groups_for_user(user_id, channel_id)
     else
-      # Use your existing method
-      upload_path = Application.get_env(:frestyl, :upload_path, "priv/static/uploads")
-      File.mkdir_p!(upload_path)
-      dest_path = Path.join(upload_path, filename)
-      File.cp!(uploaded_file_path, dest_path)
-      {:ok, dest_path}
+      groups
     end
+  end
 
-    case destination_path do
-      {:ok, file_path} ->
-        # Create media file record
-        %MediaFile{}
-        |> MediaFile.changeset(Map.merge(attrs, %{
-          filename: filename,
-          original_filename: original_filename,
-          media_type: media_type,
-          file_path: file_path,
-          storage_type: determine_storage_type(),
-          status: "processing"
-        }))
-        |> Repo.insert()
-        |> broadcast_created() # Add this line
-        |> case do
-          {:ok, media_file} ->
-            # Process the file asynchronously
-            Task.start(fn ->
-              processed_media_file = process_media_file(media_file)
-              # Broadcast update when processing is done - fixed this line
-              # Instead of using broadcast_updated/2, we'll use broadcast/2 directly
-              # since we have the processed file
-              case processed_media_file do
-                {:ok, updated_file} ->
-                  broadcast({:ok, updated_file}, :media_file_processed)
-                _ ->
-                  nil
-              end
-            end)
-            {:ok, media_file}
-          error -> error
-        end
+  @doc """
+  Auto-creates intelligent media groups based on user's files.
+  """
+  def auto_create_groups_for_user(user_id, channel_id \\ nil) do
+    # Get all user's media files
+    files = list_media_files_for_user(user_id, channel_id: channel_id)
 
+    # Group by various strategies
+    session_groups = group_by_sessions(files)
+    album_groups = group_by_albums(files)
+    time_groups = group_by_time_proximity(files)
+    collaboration_groups = group_by_collaborations(files)  # Fixed: Added missing assignment
+
+    # Create groups in database
+    all_groups = session_groups ++ album_groups ++ time_groups ++ collaboration_groups
+
+    Enum.map(all_groups, fn group_data ->
+      create_media_group(%{
+        name: group_data.name,
+        description: group_data.description,
+        group_type: group_data.type,
+        user_id: user_id,
+        channel_id: channel_id,
+        primary_file_id: group_data.primary_file_id,
+        metadata: group_data.metadata
+      }, group_data.file_ids)
+    end)
+  end
+
+  # Add this alias at the top of your media.ex file with your other aliases:
+  alias Frestyl.Media.Comment
+
+  @doc """
+  Lists threaded comments for a media file with replies nested properly.
+  """
+  def list_threaded_comments_for_file(file_id) do
+    # Get all comments for this asset (using your existing schema)
+    all_comments = from(c in Comment,
+      where: c.asset_id == ^file_id,
+      preload: [:user],
+      order_by: [asc: c.inserted_at]
+    ) |> Repo.all()
+
+    # Build comment tree with reactions
+    comments_with_reactions = Enum.map(all_comments, fn comment ->
+      reaction_summary = get_comment_reaction_summary(comment.id)
+      user_reactions = get_comment_user_reactions(comment.id)
+
+      comment
+      |> Map.put(:reaction_summary, reaction_summary)
+      |> Map.put(:user_reactions, user_reactions)
+    end)
+
+    # Build threaded structure
+    build_comment_tree(comments_with_reactions)
+  end
+
+  @doc """
+  Creates a threaded comment (can be a reply).
+  """
+  def create_threaded_comment(attrs, user) do
+    # Map media_file_id to asset_id to match your schema
+    attrs = attrs
+    |> Map.put("user_id", user.id)
+    |> Map.put("asset_id", attrs["media_file_id"])
+    |> Map.delete("media_file_id")
+
+    case create_comment(attrs, user) do
+      {:ok, comment} ->
+        # Broadcast real-time update
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "file_comments:#{comment.asset_id}",
+          {:comment_created, comment}
+        )
+        {:ok, comment}
       error -> error
     end
   end
 
   @doc """
-  Lists media items for a channel, filtered by category.
+  Creates a comment using your existing system.
   """
-  def list_channel_media_by_category(channel_id, category \\ nil, opts \\ []) do
-    limit = Keyword.get(opts, :limit)
+  def create_comment(attrs, user) do
+    %Comment{}
+    |> Comment.changeset(attrs)
+    |> Repo.insert()
+  end
 
-    query = from m in MediaItem,
-            where: m.channel_id == ^channel_id,
-            order_by: [desc: m.inserted_at]
+  @doc """
+  Gets a comment by ID.
+  """
+  def get_comment(id) do
+    Repo.get(Comment, id)
+  end
 
-    query = if category do
-      where(query, [m], m.category == ^category)
+  @doc """
+  Deletes a comment if user has permission.
+  """
+  def delete_comment(comment, user) do
+    if comment.user_id == user.id do
+      case Repo.delete(comment) do
+        {:ok, deleted_comment} ->
+          # Broadcast real-time update
+          Phoenix.PubSub.broadcast(
+            Frestyl.PubSub,
+            "file_comments:#{deleted_comment.asset_id}",
+            {:comment_deleted, deleted_comment}
+          )
+          {:ok, deleted_comment}
+        error -> error
+      end
     else
-      query
+      {:error, :unauthorized}
     end
+  end
 
-    query = if limit do
-      limit(query, ^limit)
-    else
-      query
+  @doc """
+  Toggles a reaction on a comment.
+  """
+  def toggle_comment_reaction(attrs) do
+    case get_existing_comment_reaction(attrs) do
+      nil -> create_comment_reaction(attrs)
+      reaction -> delete_comment_reaction(reaction)
     end
-
-    Repo.all(query)
   end
 
   @doc """
-  List files for a channel with optional parameters
+  Subscribes to file comments for real-time updates.
   """
-  def list_channel_files(channel_id, opts \\ []) do
-    limit = Keyword.get(opts, :limit)
+  def subscribe_to_file_comments(file_id) do
+    Phoenix.PubSub.subscribe(Frestyl.PubSub, "file_comments:#{file_id}")
+  end
 
-    # Query MediaFile table instead of MediaItem
-    query = from m in MediaFile,
-            where: m.channel_id == ^channel_id,
-            order_by: [desc: m.inserted_at]
+  defp build_comment_tree(comments) do
+    # Separate root comments from replies
+    {root_comments, replies} = Enum.split_with(comments, &is_nil(&1.parent_id))
 
-    query = if limit do
-      limit(query, ^limit)
-    else
-      query
+    # Build tree recursively
+    Enum.map(root_comments, fn root_comment ->
+      attach_replies(root_comment, replies)
+    end)
+  end
+
+  defp attach_replies(comment, all_replies) do
+    # Find direct replies to this comment
+    direct_replies = Enum.filter(all_replies, &(&1.parent_id == comment.id))
+
+    # Recursively attach replies to each direct reply
+    nested_replies = Enum.map(direct_replies, fn reply ->
+      attach_replies(reply, all_replies)
+    end)
+
+    Map.put(comment, :replies, nested_replies)
+  end
+
+  defp get_comment_reaction_summary(comment_id) do
+
+    from(r in "comment_reactions",
+      where: r.comment_id == ^comment_id,
+      group_by: r.reaction_type,
+      select: {r.reaction_type, count(r.id)}
+     )
+     |> Repo.all()
+     |> Enum.into(%{})
+
+    %{} # Return empty for now
+  end
+
+  defp get_comment_user_reactions(comment_id) do
+
+     from(r in "comment_reactions",
+       where: r.comment_id == ^comment_id,
+       group_by: r.user_id,
+       select: {r.user_id, fragment("array_agg(?)", r.reaction_type)}
+     )
+     |> Repo.all()
+     |> Enum.into(%{})
+
+    %{} # Return empty for now
+  end
+
+  defp get_existing_comment_reaction(%{"comment_id" => comment_id, "user_id" => user_id, "reaction_type" => reaction_type}) do
+
+     from(r in "comment_reactions",
+       where: r.comment_id == ^comment_id and r.user_id == ^user_id and r.reaction_type == ^reaction_type
+     )
+     |> Repo.one()
+
+    nil # Return nil for now
+  end
+
+  defp create_comment_reaction(attrs) do
+
+
+    case Repo.insert_all("comment_reactions", [
+       %{
+         comment_id: attrs["comment_id"],
+         user_id: attrs["user_id"],
+         reaction_type: attrs["reaction_type"],
+         inserted_at: DateTime.utc_now() |> DateTime.truncate(:second),
+         updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+       }
+     ]) do
+       {1, _} ->
+         Phoenix.PubSub.broadcast(
+           Frestyl.PubSub,
+           "file_comments:#{get_file_id_from_comment(attrs["comment_id"])}",
+           {:comment_reaction_updated, attrs["comment_id"]}
+         )
+         {:ok, :reaction_added}
+       _ -> {:error, :failed_to_create}
+     end
+
+    {:ok, :reaction_added} # Return success for now
+  end
+
+  defp delete_comment_reaction(reaction) do
+    # For now, return success since we haven't created the reactions table yet
+    {:ok, :reaction_removed}
+  end
+
+  defp get_file_id_from_comment(comment_id) do
+    from(c in Comment, where: c.id == ^comment_id, select: c.asset_id)
+    |> Repo.one()
+  end
+
+  defp group_by_sessions(files) do
+    files
+    |> Enum.group_by(fn file ->
+      # Extract session info from metadata or filename patterns
+      get_session_identifier(file)
+    end)
+    |> Enum.reject(fn {session_id, _files} -> is_nil(session_id) end)
+    |> Enum.map(fn {session_id, session_files} ->
+      primary_file = find_primary_file(session_files)
+      %{
+        name: "Session #{session_id}",
+        description: "Created during session #{session_id}",
+        type: "session",
+        primary_file_id: primary_file.id,
+        file_ids: Enum.map(session_files, & &1.id),
+        metadata: %{session_id: session_id, auto_created: true}
+      }
+    end)
+  end
+
+  defp group_by_albums(files) do
+    files
+    |> Enum.filter(fn file -> file.file_type == "audio" end)
+    |> Enum.group_by(fn file ->
+      # Extract album info from metadata
+      get_in(file.metadata, ["album"]) ||
+      extract_album_from_filename(file.filename)
+    end)
+    |> Enum.reject(fn {album, _files} -> is_nil(album) end)
+    |> Enum.filter(fn {_album, files} -> length(files) > 1 end)
+    |> Enum.map(fn {album, album_files} ->
+      primary_file = find_primary_file(album_files)
+      %{
+        name: album,
+        description: "Album with #{length(album_files)} tracks",
+        type: "album",
+        primary_file_id: primary_file.id,
+        file_ids: Enum.map(album_files, & &1.id),
+        metadata: %{album: album, track_count: length(album_files), auto_created: true}
+      }
+    end)
+  end
+
+defp group_by_time_proximity(files) do
+    # Group files uploaded within 1 hour of each other
+    sorted_files = files |> Enum.sort_by(& &1.inserted_at, NaiveDateTime)
+
+    # Use reduce instead of chunk_while for more control
+    grouped_files = sorted_files
+    |> Enum.reduce([], fn file, groups ->
+      case groups do
+        [] ->
+          # First file starts the first group
+          [[file]]
+
+        [current_group | rest_groups] ->
+          last_file = List.last(current_group)
+
+          # Calculate time difference
+          time_diff = case {file.inserted_at, last_file.inserted_at} do
+            {%DateTime{} = file_time, %DateTime{} = last_time} ->
+              DateTime.diff(file_time, last_time, :second)
+            {%NaiveDateTime{} = file_time, %NaiveDateTime{} = last_time} ->
+              NaiveDateTime.diff(file_time, last_time, :second)
+            {%NaiveDateTime{} = file_time, %DateTime{} = last_time} ->
+              file_datetime = DateTime.from_naive!(file_time, "Etc/UTC")
+              DateTime.diff(file_datetime, last_time, :second)
+            {%DateTime{} = file_time, %NaiveDateTime{} = last_time} ->
+              last_datetime = DateTime.from_naive!(last_time, "Etc/UTC")
+              DateTime.diff(file_time, last_datetime, :second)
+          end
+
+          if time_diff <= 3600 do
+            # Add to current group
+            [current_group ++ [file] | rest_groups]
+          else
+            # Start new group
+            [[file], current_group | rest_groups]
+          end
+      end
+    end)
+    |> Enum.reverse()  # Reverse to maintain chronological order
+    |> Enum.filter(fn group -> length(group) > 2 end)  # Only groups with 3+ files
+
+    # Convert to group data format
+    grouped_files
+    |> Enum.map(fn time_group ->
+      primary_file = find_primary_file(time_group)
+
+      # Handle date extraction safely
+      date = case primary_file.inserted_at do
+        %DateTime{} = dt -> DateTime.to_date(dt)
+        %NaiveDateTime{} = ndt -> NaiveDateTime.to_date(ndt)
+        _ -> Date.utc_today()  # Fallback
+      end
+
+      %{
+        name: "Upload Session - #{date}",
+        description: "#{length(time_group)} files uploaded together",
+        type: "auto",
+        primary_file_id: primary_file.id,
+        file_ids: Enum.map(time_group, & &1.id),
+        metadata: %{upload_date: date, auto_created: true}
+      }
+    end)
+  end
+
+  defp group_by_collaborations(files) do
+    # Group files that share collaboration patterns
+    files
+    |> Enum.filter(fn file ->
+      music_meta = get_music_metadata(file.id)
+      music_meta && length(music_meta.collaborators || []) > 0
+    end)
+    |> Enum.group_by(fn file ->
+      music_meta = get_music_metadata(file.id)
+      Enum.sort(music_meta.collaborators || [])
+    end)
+    |> Enum.filter(fn {_collaborators, files} -> length(files) > 1 end)
+    |> Enum.map(fn {collaborators, collab_files} ->
+      primary_file = find_primary_file(collab_files)
+      %{
+        name: "Collaboration #{length(collaborators)} artists",
+        description: "#{length(collab_files)} collaborative works",
+        type: "collaboration",
+        primary_file_id: primary_file.id,
+        file_ids: Enum.map(collab_files, & &1.id),
+        metadata: %{collaborators: collaborators, auto_created: true}
+      }
+    end)
+  end
+
+  defp find_primary_file(files) do
+    # Prioritize by: largest file, most recent, or first alphabetically
+    files
+    |> Enum.sort_by(fn file ->
+      # Handle both DateTime and NaiveDateTime
+      inserted_at_comparable = case file.inserted_at do
+        %DateTime{} = dt -> dt
+        %NaiveDateTime{} = ndt -> DateTime.from_naive!(ndt, "Etc/UTC")
+        _ -> DateTime.utc_now()  # Fallback
+      end
+
+      {-(file.file_size || 0), inserted_at_comparable, file.filename}
+    end)
+    |> List.first()
+  end
+
+  defp get_session_identifier(file) do
+    # Extract session ID from metadata or filename patterns
+    get_in(file.metadata, ["session_id"]) ||
+    extract_session_from_filename(file.filename)
+  end
+
+  defp extract_session_from_filename(filename) do
+    # Look for patterns like "session_123_", "Session 456", etc.
+    case Regex.run(~r/session[_\s]*(\d+)/i, filename) do
+      [_, session_id] -> session_id
+      _ -> nil
     end
+  end
 
-    Repo.all(query)
+  defp extract_album_from_filename(filename) do
+    # Extract album info from common patterns
+    cond do
+      String.contains?(filename, " - ") ->
+        filename |> String.split(" - ") |> List.first()
+      String.contains?(filename, "_") ->
+        filename |> String.split("_") |> List.first()
+      true -> nil
+    end
   end
 
   @doc """
-  Returns a list of media items for a specific session.
+  Creates a new media group with associated files.
   """
-  def list_session_media_items(session_id) do
-    # Query MediaItem with a join to the sessions table
-    query = from m in MediaItem,
-            where: m.session_id == ^session_id,
-            order_by: [desc: m.inserted_at]
+  def create_media_group(attrs, file_ids \\ []) do
+    Repo.transaction(fn ->
+      with {:ok, group} <- %MediaGroup{} |> MediaGroup.changeset(attrs) |> Repo.insert(),
+           :ok <- associate_files_to_group(group.id, file_ids) do
+        group
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
 
-    Repo.all(query)
-  rescue
-    # Handle the case where the session_id column might not exist yet
-    Ecto.QueryError ->
-      []
+  defp associate_files_to_group(group_id, file_ids) do
+    file_ids
+    |> Enum.with_index()
+    |> Enum.each(fn {file_id, index} ->
+      %MediaGroupFile{}
+      |> MediaGroupFile.changeset(%{
+        media_group_id: group_id,
+        media_file_id: file_id,
+        position: index,
+        role: if(index == 0, do: "primary", else: "component")
+      })
+      |> Repo.insert!()
+    end)
+    :ok
+  end
+
+  # ==================
+  # DISCUSSIONS
+  # ==================
+
+  @doc """
+  Creates a discussion around a media file or group.
+  """
+  def create_media_discussion(attrs) do
+    %MediaDiscussion{}
+    |> MediaDiscussion.changeset(attrs)
+    |> Repo.insert()
   end
 
   @doc """
-  Changes a media item's category.
+  Gets discussions for a media file or group.
   """
-  def update_media_category(%MediaItem{} = media_item, category)
-      when category in [:branding, :presentation, :performance, :general] do
-
-    media_item
-    |> MediaItem.changeset(%{category: category})
-    |> Repo.update()
-    |> broadcast_updated()
-  end
-
-  @doc """
-  Subscribe to channel-specific media events.
-  """
-  def subscribe_to_channel(channel_id) do
-    Phoenix.PubSub.subscribe(Frestyl.PubSub, "channel:#{channel_id}:media")
-  end
-
-  @doc """
-  Check if a user can manage media in a channel.
-  """
-  def can_manage_media?(user_id, channel_id) do
-    # Check if the user is an admin or moderator in the channel
-    Repo.exists?(
-      from m in Frestyl.Channels.ChannelMembership,
-      where: m.user_id == ^user_id and m.channel_id == ^channel_id and
-            (m.role in ["admin", "moderator"] or m.can_upload_files == true)
+  def get_discussions_for_media(media_file_id: file_id) do
+    from(d in MediaDiscussion,
+      where: d.media_file_id == ^file_id,
+      where: d.status == "active",
+      preload: [:creator, discussion_messages: [:user]],
+      order_by: [desc: d.is_pinned, desc: d.updated_at]
     )
-  end
-
-  # Update media item
-  def update_media_file(%MediaItem{} = media_item, attrs) do
-    result = media_item
-    |> MediaItem.changeset(attrs)
-    |> Repo.update()
-
-    case result do
-      {:ok, updated_item} ->
-        # Invalidate the cache for this media item
-        Frestyl.Cache.invalidate("media_file:#{updated_item.id}")
-        Frestyl.Cache.invalidate_by_prefix("media_url:#{updated_item.id}")
-        {:ok, updated_item}
-
-      error ->
-        error
-    end
-  end
-
-  def delete_media_file(%MediaItem{} = media_item) do
-    result = Repo.delete(media_item)
-
-    case result do
-      {:ok, deleted_item} ->
-        # Invalidate cache for this media item
-        Frestyl.Cache.invalidate("media_file:#{deleted_item.id}")
-        Frestyl.Cache.invalidate_by_prefix("media_url:#{deleted_item.id}")
-        {:ok, deleted_item}
-
-      error ->
-        error
-    end
-  end
-
-  @doc """
-  Process an uploaded file. This maintains compatibility with your existing code
-  while providing a path to use the new processing functionality.
-  """
-  def process_upload(entry, user) do
-    # This function can be expanded to use the new thumbnail and processing logic
-    # while maintaining backward compatibility with your existing LiveView code
-
-    # In the original implementation this would likely do something
-    # This is a placeholder that will be replaced with your actual implementation
-    {:ok, %{id: 1, filename: entry.client_name}}
-  end
-
-  @doc """
-  Process a media file, extracting metadata and generating thumbnails.
-  """
-  def process_media_file(%MediaFile{} = media_file) do
-    # Extract metadata
-    metadata = extract_metadata(media_file)
-
-    # Generate thumbnails
-    thumbnail_data = if function_exported?(ThumbnailProcessor, :process, 1) do
-      ThumbnailProcessor.process(media_file)
-    else
-      # Fallback if the new ThumbnailProcessor isn't available yet
-      %{}
-    end
-
-    # Update the media file with metadata and thumbnail data
-    result = media_file
-    |> MediaFile.changeset(Map.merge(metadata, thumbnail_data))
-    |> MediaFile.changeset(%{status: "active"})
-    |> Repo.update()
-
-    # If it's a video and we have the transcoder available, start transcoding
-    if media_file.media_type == "video" && function_exported?(VideoTranscoder, :transcode, 1) do
-      Task.start(fn -> VideoTranscoder.transcode(media_file) end)
-    end
-
-    # Return the update result
-    result
-  end
-
-  def create_media_file_from_binary(attrs, binary_data) do
-    # Generate a unique filename if not provided
-    filename = attrs[:filename] || "upload_#{System.unique_integer([:positive])}.webm"
-
-    # Store the binary data using your file storage system
-    storage_attrs = %{
-      filename: filename,
-      original_filename: attrs[:original_filename] || filename,
-      content_type: attrs[:content_type] || "video/webm"
-    }
-
-    # Use your existing storage system
-    storage_result = if Application.get_env(:frestyl, :use_s3, false) do
-      Frestyl.Media.FileStorage.store_on_s3(binary_data, storage_attrs)
-    else
-      Frestyl.Media.FileStorage.store_locally(binary_data, storage_attrs)
-    end
-
-    case storage_result do
-      {:ok, storage_data} ->
-        # Create the media file record using your existing MediaFile schema
-        media_file_attrs = %{
-          filename: Path.basename(storage_data.file_path),
-          original_filename: storage_attrs.original_filename,
-          content_type: storage_attrs.content_type,
-          file_size: byte_size(binary_data),
-          media_type: attrs[:media_type] || determine_media_type_from_content(storage_attrs.content_type),
-          file_path: storage_data.file_path,
-          storage_type: storage_data.storage_type,
-          user_id: attrs[:user_id],
-          title: attrs[:title],
-          description: attrs[:description],
-          status: "active"
-        }
-
-        # Create and insert the MediaFile record
-        %MediaFile{}
-        |> MediaFile.changeset(media_file_attrs)
-        |> Repo.insert()
-        |> broadcast_created()
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # Helper function that doesn't conflict with your existing private function
-  defp determine_media_type_from_content(content_type) do
-    cond do
-      String.starts_with?(content_type, "image/") -> "image"
-      String.starts_with?(content_type, "video/") -> "video"
-      String.starts_with?(content_type, "audio/") -> "audio"
-      true -> "document"
-    end
-  end
-
-  @doc """
-  Extract metadata from a media file based on its type.
-  """
-  def extract_metadata(%MediaFile{} = media_file) do
-    case media_file.media_type do
-      "image" -> extract_image_metadata(media_file)
-      "video" -> extract_video_metadata(media_file)
-      "audio" -> extract_audio_metadata(media_file)
-      _ -> %{}
-    end
-  end
-
-  defp extract_image_metadata(%MediaFile{} = media_file) do
-    case System.cmd("identify", ["-format", "%w %h", media_file.file_path], stderr_to_stdout: true) do
-      {output, 0} ->
-        [width_str, height_str] = String.split(String.trim(output))
-        {width, _} = Integer.parse(width_str)
-        {height, _} = Integer.parse(height_str)
-
-        %{
-          width: width,
-          height: height,
-          metadata: %{
-            format: Path.extname(media_file.filename)
-          }
-        }
-      _ -> %{}
-    end
-  end
-
-  defp extract_video_metadata(%MediaFile{} = media_file) do
-    case System.cmd("ffprobe", [
-      "-v", "quiet",
-      "-print_format", "json",
-      "-show_format",
-      "-show_streams",
-      media_file.file_path
-    ], stderr_to_stdout: true) do
-      {output, 0} ->
-        case Jason.decode(output) do
-          {:ok, json} ->
-            format = json["format"]
-            video_stream = Enum.find(json["streams"] || [], fn stream ->
-              Map.get(stream, "codec_type") == "video"
-            end)
-
-            if video_stream do
-              %{
-                width: video_stream["width"],
-                height: video_stream["height"],
-                duration: format["duration"] && (String.to_float(format["duration"]) * 1000) |> round(),
-                metadata: %{
-                  format: format["format_name"],
-                  bitrate: format["bit_rate"],
-                  codec: video_stream["codec_name"],
-                  framerate: video_stream["r_frame_rate"]
-                }
-              }
-            else
-              %{}
-            end
-          _ -> %{}
-        end
-      _ -> %{}
-    end
-  end
-
-  defp extract_audio_metadata(%MediaFile{} = media_file) do
-    case System.cmd("ffprobe", [
-      "-v", "quiet",
-      "-print_format", "json",
-      "-show_format",
-      media_file.file_path
-    ], stderr_to_stdout: true) do
-      {output, 0} ->
-        case Jason.decode(output) do
-          {:ok, json} ->
-            format = json["format"]
-
-            %{
-              duration: format["duration"] && (String.to_float(format["duration"]) * 1000) |> round(),
-              metadata: %{
-                format: format["format_name"],
-                bitrate: format["bit_rate"]
-              }
-            }
-          _ -> %{}
-        end
-      _ -> %{}
-    end
-  end
-
-  @doc """
-  Determine the media type from the content type.
-  """
-
-  def determine_media_type(_), do: "other"
-
-  @doc """
-  Determine the storage type based on configuration.
-  """
-  defp determine_storage_type do
-    case Application.get_env(:frestyl, :storage_type, "local") do
-      "s3" -> "s3"
-      :s3 -> "s3"
-      _ -> "local"
-    end
-  end
-
-  @doc """
-  Generate a unique filename for a file.
-  """
-  defp generate_unique_filename(original_filename) do
-    extension = Path.extname(original_filename)
-    basename = Path.basename(original_filename, extension)
-    timestamp = DateTime.utc_now() |> DateTime.to_unix()
-    random_suffix = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-
-    "#{basename}_#{timestamp}_#{random_suffix}#{extension}"
-  end
-
-  # CRUD operations for MediaFile
-
-
-  @doc """
-  Gets the URL for a media file, with caching.
-  """
-  def get_media_url(%MediaItem{} = media_item) do
-    cache_key = "media_url:#{media_item.id}"
-
-    case Frestyl.Cache.get(cache_key) do
-      {:ok, url} ->
-        url
-
-      :error ->
-        url = generate_media_url(media_item)
-        Frestyl.Cache.put(cache_key, url)
-        url
-    end
-  end
-
-  # Private function to generate the actual URL
-  defp generate_media_url(%MediaItem{} = media_item) do
-    cond do
-      media_item.storage_type == "s3" ->
-        # Generate S3 presigned URL with short expiration
-        config = Application.get_env(:frestyl, :s3)
-        bucket = config[:bucket]
-
-        {:ok, url} = ExAws.S3.presigned_url(
-          ExAws.Config.new(:s3),
-          :get,
-          bucket,
-          media_item.file_path,
-          expires_in: 3600 # 1 hour
-        )
-        url
-
-      media_item.storage_type == "local" ->
-        # Generate local URL
-        "/uploads/#{media_item.file_path}"
-
-      true ->
-        media_item.file_url
-    end
-  end
-
-  defp generate_unique_filename(original_filename) do
-    timestamp = System.system_time(:second)
-    random = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
-    ext = Path.extname(original_filename)
-    base = Path.basename(original_filename, ext)
-    "#{base}_#{timestamp}_#{random}#{ext}"
-  end
-
-  defp determine_storage_type do
-    if Application.get_env(:frestyl, :storage_backend) == :s3 do
-      "s3"
-    else
-      "local"
-    end
-  end
-
-  defp broadcast_created({:ok, media_file} = result) do
-    Phoenix.PubSub.broadcast(Frestyl.PubSub, "media_files", {:media_file_created, media_file})
-    result
-  end
-
-  defp broadcast_created(error), do: error
-
-  @doc """
-  Lists media files with optional filters.
-  """
-  def list_media_files(filters \\ []) do
-    MediaFile
-    |> filter_by_user(filters[:user_id])
-    |> filter_by_channel(filters[:channel_id])
-    |> filter_by_folder(filters[:folder_id])
-    |> filter_by_media_type(filters[:media_type])
-    |> filter_by_status(filters[:status])
-    |> filter_by_search(filters[:search])
-    |> order_by_field(filters[:order_by] || [desc: :inserted_at])
     |> Repo.all()
   end
 
-  defp filter_by_user(query, nil), do: query
-  defp filter_by_user(query, user_id), do: where(query, [m], m.user_id == ^user_id)
+  def get_discussions_for_media(media_group_id: group_id) do
+    from(d in MediaDiscussion,
+      where: d.media_group_id == ^group_id,
+      where: d.status == "active",
+      preload: [:creator, discussion_messages: [:user]],
+      order_by: [desc: d.is_pinned, desc: d.updated_at]
+    )
+    |> Repo.all()
+  end
 
-  defp filter_by_channel(query, nil), do: query
-  defp filter_by_channel(query, channel_id), do: where(query, [m], m.channel_id == ^channel_id)
+  @doc """
+  Adds a message to a discussion.
+  """
+  def add_discussion_message(attrs) do
+    %DiscussionMessage{}
+    |> DiscussionMessage.changeset(attrs)
+    |> Repo.insert()
+    |> case do
+      {:ok, message} ->
+        # Broadcast real-time update
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "discussion:#{message.media_discussion_id}",
+          {:new_message, message}
+        )
+        {:ok, message}
+      error -> error
+    end
+  end
 
-  defp filter_by_folder(query, nil), do: query
-  defp filter_by_folder(query, folder_id), do: where(query, [m], m.folder_id == ^folder_id)
+  # ==================
+  # REACTIONS
+  # ==================
 
-  defp filter_by_media_type(query, nil), do: query
-  defp filter_by_media_type(query, media_type), do: where(query, [m], m.media_type == ^media_type)
+  @doc """
+  Adds or toggles a reaction to media.
+  """
+  def toggle_reaction(attrs) do
+    case get_existing_reaction(attrs) do
+      nil -> create_reaction(attrs)
+      reaction -> delete_reaction(reaction)
+    end
+  end
 
-  defp filter_by_status(query, nil), do: query
-  defp filter_by_status(query, status), do: where(query, [m], m.status == ^status)
+  defp get_existing_reaction(%{user_id: user_id, reaction_type: type} = attrs) do
+    query = from r in MediaReaction,
+      where: r.user_id == ^user_id and r.reaction_type == ^type
+
+    query = cond do
+      Map.has_key?(attrs, :media_file_id) ->
+        where(query, [r], r.media_file_id == ^attrs.media_file_id)
+      Map.has_key?(attrs, :media_group_id) ->
+        where(query, [r], r.media_group_id == ^attrs.media_group_id)
+      Map.has_key?(attrs, :discussion_message_id) ->
+        where(query, [r], r.discussion_message_id == ^attrs.discussion_message_id)
+      true -> query
+    end
+
+    Repo.one(query)
+  end
+
+  defp create_reaction(attrs) do
+    %MediaReaction{}
+    |> MediaReaction.changeset(attrs)
+    |> Repo.insert()
+    |> case do
+      {:ok, reaction} ->
+        broadcast_reaction_update(reaction, :added)
+        {:ok, reaction}
+      error -> error
+    end
+  end
+
+  defp delete_reaction(reaction) do
+    case Repo.delete(reaction) do
+      {:ok, deleted_reaction} ->
+        broadcast_reaction_update(deleted_reaction, :removed)
+        {:ok, deleted_reaction}
+      error -> error
+    end
+  end
+
+  defp broadcast_reaction_update(reaction, action) do
+    topic = cond do
+      reaction.media_file_id -> "media_file:#{reaction.media_file_id}"
+      reaction.media_group_id -> "media_group:#{reaction.media_group_id}"
+      reaction.discussion_message_id -> "discussion_message:#{reaction.discussion_message_id}"
+      true -> nil
+    end
+
+    if topic do
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        topic,
+        {:reaction_update, %{action: action, reaction: reaction}}
+      )
+    end
+  end
+
+  @doc """
+  Gets reaction summary for media.
+  """
+  def get_reaction_summary(media_file_id: file_id) do
+    reactions = from(r in MediaReaction,
+      where: r.media_file_id == ^file_id,
+      select: {r.reaction_type, r.user_id}
+    ) |> Repo.all()
+
+    build_reaction_summary(reactions)
+  end
+
+  def get_reaction_summary(media_group_id: group_id) do
+    reactions = from(r in MediaReaction,
+      where: r.media_group_id == ^group_id,
+      select: {r.reaction_type, r.user_id}
+    ) |> Repo.all()
+
+    build_reaction_summary(reactions)
+  end
+
+  defp build_reaction_summary(reactions) do
+    grouped = Enum.group_by(reactions, fn {type, _user} -> type end)
+
+    %{
+      total_reactions: length(reactions),
+      reactions: Enum.map(grouped, fn {type, list} -> {type, length(list)} end) |> Enum.into(%{}),
+      user_reactions: Enum.group_by(reactions, fn {_type, user} -> user end) |> Enum.map(fn {user, list} ->
+        {user, Enum.map(list, fn {type, _} -> type end)}
+      end) |> Enum.into(%{}),
+      top_reaction: grouped |> Enum.max_by(fn {_type, list} -> length(list) end, fn -> nil end) |> case do
+        {type, _} -> type
+        nil -> nil
+      end
+    }
+  end
+
+  # ==================
+  # THEME PREFERENCES
+  # ==================
+
+  @doc """
+  Gets or creates user theme preferences.
+  """
+  defp create_default_theme_preferences(user_id) do
+    {:ok, preferences} = %UserThemePreferences{}  # Changed from UserThemePreference
+    |> UserThemePreferences.changeset(%{user_id: user_id})  # Changed from UserThemePreference
+    |> Repo.insert()
+
+    preferences
+  end
+
+  def update_user_theme_preferences(user_id, attrs) do
+    get_user_theme_preferences(user_id)
+    |> UserThemePreferences.changeset(attrs)  # Changed from UserThemePreference
+    |> Repo.update()
+  end
+
+  def get_user_theme_preferences(user_id) do
+    case Repo.get_by(UserThemePreferences, user_id: user_id) do  # Changed from UserThemePreference
+      nil -> create_default_theme_preferences(user_id)
+      preferences -> preferences
+    end
+  end
+
+  # ==================
+  # MUSIC METADATA
+  # ==================
+
+  @doc """
+  Gets or creates music metadata for an audio file.
+  """
+  def get_music_metadata(media_file_id) do
+    Repo.get_by(MusicMetadata, media_file_id: media_file_id)
+  end
+
+  @doc """
+  Creates or updates music metadata.
+  """
+  def upsert_music_metadata(media_file_id, attrs) do
+    case get_music_metadata(media_file_id) do
+      nil ->
+        %MusicMetadata{}
+        |> MusicMetadata.changeset(Map.put(attrs, :media_file_id, media_file_id))
+        |> Repo.insert()
+      existing ->
+        existing
+        |> MusicMetadata.changeset(attrs)
+        |> Repo.update()
+    end
+  end
+
+  # ==================
+  # VIEW HISTORY & ANALYTICS
+  # ==================
+
+  @doc """
+  Records a view event for analytics.
+  """
+  def record_view(attrs) do
+    # Skip updating view_count since the field doesn't exist in MediaFile schema
+    # Just record detailed view history
+    %ViewHistory{}
+    |> ViewHistory.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Gets personalized recommendations based on view history.
+  """
+  def get_recommendations_for_user(user_id, limit \\ 10) do
+    # Get user's view patterns
+    viewed_files = from(vh in ViewHistory,
+      where: vh.user_id == ^user_id,
+      where: not is_nil(vh.media_file_id),
+      select: vh.media_file_id,
+      distinct: true
+    ) |> Repo.all()
+
+    # Get similar files based on tags, channels, and metadata
+    from(mf in MediaFile,
+      where: mf.id not in ^viewed_files,
+      where: mf.status == "active",
+      left_join: mft in "media_files_tags", on: mft.media_file_id == mf.id,
+      left_join: t in "tags", on: t.id == mft.tag_id,
+      group_by: mf.id,
+      order_by: [desc: mf.engagement_score, desc: mf.view_count],
+      limit: ^limit,
+      preload: [:user, :channel]
+    )
+    |> Repo.all()
+  end
+
+  # ==================
+  # ENHANCED MEDIA FILES
+  # ==================
+
+  @doc """
+  Gets media files for discovery interface with intelligent grouping.
+  """
+  def get_discovery_data_for_user(user_id, opts \\ []) do
+    # Get user's theme preferences
+    theme_prefs = get_user_theme_preferences(user_id)
+
+    # Get accessible files based on user permissions
+    files = list_accessible_media_files(user_id, opts)
+
+    # Get intelligent groups
+    groups = get_media_groups_for_user(user_id, opts)
+
+    # Build discovery cards (mix of individual files and groups)
+    cards = build_discovery_cards(files, groups)
+
+    %{
+      cards: cards,
+      theme_preferences: theme_prefs,
+      total_files: length(files),
+      total_groups: length(groups),
+      recommendations: get_recommendations_for_user(user_id, 5)
+    }
+  end
+
+defp list_accessible_media_files(user_id, opts) do
+    channel_id = opts[:channel_id]
+    file_type = opts[:file_type]
+    search_query = opts[:search]
+
+    # First get channels user has access to
+    accessible_channel_ids = from(cm in "channel_memberships",
+      where: cm.user_id == ^user_id and cm.status == "active",
+      select: cm.channel_id
+    ) |> Repo.all()
+
+    # Build main query for accessible files
+    query = from mf in MediaFile,
+      where: mf.status == "active",
+      where: mf.user_id == ^user_id or mf.channel_id in ^accessible_channel_ids,
+      preload: [:user, :channel],
+      order_by: [desc: mf.updated_at]
+
+    query = if channel_id, do: where(query, [mf], mf.channel_id == ^channel_id), else: query
+    query = if file_type, do: where(query, [mf], mf.file_type == ^file_type), else: query
+
+    query = if search_query do
+      search_term = "%#{search_query}%"
+      where(query, [mf],
+        ilike(mf.filename, ^search_term) or
+        ilike(mf.title, ^search_term) or
+        ilike(mf.description, ^search_term)
+      )
+    else
+      query
+    end
+
+    Repo.all(query)
+  end
+
+  defp build_discovery_cards(files, groups) do
+    # Create cards for grouped files
+    group_cards = Enum.map(groups, fn group ->
+      %{
+        type: :group,
+        id: "group_#{group.id}",
+        data: group,
+        primary_file: group.primary_file,
+        file_count: length(group.media_files),
+        expanded: group.auto_expand
+      }
+    end)
+
+    # Create cards for ungrouped files
+    grouped_file_ids = groups
+    |> Enum.flat_map(& &1.media_files)
+    |> Enum.map(& &1.id)
+    |> MapSet.new()
+
+    individual_cards = files
+    |> Enum.reject(fn file -> MapSet.member?(grouped_file_ids, file.id) end)
+    |> Enum.map(fn file ->
+      %{
+        type: :individual,
+        id: "file_#{file.id}",
+        data: file,
+        primary_file: file
+      }
+    end)
+
+    # Shuffle for discovery variety
+    (group_cards ++ individual_cards) |> Enum.shuffle()
+  end
+
+  @doc """
+  Lists media files for a user with enhanced metadata.
+  """
+  def list_media_files_for_user(user_id, opts \\ []) do
+    from(mf in MediaFile,
+      where: mf.user_id == ^user_id,
+      where: mf.status == "active",
+      preload: [:user, :channel],
+      order_by: [desc: mf.updated_at]
+    )
+    |> apply_media_filters(opts)
+    |> Repo.all()
+  end
+
+  defp apply_media_filters(query, opts) do
+    Enum.reduce(opts, query, fn
+      {:channel_id, nil}, q -> q
+      {:channel_id, channel_id}, q -> where(q, [mf], mf.channel_id == ^channel_id)
+      {:file_type, type}, q -> where(q, [mf], mf.file_type == ^type)
+      {:limit, limit}, q -> limit(q, ^limit)
+      {_key, _value}, q -> q
+    end)
+  end
+
+  # ==================
+  # PUBSUB SUBSCRIPTIONS
+  # ==================
+
+  @doc """
+  Subscribes to real-time updates for media discussions.
+  """
+  def subscribe_to_discussion(discussion_id) do
+    Phoenix.PubSub.subscribe(Frestyl.PubSub, "discussion:#{discussion_id}")
+  end
+
+  @doc """
+  Subscribes to real-time reaction updates.
+  """
+  def subscribe_to_media_reactions(media_file_id: file_id) do
+    Phoenix.PubSub.subscribe(Frestyl.PubSub, "media_file:#{file_id}")
+  end
+
+  def subscribe_to_media_reactions(media_group_id: group_id) do
+    Phoenix.PubSub.subscribe(Frestyl.PubSub, "media_group:#{group_id}")
+  end
+
+    @doc """
+  Get media groups formatted for the discovery interface with planetary relationships
+  """
+  def list_media_groups_for_discovery(user_id, opts \\ %{}) do
+    limit = Map.get(opts, :limit, 20)
+    offset = Map.get(opts, :offset, 0)
+    filter_type = Map.get(opts, :filter_type)
+    sort_by = Map.get(opts, :sort_by, "recent")
+    search = Map.get(opts, :search)
+
+    base_query = from(mg in MediaGroup,
+      join: pf in MediaFile, on: pf.id == mg.primary_file_id,
+      join: u in User, on: u.id == mg.user_id,
+      left_join: mgf in MediaGroupFile, on: mgf.media_group_id == mg.id,
+      left_join: sf in MediaFile, on: sf.id == mgf.media_file_id,
+      left_join: mm in MusicMetadata, on: mm.media_file_id == pf.id,
+      left_join: mr in MediaReaction, on: mr.media_group_id == mg.id,
+      left_join: md in MediaDiscussion, on: md.media_group_id == mg.id,
+      left_join: vh in ViewHistory, on: vh.media_group_id == mg.id,
+      where: mg.user_id == ^user_id or mg.visibility == "public",
+      group_by: [mg.id, pf.id, u.id, mm.id],
+      select: %{
+        id: mg.id,
+        title: mg.title,
+        description: mg.description,
+        visibility: mg.visibility,
+        collaboration_enabled: mg.collaboration_enabled,
+        tags: mg.tags,
+        inserted_at: mg.inserted_at,
+        updated_at: mg.updated_at,
+        primary_file: %{
+          id: pf.id,
+          title: pf.title,
+          original_filename: pf.original_filename,
+          file_type: pf.file_type,
+          file_path: pf.file_path,
+          size: pf.size,
+          thumbnail_path: pf.thumbnail_path,
+          music_metadata: mm
+        },
+        creator: %{
+          id: u.id,
+          name: u.name,
+          username: u.username,
+          avatar_url: u.avatar_url
+        },
+        satellite_count: count(mgf.id),
+        reaction_count: count(mr.id),
+        discussion_count: count(md.id),
+        view_count: count(vh.id)
+      }
+    )
+
+    # Apply filters
+    query = base_query
+    |> apply_discovery_filters(filter_type, search)
+    |> apply_discovery_sorting(sort_by)
+
+    # Get total count for pagination
+    total_count = query |> Repo.aggregate(:count, :id)
+
+    # Get paginated results
+    groups = query
+    |> limit(^limit)
+    |> offset(^offset)
+    |> Repo.all()
+    |> load_discovery_associations()
+
+    %{
+      groups: groups,
+      total_count: total_count,
+      has_more: offset + limit < total_count
+    }
+  end
+
+  @doc """
+  Get a specific media group with all planetary data (primary file + satellites)
+  """
+  def get_media_group_with_planetary_data(group_id, user_id) do
+    query = from(mg in MediaGroup,
+      join: pf in MediaFile, on: pf.id == mg.primary_file_id,
+      join: u in User, on: u.id == mg.user_id,
+      left_join: mgf in MediaGroupFile, on: mgf.media_group_id == mg.id,
+      left_join: sf in MediaFile, on: sf.id == mgf.media_file_id,
+      left_join: mm in MusicMetadata, on: mm.media_file_id == pf.id,
+      left_join: collab in Collaboration, on: collab.media_group_id == mg.id,
+      left_join: collab_user in User, on: collab_user.id == collab.user_id,
+      where: mg.id == ^group_id,
+      where: mg.user_id == ^user_id or mg.visibility == "public"
+    )
+
+    case Repo.one(query) do
+      nil -> nil
+      group ->
+        # Load associations separately to avoid preload issues
+        media_group_files = from(mgf in MediaGroupFile,
+          join: mf in MediaFile, on: mf.id == mgf.media_file_id,
+          where: mgf.media_group_id == ^group_id,
+          select: %{mgf | media_file: mf}
+        ) |> Repo.all()
+
+        collaborations = from(c in Collaboration,
+          join: u in User, on: u.id == c.user_id,
+          where: c.media_group_id == ^group_id,
+          select: %{c | user: u}
+        ) |> Repo.all()
+
+        discussions = from(md in MediaDiscussion,
+          left_join: dm in DiscussionMessage, on: dm.media_discussion_id == md.id,
+          left_join: u in User, on: u.id == dm.user_id,
+          where: md.media_group_id == ^group_id
+        ) |> Repo.all()
+
+        reactions = from(mr in MediaReaction,
+          join: u in User, on: u.id == mr.user_id,
+          where: mr.media_group_id == ^group_id
+        ) |> Repo.all()
+
+        # Get primary file with music metadata
+        primary_file = from(mf in MediaFile,
+          left_join: mm in MusicMetadata, on: mm.media_file_id == mf.id,
+          where: mf.id == ^group.primary_file_id,
+          select: %{mf | music_metadata: mm}
+        ) |> Repo.one()
+
+        %{
+          id: group.id,
+          title: group.title,
+          description: group.description,
+          visibility: group.visibility,
+          collaboration_enabled: group.collaboration_enabled,
+          tags: group.tags,
+          inserted_at: group.inserted_at,
+          updated_at: group.updated_at,
+          primary_file: primary_file,
+          satellites: media_group_files,
+          creator: group.user,
+          collaborators: Enum.map(collaborations, & &1.user),
+          discussions: discussions,
+          reactions: reactions,
+          reaction_summary: calculate_reaction_summary(reactions),
+          view_count: get_group_view_count(group.id)
+        }
+    end
+  end
+
+  @doc """
+  Get suggested next planets based on user behavior and content similarity
+  """
+  def get_suggested_next_planets(current_planet_id, user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 5)
+
+    # Get current planet info for similarity matching
+    current_planet = get_media_group_with_planetary_data(current_planet_id, user_id)
+
+    if current_planet do
+      suggestions = []
+
+      # 1. Same genre/style suggestions
+      genre_suggestions = get_genre_based_suggestions(current_planet, user_id, 2)
+
+      # 2. Same creator suggestions
+      creator_suggestions = get_creator_based_suggestions(current_planet, user_id, 2)
+
+      # 3. Collaborative filtering (users who liked this also liked...)
+      collaborative_suggestions = get_collaborative_suggestions(current_planet_id, user_id, 2)
+
+      # 4. Recent activity suggestions
+      activity_suggestions = get_activity_based_suggestions(user_id, 1)
+
+      (suggestions ++ genre_suggestions ++ creator_suggestions ++
+       collaborative_suggestions ++ activity_suggestions)
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.take(limit)
+    else
+      []
+    end
+  end
+
+  @doc """
+  Record a view for analytics and recommendation purposes
+  """
+  def record_view(media_group_id, user_id, metadata \\ %{}) do
+    attrs = %{
+      media_group_id: media_group_id,
+      user_id: user_id,
+      viewed_at: DateTime.utc_now(),
+      session_id: metadata[:session_id],
+      device_type: metadata[:device_type],
+      source: metadata[:source] || "discovery",
+      duration_seconds: metadata[:duration_seconds]
+    }
+
+    %ViewHistory{}
+    |> ViewHistory.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Get user's navigation history for back/forward functionality
+  """
+  def get_user_navigation_history(user_id, limit \\ 50) do
+    from(vh in ViewHistory,
+      join: mg in MediaGroup, on: mg.id == vh.media_group_id,
+      join: pf in MediaFile, on: pf.id == mg.primary_file_id,
+      where: vh.user_id == ^user_id,
+      order_by: [desc: vh.viewed_at],
+      limit: ^limit,
+      select: %{
+        id: mg.id,
+        title: mg.title,
+        primary_file_type: pf.file_type,
+        viewed_at: vh.viewed_at
+      }
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Get recent media for theme suggestions
+  """
+  def get_recent_user_media(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 10)
+
+    from(vh in ViewHistory,
+      join: mg in MediaGroup, on: mg.id == vh.media_group_id,
+      join: pf in MediaFile, on: pf.id == mg.primary_file_id,
+      left_join: mm in MusicMetadata, on: mm.media_file_id == pf.id,
+      where: vh.user_id == ^user_id,
+      order_by: [desc: vh.viewed_at],
+      limit: ^limit,
+      select: %{
+        id: mg.id,
+        primary_file: pf,
+        music_metadata: mm,
+        viewed_at: vh.viewed_at
+      }
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Check if user is following a planet (for notifications)
+  """
+  def is_following_planet?(planet_id, user_id) do
+    # Implement following logic based on your schema
+    # This could be reactions, saved items, or dedicated follows
+    from(mr in MediaReaction,
+      where: mr.media_group_id == ^planet_id,
+      where: mr.user_id == ^user_id,
+      where: mr.reaction_type == "follow"
+    )
+    |> Repo.exists?()
+  end
+
+  @doc """
+  Get collaboration status for a user on a planet
+  """
+  def get_collaboration_status(planet_id, user_id) do
+    case Repo.get_by(Collaboration, media_group_id: planet_id, user_id: user_id) do
+      nil -> %{status: "none", role: nil}
+      collab -> %{status: "active", role: collab.role, permissions: collab.permissions}
+    end
+  end
+
+  # Private helper functions
+
+  defp apply_discovery_filters(query, filter_type, search) do
+    query
+    |> filter_by_type(filter_type)
+    |> filter_by_search(search)
+  end
+
+  defp filter_by_type(query, nil), do: query
+  defp filter_by_type(query, type) do
+    from([mg, pf, ...] in query,
+      where: pf.file_type == ^type
+    )
+  end
 
   defp filter_by_search(query, nil), do: query
-  defp filter_by_search(query, search) do
+  defp filter_by_search(query, search) when is_binary(search) do
     search_term = "%#{search}%"
-    where(query, [m], ilike(m.original_filename, ^search_term) or
-                      ilike(m.title, ^search_term) or
-                      ilike(m.description, ^search_term))
+    from([mg, pf, ...] in query,
+      where: ilike(mg.title, ^search_term) or
+             ilike(pf.title, ^search_term) or
+             ilike(pf.original_filename, ^search_term)
+    )
   end
 
-  defp order_by_field(query, order), do: order_by(query, ^order)
-
-  @doc """
-  Updates a media file.
-  """
-  def update_media_file(%MediaFile{} = media_file, attrs) do
-    media_file
-    |> MediaFile.changeset(attrs)
-    |> Repo.update()
-    |> broadcast_updated() # Add this line
+  defp apply_discovery_sorting(query, sort_by) do
+    case sort_by do
+      "recent" -> order_by(query, [mg, ...], desc: mg.updated_at)
+      "popular" ->
+        # For popular sorting, we need to count reactions in a subquery
+        from([mg, pf, u, mgf, sf, mm, mr, md, vh] in query,
+          group_by: [mg.id, pf.id, u.id, mm.id],
+          order_by: [desc: count(mr.id)]
+        )
+      "title" -> order_by(query, [mg, ...], asc: mg.title)
+      "oldest" -> order_by(query, [mg, ...], asc: mg.inserted_at)
+      _ -> order_by(query, [mg, ...], desc: mg.updated_at)
+    end
   end
 
-  @doc """
-  Deletes a media file.
-  """
-  def delete_media_file(%MediaFile{} = media_file) do
-    # Delete the file from storage
-    if function_exported?(Storage, :delete, 1) do
-      Storage.delete(media_file.file_path)
+  defp load_discovery_associations(groups) do
+    Enum.map(groups, fn group ->
+      # Load satellites for each group
+      satellites = from(mgf in MediaGroupFile,
+        join: sf in MediaFile, on: sf.id == mgf.media_file_id,
+        where: mgf.media_group_id == ^group.id,
+        order_by: [asc: mgf.position],
+        select: %{
+          id: sf.id,
+          title: sf.title,
+          file_type: sf.file_type,
+          relationship_type: mgf.relationship_type,
+          position: mgf.position,
+          media_file: sf
+        }
+      ) |> Repo.all()
+
+      # Load recent reactions
+      recent_reactions = from(mr in MediaReaction,
+        join: u in User, on: u.id == mr.user_id,
+        where: mr.media_group_id == ^group.id,
+        order_by: [desc: mr.inserted_at],
+        limit: 5,
+        select: %{
+          reaction_type: mr.reaction_type,
+          user: %{name: u.name, avatar_url: u.avatar_url},
+          inserted_at: mr.inserted_at
+        }
+      ) |> Repo.all()
+
+      Map.merge(group, %{
+        media_group_files: satellites,
+        reaction_summary: %{
+          total_count: group.reaction_count,
+          recent_reactions: recent_reactions
+        }
+      })
+    end)
+  end
+
+  defp calculate_reaction_summary(reactions) do
+    by_type = Enum.group_by(reactions, & &1.reaction_type)
+
+    %{
+      total_count: length(reactions),
+      by_type: Map.new(by_type, fn {type, reactions} -> {type, length(reactions)} end),
+      recent_reactions: Enum.take(reactions, 5)
+    }
+  end
+
+  defp get_group_view_count(group_id) do
+    from(vh in ViewHistory,
+      where: vh.media_group_id == ^group_id,
+      select: count(vh.id)
+    )
+    |> Repo.one() || 0
+  end
+
+  defp get_genre_based_suggestions(current_planet, user_id, limit) do
+    genre = case current_planet.primary_file.music_metadata do
+      %{genre: genre} when not is_nil(genre) -> genre
+      _ -> nil
+    end
+
+    if genre do
+      from(mg in MediaGroup,
+        join: pf in MediaFile, on: pf.id == mg.primary_file_id,
+        join: mm in MusicMetadata, on: mm.media_file_id == pf.id,
+        where: mg.id != ^current_planet.id,
+        where: mg.user_id == ^user_id or mg.visibility == "public",
+        where: mm.genre == ^genre,
+        order_by: [desc: mg.updated_at],
+        limit: ^limit
+      )
+      |> Repo.all()
     else
-      # Fallback to direct file deletion
-      if media_file.storage_type == "local" do
-        File.rm(media_file.file_path)
-
-    # Delete from database
-    Repo.delete(media_file)
-    |> broadcast_deleted() # Add this line
+      []
     end
   end
 
-    # Delete thumbnails if they exist
-    if media_file.thumbnails && map_size(media_file.thumbnails) > 0 do
-      if function_exported?(Storage, :delete, 1) do
-        Enum.each(media_file.thumbnails, fn {_size, url} ->
-          Storage.delete(url)
-        end)
-      else
-        # Fallback for local storage
-        if media_file.storage_type == "local" do
-          Enum.each(media_file.thumbnails, fn {_size, path} ->
-            File.rm(path)
-          end)
-        end
-      end
-    end
+  defp get_creator_based_suggestions(current_planet, user_id, limit) do
+    creator_id = current_planet.creator.id
 
-    # Delete from database
-    Repo.delete(media_file)
+    from(mg in MediaGroup,
+      where: mg.user_id == ^creator_id,
+      where: mg.id != ^current_planet.id,
+      where: mg.user_id == ^user_id or mg.visibility == "public",
+      order_by: [desc: mg.updated_at],
+      limit: ^limit
+    )
+    |> Repo.all()
   end
 
-  # Tag related functions
+  defp get_collaborative_suggestions(planet_id, user_id, limit) do
+    # Users who reacted to this planet
+    similar_users = from(mr in MediaReaction,
+      where: mr.media_group_id == ^planet_id,
+      where: mr.user_id != ^user_id,
+      select: mr.user_id,
+      distinct: true
+    ) |> Repo.all()
 
-  @doc """
-  Adds tags to a media file.
-  """
-  def add_tags_to_media_file(%MediaFile{} = media_file, tag_ids) when is_list(tag_ids) do
-    alias Frestyl.Media.Tag
-    tags = Repo.all(from t in Tag, where: t.id in ^tag_ids)
-
-    # Get existing tags
-    existing_tags = Repo.preload(media_file, :tags).tags
-
-    # Merge tags
-    all_tags = existing_tags ++ tags |> Enum.uniq_by(& &1.id)
-
-    # Update associations
-    media_file
-    |> MediaFile.tag_changeset(all_tags)
-    |> Repo.update()
+    # Get planets those users also liked
+    from(mg in MediaGroup,
+      join: mr in MediaReaction, on: mr.media_group_id == mg.id,
+      where: mr.user_id in ^similar_users,
+      where: mg.id != ^planet_id,
+      where: mg.visibility == "public",
+      group_by: mg.id,
+      order_by: [desc: count(mr.id)],
+      limit: ^limit
+    )
+    |> Repo.all()
   end
 
-  @doc """
-  Removes tags from a media file.
-  """
-  def remove_tags_from_media_file(%MediaFile{} = media_file, tag_ids) when is_list(tag_ids) do
-    # Get existing tags
-    existing_tags = Repo.preload(media_file, :tags).tags
-
-    # Filter out tags to remove
-    remaining_tags = Enum.filter(existing_tags, fn tag -> tag.id not in tag_ids end)
-
-    # Update associations
-    media_file
-    |> MediaFile.tag_changeset(remaining_tags)
-    |> Repo.update()
+  defp get_activity_based_suggestions(user_id, limit) do
+    # Get recently viewed planets by user
+    from(mg in MediaGroup,
+      join: vh in ViewHistory, on: vh.media_group_id == mg.id,
+      where: vh.user_id == ^user_id,
+      where: mg.visibility == "public",
+      order_by: [desc: vh.viewed_at],
+      limit: ^limit,
+      distinct: true
+    )
+    |> Repo.all()
   end
-
-  @doc """
-  Moves a media file to a folder.
-  """
-  def move_to_folder(%MediaFile{} = media_file, folder_id) do
-    media_file
-    |> MediaFile.changeset(%{folder_id: folder_id})
-    |> Repo.update()
-  end
-
-  # lib/frestyl/media.ex - add these functions at the bottom
-  @doc """
-  Subscribes the current process to media file updates.
-  """
-  def subscribe do
-    Phoenix.PubSub.subscribe(Frestyl.PubSub, "media")
-  end
-
-  @doc """
-  Broadcasts a media file update to all subscribers.
-  """
-  def broadcast({:ok, media_file} = result, event) do
-    Phoenix.PubSub.broadcast(Frestyl.PubSub, "media", {event, media_file})
-    result
-  end
-  def broadcast({:error, _} = result, _event), do: result
-
-  @doc """
-  Broadcasts when a media file is updated.
-  """
-  def broadcast_updated(result), do: broadcast(result, :media_file_updated)
-
-  @doc """
-  Broadcasts when a media file is deleted.
-  """
-  def broadcast_deleted(result), do: broadcast(result, :media_file_deleted)
-
-  # lib/frestyl/media.ex - add these functions at the bottom
-  @doc """
-  Subscribes the current process to media file updates.
-  """
-  def subscribe do
-    Phoenix.PubSub.subscribe(Frestyl.PubSub, "media")
-  end
-
-  @doc """
-  Broadcasts a media file update to all subscribers.
-  """
-  def broadcast({:ok, media_file} = result, event) do
-    Phoenix.PubSub.broadcast(Frestyl.PubSub, "media", {event, media_file})
-    result
-  end
-  def broadcast({:error, _} = result, _event), do: result
-
-  @doc """
-  Broadcasts when a media file is updated.
-  """
-  def broadcast_updated(result), do: broadcast(result, :media_file_updated)
-
-  @doc """
-  Broadcasts when a media file is deleted.
-  """
-  def broadcast_deleted(result), do: broadcast(result, :media_file_deleted)
 end

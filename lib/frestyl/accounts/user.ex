@@ -1,229 +1,245 @@
+# lib/frestyl/accounts/user.ex
 defmodule Frestyl.Accounts.User do
   use Ecto.Schema
   import Ecto.Changeset
-  # Ensure hash_generate is imported for password hashing
-  import Bcrypt, only: [verify_pass: 2, hash_generate: 1]
 
+  # JSON encoding with fields that actually exist in your database
+  @derive {Jason.Encoder, only: [:id, :name, :email, :username, :display_name, :bio, :avatar_url, :role, :verified, :full_name, :website, :status, :inserted_at, :updated_at]}
 
   schema "users" do
+    # Core fields that exist in your database
     field :name, :string
     field :email, :string
-    field :password, :string, virtual: true, redact: true
-    field :password_hash, :string
-    field :confirmed_at, :naive_datetime # <-- Add this field for email confirmation
-    field :status, :string, default: "offline"
+    field :password_hash, :string, redact: true  # Your DB has password_hash, not hashed_password
     field :username, :string
-    field :timezone, :string, default: "UTC"
-
-    # New fields
-    field :role, :string, default: "user"
-    field :subscription_tier, :string, default: "free"
-    field :full_name, :string
+    field :display_name, :string
     field :bio, :string
     field :avatar_url, :string
+    field :role, :string
+    field :verified, :boolean, default: false
+    field :confirmed_at, :utc_datetime
+    field :full_name, :string
+    field :confirmation_token, :string
+    field :confirmation_sent_at, :utc_datetime
+    field :profile_video_url, :string
+    field :profile_audio_url, :string
+    field :totp_secret, :string, redact: true
+    field :totp_enabled, :boolean, default: false
+    field :backup_codes, {:array, :string}, redact: true
+    field :privacy_settings, :map, default: %{}
+    field :timezone, :string
+    field :preferences, :map, default: %{}
+    field :subscription_tier, :string
     field :website, :string
     field :social_links, :map, default: %{}
     field :last_active_at, :utc_datetime
+    field :status, :string, default: "active"
 
-    # Update media-related fields
-    field :profile_video_url, :string
-    field :profile_audio_url, :string
+    # Virtual field for forms
+    field :password, :string, virtual: true, redact: true
 
-    # Add virtual fields for file uploads
-    field :avatar_upload, :any, virtual: true
-    field :video_upload, :any, virtual: true
-    field :audio_upload, :any, virtual: true
+    # Relationships
+    has_many :media_files, Frestyl.Media.MediaFile, on_delete: :delete_all, foreign_key: :user_id
+    has_many :reactions, Frestyl.Media.MediaReaction, on_delete: :delete_all, foreign_key: :user_id
+    has_many :view_histories, Frestyl.Media.ViewHistory, on_delete: :delete_all, foreign_key: :user_id
+    has_many :theme_preferences, Frestyl.Media.UserThemePreferences, on_delete: :delete_all, foreign_key: :user_id
+    has_many :saved_filters, Frestyl.Media.SavedFilter, on_delete: :delete_all, foreign_key: :user_id
+    has_many :discussions, Frestyl.Media.MediaDiscussion, on_delete: :delete_all, foreign_key: :user_id
+    has_many :discussion_messages, Frestyl.Media.DiscussionMessage, on_delete: :delete_all, foreign_key: :user_id
 
-    # Add fields for email confirmation token
-    field :confirmation_token, :string
-    field :confirmation_sent_at, :naive_datetime
-
-    field :totp_secret, :binary
-    field :totp_enabled, :boolean, default: false
-    field :backup_codes, {:array, :string}
-
-    field :totp_code, :string, virtual: true
-
-    # Privacy
-    field :privacy_settings, :map, default: %{
-      "profile_visibility" => "public",
-      "media_visibility" => "public",
-      "metrics_visibility" => "private"
-    }
-
-    timestamps()
+    timestamps(type: :utc_datetime)
   end
 
-  # You may have a general changeset for admin use etc.
-  # Ensure this one handles password hashing correctly if password is changed.
-
-  # Add to lib/frestyl/accounts/user.ex
-  def privacy_changeset(user, attrs) do
+  @doc false
+  def changeset(user, attrs) do
     user
-    |> cast(attrs, [:privacy_settings])
-    |> validate_privacy_settings()
-  end
-
-  defp validate_privacy_settings(changeset) do
-    validate_change(changeset, :privacy_settings, fn _, privacy_settings ->
-      valid_visibilities = ["public", "friends", "private"]
-
-      required_settings = [
-        "profile_visibility",
-        "media_visibility",
-        "metrics_visibility"
-      ]
-
-      errors = []
-
-      # Validate that all required settings are present
-      errors = Enum.reduce(required_settings, errors, fn setting, acc ->
-        if !Map.has_key?(privacy_settings, setting) do
-          [{:privacy_settings, "missing required setting: #{setting}"} | acc]
-        else
-          acc
-        end
-      end)
-
-      # Validate that all present settings have valid values
-      errors = Enum.reduce(privacy_settings, errors, fn {setting, value}, acc ->
-        if value not in valid_visibilities do
-          [{:privacy_settings, "invalid visibility value for #{setting}: must be one of #{Enum.join(valid_visibilities, ", ")}"} | acc]
-        else
-          acc
-        end
-      end)
-
-      errors
-    end)
-  end
-
-  # Corrected password hashing function
-  defp put_password_hash(changeset) do
-    case changeset do
-      %Ecto.Changeset{valid?: true, changes: %{password: password}} when is_binary(password) and byte_size(password) > 0 ->
-        # Use Bcrypt.hash_generate to securely hash the password
-        put_change(changeset, :password_hash, Bcrypt.hash_pwd_salt(password))
-      _ ->
-        changeset # No password change, return changeset as is
-    end
-  end
-
-  # Corrected valid_password? function to reference password_hash
-  def valid_password?(%Frestyl.Accounts.User{password_hash: password_hash}, password)
-      when is_binary(password) and is_binary(password_hash) do
-    # Use Bcrypt.verify_pass to compare the provided password with the stored hash
-    Bcrypt.verify_pass(password, password_hash)
-  end
-
-  # Keep the helper for timing attack resistance on failed attempts
-  def valid_password?(_, _) do
-    Bcrypt.no_user_verify()
-    false
-  end
-
-  # Add this function to lib/frestyl/accounts/user.ex
-  def two_factor_auth_changeset(user, attrs) do
-    user
-    |> cast(attrs, [:totp_secret, :totp_enabled, :backup_codes])
-    |> validate_required([:totp_enabled])
-  end
-
-  # Add this function for verifying TOTP codes during login
-  def totp_verification_changeset(user, attrs) do
-    user
-    |> cast(attrs, [:totp_code])
-    |> validate_required([:totp_code])
-    |> validate_length(:totp_code, is: 6)
-    |> validate_format(:totp_code, ~r/^[0-9]+$/, message: "must contain only numbers")
-  end
-
-  # This changeset is specifically for registration
-  def registration_changeset(user, attrs) do
-    user
-    |> cast(attrs, [:name, :email, :password, :username, :confirmed_at, :confirmation_token, :confirmation_sent_at, :timezone]) # Include confirmation fields
-    |> validate_required([:name, :email, :password, :username])
-    # Ensure required fields are present *before* unique constraints
+    |> cast(attrs, [:name, :email, :username, :display_name, :bio, :avatar_url, :full_name, :website, :social_links, :timezone, :preferences, :privacy_settings])
+    |> validate_required([:email])
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "must have the @ sign and no spaces")
-    |> validate_length(:password, min: 6)
-    # Validate username format if needed (e.g., no spaces, certain characters)
-    |> unique_constraint(:users_username_index, name: :users_username_index) # Use name: option
-    |> unique_constraint(:email, name: :users_email_index) # Use name: option or just field name if index matches
-    # Ensure index names match your database indices if using atom names
-    # Alternatively, use field names if your index names match:
-    # |> unique_constraint(:username)
-    # |> unique_constraint(:email)
-    |> put_password_hash()
+    |> validate_length(:email, max: 160)
+    |> unique_constraint(:email)
+    |> validate_username()
   end
 
-  # Add a changeset specifically for confirming the user
-  def confirm_changeset(user, attrs \\ %{}) do
+  def registration_changeset(user, attrs, opts \\ []) do
     user
-    |> cast(attrs, [:confirmed_at, :confirmation_token])
-    |> put_change(:confirmation_token, nil) # Clear the token upon confirmation
-    |> put_change(:confirmed_at, DateTime.utc_now()) # Set confirmed_at to current time
-    |> validate_required([:confirmed_at])
-  end
-
-  def login_changeset(user, attrs) do
-    user
-    |> Ecto.Changeset.cast(attrs, [:email, :password])
-    |> Ecto.Changeset.validate_required([:email, :password])
-  end
-
-  def role_changeset(user, attrs) do
-    user
-    |> cast(attrs, [:role])
-    |> validate_inclusion(:role, ["user", "creator", "host", "channel_owner", "admin"])
-  end
-
-  def subscription_changeset(user, attrs) do
-    user
-    |> cast(attrs, [:subscription_tier])
-    |> validate_inclusion(:subscription_tier, ["free", "basic", "premium", "pro"])
+    |> cast(attrs, [:name, :email, :password, :username, :display_name, :bio, :full_name])
+    |> validate_required([:email])
+    |> validate_email(opts)
+    |> validate_password(opts)
+    |> validate_username()
   end
 
   def profile_changeset(user, attrs) do
     user
-    |> cast(attrs, [:username, :full_name, :bio, :avatar_url, :website, :social_links, :profile_video_url, :profile_audio_url])
-    |> validate_required([:username])
-    |> validate_length(:username, min: 3, max: 30)
-    |> validate_format(:username, ~r/^[a-zA-Z0-9_-]+$/,
-       message: "only letters, numbers, underscores, and hyphens are allowed")
-    |> unique_constraint(:username)
-    |> validate_length(:full_name, max: 255)
-    |> validate_length(:bio, max: 2000)
-    |> validate_length(:avatar_url, max: 1000)
-    |> validate_length(:profile_video_url, max: 1000)
-    |> validate_length(:profile_audio_url, max: 1000)
-    |> validate_length(:website, max: 255)
-    |> validate_website_format(:website)
+    |> cast(attrs, [:name, :username, :display_name, :avatar_url, :bio, :full_name, :website, :social_links, :timezone, :preferences, :privacy_settings])
+    |> validate_username()
+    |> validate_length(:display_name, max: 100)
+    |> validate_length(:bio, max: 500)
+    |> validate_url(:avatar_url)
+    |> validate_url(:website)
+    |> validate_url(:profile_video_url)
+    |> validate_url(:profile_audio_url)
   end
 
-  def activity_changeset(user, attrs) do
+  defp validate_email(changeset, opts) do
+    changeset
+    |> validate_required([:email])
+    |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "must have the @ sign and no spaces")
+    |> validate_length(:email, max: 160)
+    |> maybe_validate_unique_email(opts)
+  end
+
+  defp validate_password(changeset, opts) do
+    changeset
+    |> validate_required([:password])
+    |> validate_length(:password, min: 8, max: 72)
+    |> maybe_hash_password(opts)
+  end
+
+  defp validate_username(changeset) do
+    case get_field(changeset, :username) do
+      nil -> changeset
+      "" -> changeset
+      _ ->
+        changeset
+        |> validate_length(:username, min: 3, max: 30)
+        |> validate_format(:username, ~r/^[a-zA-Z0-9_]+$/, message: "only letters, numbers, and underscores allowed")
+        |> unique_constraint(:username)
+    end
+  end
+
+  defp validate_url(changeset, field) do
+    case get_field(changeset, field) do
+      nil -> changeset
+      "" -> changeset
+      _ -> validate_format(changeset, field, ~r/^https?:\/\/.+/, message: "must be a valid URL")
+    end
+  end
+
+  defp maybe_hash_password(changeset, opts) do
+    hash_password? = Keyword.get(opts, :hash_password, true)
+    password = get_change(changeset, :password)
+
+    if hash_password? && password && changeset.valid? do
+      changeset
+      |> put_change(:password_hash, hash_password(password))  # Use password_hash not hashed_password
+      |> delete_change(:password)
+    else
+      changeset
+    end
+  end
+
+  defp maybe_validate_unique_email(changeset, opts) do
+    if Keyword.get(opts, :validate_email, true) do
+      changeset
+      |> unsafe_validate_unique(:email, Frestyl.Repo)
+      |> unique_constraint(:email)
+    else
+      changeset
+    end
+  end
+
+  # Use bcrypt if available
+  defp hash_password(password) do
+    if Code.ensure_loaded?(Bcrypt) do
+      Bcrypt.hash_pwd_salt(password)
+    else
+      password
+    end
+  end
+
+  @doc """
+  Verifies the password.
+  """
+  def valid_password?(%__MODULE__{password_hash: password_hash}, password)
+      when is_binary(password_hash) and byte_size(password) > 0 do
+    if Code.ensure_loaded?(Bcrypt) do
+      Bcrypt.verify_pass(password, password_hash)
+    else
+      password_hash == password
+    end
+  end
+
+  def valid_password?(_, _) do
+    if Code.ensure_loaded?(Bcrypt) do
+      Bcrypt.no_user_verify()
+    end
+    false
+  end
+
+  @doc """
+  Validates the current password otherwise adds an error to the changeset.
+  """
+  def validate_current_password(changeset, password) do
+    if valid_password?(changeset.data, password) do
+      changeset
+    else
+      add_error(changeset, :current_password, "is not valid")
+    end
+  end
+
+  # Helper functions for display and JSON
+  def display_name(%__MODULE__{display_name: display_name, full_name: full_name, name: name, username: username, email: email}) do
+    display_name || full_name || name || username || email || "Anonymous"
+  end
+
+  def initials(%__MODULE__{} = user) do
+    display_name(user)
+    |> String.split()
+    |> Enum.take(2)
+    |> Enum.map(&String.first/1)
+    |> Enum.join()
+    |> String.upcase()
+  end
+
+  def avatar_url(%__MODULE__{avatar_url: nil} = user) do
+    initials = initials(user)
+    "https://ui-avatars.com/api/?name=#{URI.encode(initials)}&background=6366f1&color=fff"
+  end
+
+  def avatar_url(%__MODULE__{avatar_url: url}), do: url
+
+  # Preferences helper functions
+  def preferences(%__MODULE__{preferences: prefs}) when is_map(prefs), do: prefs
+  def preferences(_user), do: %{}
+
+  def get_preference(user, key, default \\ nil) do
     user
-    |> cast(attrs, [:last_active_at])
+    |> preferences()
+    |> Map.get(to_string(key), default)
   end
 
-  def status_changeset(user, attrs) do
+  def set_preference(user, key, value) do
+    new_prefs =
+      user
+      |> preferences()
+      |> Map.put(to_string(key), value)
+
+    {:ok, %{user | preferences: new_prefs}}
+  end
+
+  # Role and permission helpers
+  def admin?(%__MODULE__{role: "admin"}), do: true
+  def admin?(_), do: false
+
+  def verified?(%__MODULE__{verified: true}), do: true
+  def verified?(_), do: false
+
+  def active?(%__MODULE__{status: "active"}), do: true
+  def active?(_), do: false
+
+  # Social links helper
+  def get_social_link(user, platform) do
     user
-    |> cast(attrs, [:status])
-    |> validate_inclusion(:status, ["online", "away", "busy", "offline"])
+    |> Map.get(:social_links, %{})
+    |> Map.get(to_string(platform))
   end
 
-  defp validate_website_format(changeset, field) do
-    validate_change(changeset, field, fn _, website ->
-      if is_nil(website) do
-        []
-      else
-        uri = URI.parse(website)
-        # Check for scheme, host, and at least one dot in the host
-        if uri.scheme in ["http", "https"] && uri.host && String.contains?(uri.host, ".") do
-          []
-        else
-          [{field, "must be a valid URL (e.g., https://example.com)"}]
-        end
-      end
-    end)
-  end
+  # Two-factor authentication helpers
+  def totp_enabled?(%__MODULE__{totp_enabled: true}), do: true
+  def totp_enabled?(_), do: false
+
+  def has_backup_codes?(%__MODULE__{backup_codes: codes}) when is_list(codes) and length(codes) > 0, do: true
+  def has_backup_codes?(_), do: false
 end

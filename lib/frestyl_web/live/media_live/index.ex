@@ -2,62 +2,49 @@
 defmodule FrestylWeb.MediaLive.Index do
   use FrestylWeb, :live_view
 
-  alias Frestyl.Media
-  alias Frestyl.Channels
-
-  @per_page 12
-
   @impl true
   def mount(_params, _session, socket) do
-    # Subscribe to media updates
-    if connected?(socket), do: Media.subscribe()
+    # Sample data for demonstration - replace with your actual data loading
+    media_files = [
+      %{
+        id: 1,
+        filename: "sample_video.mp4",
+        file_type: "video",
+        file_size: 15728640,
+        url: "/uploads/sample_video.mp4",
+        uploaded_at: ~N[2024-01-15 10:30:00]
+      },
+      %{
+        id: 2,
+        filename: "presentation.pdf",
+        file_type: "document",
+        file_size: 2097152,
+        url: "/uploads/presentation.pdf",
+        uploaded_at: ~N[2024-01-14 14:20:00]
+      },
+      %{
+        id: 3,
+        filename: "nature_photo.jpg",
+        file_type: "image",
+        file_size: 5242880,
+        url: "/uploads/nature_photo.jpg",
+        uploaded_at: ~N[2024-01-13 09:15:00]
+      }
+    ]
 
-    # Get user's media files
-    media_files = Media.list_media_files(user_id: socket.assigns.current_user.id)
+    analytics = calculate_analytics(media_files)
 
-    socket = socket
+    socket =
+      socket
       |> assign(:media_files, media_files)
-      |> assign(:files, media_files)
-      |> assign(:page, 1)
+      |> assign(:filtered_files, media_files)
+      |> assign(:current_view, :grid)
       |> assign(:search_query, "")
       |> assign(:filter_type, "all")
-      |> assign(:filter_channel, "all")
-      |> assign(:sort_by, "recent")
-      |> assign(:sort_direction, :desc)
-      |> assign(:selected_files, [])
-      |> assign(:view_mode, "grid")
-      |> assign(:loading, false)
-      |> assign(:has_more?, false)
-      |> assign(:user_channels, [])
+      |> assign(:analytics, analytics)
+      |> assign(:show_upload_modal, false)
 
     {:ok, socket}
-  end
-
-  @impl true
-  def handle_params(params, _url, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
-  end
-
-  defp apply_action(socket, :index, _params) do
-    socket
-    |> assign(:page_title, "My Media")
-    |> assign(:media_file, nil)
-  end
-
-  defp apply_action(socket, :show, %{"id" => id}) do
-    media_file = Media.get_media_file!(id)
-
-    socket
-    |> assign(:page_title, media_file.title || media_file.original_filename)
-    |> assign(:media_file, media_file)
-  end
-
-  @impl true
-  def handle_event("delete", %{"id" => id}, socket) do
-    media_file = Media.get_media_file!(id)
-    {:ok, _} = Media.delete_media_file(media_file)
-
-    {:noreply, socket}
   end
 
   @impl true
@@ -70,343 +57,399 @@ defmodule FrestylWeb.MediaLive.Index do
     |> assign(:page_title, "Media Library")
   end
 
-  # New search and filter event handlers
+  defp apply_action(socket, :edit, %{"id" => id}) do
+    # Find media file from the list
+    media_file = Enum.find(socket.assigns.media_files, &(&1.id == String.to_integer(id)))
+
+    if media_file do
+      socket
+      |> assign(:page_title, "Edit Media")
+      |> assign(:media_file, media_file)
+    else
+      socket
+      |> put_flash(:error, "Media file not found")
+      |> push_navigate(to: ~p"/media")
+    end
+  end
+
   @impl true
-  def handle_event("search", %{"search" => search_query}, socket) do
+  def handle_event("switch_view", %{"view" => view}, socket) do
+    {:noreply, assign(socket, :current_view, String.to_atom(view))}
+  end
+
+  def handle_event("search", %{"query" => query}, socket) do
+    filtered_files = filter_files(socket.assigns.media_files, query, socket.assigns.filter_type)
+
     socket =
       socket
-      |> assign(:search_query, search_query)
-      |> assign(:page, 1)
-      |> load_files()
+      |> assign(:search_query, query)
+      |> assign(:filtered_files, filtered_files)
 
     {:noreply, socket}
   end
 
-  @impl true
   def handle_event("filter_type", %{"type" => type}, socket) do
+    filtered_files = filter_files(socket.assigns.media_files, socket.assigns.search_query, type)
+
     socket =
       socket
       |> assign(:filter_type, type)
-      |> assign(:page, 1)
-      |> load_files()
+      |> assign(:filtered_files, filtered_files)
 
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_event("filter_channel", %{"channel" => channel_id}, socket) do
-    socket =
-      socket
-      |> assign(:filter_channel, channel_id)
-      |> assign(:page, 1)
-      |> load_files()
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("sort", %{"field" => field}, socket) do
-    current_field = socket.assigns.sort_by
-    direction = if current_field == field and socket.assigns.sort_direction == :asc,
-                do: :desc,
-                else: :asc
+  def handle_event("delete", %{"id" => id}, socket) do
+    # Remove from the list (in real app, this would delete from database)
+    media_files = Enum.reject(socket.assigns.media_files, &(&1.id == String.to_integer(id)))
+    filtered_files = filter_files(media_files, socket.assigns.search_query, socket.assigns.filter_type)
+    analytics = calculate_analytics(media_files)
 
     socket =
       socket
-      |> assign(:sort_by, field)
-      |> assign(:sort_direction, direction)
-      |> load_files()
+      |> assign(:media_files, media_files)
+      |> assign(:filtered_files, filtered_files)
+      |> assign(:analytics, analytics)
+      |> put_flash(:info, "Media file deleted successfully")
 
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_event("toggle_view", _params, socket) do
-    view_mode = if socket.assigns.view_mode == "grid", do: "list", else: "grid"
-
-    socket =
-      socket
-      |> assign(:view_mode, view_mode)
-
-    {:noreply, socket}
+  def handle_event("show_upload_modal", _params, socket) do
+    {:noreply, assign(socket, :show_upload_modal, true)}
   end
 
-  @impl true
-  def handle_event("select_file", %{"id" => file_id}, socket) do
-    selected_files = socket.assigns.selected_files
-
-    selected_files =
-      if file_id in selected_files do
-        List.delete(selected_files, file_id)
-      else
-        [file_id | selected_files]
-      end
-
-    {:noreply, assign(socket, :selected_files, selected_files)}
+  def handle_event("hide_upload_modal", _params, socket) do
+    {:noreply, assign(socket, :show_upload_modal, false)}
   end
 
-  @impl true
-  def handle_event("select_all", _params, socket) do
-    file_ids = Enum.map(socket.assigns.files, & &1.id)
-    selected_files = if length(socket.assigns.selected_files) == length(file_ids),
-                     do: [],
-                     else: file_ids
-
-    {:noreply, assign(socket, :selected_files, selected_files)}
+  # Helper functions
+  defp filter_files(files, query, type) do
+    files
+    |> filter_by_type(type)
+    |> filter_by_search(query)
   end
 
-  @impl true
-  def handle_event("bulk_delete", _params, socket) do
-    selected_files = socket.assigns.selected_files
-
-    if selected_files == [] do
-      socket = put_flash(socket, :info, "No files selected")
-      {:noreply, socket}
-    else
-      case Media.delete_files(selected_files) do
-        {:ok, count} ->
-          socket =
-            socket
-            |> put_flash(:info, "Deleted #{count} files")
-            |> assign(:selected_files, [])
-            |> load_files()
-          {:noreply, socket}
-
-        {:error, reason} ->
-          socket = put_flash(socket, :error, "Failed to delete files: #{reason}")
-          {:noreply, socket}
-      end
-    end
+  defp filter_by_type(files, "all"), do: files
+  defp filter_by_type(files, type) do
+    Enum.filter(files, &(&1.file_type == type))
   end
 
-  @impl true
-  def handle_event("load_more", _params, socket) do
-    socket =
-      socket
-      |> assign(:page, socket.assigns.page + 1)
-      |> load_files()
-
-    {:noreply, socket}
+  defp filter_by_search(files, ""), do: files
+  defp filter_by_search(files, query) do
+    query_lower = String.downcase(query)
+    Enum.filter(files, fn file ->
+      String.contains?(String.downcase(file.filename), query_lower)
+    end)
   end
 
-  @impl true
-  def handle_event("delete_file", %{"id" => file_id}, socket) do
-    case Media.delete_file(file_id) do
-      {:ok, _file} ->
-        socket =
-          socket
-          |> put_flash(:info, "File deleted successfully")
-          |> load_files()
-        {:noreply, socket}
+  defp calculate_analytics(media_files) do
+    total_files = length(media_files)
+    total_storage = Enum.reduce(media_files, 0, &(&1.file_size + &2))
 
-      {:error, reason} ->
-        socket = put_flash(socket, :error, "Failed to delete file: #{reason}")
-        {:noreply, socket}
-    end
-  end
+    content_distribution =
+      media_files
+      |> Enum.group_by(&(&1.file_type))
+      |> Enum.map(fn {type, files} -> {type, length(files)} end)
+      |> Enum.into(%{})
 
-  @impl true
-  def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :active_tab, tab)}
-  end
+    recent_uploads =
+      media_files
+      |> Enum.sort_by(&(&1.uploaded_at), {:desc, NaiveDateTime})
+      |> Enum.take(5)
 
-  def handle_event("show_media_upload", _params, socket) do
-    {:noreply, assign(socket, :show_media_upload, true)}
-  end
-
-  def handle_event("hide_media_upload", _params, socket) do
-    {:noreply, assign(socket, :show_media_upload, false)}
-  end
-
-  defp reload_media(socket) do
-    filters = %{
-      search: socket.assigns.search_query,
-      file_type: file_type_filter(socket.assigns.filter_type),
-      channel_id: channel_id_filter(socket.assigns.filter_channel),
-      sort_by: socket.assigns.sort_by,
-      sort_direction: socket.assigns.sort_direction
+    %{
+      total_files: total_files,
+      total_storage: total_storage,
+      content_distribution: content_distribution,
+      recent_uploads: recent_uploads
     }
-
-    case Media.list_files_with_metadata(
-      socket.assigns.current_user,
-      socket.assigns.page,
-      @per_page,
-      filters
-    ) do
-      {files, has_more?} ->
-        socket
-        |> assign(:files, files)
-        |> assign(:has_more?, has_more?)
-        |> assign(:loading, false)
-
-      :error ->
-        socket
-        |> put_flash(:error, "Failed to load files")
-        |> assign(:loading, false)
-    end
   end
 
-  # Handle PubSub messages
-  @impl true
-  def handle_info({:media_file_created, media_file}, socket) do
-    # Only add to the list if it belongs to the current user
-    if media_file.user_id == socket.assigns.current_user.id do
-      {:noreply, update(socket, :media_files, fn files -> [media_file | files] end)}
-    else
-      {:noreply, socket}
-    end
-  end
+  defp format_file_size(bytes) when bytes < 1024, do: "#{bytes} B"
+  defp format_file_size(bytes) when bytes < 1024 * 1024, do: "#{Float.round(bytes / 1024, 1)} KB"
+  defp format_file_size(bytes) when bytes < 1024 * 1024 * 1024, do: "#{Float.round(bytes / (1024 * 1024), 1)} MB"
+  defp format_file_size(bytes), do: "#{Float.round(bytes / (1024 * 1024 * 1024), 1)} GB"
+
+  defp get_file_icon("image"), do: "🖼️"
+  defp get_file_icon("video"), do: "🎥"
+  defp get_file_icon("audio"), do: "🎵"
+  defp get_file_icon("document"), do: "📄"
+  defp get_file_icon(_), do: "📁"
 
   @impl true
-  def handle_info({:media_file_updated, media_file}, socket) do
-    # Update the file in the list if it exists
-    {:noreply, update(socket, :media_files, fn files ->
-      Enum.map(files, fn file ->
-        if file.id == media_file.id, do: media_file, else: file
-      end)
-    end)}
-  end
+  def render(assigns) do
+    ~H"""
+    <div class="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800">
+      <!-- Header -->
+      <div class="relative">
+        <div class="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
+        <div class="relative px-6 py-8">
+          <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-8">
+              <h1 class="text-4xl font-bold text-white mb-2">🌌 Media Cosmos</h1>
+              <p class="text-xl text-white/80">Explore your digital universe</p>
+            </div>
 
-  @impl true
-  def handle_info({:media_file_deleted, media_file}, socket) do
-    # Remove the file from the list
-    {:noreply, update(socket, :media_files, fn files ->
-      Enum.reject(files, fn file -> file.id == media_file.id end)
-    end)}
-  end
+            <!-- Analytics Dashboard -->
+            <div :if={@current_view == :analytics} class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+                <div class="text-3xl mb-2">📊</div>
+                <div class="text-2xl font-bold text-white"><%= @analytics.total_files %></div>
+                <div class="text-white/70">Total Files</div>
+              </div>
 
-  @impl true
-  def handle_info({:media_file_processed, media_file}, socket) do
-    # Update the file in the list if it exists
-    {:noreply, update(socket, :media_files, fn files ->
-      Enum.map(files, fn file ->
-        if file.id == media_file.id, do: media_file, else: file
-      end)
-    end)}
-  end
+              <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+                <div class="text-3xl mb-2">💾</div>
+                <div class="text-2xl font-bold text-white"><%= format_file_size(@analytics.total_storage) %></div>
+                <div class="text-white/70">Storage Used</div>
+              </div>
 
-  def handle_info(:show_media_upload, socket) do
-    {:noreply, assign(socket, :show_media_upload, true)}
-  end
+              <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+                <div class="text-3xl mb-2">🎯</div>
+                <div class="text-2xl font-bold text-white"><%= map_size(@analytics.content_distribution) %></div>
+                <div class="text-white/70">File Types</div>
+              </div>
 
-  def handle_info(:close_media_viewer, socket) do
-    {:noreply, assign(socket, :viewing_media, nil)}
-  end
+              <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+                <div class="text-3xl mb-2">⚡</div>
+                <div class="text-2xl font-bold text-white"><%= length(@analytics.recent_uploads) %></div>
+                <div class="text-white/70">Recent Uploads</div>
+              </div>
+            </div>
 
-  def handle_info({:view_media, file_id}, socket) do
-    {:noreply, assign(socket, :viewing_media, file_id)}
-  end
+            <!-- Controls -->
+            <div class="flex flex-col lg:flex-row justify-between items-center gap-4 mb-8">
+              <!-- View Switcher -->
+              <div class="flex bg-white/10 backdrop-blur-md rounded-full p-1 border border-white/20">
+                <button
+                  phx-click="switch_view"
+                  phx-value-view="grid"
+                  class={"px-4 py-2 rounded-full text-sm font-medium transition-all #{if @current_view == :grid, do: "bg-white text-gray-900", else: "text-white hover:bg-white/20"}"}
+                >
+                  🔲 Grid
+                </button>
+                <button
+                  phx-click="switch_view"
+                  phx-value-view="list"
+                  class={"px-4 py-2 rounded-full text-sm font-medium transition-all #{if @current_view == :list, do: "bg-white text-gray-900", else: "text-white hover:bg-white/20"}"}
+                >
+                  📋 List
+                </button>
+                <button
+                  phx-click="switch_view"
+                  phx-value-view="cosmos"
+                  class={"px-4 py-2 rounded-full text-sm font-medium transition-all #{if @current_view == :cosmos, do: "bg-white text-gray-900", else: "text-white hover:bg-white/20"}"}
+                >
+                  🌌 Cosmos
+                </button>
+                <button
+                  phx-click="switch_view"
+                  phx-value-view="analytics"
+                  class={"px-4 py-2 rounded-full text-sm font-medium transition-all #{if @current_view == :analytics, do: "bg-white text-gray-900", else: "text-white hover:bg-white/20"}"}
+                >
+                  📊 Analytics
+                </button>
+              </div>
 
-  def handle_info({:media_uploaded, files}, socket) do
-    {:noreply, socket
-      |> put_flash(:info, "#{length(files)} file(s) uploaded successfully")
-      |> assign(:show_media_upload, false)
-      |> reload_media()}
-  end
+              <!-- Search and Filters -->
+              <div :if={@current_view in [:grid, :list]} class="flex gap-4">
+                <input
+                  type="text"
+                  placeholder="Search files..."
+                  value={@search_query}
+                  phx-keyup="search"
+                  phx-value-query={@search_query}
+                  class="px-4 py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+                />
 
-  def handle_info({:media_deleted, _file}, socket) do
-    {:noreply, socket
-      |> put_flash(:info, "File deleted successfully")
-      |> assign(:viewing_media, nil)
-      |> reload_media()}
-  end
+                <select
+                  phx-change="filter_type"
+                  class="px-4 py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-white/30"
+                >
+                  <option value="all">All Types</option>
+                  <option value="image">Images</option>
+                  <option value="video">Videos</option>
+                  <option value="document">Documents</option>
+                  <option value="audio">Audio</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-  defp load_files(socket) do
-    socket = socket
-      |> assign_new(:search, fn -> "" end)
-      |> assign_new(:filter_type, fn -> nil end)
-      |> assign_new(:filter_channel, fn -> nil end)
-      |> assign_new(:page, fn -> 1 end)  # Ensure page has a default value
+      <!-- Content Area -->
+      <div class="px-6 pb-8">
+        <div class="max-w-7xl mx-auto">
+          <!-- Grid View -->
+          <div :if={@current_view == :grid} class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div
+              :for={file <- @filtered_files}
+              class="group bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 hover:bg-white/20 transition-all duration-300 hover:scale-105"
+            >
+              <div class="text-center">
+                <div class="text-4xl mb-4"><%= get_file_icon(file.file_type) %></div>
+                <h3 class="text-white font-semibold mb-2 truncate"><%= file.filename %></h3>
+                <p class="text-white/60 text-sm mb-4"><%= format_file_size(file.file_size) %></p>
 
-    filters = %{
-      search: socket.assigns.search,
-      file_type: socket.assigns.filter_type,
-      channel_id: channel_id_filter(socket.assigns.filter_channel),
-      sort_by: socket.assigns.sort_by,
-      sort_direction: socket.assigns.sort_direction
-    }
+                <div class="flex justify-center gap-2">
+                  <button class="px-3 py-1 bg-blue-500 hover:bg-blue-600 rounded text-white text-sm transition-colors">
+                    📝 Edit
+                  </button>
+                  <button
+                    phx-click="delete"
+                    phx-value-id={file.id}
+                    data-confirm="Are you sure you want to delete this file?"
+                    class="px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-white text-sm transition-colors"
+                  >
+                    🗑️ Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
 
-    result = Media.list_files_with_metadata(
-      socket.assigns.current_user,
-      socket.assigns.page,
-      @per_page,
-      filters
-    )
+          <!-- List View -->
+          <div :if={@current_view == :list} class="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-white/5">
+                  <tr>
+                    <th class="px-6 py-4 text-left text-white font-semibold">File</th>
+                    <th class="px-6 py-4 text-left text-white font-semibold">Type</th>
+                    <th class="px-6 py-4 text-left text-white font-semibold">Size</th>
+                    <th class="px-6 py-4 text-left text-white font-semibold">Uploaded</th>
+                    <th class="px-6 py-4 text-left text-white font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-white/10">
+                  <tr :for={file <- @filtered_files} class="hover:bg-white/5 transition-colors">
+                    <td class="px-6 py-4">
+                      <div class="flex items-center gap-3">
+                        <span class="text-xl"><%= get_file_icon(file.file_type) %></span>
+                        <span class="text-white font-medium"><%= file.filename %></span>
+                      </div>
+                    </td>
+                    <td class="px-6 py-4 text-white/70 capitalize"><%= file.file_type %></td>
+                    <td class="px-6 py-4 text-white/70"><%= format_file_size(file.file_size) %></td>
+                    <td class="px-6 py-4 text-white/70"><%= Calendar.strftime(file.uploaded_at, "%Y-%m-%d") %></td>
+                    <td class="px-6 py-4">
+                      <div class="flex gap-2">
+                        <button class="px-3 py-1 bg-blue-500 hover:bg-blue-600 rounded text-white text-sm transition-colors">
+                          📝 Edit
+                        </button>
+                        <button
+                          phx-click="delete"
+                          phx-value-id={file.id}
+                          data-confirm="Are you sure you want to delete this file?"
+                          class="px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-white text-sm transition-colors"
+                        >
+                          🗑️ Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-    # Now explicitly assign the has_more? flag
-    has_more? = result.page_number < result.total_pages
+          <!-- Cosmos View -->
+          <div :if={@current_view == :cosmos} class="relative min-h-[600px] bg-black/20 backdrop-blur-sm rounded-xl border border-white/20 overflow-hidden">
+            <div class="absolute inset-0 flex items-center justify-center">
+              <div class="text-center">
+                <div class="text-6xl mb-4">🌌</div>
+                <h3 class="text-2xl font-bold text-white mb-4">Cosmic Media Explorer</h3>
+                <p class="text-white/70 mb-8">Your files floating in digital space</p>
 
-    socket
-    |> assign(:files, result.files)
-    |> assign(:page, result.page_number)
-    |> assign(:total_pages, result.total_pages)
-    |> assign(:total_count, result.total_count)
-    |> assign(:has_more?, has_more?)  # Add this line
-  end
+                <!-- Floating Files -->
+                <div class="relative w-full h-96">
+                  <div
+                    :for={{file, index} <- Enum.with_index(@filtered_files)}
+                    class="absolute animate-pulse"
+                    style={"left: #{rem(index * 137, 80) + 10}%; top: #{rem(index * 97, 60) + 20}%; animation-delay: #{index * 0.5}s;"}
+                  >
+                    <div class="bg-white/20 backdrop-blur-md rounded-full p-4 border border-white/30 hover:bg-white/30 transition-all cursor-pointer">
+                      <div class="text-2xl"><%= get_file_icon(file.file_type) %></div>
+                    </div>
+                    <div class="text-xs text-white/80 mt-2 text-center max-w-20 truncate">
+                      <%= file.filename %>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-  defp get_user_channels(user) do
-    Channels.list_user_channels(user)
-  end
+          <!-- Analytics View -->
+          <div :if={@current_view == :analytics} class="space-y-8">
+            <!-- Content Distribution -->
+            <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+              <h3 class="text-xl font-bold text-white mb-4">📊 Content Distribution</h3>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div :for={{type, count} <- @analytics.content_distribution} class="text-center">
+                  <div class="text-3xl mb-2"><%= get_file_icon(type) %></div>
+                  <div class="text-2xl font-bold text-white"><%= count %></div>
+                  <div class="text-white/70 capitalize"><%= type %>s</div>
+                </div>
+              </div>
+            </div>
 
-  defp file_type_filter("all"), do: nil
-  defp file_type_filter(type), do: type
+            <!-- Recent Uploads -->
+            <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+              <h3 class="text-xl font-bold text-white mb-4">⚡ Recent Uploads</h3>
+              <div class="space-y-3">
+                <div :for={file <- @analytics.recent_uploads} class="flex items-center gap-4 p-3 bg-white/5 rounded-lg">
+                  <span class="text-xl"><%= get_file_icon(file.file_type) %></span>
+                  <div class="flex-1">
+                    <div class="text-white font-medium"><%= file.filename %></div>
+                    <div class="text-white/60 text-sm"><%= format_file_size(file.file_size) %> • <%= Calendar.strftime(file.uploaded_at, "%Y-%m-%d") %></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-  defp channel_id_filter("all"), do: nil
-  defp channel_id_filter(id), do: id
+      <!-- Floating Upload Button -->
+      <button
+        phx-click="show_upload_modal"
+        class="fixed bottom-8 right-8 bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 text-white rounded-full p-4 shadow-2xl hover:scale-110 transition-all duration-300"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+        </svg>
+      </button>
 
-  defp file_size(file) do
-    format_bytes(file.file_size)
-  end
+      <!-- Upload Modal -->
+      <div :if={@show_upload_modal} class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-8 border border-white/20 max-w-md w-full">
+          <div class="text-center">
+            <div class="text-4xl mb-4">📤</div>
+            <h3 class="text-2xl font-bold text-white mb-4">Upload Files</h3>
+            <p class="text-white/70 mb-6">Drag and drop files here or click to browse</p>
 
-  # Use the format_bytes helper from your upload module
-  def format_bytes(bytes) when is_number(bytes) do
-    cond do
-      bytes >= 1_000_000_000 -> "#{Float.round(bytes / 1_000_000_000, 1)} GB"
-      bytes >= 1_000_000 -> "#{Float.round(bytes / 1_000_000, 1)} MB"
-      bytes >= 1_000 -> "#{Float.round(bytes / 1_000, 1)} KB"
-      true -> "#{bytes} B"
-    end
-  end
+            <div class="border-2 border-dashed border-white/30 rounded-lg p-8 mb-6 hover:border-white/50 transition-colors cursor-pointer">
+              <div class="text-white/60">Click here to select files</div>
+            </div>
 
-  defp file_type_icon(content_type) do
-    case content_type do
-      "image/" <> _ -> "photograph"
-      "video/" <> _ -> "video-camera"
-      "audio/" <> _ -> "volume-up"
-      "application/pdf" -> "document-text"
-      "application/" <> _ -> "document"
-      _ -> "document"
-    end
-  end
-
-  defp get_file_url(file) do
-    Frestyl.Media.get_file_url(file)
-  end
-
-  defp sort_icon(socket, field) do
-    if socket.assigns.sort_by == field do
-      if socket.assigns.sort_direction == :asc do
-        "arrow-up"
-      else
-        "arrow-down"
-      end
-    else
-      nil
-    end
-  end
-
-  # Helper function for formatting relative time
-  defp format_relative_time(datetime) do
-    now = DateTime.utc_now()
-    diff = DateTime.diff(now, datetime, :second)
-
-    cond do
-      diff < 60 -> "just now"
-      diff < 3600 -> "#{div(diff, 60)}m ago"
-      diff < 86400 -> "#{div(diff, 3600)}h ago"
-      diff < 604800 -> "#{div(diff, 86400)}d ago"
-      diff < 2592000 -> "#{div(diff, 604800)}w ago"
-      true -> "#{div(diff, 2592000)}mo ago"
-    end
+            <div class="flex gap-4 justify-center">
+              <button
+                phx-click="hide_upload_modal"
+                class="px-6 py-2 bg-gray-500 hover:bg-gray-600 rounded-lg text-white font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button class="px-6 py-2 bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-600 hover:to-violet-600 rounded-lg text-white font-medium transition-all">
+                Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
   end
 end

@@ -1,4 +1,3 @@
-# lib/frestyl_web/router.ex
 defmodule FrestylWeb.Router do
   use FrestylWeb, :router
   require Logger
@@ -21,7 +20,6 @@ defmodule FrestylWeb.Router do
     plug FrestylWeb.UserAuth, :fetch_current_user
   end
 
-  # UPDATED: Make sure we fetch_current_user before trying to require it
   pipeline :require_auth do
     plug :debug_request
     plug :require_authenticated_user
@@ -31,7 +29,6 @@ defmodule FrestylWeb.Router do
     plug FrestylWeb.Plugs.MediaCache
   end
 
-  # UPDATED: Only use the redirect_if_user_is_authenticated plug
   pipeline :redirect_auth do
     plug :redirect_if_user_is_authenticated
   end
@@ -84,7 +81,6 @@ defmodule FrestylWeb.Router do
 
     get "/", PageController, :home
 
-    # UPDATED: Keep live_session configuration for unauthenticated views
     live_session :redirect_auth, on_mount: [{FrestylWeb.UserAuth, :redirect_if_user_is_authenticated}] do
       live "/register", UserRegistrationLive, :new
       live "/login", UserLoginLive, :new
@@ -97,9 +93,8 @@ defmodule FrestylWeb.Router do
       live "/users/reset_password/:token", UserResetPasswordLive, :edit
     end
 
-    get "/users/register", UserRegistrationController, :new
+    # Non-LiveView user authentication routes
     post "/users/register", UserRegistrationController, :create
-    get "/users/log_in", UserSessionController, :new
     post "/users/log_in", UserSessionController, :create
     post "/login", UserSessionController, :create
 
@@ -111,7 +106,6 @@ defmodule FrestylWeb.Router do
 
   scope "/users", FrestylWeb do
     pipe_through [:browser]
-
     get "/invitations/:token", UserInvitationController, :show
     get "/invitations/:token/accept", UserInvitationController, :accept
     get "/invitations/:token/decline", UserInvitationController, :decline
@@ -123,16 +117,13 @@ defmodule FrestylWeb.Router do
     delete "/users/log_out", UserSessionController, :delete
     delete "/logout", UserSessionController, :delete
 
-    get "/users/new", UserController, :new
-    post "/users", UserController, :create
     resources "/users", UserController, except: [:new, :create, :show]
   end
 
-  # Public portfolio viewing routes (before authenticated routes)
+  # Public portfolio viewing routes
   scope "/", FrestylWeb do
     pipe_through [:browser]
 
-    # Public portfolio sharing routes
     live "/p/:slug", PortfolioLive.View, :view
     live "/portfolios/:slug", PortfolioLive.View, :view
     live "/portfolios/share/:token", PortfolioLive.View, :shared
@@ -142,22 +133,28 @@ defmodule FrestylWeb.Router do
   scope "/", FrestylWeb do
     pipe_through [:browser, :require_auth]
 
-    # UPDATED: :ensure_authenticated has been fixed to work properly
     live_session :require_auth, on_mount: [{FrestylWeb.UserAuth, :ensure_authenticated}] do
       live "/dashboard", DashboardLive, :index
 
-      # Channels - Use slug consistently
+      # Channels routes
       live "/channels", ChannelLive.Index, :index
       live "/channels/new", ChannelLive.Index, :new
-      live "/channels/:slug", ChannelLive.Show, :show
-      live "/channels/:slug/edit", ChannelLive.Form, :edit
-      live "/channels/:slug/media", ChannelLive.MediaTab, :media
+      live "/channels/:slug", ChannelLive.Show, :show # This needs to be before :edit to avoid conflict
+      live "/channels/:slug/edit", ChannelLive.Show, :edit
+      live "/channels/:id/edit", ChannelLive.Index, :edit # Keep for ID-based editing if needed
 
       # Channel customization routes
       live "/channels/:slug/customize", ChannelLive.Customize, :edit
       live "/channels/:slug/settings", ChannelLive.Settings, :edit
       live "/channels/:slug/members", ChannelLive.Members, :index
       live "/channels/:slug/analytics", ChannelLive.Analytics, :index
+
+      # Content Management Routes (moved from /media to avoid conflict with SupremeDiscovery)
+      live "/content/media", MediaLive.Index, :index
+      live "/content/media/new", MediaLive.Index, :new
+      live "/content/media/:id/edit", MediaLive.Index, :edit
+      live "/content/media/:id", MediaLive.Show, :show
+      live "/content/media/:id/show/edit", MediaLive.Show, :edit
 
       # Enhanced content management
       live "/channels/:slug/content", ContentLive.Index, :index
@@ -196,12 +193,10 @@ defmodule FrestylWeb.Router do
       live "/chat/conversation/:id", ChatLive.Show, :conversation
       live "/chat/:id", ChatLive.Show  # Auto-detect
 
-      # Media
-      live "/media", MediaLive.Index, :index
-      live "/media/new", MediaLive.Index, :new
-      live "/media/upload", MediaLive.Upload, :index
-      live "/media/:id", MediaLive.Show, :show
-      live "/media/:id/edit", MediaLive.Index, :edit
+      # 🚀 REVOLUTIONARY DISCOVERY INTERFACE ROUTES (now at /media)
+      live "/media", MediaLive.SupremeDiscovery, :index
+      live "/media/:id", SupremeDiscoveryLive, :show
+      live "/media/:id/expand", SupremeDiscoveryLive, :expand
 
       # Events
       live "/events", EventLive.Index, :index
@@ -212,9 +207,8 @@ defmodule FrestylWeb.Router do
 
       # Portfolio routes - Clean module names
       live "/portfolios", PortfolioLive.Index, :index
-            live "/p/:slug", PortfolioLive.View, :show
+      live "/p/:slug", PortfolioLive.View, :show
       live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
-
       live "/portfolios/:id/share", PortfolioLive.Share, :share
       live "/portfolios/:id/analytics", PortfolioLive.Analytics, :analytics
       live "/portfolios/:portfolio_id/resume-parser", PortfolioLive.ResumeParser, :parse
@@ -233,13 +227,36 @@ defmodule FrestylWeb.Router do
       live "/users/settings/two_factor", UserLive.TwoFactorSetupLive, :index
       live "/account/sessions", UserLive.SessionManagementLive, :index
       live "/account/privacy", UserLive.PrivacySettingsLive, :index
+      live "/account/subscription", SubscriptionLive.Index, :index # Moved to LiveView
+
     end
 
-    get "/dashboard", DashboardController, :index
+    get "/dashboard", DashboardController, :index # Keep for non-LiveView access if needed
     get "/users/log_in_success", UserSessionController, :log_in_success
     get "/users/create_from_2fa", UserSessionController, :create_from_2fa
     get "/session/create_from_liveview", UserSessionController, :create_from_liveview
 
+    # 🎨 DYNAMIC THEME MANAGEMENT ROUTES
+    post "/api/themes/switch", ThemeController, :switch_theme
+    get "/api/themes/dynamic", ThemeController, :get_dynamic_theme
+
+    # 🌟 REAL-TIME REACTION ROUTES
+    post "/api/content/media/:id/react", MediaController, :react
+    delete "/api/content/media/:id/unreact", MediaController, :unreact
+
+    # 💬 COMMENT SYSTEM ROUTES
+    post "/api/content/media/:id/comment", MediaController, :comment
+    put "/api/comments/:id", MediaController, :update_comment
+    delete "/api/comments/:id", MediaController, :delete_comment
+
+    # 📁 FILE MANAGEMENT ROUTES
+    post "/upload", UploadController, :create
+    get "/content/media/:id/download", MediaController, :download
+    get "/content/media/:id/stream", MediaController, :stream
+
+    # 📊 ANALYTICS ROUTES
+    post "/api/content/media/:id/view", MediaController, :record_view
+    get "/api/analytics/dashboard", AnalyticsController, :dashboard
 
     # Tickets
     get "/events/:event_id/tickets", TicketController, :buy
@@ -252,14 +269,12 @@ defmodule FrestylWeb.Router do
     get "/profile/edit", UserProfileController, :edit
     put "/profile", UserProfileController, :update
 
-    # FIXED: Add missing subscription route
-    get "/account/subscription", SubscriptionController, :index
-
     resources "/subscriptions", SubscriptionController, except: [:new, :create]
     get "/subscriptions/new/:plan_id", SubscriptionController, :new
     post "/subscriptions", SubscriptionController, :create
 
     resources "/channels", ChannelController, param: "slug", except: [:index, :show]
+    get "/channels/:slug", ChannelController, :show # Ensure this is after resource for :show
 
     get "/broadcasts/:id", BroadcastController, :show
     resources "/channels/:slug/rooms", RoomController, param: "slug", except: [:index]
@@ -272,10 +287,11 @@ defmodule FrestylWeb.Router do
     resources "/channels/:slug/invitations", InvitationController, only: [:index, :create]
     post "/channels/:slug/invitations/:id/cancel", InvitationController, :cancel
 
-    resources "/media", MediaController
-    post "/media/:asset_id/version", MediaController, :upload_version
-    get "/media/stream/:asset_id/:version_id", MediaController, :stream
-    get "/media/:id", MediaController, :download
+    # Content Media resources (moved to /content/media)
+    resources "/content/media", MediaController
+    post "/content/media/:asset_id/version", MediaController, :upload_version
+    get "/content/media/stream/:asset_id/:version_id", MediaController, :stream
+    get "/content/media/:id", MediaController, :download
 
     get "/channels/:slug/files", FileController, :index
     get "/channels/:slug/files/new", FileController, :new
@@ -309,6 +325,10 @@ defmodule FrestylWeb.Router do
     get "/discover", DiscoverController, :index
     get "/channels/public", ChannelController, :public
     post "/upload", UploadController, :create
+
+    # 🌌 REVOLUTIONARY DISCOVERY API ROUTES (now at /api/media/discover)
+    get "/media/discover", SupremeDiscoveryController, :index
+    get "/media/discover/:id", SupremeDiscoveryController, :show
   end
 
   # API: Authenticated
@@ -320,10 +340,34 @@ defmodule FrestylWeb.Router do
     post "/auth/verify_backup_code", AuthController, :verify_backup_code
     post "/auth/logout", AuthController, :logout
 
+    # Media API endpoints (updated paths to reflect content/media)
+    get "/content/media/discover", Api.MediaController, :discover
+    get "/content/media/:id", Api.MediaController, :show
+    post "/content/media/:id/react", Api.MediaController, :react
+
+    # User preferences API
+    get "/user/theme", Api.UserController, :get_theme
+    put "/user/theme", Api.UserController, :set_theme
+
+    # 🎨 THEME API ROUTES
+    get "/themes", ThemeController, :list
+    post "/themes/preference", ThemeController, :set_preference
+
+    # 🚀 ENHANCED MEDIA API (updated paths to reflect content/media)
+    resources "/content/media", MediaController, except: [:new, :edit]
+
+    # 🌟 REAL-TIME API (updated paths to reflect content/media)
+    post "/content/media/:id/reactions", ReactionController, :create
+    get "/content/media/:id/reactions", ReactionController, :index
+
+    # 💬 COMMENT API (updated paths to reflect content/media)
+    post "/content/media/:id/comments", CommentController, :create
+    get "/content/media/:id/comments", CommentController, :index
+
     get "/users/me", UserController, :me
     resources "/profiles", ProfileController, only: [:index, :show]
     resources "/channels", ChannelController, only: [:index, :show]
-    get "/media/public", MediaController, :public
+    get "/content/media/public", MediaController, :public
   end
 
   # API: Auth + 2FA
@@ -334,9 +378,9 @@ defmodule FrestylWeb.Router do
     post "/users/change_password", UserController, :change_password
     post "/users/disable_2fa", UserController, :disable_2fa
 
-    resources "/media", MediaController, except: [:new, :edit]
-    post "/media/:id/upload", MediaController, :upload
-    delete "/media/:id/versions/:version_id", MediaController, :delete_version
+    resources "/content/media", MediaController, except: [:new, :edit] # Updated path
+    post "/content/media/:id/upload", MediaController, :upload # Updated path
+    delete "/content/media/:id/versions/:version_id", MediaController, :delete_version # Updated path
 
     resources "/settings", SettingsController, only: [:index, :update]
     resources "/subscriptions", SubscriptionController
@@ -362,5 +406,21 @@ defmodule FrestylWeb.Router do
     Logger.info("Processing request: #{conn.request_path} with method #{conn.method}")
     Logger.info("Current user: #{inspect conn.assigns[:current_user]}")
     conn
+  end
+
+  # Enable LiveDashboard and Swoosh mailbox preview in development
+  if Application.compile_env(:frestyl, :dev_routes) do
+    import Phoenix.LiveDashboard.Router
+
+    scope "/dev" do
+      pipe_through :browser
+
+      live_dashboard "/dashboard", metrics: FrestylWeb.Telemetry
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
+
+      # 🔧 DISCOVERY DEVELOPMENT TOOLS
+      live "/discover/debug", SupremeDiscoveryLive, :debug
+      get "/themes/preview", ThemeController, :preview_all
+    end
   end
 end
