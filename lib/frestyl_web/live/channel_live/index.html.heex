@@ -224,7 +224,7 @@
                 </div>
               <% else %>
                 <div class="space-y-4">
-                  <%= for channel <- @user_channels do %>
+                  <%= for {channel, member_count} <- @user_channels do %>
                     <%= live_redirect to: ~p"/channels/#{channel.id}", class: "block group" do %>
                       <div class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative border border-gray-200 hover:border-purple-300">
                         <div class="h-1 bg-gradient-to-r from-cyan-600 to-blue-600"></div>
@@ -238,6 +238,12 @@
                                 <span class="px-2 py-1 bg-green-100 text-green-600 text-xs font-bold rounded-full">
                                   <%= String.capitalize(channel.visibility || "public") %>
                                 </span>
+                                <!-- Add archived badge -->
+                                <%= if channel.archived do %>
+                                  <span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-full ml-2">
+                                    Archived
+                                  </span>
+                                <% end %>
                               </div>
                               <%= if channel.description do %>
                                 <p class="text-gray-600 text-sm mb-3 leading-relaxed">
@@ -248,17 +254,25 @@
                                 <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                                 </svg>
-                                <%= channel.member_count || 0 %> members
+                                <%= member_count || 0 %> members
                                 <span class="mx-2">•</span>
-                                <div class="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
-                                Active now
+                                <div class={[
+                                  "w-2 h-2 rounded-full mr-1",
+                                  if(channel.archived, do: "bg-gray-400", else: "bg-green-500")
+                                ]}></div>
+                                <%= if channel.archived, do: "Archived", else: "Active now" %>
                               </div>
                             </div>
                             <div class="ml-4 flex-shrink-0">
                               <%= if channel.icon_url do %>
                                 <img src={channel.icon_url} class="h-12 w-12 rounded-lg object-cover" alt={channel.name} />
                               <% else %>
-                                <div class="h-12 w-12 bg-gradient-to-br from-cyan-600 to-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
+                                <div class={[
+                                  "h-12 w-12 rounded-lg flex items-center justify-center text-white font-bold",
+                                  if(channel.archived, 
+                                    do: "bg-gradient-to-br from-gray-400 to-gray-500", 
+                                    else: "bg-gradient-to-br from-cyan-600 to-blue-600")
+                                ]}>
                                   <%= String.first(channel.name) %>
                                 </div>
                               <% end %>
@@ -287,7 +301,7 @@
                 </div>
               <% else %>
                 <div class="space-y-3">
-                  <%= for channel <- Enum.take(@public_channels, 3) do %>
+                  <%= for {channel, member_count} <- Enum.take(@public_channels, 3) do %>
                     <div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
                       <%= if channel.icon_url do %>
                         <img src={channel.icon_url} class="w-8 h-8 rounded-lg object-cover" alt={channel.name} />
@@ -298,7 +312,7 @@
                       <% end %>
                       <div class="flex-1">
                         <h5 class="font-bold text-gray-900 text-xs"><%= channel.name %></h5>
-                        <p class="text-xs text-gray-500"><%= channel.member_count || 0 %> members</p>
+                        <p class="text-xs text-gray-500"><%= member_count || 0 %> members</p>
                       </div>
                       <button 
                         phx-click="join_channel" 

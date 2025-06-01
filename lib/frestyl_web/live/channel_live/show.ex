@@ -195,85 +195,99 @@ defmodule FrestylWeb.ChannelLive.Show do
     Channels.list_channel_members(channel.id)
   end
 
-  @impl true
-  def mount(params, session, socket) do
-    # Get current user from session
-    current_user = session["user_token"] && Accounts.get_user_by_session_token(session["user_token"])
+# REPLACE your existing mount function with this updated version:
 
-    # Get channel by id or slug
-    channel_identifier = params["slug"] || params["id"]
+@impl true
+def mount(params, session, socket) do
+  # Get current user from session
+  current_user = session["user_token"] && Accounts.get_user_by_session_token(session["user_token"])
 
-    if is_nil(channel_identifier) do
-      socket =
-        socket
-        |> put_flash(:error, "Channel not found")
-        |> redirect(to: ~p"/dashboard")
+  # Updated: Get channel by the new parameter name
+  channel_identifier = params["id_or_slug"] || params["slug"] || params["id"]
 
-      {:ok, socket}
-    else
-      # Try to get channel by slug first, then by id if that fails
-      channel = get_channel_by_identifier(channel_identifier, params)
+  if is_nil(channel_identifier) do
+    socket =
+      socket
+      |> put_flash(:error, "Channel not found")
+      |> redirect(to: ~p"/dashboard")
 
-      case channel do
-        nil ->
-          socket =
-            socket
-            |> put_flash(:error, "Channel not found")
-            |> redirect(to: ~p"/dashboard")
+    {:ok, socket}
+  else
+    # Updated: Use the new helper function for getting channel
+    channel = get_channel_by_identifier(channel_identifier)
 
-          {:ok, socket}
+    case channel do
+      nil ->
+        socket =
+          socket
+          |> put_flash(:error, "Channel not found")
+          |> redirect(to: ~p"/dashboard")
 
-        channel ->
-          # Check permissions and restrictions
-          {restricted, is_member, is_admin, user_role} = check_user_permissions(channel, current_user)
+        {:ok, socket}
 
-          # Set initial tabs
-          active_tab = "activity"  # Default tab
-          activity_tab = "happening_now"  # Default activity tab
+      channel ->
+        # Check permissions and restrictions
+        {restricted, is_member, is_admin, user_role} = check_user_permissions(channel, current_user)
 
-          socket = if !restricted do
-            load_channel_data(socket, channel, current_user, user_role)
-          else
-            assign_restricted_defaults(socket)
-          end
+        # Set initial tabs
+        active_tab = "activity"  # Default tab
+        activity_tab = "happening_now"  # Default activity tab
 
-          # Common assigns for all users
-          socket = socket
-            |> assign(:current_user, current_user)
-            |> assign(:channel, channel)
-            |> assign(:restricted, restricted)
-            |> assign(:is_member, is_member)
-            |> assign(:is_admin, is_admin)
-            |> assign(:user_role, user_role)
-            |> assign(:can_edit, can_edit_channel?(user_role))
-            |> assign(:can_view_branding, can_edit_channel?(user_role))
-            |> assign(:show_invite_button, can_edit_channel?(user_role))
-            |> assign(:can_customize, can_edit_channel?(user_role))
-            |> assign(:active_tab, active_tab)
-            |> assign(:activity_tab, activity_tab)
-            |> assign(:show_block_modal, false)
-            |> assign(:show_invite_modal, false)
-            |> assign(:show_media_upload, false)
-            |> assign(:show_options_panel, false)
-            |> assign(:show_customization_panel, false)
-            |> assign(:mobile_nav_active, false)
-            |> assign(:mobile_chat_active, false)
-            |> assign(:show_mobile_create_menu, false)
-            |> assign(:viewing_media, nil)
-            |> assign(:user_to_block, nil)
-            |> assign(:blocking_member, false)
-            |> setup_uploads()
+        socket = if !restricted do
+          load_channel_data(socket, channel, current_user, user_role)
+        else
+          assign_restricted_defaults(socket)
+        end
 
-          # If this is a connected mount, subscribe to the channel topic
-          if connected?(socket) && !restricted do
-            Channels.subscribe(channel.id)
-            subscribe_to_live_activity(channel.id)
-          end
+        # Common assigns for all users
+        socket = socket
+          |> assign(:current_user, current_user)
+          |> assign(:channel, channel)
+          |> assign(:restricted, restricted)
+          |> assign(:is_member, is_member)
+          |> assign(:is_admin, is_admin)
+          |> assign(:user_role, user_role)
+          |> assign(:can_edit, can_edit_channel?(user_role))
+          |> assign(:can_view_branding, can_edit_channel?(user_role))
+          |> assign(:show_invite_button, can_edit_channel?(user_role))
+          |> assign(:can_customize, can_edit_channel?(user_role))
+          |> assign(:active_tab, active_tab)
+          |> assign(:activity_tab, activity_tab)
+          |> assign(:show_block_modal, false)
+          |> assign(:show_invite_modal, false)
+          |> assign(:show_media_upload, false)
+          |> assign(:show_options_panel, false)
+          |> assign(:show_customization_panel, false)
+          |> assign(:mobile_nav_active, false)
+          |> assign(:mobile_chat_active, false)
+          |> assign(:show_mobile_create_menu, false)
+          |> assign(:viewing_media, nil)
+          |> assign(:user_to_block, nil)
+          |> assign(:blocking_member, false)
+          |> setup_uploads()
 
-          {:ok, socket}
-      end
+        # If this is a connected mount, subscribe to the channel topic
+        if connected?(socket) && !restricted do
+          Channels.subscribe(channel.id)
+          subscribe_to_live_activity(channel.id)
+        end
+
+        {:ok, socket}
     end
   end
+end
+
+# Updated helper function (replace your existing get_channel_by_identifier)
+defp get_channel_by_identifier(identifier) do
+  case Integer.parse(identifier) do
+    {id, ""} ->
+      # It's a numeric ID
+      Channels.get_channel(id)  # Use get_channel instead of get_channel! to return nil if not found
+    :error ->
+      # It's a slug
+      Channels.get_channel_by_slug(identifier)
+  end
+end
 
   # Enhanced data loading
   defp load_channel_data(socket, channel, current_user, user_role) do
@@ -375,16 +389,27 @@ defmodule FrestylWeb.ChannelLive.Show do
     upcoming_events_count = length(broadcasts)
     online_members_count = length(members) # This would be calculated from presence data
 
-    # Content stats
-    audio_files_count = Enum.count(media_files, &(String.contains?(&1.content_type || "", "audio")))
-    visual_files_count = Enum.count(media_files, &(String.contains?(&1.content_type || "", ["image", "video"])))
-    project_files_count = Enum.count(media_files, &(String.contains?(&1.content_type || "", ["document", "application"])))
+    # Content stats - Fixed to handle nil file_type and proper string matching
+    audio_files_count = Enum.count(media_files, fn file ->
+      file_type = file.file_type || ""
+      String.contains?(file_type, "audio")
+    end)
+
+    visual_files_count = Enum.count(media_files, fn file ->
+      file_type = file.file_type || ""
+      String.contains?(file_type, "image") || String.contains?(file_type, "video")
+    end)
+
+    project_files_count = Enum.count(media_files, fn file ->
+      file_type = file.file_type || ""
+      String.contains?(file_type, "document") || String.contains?(file_type, "application")
+    end)
+
     total_creations = length(media_files)
 
     # Activity stats
     active_today = Enum.count(members, fn member ->
-      member.last_activity_at &&
-      DateTime.diff(DateTime.utc_now(), member.last_activity_at, :hour) < 24
+      member.status == "active" && is_nil(member.left_at)
     end)
 
     %{
@@ -407,14 +432,6 @@ defmodule FrestylWeb.ChannelLive.Show do
       can_create_session: can_create_session?(user_role),
       can_create_broadcast: can_create_broadcast?(user_role)
     }
-  end
-
-  defp get_channel_by_identifier(identifier, params) do
-    if params["slug"] do
-      Channels.get_channel_by_slug(identifier)
-    else
-      Channels.get_channel(identifier)
-    end
   end
 
   defp check_user_permissions(channel, current_user) do

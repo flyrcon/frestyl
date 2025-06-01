@@ -136,18 +136,45 @@ defmodule FrestylWeb.Router do
     live_session :require_auth, on_mount: [{FrestylWeb.UserAuth, :ensure_authenticated}] do
       live "/dashboard", DashboardLive, :index
 
-      # Channels routes
+      # Channels routes - CLEANED UP
       live "/channels", ChannelLive.Index, :index
       live "/channels/new", ChannelLive.Index, :new
-      live "/channels/:slug", ChannelLive.Show, :show # This needs to be before :edit to avoid conflict
-      live "/channels/:slug/edit", ChannelLive.Show, :edit
-      live "/channels/:id/edit", ChannelLive.Index, :edit # Keep for ID-based editing if needed
+      live "/channels/:id/edit", ChannelLive.Index, :edit  # ID-based editing from index
 
-      # Channel customization routes
+      # Main channel show route (handles both ID and slug)
+      live "/channels/:id_or_slug", ChannelLive.Show, :show
+
+      # Channel management routes (all use slug)
+      live "/channels/:slug/edit", ChannelLive.Show, :edit
       live "/channels/:slug/customize", ChannelLive.Customize, :edit
       live "/channels/:slug/settings", ChannelLive.Settings, :edit
       live "/channels/:slug/members", ChannelLive.Members, :index
       live "/channels/:slug/analytics", ChannelLive.Analytics, :index
+
+      # Channel content management
+      live "/channels/:slug/content", ContentLive.Index, :index
+      live "/channels/:slug/content/upload", ContentLive.Upload, :new
+      live "/channels/:slug/content/:id", ContentLive.Show, :show
+
+      # Sessions routes
+      live "/channels/:slug/sessions", SessionLive.Index, :index
+      live "/channels/:slug/sessions/:session_id", StudioLive, :show
+      live "/channels/:slug/sessions/:session_id/edit", StudioLive, :edit_session
+
+      # Broadcasts routes
+      live "/channels/:slug/broadcasts", BroadcastLive.Index, :index
+      live "/channels/:slug/broadcasts/new", BroadcastLive.Index, :new
+      live "/channels/:slug/broadcasts/:id", BroadcastLive.Show, :show
+      live "/channels/:slug/broadcasts/:id/edit", BroadcastLive.Show, :edit
+      live "/channels/:slug/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
+      live "/channels/:slug/broadcasts/:id/manage", BroadcastLive.Manage, :show
+      live "/channels/:slug/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
+      live "/channels/:slug/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
+      live "/channels/:slug/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
+
+      # Studio routes
+      live "/channels/:slug/studio", StudioLive.Index, :index
+      live "/channels/:slug/go-live", StudioLive.Broadcast, :new
 
       # Content Management Routes (moved from /media to avoid conflict with SupremeDiscovery)
       live "/content/media", MediaLive.Index, :index
@@ -156,36 +183,11 @@ defmodule FrestylWeb.Router do
       live "/content/media/:id", MediaLive.Show, :show
       live "/content/media/:id/show/edit", MediaLive.Show, :edit
 
-      # Enhanced content management
-      live "/channels/:slug/content", ContentLive.Index, :index
-      live "/channels/:slug/content/upload", ContentLive.Upload, :new
-      live "/channels/:slug/content/:id", ContentLive.Show, :show
-
-      # Sessions - Consistent slug usage
-      live "/channels/:slug/sessions", SessionLive.Index, :index
-      live "/channels/:slug/sessions/:session_id", StudioLive, :show
-      live "/channels/:slug/sessions/:session_id/edit", StudioLive, :edit_session
-
-      # Broadcasts - Consistent slug usage
-      live "/channels/:slug/broadcasts", BroadcastLive.Index, :index
-      live "/channels/:slug/broadcasts/new", BroadcastLive.Index, :new
-      live "/channels/:slug/broadcasts/:id", BroadcastLive.Show, :show
-      live "/channels/:slug/broadcasts/:id/edit", BroadcastLive.Show, :edit
-      live "/channels/:slug/broadcasts/:id/manage", BroadcastLive.Manage, :show
-
       # Keep existing broadcast routes with slug consistency
-      live "/channels/:slug/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
       live "/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
-      live "/channels/:slug/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
       live "/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
-      live "/channels/:slug/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
       live "/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
-      live "/channels/:slug/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
       live "/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
-
-      # Studio routes
-      live "/channels/:slug/studio", StudioLive.Index, :index
-      live "/channels/:slug/go-live", StudioLive.Broadcast, :new
 
       # Chat
       live "/chat", ChatLive.Show

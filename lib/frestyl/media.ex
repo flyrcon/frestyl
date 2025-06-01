@@ -835,6 +835,16 @@ defp list_accessible_media_files(user_id, opts) do
   end
 
   @doc """
+  Lists all media files for a specific channel.
+  """
+  def list_channel_files(channel_id) do
+    MediaFile  # Use MediaFile instead of File
+    |> where([f], f.channel_id == ^channel_id)
+    |> order_by([f], desc: f.inserted_at)
+    |> Repo.all()
+  end
+
+  @doc """
   Lists media files for a user with enhanced metadata.
   """
   def list_media_files_for_user(user_id, opts \\ []) do

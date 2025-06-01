@@ -47,10 +47,10 @@
                 <div class="w-2.5 h-2.5 bg-[#00D4FF] rounded-full animate-pulse shadow-lg shadow-[#00D4FF]/50"></div>
                 <span class="font-black text-gray-900"><%= @member_count %> members</span>
               </div>
-              <%= if @channel.category do %>
+              <%= if @channel.channel_type do %>
                 <div class="flex items-center gap-2">
                   <div class="w-2.5 h-2.5 bg-[#8B5CF6] rounded-full shadow-lg shadow-[#8B5CF6]/50"></div>
-                  <span class="text-gray-600 capitalize font-semibold"><%= @channel.category %></span>
+                  <span class="text-gray-600 capitalize font-semibold"><%= @channel.channel_type %></span>
                 </div>
               <% end %>
               <div class="flex items-center gap-2">
@@ -414,7 +414,7 @@
                           <div class="grid grid-cols-2 gap-3">
                             <%= for file <- Enum.take(Enum.filter(@media_files || [], &(String.contains?(&1.content_type || "", ["image", "video"]))), 4) do %>
                               <div class="aspect-square bg-white/60 backdrop-blur-xl rounded-xl overflow-hidden cursor-pointer hover:bg-white/80 transition-colors border border-white/30 hover:shadow-lg" phx-click="view_media" phx-value-id={file.id}>
-                                <%= if String.contains?(file.content_type || "", "image") do %>
+                                <%= if String.contains?(file.file_type || "", "image") do %>
                                   <img src={file.url} alt={file.title} class="w-full h-full object-cover">
                                 <% else %>
                                   <div class="w-full h-full bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center">
