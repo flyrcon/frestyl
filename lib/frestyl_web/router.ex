@@ -166,11 +166,10 @@ defmodule FrestylWeb.Router do
       live "/channels/:slug/broadcasts/new", BroadcastLive.Index, :new
       live "/channels/:slug/broadcasts/:id", BroadcastLive.Show, :show
       live "/channels/:slug/broadcasts/:id/edit", BroadcastLive.Show, :edit
-      live "/channels/:slug/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
       live "/channels/:slug/broadcasts/:id/manage", BroadcastLive.Manage, :show
-      live "/channels/:slug/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
-      live "/channels/:slug/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
-      live "/channels/:slug/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
+      live "/channels/:slug/broadcasts/:id/sound-check", BroadcastLive.SoundCheck, :show
+      live "/channels/:slug/broadcasts/:id/waiting", BroadcastLive.WaitingRoom, :show
+      live "/channels/:slug/broadcasts/:id/live", BroadcastLive.Live, :show
 
       # Studio routes
       live "/channels/:slug/studio", StudioLive.Index, :index

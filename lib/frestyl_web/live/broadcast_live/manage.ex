@@ -9,87 +9,139 @@ defmodule FrestylWeb.BroadcastLive.Manage do
   alias Frestyl.Chat
   alias Phoenix.PubSub
 
+
   @impl true
-  def mount(%{"broadcast_id" => broadcast_id} = params, session, socket) do
+  def mount(%{"slug" => channel_slug, "id" => broadcast_id} = params, session, socket) do
     # Get current user from session
     current_user = session["user_token"] && Accounts.get_user_by_session_token(session["user_token"])
 
-    # Get broadcast by ID
-    broadcast = Sessions.get_session(broadcast_id)
-
-    # Get channel (could be from params or broadcast)
-    channel = if params["channel_id"] do
-      Channels.get_channel(params["channel_id"])
+    if is_nil(current_user) do
+      socket =
+        socket
+        |> put_flash(:error, "You must be logged in to manage broadcasts")
+        |> redirect(to: ~p"/login")
+      {:ok, socket}
     else
-      broadcast && Channels.get_channel(broadcast.channel_id)
-    end
+      try do
+        # Convert string to integer if needed
+        broadcast_id_int = if is_binary(broadcast_id), do: String.to_integer(broadcast_id), else: broadcast_id
 
-    cond do
-      is_nil(broadcast) ->
-        socket =
-          socket
-          |> put_flash(:error, "Broadcast not found")
-          |> redirect(to: ~p"/dashboard")
-        {:ok, socket}
+        # Get broadcast by ID
+        broadcast = Sessions.get_session(broadcast_id_int)
 
-      is_nil(channel) ->
-        socket =
-          socket
-          |> put_flash(:error, "Channel not found")
-          |> redirect(to: ~p"/dashboard")
-        {:ok, socket}
+        # Get channel by slug
+        channel = Channels.get_channel_by_slug(channel_slug)
 
-      not can_manage_broadcast?(broadcast, current_user) ->
-        socket =
-          socket
-          |> put_flash(:error, "You don't have permission to manage this broadcast")
-          |> redirect(to: ~p"/channels/#{channel.slug}")
-        {:ok, socket}
+        cond do
+          is_nil(broadcast) ->
+            socket =
+              socket
+              |> put_flash(:error, "Broadcast not found")
+              |> redirect(to: ~p"/channels/#{channel_slug}")
+            {:ok, socket}
 
-      true ->
-        if connected?(socket) do
-          # Subscribe to broadcast events
-          PubSub.subscribe(Frestyl.PubSub, "broadcast:#{broadcast.id}")
-          PubSub.subscribe(Frestyl.PubSub, "broadcast:#{broadcast.id}:participants")
+          is_nil(channel) ->
+            socket =
+              socket
+              |> put_flash(:error, "Channel not found")
+              |> redirect(to: ~p"/dashboard")
+            {:ok, socket}
 
-          # Subscribe to chat if using integrated chat
-          PubSub.subscribe(Frestyl.PubSub, "channel:#{channel.id}")
+          # Verify broadcast belongs to the channel
+          broadcast.channel_id != channel.id ->
+            socket =
+              socket
+              |> put_flash(:error, "Broadcast not found in this channel")
+              |> redirect(to: ~p"/channels/#{channel_slug}")
+            {:ok, socket}
+
+          # Check if user can manage (using your existing helper function)
+          not can_manage_broadcast?(broadcast, current_user) ->
+            socket =
+              socket
+              |> put_flash(:error, "You don't have permission to manage this broadcast")
+              |> redirect(to: ~p"/channels/#{channel.slug}")
+            {:ok, socket}
+
+          true ->
+            if connected?(socket) do
+              # Subscribe to broadcast events
+              PubSub.subscribe(Frestyl.PubSub, "broadcast:#{broadcast.id}")
+              PubSub.subscribe(Frestyl.PubSub, "broadcast:#{broadcast.id}:participants")
+              PubSub.subscribe(Frestyl.PubSub, "channel:#{channel.id}")
+            end
+
+            # Get basic data with error handling
+            participants = try do
+              Sessions.list_session_participants(broadcast.id) || []
+            rescue
+              _ -> []
+            end
+
+            stats = try do
+              Sessions.get_broadcast_stats(broadcast.id)
+            rescue
+              _ -> %{total: 0, active: 0, waiting: 0}
+            end
+
+            # Get host information
+            host = if broadcast.host_id do
+              Accounts.get_user(broadcast.host_id)
+            else
+              Accounts.get_user(broadcast.creator_id)
+            end
+
+            # Initialize form changesets
+            broadcast_changeset = Sessions.change_session(broadcast, %{})
+
+            # Use your existing helper functions with error handling
+            available_hosts = try do
+              get_available_hosts(channel)
+            rescue
+              _ -> []
+            end
+
+            chat_messages = try do
+              get_broadcast_chat_messages(broadcast.id)
+            rescue
+              _ -> []
+            end
+
+            {:ok,
+            socket
+            |> assign(:current_user, current_user)
+            |> assign(:broadcast, broadcast)
+            |> assign(:channel, channel)
+            |> assign(:host, host)
+            |> assign(:participants, participants)
+            |> assign(:stats, stats)
+            |> assign(:broadcast_changeset, broadcast_changeset)
+            |> assign(:page_title, "Manage Broadcast - #{broadcast.title}")
+            |> assign(:active_tab, "overview")
+            |> assign(:show_edit_form, false)
+            |> assign(:show_host_assignment, false)
+            |> assign(:selected_participant, nil)
+            |> assign(:available_hosts, available_hosts)
+            |> assign(:chat_messages, chat_messages)
+            |> assign(:muted_users, [])
+            |> assign(:blocked_users, [])
+            |> assign(:chat_enabled, true)
+            |> assign(:reactions_enabled, true)}
         end
-
-        # Get broadcast stats and participants
-        participants = Sessions.list_session_participants(broadcast.id)
-        stats = Sessions.get_broadcast_stats(broadcast.id)
-
-        # Get host information
-        host = if broadcast.host_id do
-          Accounts.get_user(broadcast.host_id)
-        else
-          Accounts.get_user(broadcast.creator_id)
-        end
-
-        # Initialize form changesets
-        broadcast_changeset = Sessions.change_session(broadcast, %{})
-
-        {:ok,
-         socket
-         |> assign(:current_user, current_user)
-         |> assign(:broadcast, broadcast)
-         |> assign(:channel, channel)
-         |> assign(:host, host)
-         |> assign(:participants, participants)
-         |> assign(:stats, stats)
-         |> assign(:broadcast_changeset, broadcast_changeset)
-         |> assign(:page_title, "Manage Broadcast - #{broadcast.title}")
-         |> assign(:active_tab, "overview")
-         |> assign(:show_edit_form, false)
-         |> assign(:show_host_assignment, false)
-         |> assign(:selected_participant, nil)
-         |> assign(:available_hosts, get_available_hosts(channel))
-         |> assign(:chat_messages, get_broadcast_chat_messages(broadcast.id))
-         |> assign(:muted_users, [])
-         |> assign(:blocked_users, [])
-         |> assign(:chat_enabled, true)
-         |> assign(:reactions_enabled, true)}
+      rescue
+        Ecto.NoResultsError ->
+          socket =
+            socket
+            |> put_flash(:error, "Broadcast not found")
+            |> redirect(to: ~p"/channels/#{channel_slug}")
+          {:ok, socket}
+        ArgumentError ->
+          socket =
+            socket
+            |> put_flash(:error, "Invalid broadcast ID")
+            |> redirect(to: ~p"/channels/#{channel_slug}")
+          {:ok, socket}
+      end
     end
   end
 

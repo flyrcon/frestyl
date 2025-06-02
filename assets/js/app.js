@@ -29,6 +29,29 @@ if (typeof window.ReactDOM === 'undefined') {
   });
 }
 
+// Add this to your app.js file
+
+let Hooks = window.Hooks || {};
+
+Hooks.BroadcastModal = {
+  mounted() {
+    console.log('BroadcastModal hook mounted');
+    // Initialize the form when modal is mounted
+    if (window.BroadcastForm) {
+      window.BroadcastForm.init();
+    }
+  },
+  
+  updated() {
+    console.log('BroadcastModal hook updated');
+    // Re-initialize when modal content updates
+    if (window.BroadcastForm) {
+      window.BroadcastForm.init();
+    }
+  }
+};
+
+window.Hooks = Hooks;
 
 // Define all hooks
 let Hooks = {

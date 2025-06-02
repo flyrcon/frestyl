@@ -8,6 +8,7 @@ defmodule FrestylWeb.ChannelLive.Show do
   alias Frestyl.Accounts
   alias Frestyl.Media
   alias Frestyl.Sessions
+  alias Frestyl.Sessions.Session
   alias Frestyl.Timezone
   import FrestylWeb.Navigation, only: [nav: 1]
 
@@ -155,7 +156,7 @@ defmodule FrestylWeb.ChannelLive.Show do
   def upcoming_sessions(sessions) do
     Enum.filter(sessions, fn session ->
       session.status == "scheduled" ||
-      (session.status == "active" && session.participants_count == 0)
+      (session.status == "active" && session[:participants_count] or Map.get(session, :participants_count) == 0)
     end)
   end
 
@@ -195,99 +196,198 @@ defmodule FrestylWeb.ChannelLive.Show do
     Channels.list_channel_members(channel.id)
   end
 
-# REPLACE your existing mount function with this updated version:
+  @impl true
+  def mount(params, session, socket) do
+    # Get current user from session
+    current_user = session["user_token"] && Accounts.get_user_by_session_token(session["user_token"])
 
-@impl true
-def mount(params, session, socket) do
-  # Get current user from session
-  current_user = session["user_token"] && Accounts.get_user_by_session_token(session["user_token"])
+    # Updated: Get channel by the new parameter name
+    channel_identifier = params["id_or_slug"] || params["slug"] || params["id"]
 
-  # Updated: Get channel by the new parameter name
-  channel_identifier = params["id_or_slug"] || params["slug"] || params["id"]
+    if is_nil(channel_identifier) do
+      socket =
+        socket
+        |> put_flash(:error, "Channel not found")
+        |> redirect(to: ~p"/dashboard")
 
-  if is_nil(channel_identifier) do
-    socket =
-      socket
-      |> put_flash(:error, "Channel not found")
-      |> redirect(to: ~p"/dashboard")
+      {:ok, socket}
+    else
+      # Updated: Use the new helper function for getting channel
+      channel = get_channel_by_identifier(channel_identifier)
 
-    {:ok, socket}
-  else
-    # Updated: Use the new helper function for getting channel
-    channel = get_channel_by_identifier(channel_identifier)
+      case channel do
+        nil ->
+          socket =
+            socket
+            |> put_flash(:error, "Channel not found")
+            |> redirect(to: ~p"/dashboard")
 
-    case channel do
-      nil ->
-        socket =
-          socket
-          |> put_flash(:error, "Channel not found")
-          |> redirect(to: ~p"/dashboard")
+          {:ok, socket}
 
-        {:ok, socket}
+        channel ->
+          # Check permissions and restrictions
+          {restricted, is_member, is_admin, user_role} = check_user_permissions(channel, current_user)
 
-      channel ->
-        # Check permissions and restrictions
-        {restricted, is_member, is_admin, user_role} = check_user_permissions(channel, current_user)
+          # Set initial tabs
+          active_tab = "activity"  # Default tab
+          activity_tab = "happening_now"  # Default activity tab
 
-        # Set initial tabs
-        active_tab = "activity"  # Default tab
-        activity_tab = "happening_now"  # Default activity tab
+          socket = if !restricted do
+            load_channel_data(socket, channel, current_user, user_role)
+          else
+            assign_restricted_defaults(socket)
+          end
 
-        socket = if !restricted do
-          load_channel_data(socket, channel, current_user, user_role)
-        else
-          assign_restricted_defaults(socket)
-        end
+          # Common assigns for all users
+          socket = socket
+            |> assign(:current_user, current_user)
+            |> assign(:channel, channel)
+            |> assign(:restricted, restricted)
+            |> assign(:is_member, is_member)
+            |> assign(:is_admin, is_admin)
+            |> assign(:user_role, user_role)
+            |> assign(:can_edit, can_edit_channel?(user_role))
+            |> assign(:can_view_branding, can_edit_channel?(user_role))
+            |> assign(:show_invite_button, can_edit_channel?(user_role))
+            |> assign(:can_customize, can_edit_channel?(user_role))
+            |> assign(:active_tab, active_tab)
+            |> assign(:activity_tab, activity_tab)
+            |> assign(:show_block_modal, false)
+            |> assign(:show_invite_modal, false)
+            |> assign(:show_media_upload, false)
+            |> assign(:show_options_panel, false)
+            |> assign(:show_customization_panel, false)
+            |> assign(:mobile_nav_active, false)
+            |> assign(:mobile_chat_active, false)
+            |> assign(:show_mobile_create_menu, false)
+            |> assign(:viewing_media, nil)
+            |> assign(:user_to_block, nil)
+            |> assign(:blocking_member, false)
+            |> setup_uploads()
 
-        # Common assigns for all users
-        socket = socket
-          |> assign(:current_user, current_user)
-          |> assign(:channel, channel)
-          |> assign(:restricted, restricted)
-          |> assign(:is_member, is_member)
-          |> assign(:is_admin, is_admin)
-          |> assign(:user_role, user_role)
-          |> assign(:can_edit, can_edit_channel?(user_role))
-          |> assign(:can_view_branding, can_edit_channel?(user_role))
-          |> assign(:show_invite_button, can_edit_channel?(user_role))
-          |> assign(:can_customize, can_edit_channel?(user_role))
-          |> assign(:active_tab, active_tab)
-          |> assign(:activity_tab, activity_tab)
-          |> assign(:show_block_modal, false)
-          |> assign(:show_invite_modal, false)
-          |> assign(:show_media_upload, false)
-          |> assign(:show_options_panel, false)
-          |> assign(:show_customization_panel, false)
-          |> assign(:mobile_nav_active, false)
-          |> assign(:mobile_chat_active, false)
-          |> assign(:show_mobile_create_menu, false)
-          |> assign(:viewing_media, nil)
-          |> assign(:user_to_block, nil)
-          |> assign(:blocking_member, false)
-          |> setup_uploads()
+          # If this is a connected mount, subscribe to the channel topic
+          if connected?(socket) && !restricted do
+            Channels.subscribe(channel.id)
+            subscribe_to_live_activity(channel.id)
+          end
 
-        # If this is a connected mount, subscribe to the channel topic
-        if connected?(socket) && !restricted do
-          Channels.subscribe(channel.id)
-          subscribe_to_live_activity(channel.id)
-        end
-
-        {:ok, socket}
+          {:ok, socket}
+      end
     end
   end
-end
 
-# Updated helper function (replace your existing get_channel_by_identifier)
-defp get_channel_by_identifier(identifier) do
-  case Integer.parse(identifier) do
-    {id, ""} ->
-      # It's a numeric ID
-      Channels.get_channel(id)  # Use get_channel instead of get_channel! to return nil if not found
-    :error ->
-      # It's a slug
-      Channels.get_channel_by_slug(identifier)
+  # Updated helper function (replace your existing get_channel_by_identifier)
+  defp get_channel_by_identifier(identifier) do
+    case Integer.parse(identifier) do
+      {id, ""} ->
+        # It's a numeric ID
+        Channels.get_channel(id)  # Use get_channel instead of get_channel! to return nil if not found
+      :error ->
+        # It's a slug
+        Channels.get_channel_by_slug(identifier)
+    end
   end
-end
+
+  def handle_event("show_broadcast_form", _params, socket) do
+    # Get current time and add 1 hour as default
+    now = DateTime.utc_now()
+
+    # Round up to next hour for a cleaner default
+    default_start = now
+                    |> DateTime.add(3600, :second)  # Add 1 hour in seconds
+                    |> then(fn dt -> %{dt | minute: 0, second: 0, microsecond: {0, 0}} end)
+                    |> DateTime.truncate(:second)  # Ensure no microseconds
+
+    default_end = DateTime.add(default_start, 3600, :second)  # Add 1 hour in seconds
+                  |> DateTime.truncate(:second)  # Ensure no microseconds
+
+    # Create changeset with sensible defaults
+    default_attrs = %{
+      "duration_minutes" => 60,
+      "scheduled_for" => default_start,
+      "scheduled_end" => default_end,
+      "is_public" => true,
+      "waiting_room_enabled" => false,
+      "broadcast_type" => "standard"
+    }
+
+    changeset = Session.broadcast_changeset(%Session{}, default_attrs)
+
+    {:noreply,
+    socket
+    |> assign(:show_broadcast_form, true)
+    |> assign(:broadcast_changeset, changeset)}
+  end
+
+  def handle_event("close_broadcast_form", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_broadcast_form, false)
+    |> assign(:broadcast_changeset, nil)}
+  end
+
+  # Add the missing validate handler
+  def handle_event("validate_broadcast", %{"session" => broadcast_params}, socket) do
+    changeset =
+      %Session{}
+      |> Session.broadcast_changeset(broadcast_params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :broadcast_changeset, changeset)}
+  end
+
+  def handle_event("create_broadcast", %{"session" => broadcast_params}, socket) do
+    current_user = socket.assigns.current_user
+    channel = socket.assigns.channel
+
+    # Prepare the attributes for broadcast creation
+    attrs = broadcast_params
+            |> Map.put("creator_id", current_user.id)
+            |> Map.put("host_id", current_user.id)
+            |> Map.put("channel_id", channel.id)
+            |> clean_datetime_params()
+
+    case Sessions.create_broadcast(attrs) do
+      {:ok, broadcast} ->
+        # Refresh the upcoming broadcasts list
+        upcoming_broadcasts = Sessions.get_upcoming_broadcasts(channel.id)
+
+        {:noreply,
+        socket
+        |> assign(:show_broadcast_form, false)           # Close modal
+        |> assign(:broadcast_changeset, nil)             # Clear changeset
+        |> assign(:upcoming_broadcasts, upcoming_broadcasts)  # Refresh list
+        |> put_flash(:info, "Broadcast '#{broadcast.title}' scheduled successfully! You can manage it from the broadcasts list.")
+        |> push_event("close-modal", %{id: "broadcast-modal"})}  # Force close modal via JS
+
+      {:error, changeset} ->
+        {:noreply,
+        socket
+        |> assign(:broadcast_changeset, changeset)
+        |> put_flash(:error, "Failed to create broadcast. Please check the form.")}
+    end
+  end
+
+  # Make sure your clean_datetime_params function truncates microseconds
+  defp clean_datetime_params(params) do
+    params
+    |> Enum.map(fn {key, value} ->
+      case key do
+        key when key in ["scheduled_for", "scheduled_end"] ->
+          case value do
+            %DateTime{} = dt -> {key, DateTime.truncate(dt, :second)}
+            binary when is_binary(binary) and binary != "" ->
+              case DateTime.from_iso8601(binary <> ":00Z") do
+                {:ok, dt, _} -> {key, DateTime.truncate(dt, :second)}
+                _ -> {key, value}
+              end
+            _ -> {key, value}
+          end
+        _ -> {key, value}
+      end
+    end)
+    |> Map.new()
+  end
 
   # Enhanced data loading
   defp load_channel_data(socket, channel, current_user, user_role) do
@@ -702,6 +802,52 @@ end
         {:noreply,
         socket
         |> put_flash(:error, "Could not register for broadcast: #{reason}")}
+    end
+  end
+
+  def handle_event("register_for_broadcast", %{"id" => broadcast_id}, socket) do
+    current_user = socket.assigns.current_user
+    broadcast_id = String.to_integer(broadcast_id)
+
+    case Sessions.join_session(broadcast_id, current_user.id) do
+      {:ok, _participant} ->
+        # Reload the upcoming broadcasts using your existing function
+        upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(socket.assigns.channel.id)
+
+        {:noreply,
+        socket
+        |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+        |> put_flash(:info, "Successfully registered for the broadcast! You'll receive updates about this event.")}
+
+      {:error, _} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Failed to register for broadcast. Please try again.")}
+    end
+  end
+
+  defp user_registered_for_broadcast?(user_id, broadcast_id) do
+    Sessions.user_registered_for_broadcast?(user_id, broadcast_id)
+  end
+
+  def handle_event("unregister_from_broadcast", %{"id" => broadcast_id}, socket) do
+    current_user = socket.assigns.current_user
+    broadcast_id = String.to_integer(broadcast_id)
+
+    case Sessions.leave_session(broadcast_id, current_user.id) do
+      {:ok, _} ->
+        # Reload the upcoming broadcasts using your existing function
+        upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(socket.assigns.channel.id)
+
+        {:noreply,
+        socket
+        |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+        |> put_flash(:info, "Successfully unregistered from the broadcast.")}
+
+      {:error, _} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Failed to unregister. Please try again.")}
     end
   end
 
@@ -1233,6 +1379,44 @@ end
     end
   end
 
+  def handle_event("set_duration", %{"minutes" => minutes_str}, socket) do
+    minutes = String.to_integer(minutes_str)
+
+    # Get the current changeset
+    current_changeset = socket.assigns.broadcast_changeset
+    current_user = socket.assigns.current_user
+    channel = socket.assigns.channel
+
+    # Extract current changes as strings (not atoms)
+    current_changes = current_changeset.changes
+
+    # Convert atom keys to strings to avoid mixed key types
+    string_changes = for {key, value} <- current_changes, into: %{} do
+      {to_string(key), value}
+    end
+
+    # Add the duration as a string key
+    updated_params = Map.merge(string_changes, %{
+      "duration_minutes" => minutes,
+      "creator_id" => current_user.id,
+      "host_id" => current_user.id,
+      "channel_id" => channel.id
+    })
+
+    # Create a fresh changeset with all string keys
+    changeset = Session.broadcast_changeset(%Session{}, updated_params)
+                |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :broadcast_changeset, changeset)}
+  end
+
+  # Helper function to ensure all keys are strings
+  defp ensure_string_keys(map) do
+    for {key, value} <- map, into: %{} do
+      {to_string(key), value}
+    end
+  end
+
   defp convert_checkbox(params, key) do
     case Map.get(params, key) do
       "on" -> Map.put(params, key, true)
@@ -1298,34 +1482,63 @@ end
     |> convert_checkbox("is_public")
   end
 
-  @impl true
-  def handle_event("show_session_form", _, socket) do
-    changeset = Channels.change_session(nil)
-
-    {:noreply,
-    socket
-    |> assign(:show_session_form, true)
-    |> assign(:session_changeset, changeset)}
-  end
-
-  @impl true
-  def handle_event("show_broadcast_form", _, socket) do
-    changeset = Channels.change_broadcast(nil)
-
-    {:noreply,
-    socket
-    |> assign(:show_broadcast_form, true)
-    |> assign(:broadcast_changeset, changeset)}
-  end
-
-  @impl true
-  def handle_event("hide_session_form", _, socket) do
-    {:noreply, assign(socket, :show_session_form, false)}
-  end
-
-  @impl true
-  def handle_event("hide_broadcast_form", _, socket) do
+  def handle_event("hide_broadcast_form", _params, socket) do
     {:noreply, assign(socket, :show_broadcast_form, false)}
+  end
+
+  defp clean_datetime_field(params, field) do
+    case Map.get(params, field) do
+      "" -> Map.delete(params, field)
+      nil -> Map.delete(params, field)
+      value when is_binary(value) ->
+        # Parse datetime-local format (YYYY-MM-DDTHH:MM)
+        case parse_datetime_local(value) do
+          {:ok, datetime} -> Map.put(params, field, datetime)
+          :error -> Map.delete(params, field)
+        end
+      value -> Map.put(params, field, value)
+    end
+  end
+
+  defp clean_integer_field(params, field) do
+    case Map.get(params, field) do
+      "" -> Map.delete(params, field)
+      nil -> Map.delete(params, field)
+      value when is_binary(value) ->
+        case Integer.parse(value) do
+          {int, ""} -> Map.put(params, field, int)
+          _ -> Map.delete(params, field)
+        end
+      value -> Map.put(params, field, value)
+    end
+  end
+
+  defp parse_datetime_local(datetime_string) when is_binary(datetime_string) do
+    # datetime-local format: "2025-06-01T14:30"
+    case NaiveDateTime.from_iso8601(datetime_string <> ":00") do
+      {:ok, naive_dt} ->
+        {:ok, DateTime.from_naive!(naive_dt, "Etc/UTC")}
+      :error ->
+        :error
+    end
+  end
+
+  # Helper function to reload channel data after creating a broadcast
+  defp reload_channel_data(socket) do
+    channel = socket.assigns.channel
+
+    # Reload all the channel data
+    upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(channel.id)
+    active_broadcasts = Sessions.list_active_broadcasts_for_channel(channel.id)
+    active_sessions = Sessions.list_active_sessions_for_channel(channel.id)
+    past_sessions = Sessions.list_past_sessions_for_channel(channel.id)
+
+    socket
+    |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+    |> assign(:active_broadcasts, active_broadcasts)
+    |> assign(:sessions, active_sessions)
+    |> assign(:broadcasts, active_broadcasts)
+    |> assign(:past_sessions, past_sessions)
   end
 
   @impl true

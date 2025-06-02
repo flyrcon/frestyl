@@ -4,60 +4,147 @@ defmodule FrestylWeb.BroadcastLive.Show do
   alias Frestyl.Sessions
 
   @impl true
-  def mount(%{"broadcast_id" => broadcast_id} = params, _session, socket) do
-    # Convert string to integer
-    broadcast_id = String.to_integer(broadcast_id)
+  def mount(%{"slug" => channel_slug, "id" => broadcast_id} = params, session, socket) do
+    # Get current user from session
+    current_user = session["user_token"] && Accounts.get_user_by_session_token(session["user_token"])
 
-    # You can also access channel_slug if needed:
-    # channel_slug = Map.get(params, "channel_slug")
+    if is_nil(current_user) do
+      socket =
+        socket
+        |> put_flash(:error, "You must be logged in to view broadcasts")
+        |> redirect(to: ~p"/login")
+      {:ok, socket}
+    else
+      try do
+        # Convert string to integer if needed
+        broadcast_id_int = if is_binary(broadcast_id), do: String.to_integer(broadcast_id), else: broadcast_id
 
-    broadcast = Sessions.get_session_with_details!(broadcast_id)
-    current_user = socket.assigns.current_user
+        # Get broadcast by ID
+        broadcast = Sessions.get_session(broadcast_id_int)
 
-    is_host = broadcast.host_id == current_user.id
+        # Get channel by slug
+        channel = Channels.get_channel_by_slug(channel_slug)
 
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Frestyl.PubSub, "broadcast:#{broadcast_id}")
+        cond do
+          is_nil(broadcast) ->
+            socket =
+              socket
+              |> put_flash(:error, "Broadcast not found")
+              |> redirect(to: ~p"/channels/#{channel_slug}")
+            {:ok, socket}
 
-      # Track presence
-      if function_exported?(Frestyl.Presence, :track_user, 4) do
-        Frestyl.Presence.track_user(self(), "broadcast:#{broadcast_id}", current_user.id, %{
-          online_at: DateTime.utc_now(),
-          role: if(is_host, do: "host", else: "viewer")
-        })
+          is_nil(channel) ->
+            socket =
+              socket
+              |> put_flash(:error, "Channel not found")
+              |> redirect(to: ~p"/dashboard")
+            {:ok, socket}
+
+          # Verify broadcast belongs to the channel
+          broadcast.channel_id != channel.id ->
+            socket =
+              socket
+              |> put_flash(:error, "Broadcast not found in this channel")
+              |> redirect(to: ~p"/channels/#{channel_slug}")
+            {:ok, socket}
+
+          # Check user permissions - Show module should allow viewers, not just managers
+          true ->
+            # Determine user roles
+            is_host = broadcast.host_id == current_user.id
+            is_creator = broadcast.creator_id == current_user.id
+            is_organizer = is_host || is_creator
+
+            if connected?(socket) do
+              # Subscribe to broadcast events
+              PubSub.subscribe(Frestyl.PubSub, "broadcast:#{broadcast.id}")
+              PubSub.subscribe(Frestyl.PubSub, "broadcast:#{broadcast.id}:participants")
+
+              # Subscribe to chat if using integrated chat
+              PubSub.subscribe(Frestyl.PubSub, "channel:#{channel.id}")
+            end
+
+            # Get broadcast stats and participants with error handling
+            participants = try do
+              Sessions.list_session_participants(broadcast.id) || []
+            rescue
+              _ -> []
+            end
+
+            stats = try do
+              Sessions.get_broadcast_stats(broadcast.id)
+            rescue
+              _ -> %{total: 0, active: 0, waiting: 0}
+            end
+
+            # Get host information
+            host = if broadcast.host_id do
+              Accounts.get_user(broadcast.host_id)
+            else
+              Accounts.get_user(broadcast.creator_id)
+            end
+
+            # Initialize form changesets
+            broadcast_changeset = Sessions.change_session(broadcast, %{})
+
+            # Calculate audience stats
+            participant_count = length(participants)
+            waiting_count = Enum.count(participants, &(&1.joined_at == nil))
+            active_count = Enum.count(participants, &(&1.joined_at != nil && &1.left_at == nil))
+            left_count = Enum.count(participants, &(&1.left_at != nil))
+
+            audience_stats = %{
+              waiting: waiting_count,
+              active: active_count,
+              left: left_count,
+              total: participant_count
+            }
+
+            {:ok,
+            socket
+            |> assign(:current_user, current_user)
+            |> assign(:broadcast, broadcast)
+            |> assign(:channel, channel)
+            |> assign(:host, host)
+            |> assign(:participants, participants)
+            |> assign(:stats, stats)
+            |> assign(:broadcast_changeset, broadcast_changeset)
+            |> assign(:page_title, "#{broadcast.title} - Broadcast")
+            |> assign(:active_tab, "overview")
+            |> assign(:show_edit_form, false)
+            |> assign(:show_host_assignment, false)
+            |> assign(:selected_participant, nil)
+            |> assign(:available_hosts, [])  # Empty for now, can be populated later if needed
+            |> assign(:chat_messages, [])     # Empty for now, chat component will handle this
+            |> assign(:muted_users, [])
+            |> assign(:blocked_users, [])
+            |> assign(:chat_enabled, true)
+            |> assign(:reactions_enabled, true)
+            |> assign(:is_host, is_host)
+            |> assign(:is_creator, is_creator)
+            |> assign(:is_organizer, is_organizer)
+            |> assign(:participant_count, participant_count)
+            |> assign(:audience_stats, audience_stats)
+            |> assign(:current_tab, "stream")
+            |> assign(:stream_started, broadcast.status == "active")
+            |> assign(:current_quality, "auto")
+            |> assign(:audio_only, false)}
+        end
+      rescue
+        Ecto.NoResultsError ->
+          socket =
+            socket
+            |> put_flash(:error, "Broadcast not found")
+            |> redirect(to: ~p"/channels/#{channel_slug}")
+          {:ok, socket}
+        ArgumentError ->
+          socket =
+            socket
+            |> put_flash(:error, "Invalid broadcast ID")
+            |> redirect(to: ~p"/channels/#{channel_slug}")
+          {:ok, socket}
       end
     end
-
-    participants = Sessions.list_session_participants(broadcast_id)
-    participant_count = length(participants)
-
-    # Initial statistics
-    waiting_count = Enum.count(participants, &(&1.joined_at == nil))
-    active_count = Enum.count(participants, &(&1.joined_at != nil && &1.left_at == nil))
-    left_count = Enum.count(participants, &(&1.left_at != nil))
-
-    audience_stats = %{
-      waiting: waiting_count,
-      active: active_count,
-      left: left_count,
-      total: participant_count
-    }
-
-    socket = socket
-      |> assign(:broadcast, broadcast)
-      |> assign(:is_host, is_host)
-      |> assign(:participant_count, participant_count)
-      |> assign(:audience_stats, audience_stats)
-      |> assign(:current_tab, "stream")
-      |> assign(:stream_started, broadcast.status == "active")
-      |> assign(:chat_enabled, true)
-      |> assign(:reactions_enabled, true)
-      |> assign(:muted_users, [])
-      |> assign(:blocked_users, [])
-      |> assign(:current_quality, "auto")
-      |> assign(:audio_only, false)
-
-    {:ok, socket}
   end
 
   @impl true
