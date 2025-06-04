@@ -22,50 +22,56 @@ defmodule Frestyl.Sessions do
     |> Repo.preload([:creator, :host, :channel, :session_participants])
   end
 
-  def get_upcoming_broadcasts(channel_id) do
+  @doc """
+  Gets upcoming broadcasts with proper timezone handling
+  """
+  def get_upcoming_broadcasts(channel_id, user_timezone \\ "America/New_York") do
+    # Always compare in UTC to avoid timezone confusion
+    now_utc = DateTime.utc_now()
+
     from(s in Session,
       where: s.channel_id == ^channel_id,
       where: s.session_type == "broadcast",
-      where: s.status == "scheduled",
-      where: s.is_public == true,  # Only show public broadcasts
-      where: s.scheduled_for > ^DateTime.utc_now(),
-      order_by: [asc: s.scheduled_for],
+      where: s.status in ["scheduled", "active"],  # Include active broadcasts too
+      where: s.is_public == true,
+      where: s.scheduled_for > ^now_utc or s.status == "active",  # Future scheduled or currently active
+      order_by: [
+        # Show active broadcasts first, then by scheduled time
+        fragment("CASE WHEN ? = 'active' THEN 0 ELSE 1 END", s.status),
+        asc: s.scheduled_for
+      ],
       preload: [:creator, :host, :channel]
     )
     |> Repo.all()
   end
 
+  @doc """
+  Create broadcast with proper timezone handling
+  """
   def create_broadcast(params) do
-    # Extract and clean params with defaults
-    attrs = %{
-      "channel_id" => params["channel_id"],
-      "creator_id" => params["creator_id"],
-      "host_id" => params["host_id"] || params["creator_id"],
-      "title" => params["title"] || "Untitled Broadcast",
-      "description" => params["description"],
-      "is_public" => params["is_public"] || true,
-      "broadcast_type" => params["broadcast_type"] || "standard",
-      "waiting_room_enabled" => params["waiting_room_enabled"] || false,
-      "max_participants" => params["max_participants"],
-      "duration_minutes" => params["duration_minutes"],
-      "scheduled_for" => parse_datetime(params["scheduled_for"]),
-      "scheduled_end" => parse_datetime(params["scheduled_end"]),
-      "session_type" => "broadcast"
-    }
-
-    # Remove nil values
-    attrs = attrs |> Enum.reject(fn {_k, v} -> is_nil(v) end) |> Map.new()
+    # Ensure scheduled_for is in UTC
+    cleaned_params = params
+    |> ensure_utc_datetime("scheduled_for")
+    |> ensure_utc_datetime("scheduled_end")
+    |> Map.put("session_type", "broadcast")
 
     # Determine status based on scheduled time
-    status = if attrs["scheduled_for"] &&
-                DateTime.compare(attrs["scheduled_for"], DateTime.utc_now()) == :gt do
-      "scheduled"
-    else
-      "active"
+    status = case cleaned_params["scheduled_for"] do
+      nil -> "scheduled"
+      scheduled_time when is_struct(scheduled_time, DateTime) ->
+        if DateTime.compare(scheduled_time, DateTime.utc_now()) == :gt do
+          "scheduled"
+        else
+          "active"
+        end
+      _ -> "scheduled"
     end
 
     # Add the calculated status
-    attrs = Map.put(attrs, "status", status)
+    attrs = Map.put(cleaned_params, "status", status)
+
+    # Remove nil values
+    attrs = attrs |> Enum.reject(fn {_k, v} -> is_nil(v) end) |> Map.new()
 
     # Create the broadcast using the changeset
     %Session{}
@@ -73,14 +79,61 @@ defmodule Frestyl.Sessions do
     |> Repo.insert()
   end
 
-  # Keep your existing parse_datetime function as well
-  defp parse_datetime(nil), do: nil
-  defp parse_datetime(datetime_string) when is_binary(datetime_string) do
-    case DateTime.from_iso8601(datetime_string) do
-      {:ok, datetime, _offset} -> datetime
-      {:error, _} -> nil
+  # Helper function to ensure datetime is in UTC
+  defp ensure_utc_datetime(params, key) do
+    case Map.get(params, key) do
+      nil -> params
+
+      %DateTime{} = dt ->
+        # Already DateTime, ensure it's in UTC
+        case DateTime.shift_zone(dt, "UTC") do
+          {:ok, utc_dt} -> Map.put(params, key, utc_dt)
+          {:error, _} -> params
+        end
+
+      %NaiveDateTime{} = naive_dt ->
+        # Convert NaiveDateTime to UTC DateTime
+        utc_dt = DateTime.from_naive!(naive_dt, "Etc/UTC")
+        Map.put(params, key, utc_dt)
+
+      datetime_string when is_binary(datetime_string) ->
+        case parse_datetime(datetime_string) do
+          nil -> Map.delete(params, key)
+          parsed_dt -> Map.put(params, key, parsed_dt)
+        end
+
+      _ -> Map.delete(params, key)
     end
   end
+
+  # Enhanced datetime parser
+  defp parse_datetime(nil), do: nil
+
+  defp parse_datetime(datetime_string) when is_binary(datetime_string) do
+    cond do
+      # ISO8601 with timezone
+      String.contains?(datetime_string, "T") and String.contains?(datetime_string, "Z") ->
+        case DateTime.from_iso8601(datetime_string) do
+          {:ok, datetime, _offset} -> datetime
+          {:error, _} -> nil
+        end
+
+      # ISO8601 without timezone (assume UTC)
+      String.contains?(datetime_string, "T") ->
+        case DateTime.from_iso8601(datetime_string <> "Z") do
+          {:ok, datetime, _offset} -> datetime
+          {:error, _} ->
+            # Try as naive datetime
+            case NaiveDateTime.from_iso8601(datetime_string) do
+              {:ok, naive_dt} -> DateTime.from_naive!(naive_dt, "Etc/UTC")
+              {:error, _} -> nil
+            end
+        end
+
+      true -> nil
+    end
+  end
+
   defp parse_datetime(%DateTime{} = datetime), do: datetime
   defp parse_datetime(_), do: nil
 
@@ -145,32 +198,37 @@ defmodule Frestyl.Sessions do
     Repo.all(query)
   end
 
-  @doc """
-  Gets detailed statistics for a broadcast including participant breakdown.
-  """
-  def get_broadcast_stats(session_id) do
-    participants_query = from p in SessionParticipant,
-      where: p.session_id == ^session_id
+    @doc """
+    Gets broadcast stats with proper participant status calculation
+    """
+    def get_broadcast_stats(session_id) do
+      participants_query = from p in SessionParticipant,
+        where: p.session_id == ^session_id
 
-    total = Repo.aggregate(participants_query, :count, :id)
+      total = Repo.aggregate(participants_query, :count, :id)
 
-    waiting = from(p in participants_query, where: is_nil(p.joined_at))
-      |> Repo.aggregate(:count, :id)
+      # Active: joined but not left
+      active = from(p in participants_query,
+        where: not is_nil(p.joined_at) and is_nil(p.left_at))
+        |> Repo.aggregate(:count, :id)
 
-    active = from(p in participants_query,
-      where: not is_nil(p.joined_at) and is_nil(p.left_at))
-      |> Repo.aggregate(:count, :id)
+      # Waiting: registered but not yet joined
+      waiting = from(p in participants_query,
+        where: is_nil(p.joined_at) and is_nil(p.left_at))
+        |> Repo.aggregate(:count, :id)
 
-    left = from(p in participants_query, where: not is_nil(p.left_at))
-      |> Repo.aggregate(:count, :id)
+      # Left: has left_at timestamp
+      left = from(p in participants_query, where: not is_nil(p.left_at))
+        |> Repo.aggregate(:count, :id)
 
-    %{
-      total: total,
-      waiting: waiting,
-      active: active,
-      left: left
-    }
-  end
+      %{
+        total: total,
+        active: active,
+        waiting: waiting,
+        left: left
+      }
+    end
+
 
   @doc """
   Marks when a participant actually joins the live session (not just registers).
@@ -201,47 +259,31 @@ defmodule Frestyl.Sessions do
   end
 
   @doc """
-  Updates a participant's role in a session.
+  Gets a single session participant
   """
-  def update_participant_role(session_id, user_id, new_role) when is_binary(user_id) do
-    update_participant_role(session_id, String.to_integer(user_id), new_role)
+  def get_session_participant(session_id, user_id) when is_binary(user_id) do
+    get_session_participant(session_id, String.to_integer(user_id))
   end
 
-  def update_participant_role(session_id, user_id, new_role) when is_integer(user_id) do
-    case Repo.get_by(SessionParticipant, session_id: session_id, user_id: user_id) do
-      nil ->
-        {:error, "Participant not found"}
-      participant ->
-        participant
-        |> SessionParticipant.changeset(%{role: new_role})
-        |> Repo.update()
-    end
+  def get_session_participant(session_id, user_id) when is_integer(user_id) do
+    Repo.get_by(SessionParticipant, session_id: session_id, user_id: user_id)
   end
 
   @doc """
-  Removes a participant from a session (for hosts/moderators)
+  Removes a participant from a session
   """
-  def remove_participant(session_id, user_id) do
-    case get_session_participant(session_id, user_id) do
-      nil ->
-        {:error, :not_found}
-
-      participant ->
-        Repo.delete(participant)
-    end
+  def remove_participant(session_id, user_id) when is_binary(user_id) do
+    remove_participant(session_id, String.to_integer(user_id))
   end
 
-  @doc """
-  Updates a participant's role
-  """
-  def update_participant_role(session_id, user_id, new_role) do
+  def remove_participant(session_id, user_id) when is_integer(user_id) do
     case get_session_participant(session_id, user_id) do
       nil ->
         {:error, :not_found}
-
       participant ->
+        # Don't delete, just mark as left
         participant
-        |> SessionParticipant.changeset(%{role: new_role})
+        |> SessionParticipant.changeset(%{left_at: DateTime.utc_now()})
         |> Repo.update()
     end
   end
@@ -285,26 +327,48 @@ defmodule Frestyl.Sessions do
   end
 
   @doc """
-  Ends a session.
+  Ends a session - single definition
   """
   def end_session(%Session{} = session) do
     session
-    |> Session.end_session_changeset()
+    |> Session.changeset(%{
+      status: "ended",
+      ended_at: DateTime.truncate(DateTime.utc_now(), :second)
+    })
     |> Repo.update()
   end
 
   @doc """
   Lists active sessions for a channel.
   """
-  def list_active_broadcasts_for_channel(channel_id) do
-    now = DateTime.utc_now()
-
+  def list_active_broadcasts(channel_id) do
     from(s in Session,
-      where: s.channel_id == ^channel_id and
-            not is_nil(s.broadcast_type) and
-            s.status == "active" and
-            (is_nil(s.ended_at) or s.ended_at > ^now),
-      order_by: [desc: s.inserted_at])
+      where: s.channel_id == ^channel_id
+      and s.session_type == "broadcast"
+      and s.status == "active",
+      order_by: [desc: s.started_at],
+      preload: [:host, :creator]
+    )
+    |> Repo.all()
+  end
+
+  def list_all_broadcasts_for_channel(channel_id) do
+    from(s in Session,
+      where: s.channel_id == ^channel_id
+      and s.session_type == "broadcast"
+      and s.status in ["scheduled", "active", "ended"]  # Include recent ended ones too
+      and (
+        s.status == "active" or
+        (s.status == "scheduled" and s.scheduled_for > ^DateTime.add(DateTime.utc_now(), -3600, :second)) or
+        (s.status == "ended" and s.ended_at > ^DateTime.add(DateTime.utc_now(), -1800, :second))
+      ),
+      order_by: [
+        # Active first, then by scheduled time
+        fragment("CASE WHEN ? = 'active' THEN 0 WHEN ? = 'scheduled' THEN 1 ELSE 2 END", s.status, s.status),
+        asc: s.scheduled_for
+      ],
+      preload: [:host, :creator, :channel]
+    )
     |> Repo.all()
   end
 
@@ -344,39 +408,24 @@ defmodule Frestyl.Sessions do
   end
 
   @doc """
-  Lists upcoming broadcasts for a channel.
+  Lists upcoming broadcasts for a channel with proper timezone consideration
   """
   def list_upcoming_broadcasts_for_channel(channel_id) do
-    now = DateTime.utc_now()
+    now_utc = DateTime.utc_now()
 
-    query = from s in Session,
+    from(s in Session,
       where: s.channel_id == ^channel_id
-        and s.status == "scheduled"
-        and s.scheduled_for > ^now
-        and not is_nil(s.broadcast_type)
-        and s.is_public == true,  # Only show public broadcasts
-      select: %{
-        id: s.id,
-        title: s.title,
-        description: s.description,
-        status: s.status,
-        scheduled_for: s.scheduled_for,
-        scheduled_end: s.scheduled_end,
-        duration_minutes: s.duration_minutes,
-        broadcast_type: s.broadcast_type,
-        creator_id: s.creator_id,
-        host_id: s.host_id,
-        channel_id: s.channel_id,
-        is_public: s.is_public,
-        waiting_room_enabled: s.waiting_room_enabled,
-        max_participants: s.max_participants,
-        registered_count: fragment("(SELECT COUNT(*) FROM session_participants WHERE session_id = ? AND left_at IS NULL)", s.id),
-        host_name: fragment("(SELECT COALESCE(name, username, email) FROM users WHERE id = ?)", s.host_id),
-        creator_name: fragment("(SELECT COALESCE(name, username, email) FROM users WHERE id = ?)", s.creator_id)
-      },
-      order_by: [asc: s.scheduled_for]
-
-    Repo.all(query)
+      and s.session_type == "broadcast"
+      and s.status in ["scheduled", "active"]  # Include both scheduled and active
+      and (s.scheduled_for > ^now_utc or s.status == "active"),  # Future or currently live
+      order_by: [
+        # Active broadcasts first
+        fragment("CASE WHEN ? = 'active' THEN 0 ELSE 1 END", s.status),
+        asc: s.scheduled_for
+      ],
+      preload: [:host, :creator, :channel]
+    )
+    |> Repo.all()
   end
 
   @doc """
@@ -404,16 +453,34 @@ defmodule Frestyl.Sessions do
   end
 
   @doc """
-  Adds a participant to a session.
+  Enhanced add_participant that handles conflicts better
   """
   def add_participant(session_id, user_id, role \\ "participant") do
-    %SessionParticipant{}
-    |> SessionParticipant.changeset(%{
-      session_id: session_id,
-      user_id: user_id,
-      role: role
-    })
-    |> Repo.insert(on_conflict: :nothing)
+    try do
+      case get_session_participant(session_id, user_id) do
+        nil ->
+          # Create new participant
+          %SessionParticipant{}
+          |> SessionParticipant.changeset(%{
+            session_id: session_id,
+            user_id: user_id,
+            role: role
+          })
+          |> Repo.insert()
+
+        existing_participant ->
+          # Participant exists - check if they left and allow re-joining
+          if existing_participant.left_at do
+            existing_participant
+            |> SessionParticipant.changeset(%{left_at: nil})
+            |> Repo.update()
+          else
+            {:error, :participant_already_exists}
+          end
+      end
+    rescue
+      e -> {:error, {:database_error, e}}
+    end
   end
 
   @doc """
@@ -439,16 +506,27 @@ defmodule Frestyl.Sessions do
   end
 
   @doc """
-  Checks if a user is registered for a broadcast (and hasn't left)
+  Checks if a user is registered for a broadcast and hasn't left
   """
-  def user_registered_for_broadcast?(user_id, broadcast_id) do
-    Repo.exists?(
-      from sp in SessionParticipant,
-      where: sp.session_id == ^broadcast_id
-        and sp.user_id == ^user_id
-        and is_nil(sp.left_at)
-    )
+  def user_registered_for_broadcast?(user_id, broadcast_id) when is_integer(user_id) and is_integer(broadcast_id) do
+    try do
+      case Repo.get_by(SessionParticipant, session_id: broadcast_id, user_id: user_id) do
+        nil -> false
+        participant -> is_nil(participant.left_at)  # Registered and hasn't left
+      end
+    rescue
+      _ -> false
+    end
   end
+
+  def user_registered_for_broadcast?(user_id, broadcast_id) when is_binary(user_id) do
+    case Integer.parse(user_id) do
+      {int_id, ""} -> user_registered_for_broadcast?(int_id, broadcast_id)
+      _ -> false
+    end
+  end
+
+  def user_registered_for_broadcast?(_, _), do: false
 
   @doc """
   Joins a user to a session.
@@ -504,23 +582,97 @@ defmodule Frestyl.Sessions do
     end
   end
 
+  @doc """
+  Starts a broadcast - single definition
+  """
   def start_broadcast(session) do
-    session
-    |> Session.changeset(%{
+    with {:ok, updated_session} <- update_session(session, %{
       status: "active",
-      started_at: DateTime.truncate(DateTime.utc_now(), :second)  # Fix: truncate microseconds
-    })
-    |> Repo.update()
+      started_at: DateTime.utc_now()
+    }) do
+      # Notify all registered participants
+      notify_participants_broadcast_live(updated_session)
+      {:ok, updated_session}
+    end
   end
 
-  def end_session(session) do
-    session
-    |> Session.end_session_changeset()
-    |> Ecto.Changeset.put_change(:ended_at, DateTime.truncate(DateTime.utc_now(), :second))  # Fix: truncate microseconds
-    |> Repo.update()
+  defp notify_participants_broadcast_live(session) do
+    # Get all registered participants
+    participants = list_session_participants(session.id)
+
+    # Broadcast to each participant
+    Enum.each(participants, fn participant ->
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "user:#{participant.user_id}",
+        {:broadcast_live, session.id, session.title, session.channel_id}
+      )
+    end)
+
+    # Also broadcast to the channel for real-time updates
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "channel:#{session.channel_id}",
+      {:broadcast_status_changed, session.id, "active"}
+    )
   end
 
+  # Handles live broadcasts
+  def register_for_broadcast(broadcast_id, user_id) when is_integer(broadcast_id) and is_integer(user_id) do
+    try do
+      broadcast = get_session(broadcast_id)
 
+      if is_nil(broadcast) do
+        {:error, :broadcast_not_found}
+      else
+        case broadcast.status do
+          "active" ->
+            # Broadcast is already live
+            case add_participant(broadcast_id, user_id, "participant") do
+              {:ok, participant} ->
+                # Mark as joined immediately since broadcast is live
+                mark_participant_joined(broadcast_id, user_id)
+                {:ok, :join_now, participant}
+              error -> error
+            end
+
+          "scheduled" ->
+            # Normal registration for future broadcast
+            case add_participant(broadcast_id, user_id, "participant") do
+              {:ok, participant} -> {:ok, :registered, participant}
+              {:error, :participant_already_exists} -> {:error, :already_registered}
+              error -> error
+            end
+
+          _ ->
+            {:error, :broadcast_not_available}
+        end
+      end
+    rescue
+      e -> {:error, {:unexpected_error, e}}
+    end
+  end
+
+  def register_for_broadcast(broadcast_id, user_id) when is_binary(broadcast_id) do
+    case Integer.parse(broadcast_id) do
+      {int_id, ""} -> register_for_broadcast(int_id, user_id)
+      _ -> {:error, :invalid_broadcast_id}
+    end
+  end
+
+  def register_for_broadcast(broadcast_id, user_id) when is_binary(user_id) do
+    case Integer.parse(user_id) do
+      {int_id, ""} -> register_for_broadcast(broadcast_id, int_id)
+      _ -> {:error, :invalid_user_id}
+    end
+  end
+
+  def get_user_registration(broadcast_id, user_id) do
+    from(p in SessionParticipant,
+      where: p.session_id == ^broadcast_id and p.user_id == ^user_id
+    )
+    |> Repo.one()
+  end
 
   @doc """
   Creates a message in a session.
@@ -571,6 +723,32 @@ defmodule Frestyl.Sessions do
       }
 
     Repo.all(query) |> Enum.reverse()
+  end
+
+  @doc """
+  Clears all messages for a session (for broadcast management)
+  """
+  def clear_session_messages(session_id) do
+    from(m in Message, where: m.session_id == ^session_id)
+    |> Repo.delete_all()
+    |> case do
+      {count, _} -> {:ok, count}
+      error -> error
+    end
+  end
+
+  @doc """
+  Deletes a specific message (for moderation)
+  """
+  def delete_message(message_id) when is_binary(message_id) do
+    delete_message(String.to_integer(message_id))
+  end
+
+  def delete_message(message_id) when is_integer(message_id) do
+    case Repo.get(Message, message_id) do
+      nil -> {:error, :not_found}
+      message -> Repo.delete(message)
+    end
   end
 
   @doc """
@@ -784,6 +962,24 @@ defmodule Frestyl.Sessions do
     |> Base.url_encode64(padding: false)
   end
 
+    @doc """
+  Updates a participant's role - single definition
+  """
+  def update_participant_role(session_id, user_id, new_role) when is_binary(user_id) do
+    update_participant_role(session_id, String.to_integer(user_id), new_role)
+  end
+
+  def update_participant_role(session_id, user_id, new_role) when is_integer(user_id) do
+    case get_session_participant(session_id, user_id) do
+      nil ->
+        {:error, :not_found}
+      participant ->
+        participant
+        |> SessionParticipant.changeset(%{role: new_role})
+        |> Repo.update()
+    end
+  end
+
   @doc """
   Gets participants count for a session.
   """
@@ -812,21 +1008,6 @@ defmodule Frestyl.Sessions do
   end
 
   @doc """
-  Updates the participant role.
-  """
-  def update_participant_role(session_id, user_id, new_role) do
-    case get_session_participant(session_id, user_id) do
-      nil ->
-        {:error, :not_found}
-
-      participant ->
-        participant
-        |> SessionParticipant.changeset(%{role: new_role})
-        |> Repo.update()
-    end
-  end
-
-  @doc """
   Records when a participant joins the active session.
   """
   def mark_participant_joined(session_id, user_id) do
@@ -849,29 +1030,6 @@ defmodule Frestyl.Sessions do
   end
 
   @doc """
-  Start a broadcast (change status from scheduled to active).
-  """
-  def start_broadcast(session) do
-    session
-    |> Session.changeset(%{
-      status: "active",
-      started_at: DateTime.utc_now()
-    })
-    |> Repo.update()
-  end
-
-  def get_session_participant(session_id, user_id) do
-    Repo.get_by(SessionParticipant, session_id: session_id, user_id: user_id)
-  end
-
-  @doc """
-  Gets a session participant by session_id and user_id, raises if not found
-  """
-  def get_session_participant(session_id, user_id) do
-    Repo.get_by(SessionParticipant, session_id: session_id, user_id: user_id)
-  end
-
-  @doc """
   Lists all participants for a session
   """
   def list_session_participants(session_id) do
@@ -881,25 +1039,6 @@ defmodule Frestyl.Sessions do
       order_by: [desc: sp.joined_at]
     )
     |> Repo.all()
-  end
-
-  @doc """
-  Gets broadcast stats (participant counts)
-  """
-  def get_broadcast_stats(session_id) do
-    participants = list_session_participants(session_id)
-
-    total = length(participants)
-    active = Enum.count(participants, &(&1.status == "active"))
-    waiting = Enum.count(participants, &(&1.status == "waiting"))
-    left = Enum.count(participants, &(&1.status in ["left", "kicked"]))
-
-    %{
-      total: total,
-      active: active,
-      waiting: waiting,
-      left: left
-    }
   end
 
   @doc """

@@ -1,0 +1,681 @@
+/* assets/css/broadcast_audio.css - Mobile-First Audio Broadcast Styles */
+
+/* Custom CSS Variables for Audio Theme */
+:root {
+  --audio-primary: #8B5CF6;
+  --audio-secondary: #06B6D4;
+  --audio-accent: #10B981;
+  --audio-warning: #F59E0B;
+  --audio-error: #EF4444;
+  --audio-surface: rgba(0, 0, 0, 0.4);
+  --audio-surface-light: rgba(255, 255, 255, 0.1);
+  --audio-surface-lighter: rgba(255, 255, 255, 0.2);
+  --audio-text: rgba(255, 255, 255, 0.9);
+  --audio-text-muted: rgba(255, 255, 255, 0.6);
+  
+  /* Mobile-first breakpoints */
+  --mobile-max: 768px;
+  --tablet-max: 1024px;
+  --desktop-min: 1025px;
+  
+  /* Audio-specific spacing */
+  --audio-gap-xs: 0.25rem;
+  --audio-gap-sm: 0.5rem;
+  --audio-gap-md: 1rem;
+  --audio-gap-lg: 1.5rem;
+  --audio-gap-xl: 2rem;
+  
+  /* Audio control dimensions */
+  --audio-button-sm: 2rem;
+  --audio-button-md: 2.5rem;
+  --audio-button-lg: 3rem;
+  --audio-slider-height: 0.5rem;
+  --audio-level-meter-height: 0.5rem;
+}
+
+/* Base Audio Component Styles */
+.audio-surface {
+  background: var(--audio-surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--audio-surface-light);
+  border-radius: 1rem;
+}
+
+.audio-surface-light {
+  background: var(--audio-surface-light);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--audio-surface-lighter);
+  border-radius: 0.75rem;
+}
+
+.audio-glass {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Enhanced Audio Sliders - Mobile First */
+.audio-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 100%;
+  height: var(--audio-slider-height);
+  background: var(--audio-surface-light);
+  border-radius: 0.25rem;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.audio-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  background: linear-gradient(135deg, var(--audio-primary), var(--audio-secondary));
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 0 0 2px rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+}
+
+.audio-slider::-moz-range-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+  background: linear-gradient(135deg, var(--audio-primary), var(--audio-secondary));
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 0 0 2px rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+}
+
+.audio-slider:hover::-webkit-slider-thumb,
+.audio-slider:focus::-webkit-slider-thumb {
+  transform: scale(1.1);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    0 0 0 3px rgba(139, 92, 246, 0.3);
+}
+
+.audio-slider:hover::-moz-range-thumb,
+.audio-slider:focus::-moz-range-thumb {
+  transform: scale(1.1);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    0 0 0 3px rgba(139, 92, 246, 0.3);
+}
+
+/* Vertical Slider for Desktop */
+@media (min-width: 1025px) {
+  .audio-slider.vertical {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: var(--audio-slider-height);
+    height: 12rem;
+  }
+}
+
+/* Enhanced Level Meters */
+.audio-level-meter {
+  height: var(--audio-level-meter-height);
+  background: var(--audio-surface-light);
+  border-radius: 0.25rem;
+  overflow: hidden;
+  position: relative;
+  transition: all 0.1s ease;
+}
+
+.audio-level-meter::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 10%;
+  width: 1px;
+  height: 100%;
+  background: rgba(239, 68, 68, 0.5);
+  z-index: 1;
+}
+
+.audio-level-meter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 30%;
+  width: 1px;
+  height: 100%;
+  background: rgba(245, 158, 11, 0.5);
+  z-index: 1;
+}
+
+.audio-level-fill {
+  height: 100%;
+  border-radius: 0.25rem;
+  transition: width 0.1s ease, background-color 0.2s ease;
+  background: linear-gradient(90deg, 
+    var(--audio-accent) 0%, 
+    var(--audio-warning) 70%, 
+    var(--audio-error) 90%);
+}
+
+/* Vertical Level Meters for Desktop */
+@media (min-width: 1025px) {
+  .audio-level-meter.vertical {
+    width: 1rem;
+    height: 12rem;
+  }
+  
+  .audio-level-meter.vertical::before {
+    top: 10%;
+    right: 0;
+    width: 100%;
+    height: 1px;
+  }
+  
+  .audio-level-meter.vertical::after {
+    top: 30%;
+    right: 0;
+    width: 100%;
+    height: 1px;
+  }
+  
+  .audio-level-fill.vertical {
+    width: 100%;
+    background: linear-gradient(0deg, 
+      var(--audio-accent) 0%, 
+      var(--audio-warning) 70%, 
+      var(--audio-error) 90%);
+  }
+}
+
+/* Enhanced Audio Buttons */
+.audio-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.audio-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, 
+    rgba(255, 255, 255, 0.1), 
+    rgba(255, 255, 255, 0.05));
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.audio-btn:hover::before {
+  opacity: 1;
+}
+
+.audio-btn:active {
+  transform: scale(0.98);
+}
+
+/* Button Variants */
+.audio-btn-primary {
+  background: linear-gradient(135deg, var(--audio-primary), var(--audio-secondary));
+  color: white;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+}
+
+.audio-btn-secondary {
+  background: var(--audio-surface-light);
+  color: var(--audio-text);
+  border: 1px solid var(--audio-surface-lighter);
+}
+
+.audio-btn-danger {
+  background: linear-gradient(135deg, var(--audio-error), #DC2626);
+  color: white;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+}
+
+.audio-btn-success {
+  background: linear-gradient(135deg, var(--audio-accent), #059669);
+  color: white;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+}
+
+/* Button Sizes */
+.audio-btn-sm {
+  width: var(--audio-button-sm);
+  height: var(--audio-button-sm);
+  padding: 0;
+}
+
+.audio-btn-md {
+  width: var(--audio-button-md);
+  height: var(--audio-button-md);
+  padding: 0;
+}
+
+.audio-btn-lg {
+  width: var(--audio-button-lg);
+  height: var(--audio-button-lg);
+  padding: 0;
+}
+
+.audio-btn-full {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  height: auto;
+}
+
+/* Audio Track Components */
+.audio-track {
+  background: var(--audio-surface);
+  border: 1px solid var(--audio-surface-light);
+  border-radius: 1rem;
+  padding: 1rem;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.audio-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--track-color, var(--audio-primary));
+  border-radius: 0 0.25rem 0.25rem 0;
+}
+
+.audio-track:hover {
+  background: rgba(0, 0, 0, 0.5);
+  border-color: var(--audio-surface-lighter);
+  transform: translateY(-1px);
+}
+
+.audio-track.expanded {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.audio-track.recording {
+  animation: recording-pulse 2s infinite;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+}
+
+.audio-track.solo {
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+}
+
+@keyframes recording-pulse {
+  0%, 100% { 
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+  }
+  50% { 
+    box-shadow: 0 0 30px rgba(239, 68, 68, 0.6);
+  }
+}
+
+/* Waveform Canvas Styling */
+.waveform-container {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.waveform-canvas {
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  transition: opacity 0.2s ease;
+}
+
+.waveform-canvas:hover {
+  opacity: 0.9;
+}
+
+.waveform-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(139, 92, 246, 0.1) 50%, 
+    transparent 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.waveform-container:hover .waveform-overlay {
+  opacity: 1;
+}
+
+/* Audio Clip Styling */
+.audio-clip {
+  position: absolute;
+  background: var(--track-color, var(--audio-primary));
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.audio-clip::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, 
+    rgba(255, 255, 255, 0.1), 
+    transparent 50%, 
+    rgba(255, 255, 255, 0.1));
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.audio-clip:hover::before {
+  opacity: 1;
+}
+
+.audio-clip.selected {
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.4);
+}
+
+.audio-clip .waveform {
+  position: absolute;
+  inset: 0;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Mixer Panel Styling */
+.audio-mixer-panel {
+  background: var(--audio-surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--audio-surface-light);
+  border-radius: 1.5rem;
+  box-shadow: 
+    0 20px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: mixer-slide-up 0.3s ease-out;
+}
+
+@keyframes mixer-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile-Specific Styles */
+@media (max-width: 768px) {
+  .audio-mixer-panel {
+    border-radius: 1rem 1rem 0 0;
+    margin: 0;
+    max-height: 80vh;
+  }
+  
+  .audio-track {
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .audio-btn-sm {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  
+  .audio-slider {
+    height: 0.75rem;
+  }
+  
+  .audio-slider::-webkit-slider-thumb {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  
+  .audio-slider::-moz-range-thumb {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  
+  .audio-level-meter {
+    height: 0.75rem;
+  }
+}
+
+/* Tablet Styles */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .audio-mixer-panel {
+    max-width: 90vw;
+    max-height: 70vh;
+  }
+  
+  .audio-track {
+    padding: 1rem;
+  }
+}
+
+/* Desktop Enhancements */
+@media (min-width: 1025px) {
+  .audio-mixer-panel {
+    max-width: 1200px;
+    max-height: 600px;
+  }
+  
+  .audio-track {
+    padding: 1.25rem;
+  }
+  
+  /* Desktop-specific hover effects */
+  .audio-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+  
+  .audio-track:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Performance Indicators */
+.audio-performance-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--audio-surface-light);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.audio-performance-indicator.good {
+  color: var(--audio-accent);
+}
+
+.audio-performance-indicator.warning {
+  color: var(--audio-warning);
+}
+
+.audio-performance-indicator.error {
+  color: var(--audio-error);
+}
+
+.audio-performance-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 2s infinite;
+}
+
+/* Loading States */
+.audio-loading {
+  position: relative;
+  overflow: hidden;
+}
+
+.audio-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, 
+    transparent, 
+    rgba(255, 255, 255, 0.1), 
+    transparent);
+  animation: loading-shimmer 1.5s infinite;
+}
+
+@keyframes loading-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Notification Badges */
+.audio-notification-badge {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  background: var(--audio-error);
+  color: white;
+  border-radius: 50%;
+  width: 1rem;
+  height: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.625rem;
+  font-weight: 700;
+  animation: badge-bounce 0.3s ease;
+}
+
+@keyframes badge-bounce {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* Accessibility Enhancements */
+.audio-btn:focus-visible,
+.audio-slider:focus-visible {
+  outline: 2px solid var(--audio-primary);
+  outline-offset: 2px;
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .audio-track,
+  .audio-btn,
+  .audio-clip,
+  .audio-slider::-webkit-slider-thumb,
+  .audio-slider::-moz-range-thumb {
+    transition: none;
+  }
+  
+  .audio-track.recording {
+    animation: none;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+  }
+  
+  .audio-performance-dot {
+    animation: none;
+  }
+}
+
+/* High Contrast Support */
+@media (prefers-contrast: high) {
+  :root {
+    --audio-surface: rgba(0, 0, 0, 0.8);
+    --audio-surface-light: rgba(255, 255, 255, 0.2);
+    --audio-surface-lighter: rgba(255, 255, 255, 0.3);
+  }
+  
+  .audio-track {
+    border-width: 2px;
+  }
+  
+  .audio-btn {
+    border: 2px solid currentColor;
+  }
+}
+
+/* Touch Device Optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .audio-btn {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+  
+  .audio-slider {
+    height: 1rem;
+  }
+  
+  .audio-slider::-webkit-slider-thumb {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  
+  .audio-slider::-moz-range-thumb {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  
+  /* Remove hover effects on touch devices */
+  .audio-btn:hover {
+    transform: none;
+    box-shadow: initial;
+  }
+  
+  .audio-track:hover {
+    transform: none;
+    box-shadow: initial;
+  }
+}
+
+/* Dark Mode Adjustments */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --audio-surface: rgba(0, 0, 0, 0.6);
+    --audio-surface-light: rgba(255, 255, 255, 0.15);
+    --audio-surface-lighter: rgba(255, 255, 255, 0.25);
+  }
+}
+
+/* Print Styles */
+@media print {
+  .audio-mixer-panel,
+  .audio-btn,
+  .audio-level-meter {
+    display: none;
+  }
+}

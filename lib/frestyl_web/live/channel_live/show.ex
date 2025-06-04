@@ -252,6 +252,7 @@ defmodule FrestylWeb.ChannelLive.Show do
             |> assign(:can_customize, can_edit_channel?(user_role))
             |> assign(:active_tab, active_tab)
             |> assign(:activity_tab, activity_tab)
+            |> assign(:content_tab, "audio")
             |> assign(:show_block_modal, false)
             |> assign(:show_invite_modal, false)
             |> assign(:show_media_upload, false)
@@ -260,6 +261,8 @@ defmodule FrestylWeb.ChannelLive.Show do
             |> assign(:mobile_nav_active, false)
             |> assign(:mobile_chat_active, false)
             |> assign(:show_mobile_create_menu, false)
+            |> assign(:show_edit_channel_modal, false)
+            |> assign(:channel_changeset, nil)
             |> assign(:viewing_media, nil)
             |> assign(:user_to_block, nil)
             |> assign(:blocking_member, false)
@@ -336,6 +339,7 @@ defmodule FrestylWeb.ChannelLive.Show do
     {:noreply, assign(socket, :broadcast_changeset, changeset)}
   end
 
+  @impl true
   def handle_event("create_broadcast", %{"session" => broadcast_params}, socket) do
     current_user = socket.assigns.current_user
     channel = socket.assigns.channel
@@ -349,22 +353,74 @@ defmodule FrestylWeb.ChannelLive.Show do
 
     case Sessions.create_broadcast(attrs) do
       {:ok, broadcast} ->
-        # Refresh the upcoming broadcasts list
-        upcoming_broadcasts = Sessions.get_upcoming_broadcasts(channel.id)
+        # Get all broadcasts with proper module reference
+        all_broadcasts = try do
+          Sessions.list_all_broadcasts_for_channel(channel.id)
+        rescue
+          UndefinedFunctionError ->
+            # Fallback if the new function doesn't exist in Sessions
+            Sessions.list_upcoming_broadcasts_for_channel(channel.id)
+          _ ->
+            # General fallback for any other error
+            Sessions.list_upcoming_broadcasts_for_channel(channel.id)
+        end
+
+        # Now all_broadcasts is in scope for the rest of the function
+        upcoming_broadcasts = Enum.filter(all_broadcasts, fn b ->
+          b.status == "scheduled" &&
+          b.scheduled_for &&
+          DateTime.compare(b.scheduled_for, DateTime.utc_now()) == :gt
+        end)
+
+        active_broadcasts = Enum.filter(all_broadcasts, &(&1.status == "active"))
+
+        # Recalculate stats with new broadcast
+        stats = calculate_channel_stats(
+          socket.assigns.sessions,
+          all_broadcasts,
+          socket.assigns.media_files,
+          socket.assigns.members
+        )
+
+        # Broadcast the creation event to other channel viewers
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "channel:#{channel.id}",
+          {:broadcast_created, broadcast}
+        )
 
         {:noreply,
         socket
-        |> assign(:show_broadcast_form, false)           # Close modal
-        |> assign(:broadcast_changeset, nil)             # Clear changeset
-        |> assign(:upcoming_broadcasts, upcoming_broadcasts)  # Refresh list
-        |> put_flash(:info, "Broadcast '#{broadcast.title}' scheduled successfully! You can manage it from the broadcasts list.")
-        |> push_event("close-modal", %{id: "broadcast-modal"})}  # Force close modal via JS
+        |> assign(:show_broadcast_form, false)
+        |> assign(:broadcast_changeset, nil)
+        |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+        |> assign(:active_broadcasts, active_broadcasts)
+        |> assign(:broadcasts, all_broadcasts)
+        |> assign(stats)
+        |> put_flash(:info, "🎉 Broadcast '#{broadcast.title}' created successfully! #{format_broadcast_time(broadcast)}")
+        |> push_event("close-modal", %{id: "broadcast-modal"})
+        |> push_event("broadcast-created", %{id: broadcast.id})}
 
       {:error, changeset} ->
         {:noreply,
         socket
         |> assign(:broadcast_changeset, changeset)
-        |> put_flash(:error, "Failed to create broadcast. Please check the form.")}
+        |> put_flash(:error, "❌ Failed to create broadcast. Please check the form.")
+        |> push_event("show-form-errors", %{})}
+    end
+  end
+
+  # Helper function for better feedback messages
+  defp format_broadcast_time(broadcast) do
+    try do
+      if broadcast.scheduled_for do
+        user_time = Timezone.format_with_timezone(broadcast.scheduled_for, "America/New_York")
+        "Scheduled for #{user_time}"
+      else
+        "Ready to go live!"
+      end
+    rescue
+      _ -> "Time TBD"
     end
   end
 
@@ -408,18 +464,41 @@ defmodule FrestylWeb.ChannelLive.Show do
     # Get chat messages
     chat_messages = list_channel_messages(channel.id, limit: 50) || []
 
-    # Load sessions and broadcasts
+    # Load sessions and broadcasts - FIX THE VARIABLE SCOPE ISSUE
     sessions = Sessions.list_active_sessions_for_channel(channel.id)
-    broadcasts = Sessions.list_active_sessions_for_channel(channel.id)
-      |> Enum.filter(&(!is_nil(&1.broadcast_type)))
-    upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(channel.id)
+
+    # Get ALL broadcasts (both active and upcoming) - DEFINE broadcasts HERE
+    all_broadcasts = try do
+      Sessions.list_all_broadcasts_for_channel(channel.id)
+    rescue
+      UndefinedFunctionError ->
+        # Fallback if the new function doesn't exist yet in Sessions
+        Sessions.list_upcoming_broadcasts_for_channel(channel.id)
+      _ ->
+        Sessions.list_upcoming_broadcasts_for_channel(channel.id)
+    end
+
+    # Separate active and upcoming broadcasts
+    active_broadcasts = Enum.filter(all_broadcasts, &(&1.status == "active"))
+    upcoming_broadcasts = Enum.filter(all_broadcasts, fn broadcast ->
+      broadcast.status == "scheduled" &&
+      broadcast.scheduled_for &&
+      DateTime.compare(broadcast.scheduled_for, DateTime.utc_now()) == :gt
+    end)
+
+    # Current activities = active sessions + active broadcasts
+    current_activities = sessions ++ active_broadcasts
+
+    # Get active broadcasts (currently live broadcasts) - REMOVE DUPLICATE
+    # active_broadcasts = Sessions.list_active_sessions_for_channel(channel.id)
+    #   |> Enum.filter(&(&1.session_type == "broadcast" && &1.status == "active"))
 
     # Create users map for easier lookup
     users = get_users_for_messages(chat_messages)
     users_map = create_users_map(users, members)
 
-    # Calculate stats and permissions
-    stats = calculate_channel_stats(sessions, broadcasts, media_files, members)
+    # Calculate stats and permissions - NOW broadcasts IS DEFINED
+    stats = calculate_channel_stats(sessions, all_broadcasts, media_files, members)
     permissions = calculate_permissions(user_role)
 
     # Load featured content with proper structure
@@ -436,8 +515,10 @@ defmodule FrestylWeb.ChannelLive.Show do
     |> assign(:media_files, media_files)
     |> assign(:message_text, "")
     |> assign(:sessions, sessions)
-    |> assign(:broadcasts, broadcasts)
+    |> assign(:broadcasts, all_broadcasts)  # All broadcasts for general use
     |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+    |> assign(:active_broadcasts, active_broadcasts)
+    |> assign(:current_activities, current_activities)  # NEW: for "Happening Now"
     |> assign(:show_session_form, false)
     |> assign(:show_broadcast_form, false)
     |> assign(:session_changeset, nil)
@@ -454,6 +535,12 @@ defmodule FrestylWeb.ChannelLive.Show do
     |> assign(:featured_content, featured_content)
     |> assign(stats)
     |> assign(permissions)
+  end
+
+  # Add this fallback function to your Sessions context if it doesn't exist:
+  def list_all_broadcasts_for_channel(channel_id) do
+    # Fallback to existing Sessions function with proper module prefix
+    Sessions.list_upcoming_broadcasts_for_channel(channel_id)
   end
 
   defp load_featured_content(channel, media_files) do
@@ -482,11 +569,24 @@ defmodule FrestylWeb.ChannelLive.Show do
     end
   end
 
-  defp calculate_channel_stats(sessions, broadcasts, media_files, members) do
-    active_sessions_count = Enum.count(sessions, &(&1.status == "active"))
-    active_broadcasts_count = Enum.count(broadcasts, &(&1.status == "active"))
-    live_activities_count = active_sessions_count + active_broadcasts_count
-    upcoming_events_count = length(broadcasts)
+  defp calculate_channel_stats(sessions, all_broadcasts, media_files, members) do
+    # Filter for truly active sessions
+    active_sessions = Enum.filter(sessions, &(&1.status == "active"))
+
+    # Filter for active broadcasts
+    active_broadcasts = Enum.filter(all_broadcasts, &(&1.status == "active"))
+
+    live_activities_count = length(active_sessions) + length(active_broadcasts)
+
+    # Get actual upcoming events count
+    now = DateTime.utc_now()
+    upcoming_events_count = Enum.count(all_broadcasts, fn broadcast ->
+      broadcast.status == "scheduled" &&
+      broadcast.scheduled_for &&
+      DateTime.compare(broadcast.scheduled_for, now) == :gt
+    end)
+
+    # Calculate online members count
     online_members_count = length(members) # This would be calculated from presence data
 
     # Content stats - Fixed to handle nil file_type and proper string matching
@@ -514,8 +614,8 @@ defmodule FrestylWeb.ChannelLive.Show do
 
     %{
       live_activities_count: live_activities_count,
-      active_sessions_count: active_sessions_count,
-      active_broadcasts_count: active_broadcasts_count,
+      active_sessions_count: length(active_sessions),
+      active_broadcasts_count: length(active_broadcasts),
       upcoming_events_count: upcoming_events_count,
       online_members_count: online_members_count,
       total_sessions: length(sessions),
@@ -616,6 +716,41 @@ defmodule FrestylWeb.ChannelLive.Show do
          socket
          |> put_flash(:error, "Failed to update customization: #{error_message(changeset)}")}
     end
+  end
+
+  @impl true
+  def handle_event("show_edit_channel", _params, socket) do
+    {:noreply, assign(socket, :show_edit_channel_modal, true)}
+  end
+
+  @impl true
+  def handle_event("hide_edit_channel", _params, socket) do
+    {:noreply, assign(socket, :show_edit_channel_modal, false)}
+  end
+
+  @impl true
+  def handle_event("update_channel", %{"channel" => channel_params}, socket) do
+    channel = socket.assigns.channel
+
+    case Channels.update_channel(channel, channel_params) do
+      {:ok, updated_channel} ->
+        {:noreply,
+        socket
+        |> assign(:channel, updated_channel)
+        |> assign(:show_edit_channel_modal, false)
+        |> assign(:show_options_panel, false)
+        |> put_flash(:info, "Channel updated successfully!")}
+
+      {:error, changeset} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Failed to update channel: #{error_message(changeset)}")
+        |> assign(:channel_changeset, changeset)}
+    end
+  end
+
+  def handle_event("switch_content_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :content_tab, tab)}
   end
 
   @impl true
@@ -784,70 +919,136 @@ defmodule FrestylWeb.ChannelLive.Show do
     {:noreply, redirect(socket, to: ~p"/channels/#{socket.assigns.channel.slug}/broadcasts/#{id}/manage")}
   end
 
-  @impl true
-  def handle_event("register_for_broadcast", %{"id" => id}, socket) do
-    broadcast_id = String.to_integer(id)
-    current_user = socket.assigns.current_user
-
-    case Sessions.join_session(broadcast_id, current_user.id) do
-      {:ok, _} ->
-        upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(socket.assigns.channel.id)
-
-        {:noreply,
-        socket
-        |> put_flash(:info, "Successfully registered for the broadcast!")
-        |> assign(:upcoming_broadcasts, upcoming_broadcasts)}
-
-      {:error, reason} ->
-        {:noreply,
-        socket
-        |> put_flash(:error, "Could not register for broadcast: #{reason}")}
-    end
+  # Helper function to reload broadcasts (you might already have this)
+  defp reload_broadcasts(assigns) do
+    # Reload broadcast data - adjust this to match your existing data loading
+    Broadcasts.list_broadcasts_for_channel(assigns.channel.id)
   end
 
+  @impl true
+  # In your ChannelShow LiveView, when handling registration
   def handle_event("register_for_broadcast", %{"id" => broadcast_id}, socket) do
     current_user = socket.assigns.current_user
-    broadcast_id = String.to_integer(broadcast_id)
+    broadcast_id_int = String.to_integer(broadcast_id)
 
-    case Sessions.join_session(broadcast_id, current_user.id) do
-      {:ok, _participant} ->
-        # Reload the upcoming broadcasts using your existing function
-        upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(socket.assigns.channel.id)
+    case Sessions.register_for_broadcast(broadcast_id_int, current_user.id) do
+      {:ok, :join_now, _participant} ->
+        # User registered and should join live broadcast immediately
+        socket =
+          socket
+          |> put_flash(:info, "Successfully registered! Joining live broadcast...")
+
+        {:noreply, push_navigate(socket, to: ~p"/channels/#{socket.assigns.channel.slug}/broadcasts/#{broadcast_id}/live")}
+
+      {:ok, :registered, _participant} ->
+        # User registered for scheduled broadcast
+        upcoming_broadcasts = Sessions.get_upcoming_broadcasts(socket.assigns.channel.id)
+        live_broadcasts = Sessions.get_live_broadcasts(socket.assigns.channel.id)
+
+        # Broadcast the registration event
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "channel:#{socket.assigns.channel.id}",
+          {:user_registered_for_broadcast, broadcast_id_int, current_user.id}
+        )
 
         {:noreply,
-        socket
-        |> assign(:upcoming_broadcasts, upcoming_broadcasts)
-        |> put_flash(:info, "Successfully registered for the broadcast! You'll receive updates about this event.")}
+          socket
+          |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+          |> assign(:live_broadcasts, live_broadcasts)
+          |> assign(:broadcasts, upcoming_broadcasts)
+          |> put_flash(:info, "Successfully registered for broadcast!")}
 
-      {:error, _} ->
-        {:noreply,
-        socket
-        |> put_flash(:error, "Failed to register for broadcast. Please try again.")}
+      {:error, :already_registered} ->
+        {:noreply, put_flash(socket, :info, "You're already registered for this broadcast")}
+
+      {:error, :broadcast_not_found} ->
+        {:noreply, put_flash(socket, :error, "Broadcast not found")}
+
+      {:error, :broadcast_not_available} ->
+        {:noreply, put_flash(socket, :error, "This broadcast is not available for registration")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Registration failed: #{inspect(reason)}")}
     end
-  end
-
-  defp user_registered_for_broadcast?(user_id, broadcast_id) do
-    Sessions.user_registered_for_broadcast?(user_id, broadcast_id)
   end
 
   def handle_event("unregister_from_broadcast", %{"id" => broadcast_id}, socket) do
     current_user = socket.assigns.current_user
-    broadcast_id = String.to_integer(broadcast_id)
+    broadcast_id_int = String.to_integer(broadcast_id)
 
-    case Sessions.leave_session(broadcast_id, current_user.id) do
+    case Sessions.remove_participant(broadcast_id_int, current_user.id) do
       {:ok, _} ->
-        # Reload the upcoming broadcasts using your existing function
-        upcoming_broadcasts = Sessions.list_upcoming_broadcasts_for_channel(socket.assigns.channel.id)
+        # Immediately refresh both broadcast lists
+        upcoming_broadcasts = Sessions.get_upcoming_broadcasts(socket.assigns.channel.id)
+        live_broadcasts = Sessions.get_live_broadcasts(socket.assigns.channel.id)
+
+        # Broadcast the unregistration event
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "channel:#{socket.assigns.channel.id}",
+          {:user_unregistered_from_broadcast, broadcast_id_int, current_user.id}
+        )
 
         {:noreply,
-        socket
-        |> assign(:upcoming_broadcasts, upcoming_broadcasts)
-        |> put_flash(:info, "Successfully unregistered from the broadcast.")}
+          socket
+          |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+          |> assign(:live_broadcasts, live_broadcasts)
+          |> assign(:broadcasts, upcoming_broadcasts)
+          |> put_flash(:info, "Successfully unregistered from the broadcast")}
 
-      {:error, _} ->
-        {:noreply,
-        socket
-        |> put_flash(:error, "Failed to unregister. Please try again.")}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to unregister: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_info({:user_registered_for_broadcast, broadcast_id, user_id}, socket) do
+    # Refresh the broadcasts list when any user registers
+    upcoming_broadcasts = Sessions.get_upcoming_broadcasts(socket.assigns.channel.id)
+
+    {:noreply,
+    socket
+    |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+    |> assign(:broadcasts, upcoming_broadcasts)}
+  end
+
+  @impl true
+  def handle_info({:user_unregistered_from_broadcast, broadcast_id, user_id}, socket) do
+    # Refresh the broadcasts list when any user unregisters
+    upcoming_broadcasts = Sessions.get_upcoming_broadcasts(socket.assigns.channel.id)
+
+    {:noreply,
+    socket
+    |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+    |> assign(:broadcasts, upcoming_broadcasts)}
+  end
+
+  # Add helper function to check registration status in template:
+  def user_registered_for_broadcast?(broadcast, current_user) do
+    try do
+      case current_user do
+        nil -> false
+        user -> Sessions.user_registered_for_broadcast?(user.id, broadcast.id)
+      end
+    rescue
+      _ -> false
+    end
+  end
+
+  defp get_participant_count(broadcast_id) do
+    try do
+      Sessions.get_broadcast_stats(broadcast_id).active
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp format_broadcast_time(scheduled_for) do
+    try do
+      Timezone.format_with_timezone(scheduled_for, "America/New_York")
+    rescue
+      _ -> "Time TBD"
     end
   end
 
@@ -873,7 +1074,69 @@ defmodule FrestylWeb.ChannelLive.Show do
 
   @impl true
   def handle_event("join_broadcast", %{"id" => id}, socket) do
-    {:noreply, redirect(socket, to: ~p"/channels/#{socket.assigns.channel.slug}/broadcasts/#{id}")}
+    broadcast_id = String.to_integer(id)
+    broadcast = Enum.find(socket.assigns.broadcasts, &(&1.id == broadcast_id))
+
+    case broadcast do
+      nil ->
+        # Broadcast not found - refresh the lists
+        refresh_all_broadcast_data(socket)
+        |> put_flash(:error, "This broadcast is no longer available")
+
+      %{status: "ended"} ->
+        # Broadcast has ended
+        {:noreply, put_flash(socket, :info, "This broadcast has ended")}
+
+      %{status: "active"} ->
+        # Redirect to live broadcast
+        {:noreply, redirect(socket, to: ~p"/channels/#{socket.assigns.channel.slug}/broadcasts/#{id}/live")}
+
+      %{status: "scheduled"} ->
+        # Redirect to broadcast details
+        {:noreply, redirect(socket, to: ~p"/channels/#{socket.assigns.channel.slug}/broadcasts/#{id}")}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Broadcast not available")}
+    end
+  end
+
+  # Helper function to refresh all broadcast data
+  defp refresh_all_broadcast_data(socket) do
+    channel = socket.assigns.channel
+
+    # Get fresh data
+    all_broadcasts = try do
+      Sessions.list_all_broadcasts_for_channel(channel.id)
+    rescue
+      _ ->
+        Sessions.list_upcoming_broadcasts_for_channel(channel.id)
+    end
+
+    # Filter by status
+    active_broadcasts = Enum.filter(all_broadcasts, &(&1.status == "active"))
+    upcoming_broadcasts = Enum.filter(all_broadcasts, fn broadcast ->
+      broadcast.status == "scheduled" &&
+      broadcast.scheduled_for &&
+      DateTime.compare(broadcast.scheduled_for, DateTime.utc_now()) == :gt
+    end)
+
+    current_activities = socket.assigns.sessions ++ active_broadcasts
+
+    # Recalculate stats
+    stats = calculate_channel_stats(
+      socket.assigns.sessions,
+      all_broadcasts,
+      socket.assigns.media_files,
+      socket.assigns.members
+    )
+
+    {:noreply,
+    socket
+    |> assign(:broadcasts, all_broadcasts)
+    |> assign(:active_broadcasts, active_broadcasts)
+    |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+    |> assign(:current_activities, current_activities)
+    |> assign(stats)}
   end
 
   @impl true
@@ -949,8 +1212,11 @@ defmodule FrestylWeb.ChannelLive.Show do
   end
 
   @impl true
-  def handle_event("show_invite_modal", _, socket) do
-    {:noreply, assign(socket, :show_invite_modal, true)}
+  def handle_event("show_invite_modal", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_invite_modal, true)
+    |> assign(:show_options_panel, false)}  # Close options panel
   end
 
   @impl true
@@ -959,8 +1225,11 @@ defmodule FrestylWeb.ChannelLive.Show do
   end
 
   @impl true
-  def handle_event("show_block_modal", _, socket) do
-    {:noreply, assign(socket, :show_block_modal, true)}
+  def handle_event("show_block_modal", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_block_modal, true)
+    |> assign(:show_options_panel, false)}  # Close options panel
   end
 
   @impl true
@@ -999,21 +1268,71 @@ defmodule FrestylWeb.ChannelLive.Show do
   end
 
   @impl true
-  def handle_event("leave_channel", _, socket) do
-    %{channel: channel, current_user: current_user} = socket.assigns
+  def handle_event("leave_channel", _params, socket) do
+    %{channel: channel, current_user: current_user, user_role: user_role} = socket.assigns
 
-    case Channels.leave_channel(current_user, channel) do
-      {:ok, _} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "You have left the channel.")
-         |> redirect(to: ~p"/dashboard")}
+    # Check if user is the only admin/owner
+    cond do
+      user_role in ["owner"] ->
+        # Owners cannot leave unless there's another owner
+        other_owners = Channels.count_channel_owners(channel.id, current_user.id)
 
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Could not leave channel: #{reason}")
-         |> redirect(to: ~p"/channels/#{channel.slug}")}
+        if other_owners > 0 do
+          case Channels.leave_channel(current_user, channel) do
+            {:ok, _} ->
+              {:noreply,
+              socket
+              |> put_flash(:info, "You have left the channel. Ownership has been transferred.")
+              |> redirect(to: ~p"/dashboard")}
+
+            {:error, reason} ->
+              {:noreply,
+              socket
+              |> put_flash(:error, "Could not leave channel: #{reason}")}
+          end
+        else
+          {:noreply,
+          socket
+          |> put_flash(:error, "You cannot leave the channel as you are the only owner. Please transfer ownership or delete the channel instead.")}
+        end
+
+      user_role in ["admin"] ->
+        # Admins can leave if there are other admins or owners
+        other_admins = Channels.count_channel_admins(channel.id, current_user.id)
+
+        if other_admins > 0 do
+          case Channels.leave_channel(current_user, channel) do
+            {:ok, _} ->
+              {:noreply,
+              socket
+              |> put_flash(:info, "You have left the channel.")
+              |> redirect(to: ~p"/dashboard")}
+
+            {:error, reason} ->
+              {:noreply,
+              socket
+              |> put_flash(:error, "Could not leave channel: #{reason}")}
+          end
+        else
+          {:noreply,
+          socket
+          |> put_flash(:error, "You cannot leave the channel as you are the only admin. Please promote another member to admin first.")}
+        end
+
+      true ->
+        # Regular members can always leave
+        case Channels.leave_channel(current_user, channel) do
+          {:ok, _} ->
+            {:noreply,
+            socket
+            |> put_flash(:info, "You have left the channel.")
+            |> redirect(to: ~p"/dashboard")}
+
+          {:error, reason} ->
+            {:noreply,
+            socket
+            |> put_flash(:error, "Could not leave channel: #{reason}")}
+        end
     end
   end
 
@@ -1081,26 +1400,82 @@ defmodule FrestylWeb.ChannelLive.Show do
       "" -> {:noreply, socket}
 
       message_content ->
-        case Frestyl.Repo.insert(%Frestyl.Channels.Message{
+        # Create message using your existing message schema
+        message_attrs = %{
           content: message_content,
           message_type: "text",
           user_id: current_user.id,
-          room_id: channel.id
-        }) do
-          {:ok, _message} ->
-            chat_messages = list_channel_messages(channel.id, limit: 50)
+          room_id: channel.id  # or channel_id depending on your schema
+        }
 
+        try do
+          case create_channel_message(message_attrs) do
+            {:ok, message} ->
+              # Broadcast the new message to all channel subscribers
+              Phoenix.PubSub.broadcast(
+                Frestyl.PubSub,
+                "channel:#{channel.id}",
+                {:new_channel_message, message}
+              )
+
+              # Refresh chat messages
+              chat_messages = list_channel_messages(channel.id, limit: 50)
+
+              {:noreply,
+               socket
+               |> assign(:message_text, "")
+               |> assign(:chat_messages, chat_messages)}
+
+            {:error, changeset} ->
+              {:noreply,
+               socket
+               |> put_flash(:error, "Error sending message: #{error_message(changeset)}")
+               |> assign(:message_text, content)}
+          end
+        rescue
+          e ->
             {:noreply,
              socket
-             |> assign(:message_text, "")
-             |> assign(:chat_messages, chat_messages)}
-
-          {:error, changeset} ->
-            {:noreply,
-             socket
-             |> put_flash(:error, "Error sending message: #{error_message(changeset)}")
+             |> put_flash(:error, "Failed to send message")
              |> assign(:message_text, content)}
         end
+    end
+  end
+
+  # Helper function to create channel messages
+  defp create_channel_message(attrs) do
+    try do
+      # Use your existing message creation - adjust module name as needed
+      case Frestyl.Repo.insert(struct(Frestyl.Channels.Message, attrs)) do
+        {:ok, message} ->
+          # Preload user for display
+          message_with_user = Frestyl.Repo.preload(message, :user)
+          {:ok, message_with_user}
+
+        error -> error
+      end
+    rescue
+      e -> {:error, e}
+    end
+  end
+
+    # Handle real-time message updates
+  @impl true
+  def handle_info({:new_channel_message, message}, socket) do
+    # Add the new message to the chat if it's for this channel
+    if message.room_id == socket.assigns.channel.id do
+      chat_messages = socket.assigns.chat_messages ++ [message]
+
+      # Keep only last 50 messages to prevent memory issues
+      recent_messages = if length(chat_messages) > 50 do
+        Enum.take(chat_messages, -50)
+      else
+        chat_messages
+      end
+
+      {:noreply, assign(socket, :chat_messages, recent_messages)}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -1108,23 +1483,34 @@ defmodule FrestylWeb.ChannelLive.Show do
   def handle_event("delete_message", %{"id" => id}, socket) do
     %{current_user: current_user, is_admin: is_admin} = socket.assigns
 
-    {message_id, _} = Integer.parse(id)
-    message = Frestyl.Repo.get(Frestyl.Channels.Message, message_id)
+    try do
+      message_id = String.to_integer(id)
+      message = Frestyl.Repo.get(Frestyl.Channels.Message, message_id)
 
-    if message && (message.user_id == current_user.id || is_admin) do
-      case Frestyl.Repo.delete(message) do
-        {:ok, _} ->
-          chat_messages = list_channel_messages(socket.assigns.channel.id, limit: 50)
+      if message && (message.user_id == current_user.id || is_admin) do
+        case Frestyl.Repo.delete(message) do
+          {:ok, _} ->
+            # Broadcast message deletion
+            Phoenix.PubSub.broadcast(
+              Frestyl.PubSub,
+              "channel:#{socket.assigns.channel.id}",
+              {:message_deleted, message_id}
+            )
 
-          {:noreply,
-           socket
-           |> assign(:chat_messages, chat_messages)}
+            # Refresh chat messages
+            chat_messages = list_channel_messages(socket.assigns.channel.id, limit: 50)
 
-        {:error, _reason} ->
-          {:noreply, put_flash(socket, :error, "Could not delete message")}
+            {:noreply, assign(socket, :chat_messages, chat_messages)}
+
+          {:error, _reason} ->
+            {:noreply, put_flash(socket, :error, "Could not delete message")}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Not authorized to delete this message")}
       end
-    else
-      {:noreply, put_flash(socket, :error, "Not authorized to delete this message")}
+    rescue
+      _ ->
+        {:noreply, put_flash(socket, :error, "Error deleting message")}
     end
   end
 
@@ -1451,6 +1837,10 @@ defmodule FrestylWeb.ChannelLive.Show do
     end
   end
 
+  defp is_creator_or_host?(broadcast, current_user) do
+    current_user && (broadcast.creator_id == current_user.id || broadcast.host_id == current_user.id)
+  end
+
   @impl true
   def handle_event("create_session", %{"session" => session_params}, socket) do
     %{channel: channel, current_user: current_user} = socket.assigns
@@ -1599,6 +1989,95 @@ defmodule FrestylWeb.ChannelLive.Show do
     end
   end
 
+  @impl true
+  def handle_info({:broadcast_status_changed, broadcast_id, new_status}, socket) do
+    case new_status do
+      "ended" ->
+        # Remove ended broadcast from active lists
+        updated_active = Enum.reject(socket.assigns.active_broadcasts, &(&1.id == broadcast_id))
+        updated_current = Enum.reject(socket.assigns.current_activities, &(&1.id == broadcast_id))
+
+        # Update the broadcast status in the main list
+        updated_broadcasts = Enum.map(socket.assigns.broadcasts, fn broadcast ->
+          if broadcast.id == broadcast_id do
+            %{broadcast | status: "ended", ended_at: DateTime.utc_now()}
+          else
+            broadcast
+          end
+        end)
+
+        # Recalculate stats
+        stats = calculate_channel_stats(
+          socket.assigns.sessions,
+          updated_broadcasts,
+          socket.assigns.media_files,
+          socket.assigns.members
+        )
+
+        {:noreply,
+        socket
+        |> assign(:broadcasts, updated_broadcasts)
+        |> assign(:active_broadcasts, updated_active)
+        |> assign(:current_activities, updated_current)
+        |> assign(stats)
+        |> put_flash(:info, "Broadcast has ended")}
+
+      "active" ->
+        # Move broadcast from upcoming to active
+        broadcast = Enum.find(socket.assigns.upcoming_broadcasts, &(&1.id == broadcast_id))
+
+        if broadcast do
+          updated_broadcast = %{broadcast | status: "active", started_at: DateTime.utc_now()}
+
+          # Remove from upcoming
+          updated_upcoming = Enum.reject(socket.assigns.upcoming_broadcasts, &(&1.id == broadcast_id))
+
+          # Add to active
+          updated_active = [updated_broadcast | socket.assigns.active_broadcasts]
+          updated_current = [updated_broadcast | socket.assigns.current_activities]
+
+          # Update main list
+          updated_broadcasts = Enum.map(socket.assigns.broadcasts, fn b ->
+            if b.id == broadcast_id, do: updated_broadcast, else: b
+          end)
+
+          # Recalculate stats
+          stats = calculate_channel_stats(
+            socket.assigns.sessions,
+            updated_broadcasts,
+            socket.assigns.media_files,
+            socket.assigns.members
+          )
+
+          {:noreply,
+          socket
+          |> assign(:broadcasts, updated_broadcasts)
+          |> assign(:upcoming_broadcasts, updated_upcoming)
+          |> assign(:active_broadcasts, updated_active)
+          |> assign(:current_activities, updated_current)
+          |> assign(stats)
+          |> put_flash(:info, "#{broadcast.title} is now live! 🔴")}
+        else
+          {:noreply, socket}
+        end
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:broadcast_live, broadcast_id, title}, socket) do
+    # Show notification when broadcast goes live
+    broadcast = Enum.find(socket.assigns.upcoming_broadcasts, &(&1.id == broadcast_id))
+
+    if broadcast do
+      {:noreply, put_flash(socket, :info, "#{title} is now live! 🔴")}
+    else
+      {:noreply, socket}
+    end
+  end
+
   # Real-time activity handlers
   @impl true
   def handle_info({:live_activity_update, activity}, socket) do
@@ -1641,21 +2120,36 @@ defmodule FrestylWeb.ChannelLive.Show do
 
   @impl true
   def handle_info({:broadcast_created, broadcast}, socket) do
-    %{broadcasts: broadcasts, upcoming_broadcasts: upcoming_broadcasts} = socket.assigns
+    # Update all broadcast lists when any user creates a broadcast
+    all_broadcasts = try do
+      Sessions.list_all_broadcasts_for_channel(socket.assigns.channel.id)
+    rescue
+      _ ->
+        Sessions.list_upcoming_broadcasts_for_channel(socket.assigns.channel.id)
+    end
 
-    updated_broadcasts = [broadcast | broadcasts]
+    upcoming_broadcasts = Enum.filter(all_broadcasts, fn b ->
+      b.status == "scheduled" &&
+      b.scheduled_for &&
+      DateTime.compare(b.scheduled_for, DateTime.utc_now()) == :gt
+    end)
 
-    updated_upcoming_broadcasts =
-      if broadcast.scheduled_for && DateTime.compare(broadcast.scheduled_for, DateTime.utc_now()) == :gt do
-        [broadcast | upcoming_broadcasts]
-      else
-        upcoming_broadcasts
-      end
+    active_broadcasts = Enum.filter(all_broadcasts, &(&1.status == "active"))
+
+    # Recalculate stats
+    stats = calculate_channel_stats(
+      socket.assigns.sessions,
+      all_broadcasts,
+      socket.assigns.media_files,
+      socket.assigns.members
+    )
 
     {:noreply,
     socket
-    |> assign(:broadcasts, updated_broadcasts)
-    |> assign(:upcoming_broadcasts, updated_upcoming_broadcasts)}
+    |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+    |> assign(:active_broadcasts, active_broadcasts)
+    |> assign(:broadcasts, all_broadcasts)
+    |> assign(stats)}
   end
 
   @impl true
@@ -1693,15 +2187,27 @@ defmodule FrestylWeb.ChannelLive.Show do
 
   @impl true
   def handle_info({:broadcast_deleted, broadcast_id}, socket) do
-    %{broadcasts: broadcasts, upcoming_broadcasts: upcoming_broadcasts} = socket.assigns
+    # Remove from all broadcast lists
+    updated_broadcasts = Enum.reject(socket.assigns.broadcasts, &(&1.id == broadcast_id))
+    updated_upcoming = Enum.reject(socket.assigns.upcoming_broadcasts, &(&1.id == broadcast_id))
+    updated_active = Enum.reject(socket.assigns.active_broadcasts, &(&1.id == broadcast_id))
+    updated_current = Enum.reject(socket.assigns.current_activities, &(&1.id == broadcast_id))
 
-    updated_broadcasts = Enum.reject(broadcasts, &(&1.id == broadcast_id))
-    updated_upcoming_broadcasts = Enum.reject(upcoming_broadcasts, &(&1.id == broadcast_id))
+    # Recalculate stats
+    stats = calculate_channel_stats(
+      socket.assigns.sessions,
+      updated_broadcasts,
+      socket.assigns.media_files,
+      socket.assigns.members
+    )
 
     {:noreply,
     socket
     |> assign(:broadcasts, updated_broadcasts)
-    |> assign(:upcoming_broadcasts, updated_upcoming_broadcasts)}
+    |> assign(:upcoming_broadcasts, updated_upcoming)
+    |> assign(:active_broadcasts, updated_active)
+    |> assign(:current_activities, updated_current)
+    |> assign(stats)}
   end
 
   @impl true
@@ -1725,8 +2231,8 @@ defmodule FrestylWeb.ChannelLive.Show do
 
   @impl true
   def handle_info({:message_deleted, message_id}, socket) do
-    updated_messages = Enum.reject(socket.assigns.chat_messages, &(&1.id == message_id))
-    {:noreply, assign(socket, :chat_messages, updated_messages)}
+    chat_messages = Enum.reject(socket.assigns.chat_messages, &(&1.id == message_id))
+    {:noreply, assign(socket, :chat_messages, chat_messages)}
   end
 
   @impl true

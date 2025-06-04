@@ -1,0 +1,251 @@
+{
+  "version": "1.0.0",
+  "stats": {
+    "total_kits": 3,
+    "total_samples": 24,
+    "existing_samples": 24,
+    "missing_samples": 0
+  },
+  "created_at": "2025-06-04T17:31:18.344840Z",
+  "kits": {
+    "acoustic": {
+      "crash": {
+        "name": "Acoustic Crash",
+        "file": "acoustic_crash.wav",
+        "category": "drums",
+        "tags": [
+          "crash",
+          "acoustic",
+          "cymbal"
+        ]
+      },
+      "hihat": {
+        "name": "Acoustic Hi-Hat",
+        "file": "acoustic_hihat.wav",
+        "category": "drums",
+        "tags": [
+          "hihat",
+          "acoustic",
+          "closed"
+        ]
+      },
+      "kick": {
+        "name": "Acoustic Kick",
+        "file": "acoustic_kick.wav",
+        "category": "drums",
+        "tags": [
+          "kick",
+          "acoustic",
+          "natural"
+        ]
+      },
+      "openhat": {
+        "name": "Acoustic Open Hat",
+        "file": "acoustic_openhat.wav",
+        "category": "drums",
+        "tags": [
+          "hihat",
+          "acoustic",
+          "open"
+        ]
+      },
+      "ride": {
+        "name": "Acoustic Ride",
+        "file": "acoustic_ride.wav",
+        "category": "drums",
+        "tags": [
+          "ride",
+          "acoustic",
+          "cymbal"
+        ]
+      },
+      "snare": {
+        "name": "Acoustic Snare",
+        "file": "acoustic_snare.wav",
+        "category": "drums",
+        "tags": [
+          "snare",
+          "acoustic",
+          "natural"
+        ]
+      },
+      "tom1": {
+        "name": "High Tom",
+        "file": "acoustic_tom1.wav",
+        "category": "drums",
+        "tags": [
+          "tom",
+          "acoustic",
+          "high"
+        ]
+      },
+      "tom2": {
+        "name": "Low Tom",
+        "file": "acoustic_tom2.wav",
+        "category": "drums",
+        "tags": [
+          "tom",
+          "acoustic",
+          "low"
+        ]
+      }
+    },
+    "classic_808": {
+      "clap": {
+        "name": "808 Clap",
+        "file": "808_clap.wav",
+        "category": "drums",
+        "tags": [
+          "clap",
+          "808"
+        ]
+      },
+      "crash": {
+        "name": "808 Crash",
+        "file": "808_crash.wav",
+        "category": "drums",
+        "tags": [
+          "crash",
+          "808",
+          "cymbal"
+        ]
+      },
+      "hihat": {
+        "name": "808 Hi-Hat",
+        "file": "808_hihat.wav",
+        "category": "drums",
+        "tags": [
+          "hihat",
+          "808",
+          "closed"
+        ]
+      },
+      "kick": {
+        "name": "808 Kick",
+        "file": "808_kick.wav",
+        "category": "drums",
+        "tags": [
+          "kick",
+          "808",
+          "bass"
+        ]
+      },
+      "openhat": {
+        "name": "808 Open Hat",
+        "file": "808_openhat.wav",
+        "category": "drums",
+        "tags": [
+          "hihat",
+          "808",
+          "open"
+        ]
+      },
+      "perc1": {
+        "name": "808 Perc 1",
+        "file": "808_perc1.wav",
+        "category": "drums",
+        "tags": [
+          "percussion",
+          "808"
+        ]
+      },
+      "perc2": {
+        "name": "808 Perc 2",
+        "file": "808_perc2.wav",
+        "category": "drums",
+        "tags": [
+          "percussion",
+          "808"
+        ]
+      },
+      "snare": {
+        "name": "808 Snare",
+        "file": "808_snare.wav",
+        "category": "drums",
+        "tags": [
+          "snare",
+          "808"
+        ]
+      }
+    },
+    "trap": {
+      "clap": {
+        "name": "Trap Clap",
+        "file": "trap_clap.wav",
+        "category": "drums",
+        "tags": [
+          "clap",
+          "trap"
+        ]
+      },
+      "hihat": {
+        "name": "Trap Hi-Hat",
+        "file": "trap_hihat.wav",
+        "category": "drums",
+        "tags": [
+          "hihat",
+          "trap",
+          "closed"
+        ]
+      },
+      "kick": {
+        "name": "Trap Kick",
+        "file": "trap_kick.wav",
+        "category": "drums",
+        "tags": [
+          "kick",
+          "trap",
+          "hip-hop"
+        ]
+      },
+      "openhat": {
+        "name": "Trap Open Hat",
+        "file": "trap_openhat.wav",
+        "category": "drums",
+        "tags": [
+          "hihat",
+          "trap",
+          "open"
+        ]
+      },
+      "perc1": {
+        "name": "Trap Perc 1",
+        "file": "trap_perc1.wav",
+        "category": "drums",
+        "tags": [
+          "percussion",
+          "trap"
+        ]
+      },
+      "perc2": {
+        "name": "Trap Perc 2",
+        "file": "trap_perc2.wav",
+        "category": "drums",
+        "tags": [
+          "percussion",
+          "trap"
+        ]
+      },
+      "shaker": {
+        "name": "Trap Shaker",
+        "file": "trap_shaker.wav",
+        "category": "drums",
+        "tags": [
+          "shaker",
+          "trap",
+          "percussion"
+        ]
+      },
+      "snare": {
+        "name": "Trap Snare",
+        "file": "trap_snare.wav",
+        "category": "drums",
+        "tags": [
+          "snare",
+          "trap",
+          "hip-hop"
+        ]
+      }
+    }
+  }
+}

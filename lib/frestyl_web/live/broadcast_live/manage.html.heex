@@ -79,6 +79,9 @@
   </div>
 
   <!-- Tab Navigation -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <.flash_group flash={@flash} />
+  </div>
   <div class="bg-white border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <nav class="flex space-x-8" aria-label="Tabs">
@@ -359,6 +362,63 @@
                       class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     ><%= @broadcast.description %></textarea>
                   </div>
+
+                  <!-- Scheduling DateTime Section -->
+                  <%= if @broadcast.status in ["scheduled", "draft"] do %>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <h4 class="text-sm font-medium text-blue-900 mb-3">Schedule Settings</h4>
+                      
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label for="scheduled_date" class="block text-sm font-medium text-gray-700">Date</label>
+                          <input
+                            type="date"
+                            name="session[scheduled_date]"
+                            id="scheduled_date"
+                            value={format_date_for_input(@broadcast.scheduled_for)}
+                            min={Date.to_string(Date.utc_today())}
+                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label for="scheduled_time" class="block text-sm font-medium text-gray-700">Time</label>
+                          <input
+                            type="time"
+                            name="session[scheduled_time]"
+                            id="scheduled_time"
+                            value={format_time_for_input(@broadcast.scheduled_for)}
+                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div class="mt-3">
+                        <label for="timezone" class="block text-sm font-medium text-gray-700">Timezone</label>
+                        <select
+                          name="session[timezone]"
+                          id="timezone"
+                          class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        >
+                          <option value="America/New_York" selected={get_user_timezone(@current_user) == "America/New_York"}>Eastern Time (ET)</option>
+                          <option value="America/Chicago" selected={get_user_timezone(@current_user) == "America/Chicago"}>Central Time (CT)</option>
+                          <option value="America/Denver" selected={get_user_timezone(@current_user) == "America/Denver"}>Mountain Time (MT)</option>
+                          <option value="America/Los_Angeles" selected={get_user_timezone(@current_user) == "America/Los_Angeles"}>Pacific Time (PT)</option>
+                          <option value="UTC" selected={get_user_timezone(@current_user) == "UTC"}>UTC</option>
+                          <option value="Europe/London" selected={get_user_timezone(@current_user) == "Europe/London"}>GMT</option>
+                          <option value="Europe/Paris" selected={get_user_timezone(@current_user) == "Europe/Paris"}>CET</option>
+                          <option value="Asia/Tokyo" selected={get_user_timezone(@current_user) == "Asia/Tokyo"}>JST</option>
+                        </select>
+                      </div>
+                      
+                      <div class="mt-3 text-sm text-blue-700">
+                        <p>Current scheduled time: <strong><%= format_timestamp(@broadcast.scheduled_for) %></strong></p>
+                        <p class="text-xs text-blue-600 mt-1">
+                          Note: Changing the schedule will notify all registered participants
+                        </p>
+                      </div>
+                    </div>
+                  <% end %>
                   
                   <div>
                     <label for="broadcast_type" class="block text-sm font-medium text-gray-700">Broadcast Type</label>
@@ -431,6 +491,18 @@
                     <dd class="mt-1 text-sm text-gray-900"><%= @broadcast.description %></dd>
                   </div>
                 <% end %>
+
+                <%= if @broadcast.scheduled_for && @broadcast.status in ["scheduled", "draft"] do %>
+                  <div>
+                    <dt class="text-sm font-medium text-gray-500">Scheduled For</dt>
+                    <dd class="mt-1 text-sm text-gray-900 flex items-center">
+                      <svg class="w-4 h-4 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                      </svg>
+                      <%= format_timestamp(@broadcast.scheduled_for) %>
+                    </dd>
+                  </div>
+                <% end %>
                 
                 <div>
                   <dt class="text-sm font-medium text-gray-500">Type</dt>
@@ -454,6 +526,55 @@
             <% end %>
           </div>
 
+          <!-- Advanced Scheduling Options -->
+          <%= if @broadcast.status in ["scheduled", "draft"] do %>
+            <div class="bg-white shadow rounded-lg">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">Advanced Scheduling</h3>
+              </div>
+              <div class="px-6 py-4 space-y-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-900">Auto-start at scheduled time</label>
+                    <p class="text-sm text-gray-500">Automatically begin broadcast at the scheduled time</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={Map.get(@broadcast, :auto_start, false)} 
+                      class="sr-only peer" 
+                    />
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+                
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-900">Send reminder notifications</label>
+                    <p class="text-sm text-gray-500">Notify registered participants before broadcast starts</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={Map.get(@broadcast, :send_reminders, true)} 
+                      class="sr-only peer" 
+                    />
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+                
+                <div class="text-sm text-gray-500 bg-gray-50 p-3 rounded-md">
+                  <p><strong>Reminder Schedule:</strong></p>
+                  <ul class="mt-1 list-disc list-inside space-y-1">
+                    <li>24 hours before broadcast</li>
+                    <li>1 hour before broadcast</li>
+                    <li>15 minutes before broadcast</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          <% end %>
+
           <!-- Recording Settings -->
           <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
@@ -467,9 +588,18 @@
                     <p class="text-sm text-gray-500">Automatically start recording when broadcast begins</p>
                   </div>
                   <label class="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" checked={@broadcast.recording_available} class="sr-only peer" />
+                    <input 
+                      type="checkbox" 
+                      checked={Map.get(@broadcast, :recording_available, false)} 
+                      class="sr-only peer" 
+                    />
                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                   </label>
+                </div>
+                
+                <div class="text-sm text-gray-500">
+                  <p><strong>Note:</strong> Recording functionality will be available in a future update.</p>
+                  <p>When enabled, broadcasts will be automatically recorded and made available for replay.</p>
                 </div>
               </div>
             </div>
@@ -739,20 +869,67 @@
             </div>
           </div>
 
-          <!-- Chat Preview (Leveraging your existing chat system) -->
+          <!-- Live Chat Management with Your ChatComponent -->
           <div class="bg-white shadow rounded-lg">
-            <div class="px-6 py-4 border-b border-gray-200">
-              <h3 class="text-lg font-medium text-gray-900">Live Chat Preview</h3>
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 class="text-lg font-medium text-gray-900">Live Chat Management</h3>
+                <p class="text-sm text-gray-500">Monitor and moderate broadcast chat in real-time</p>
+              </div>
+              <div class="flex space-x-2">
+                <button
+                  phx-click="clear_all_messages"
+                  data-confirm="Are you sure you want to clear all chat messages? This cannot be undone."
+                  class="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Clear All Messages
+                </button>
+                
+                <%= if @broadcast.status == "active" do %>
+                  <.link
+                    navigate={~p"/channels/#{@channel.slug}/broadcasts/#{@broadcast.id}"}
+                    class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Join Live Broadcast
+                  </.link>
+                <% end %>
+              </div>
             </div>
-            <div class="h-96">
-              <!-- Integrate your existing ChatLive.Show component here -->
+            
+            <!-- Chat Component Container -->
+            <div class="h-96 bg-gray-900">
+              <!-- Use your existing ChatComponent -->
               <.live_component
-                module={FrestylWeb.ChatLive.Show}
-                id="broadcast-chat-preview"
-                channel_id={@channel.id}
+                module={FrestylWeb.BroadcastLive.ChatComponent}
+                id="broadcast-chat-management"
+                broadcast_id={@broadcast.id}
                 current_user={@current_user}
-                readonly={true}
+                chat_enabled={@chat_enabled}
+                reactions_enabled={@reactions_enabled}
+                muted_users={@muted_users}
+                is_host={true}
               />
+            </div>
+            
+            <!-- Chat Stats Footer -->
+            <div class="px-6 py-3 bg-gray-50 border-t border-gray-200">
+              <div class="flex items-center justify-between text-sm text-gray-600">
+                <span>
+                  <strong><%= length(@chat_messages) %></strong> total messages
+                </span>
+                <span>
+                  Chat is <strong><%= if @chat_enabled, do: "enabled", else: "disabled" %></strong>
+                </span>
+                <span>
+                  Reactions are <strong><%= if @reactions_enabled, do: "enabled", else: "disabled" %></strong>
+                </span>
+              </div>
             </div>
           </div>
         </div>

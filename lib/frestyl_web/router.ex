@@ -169,7 +169,7 @@ defmodule FrestylWeb.Router do
       live "/channels/:slug/broadcasts/:id/manage", BroadcastLive.Manage, :show
       live "/channels/:slug/broadcasts/:id/sound-check", BroadcastLive.SoundCheck, :show
       live "/channels/:slug/broadcasts/:id/waiting", BroadcastLive.WaitingRoom, :show
-      live "/channels/:slug/broadcasts/:id/live", BroadcastLive.Live, :show
+      live "/channels/:slug/broadcasts/:id/live", BroadcastLive.Show, :live
 
       # Studio routes
       live "/channels/:slug/studio", StudioLive.Index, :index

@@ -1,0 +1,138 @@
+# lib/frestyl_web/live/studio_live/show.html.heex
+
+<div class="h-screen flex flex-col bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900 overflow-hidden">
+  <FrestylWeb.AccessibilityComponents.skip_to_content />
+
+  <!-- Studio Header Component -->
+  <.live_component
+    module={FrestylWeb.StudioLive.HeaderComponent}
+    id="studio-header"
+    session={@session}
+    channel={@channel}
+    current_user={@current_user}
+    permissions={@permissions}
+    collaborators={@collaborators}
+    connection_status={@connection_status}
+    pending_operations={@pending_operations}
+    operation_conflicts={@operation_conflicts}
+    ot_debug_mode={@ot_debug_mode}
+    workspace_state={@workspace_state}
+    is_mobile={@is_mobile}
+  />
+
+  <!-- OT Debug Panel (conditional) -->
+  <%= if @ot_debug_mode do %>
+    <.live_component
+      module={FrestylWeb.StudioLive.OtDebugComponent}
+      id="ot-debug"
+      workspace_state={@workspace_state}
+      pending_operations={@pending_operations}
+      operation_conflicts={@operation_conflicts}
+    />
+  <% end %>
+
+  <!-- Main Content Area -->
+  <div class="flex flex-1 overflow-hidden" id="main-content">
+    
+    <!-- Mobile Layout -->
+    <%= if @is_mobile do %>
+      <.live_component
+        module={FrestylWeb.StudioLive.MobileLayoutComponent}
+        id="mobile-layout"
+        active_tool={@active_tool}
+        workspace_state={@workspace_state}
+        current_user={@current_user}
+        permissions={@permissions}
+        session={@session}
+        chat_messages={@chat_messages}
+        collaborators={@collaborators}
+        typing_users={@typing_users}
+        message_input={@message_input}
+        tools={@tools}
+        device_info={@device_info}
+        audio_config={@audio_config}
+        is_recording={@recording_mode}
+        current_mobile_track={@current_mobile_track}
+      />
+    <% else %>
+      <!-- Desktop Layout -->
+      <.live_component
+        module={FrestylWeb.StudioLive.DesktopLayoutComponent}
+        id="desktop-layout"
+        active_tool={@active_tool}
+        workspace_state={@workspace_state}
+        current_user={@current_user}
+        permissions={@permissions}
+        session={@session}
+        chat_messages={@chat_messages}
+        collaborators={@collaborators}
+        typing_users={@typing_users}
+        message_input={@message_input}
+        tools={@tools}
+        recording_mode={@recording_mode}
+        recording_track={@recording_track}
+        audio_engine_state={@audio_engine_state}
+        beat_machine_state={@beat_machine_state}
+      />
+    <% end %>
+
+  </div>
+
+  <!-- Global Notification System -->
+  <.live_component
+    module={FrestylWeb.StudioLive.NotificationComponent}
+    id="notifications"
+    notifications={@notifications}
+  />
+
+  <!-- End Session Modal -->
+  <%= if @show_end_session_modal do %>
+    <FrestylWeb.AccessibilityComponents.a11y_dialog
+      id="end-session-modal"
+      title="End Session"
+      show={@show_end_session_modal}
+      on_confirm="end_session_confirmed"
+      on_cancel="cancel_end_session"
+      confirm_label="End Session"
+    >
+      <div class="flex items-start mb-4">
+        <div class="flex-shrink-0 mr-4">
+          <svg class="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+        </div>
+        <div>
+          <p class="text-gray-600">
+            This will end the session for all participants. Your work will be saved to the channel's media library.
+          </p>
+        </div>
+      </div>
+    </FrestylWeb.AccessibilityComponents.a11y_dialog>
+  <% end %>
+
+  <!-- Settings Modal -->
+  <%= if @show_settings_modal do %>
+    <.live_component
+      module={FrestylWeb.StudioLive.SettingsModalComponent}
+      id="settings-modal"
+      session={@session}
+      current_user={@current_user}
+      permissions={@permissions}
+      audio_config={@audio_config}
+      device_info={@device_info}
+      on_close="toggle_settings_modal"
+    />
+  <% end %>
+
+  <!-- Invite Modal -->
+  <%= if @show_invite_modal do %>
+    <.live_component
+      module={FrestylWeb.StudioLive.InviteModalComponent}
+      id="invite-modal"
+      session={@session}
+      channel={@channel}
+      current_user={@current_user}
+      on_close="toggle_invite_modal"
+    />
+  <% end %>
+</div>

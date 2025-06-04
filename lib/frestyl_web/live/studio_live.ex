@@ -11,6 +11,10 @@ defmodule FrestylWeb.StudioLive do
   alias Frestyl.Collaboration.OperationalTransform.{TextOp, AudioOp, VisualOp}
   alias FrestylWeb.AccessibilityComponents, as: A11y
   alias Phoenix.PubSub
+  alias Frestyl.Studio.AudioEngine
+  alias Frestyl.Studio.BeatMachine
+  alias Frestyl.Studio.RecordingEngine
+  alias FrestylWeb.StudioLive.RecordingComponent
 
   # Enhanced default workspace state with OT support
   @default_workspace_state %{
@@ -47,6 +51,18 @@ defmodule FrestylWeb.StudioLive do
       color: "#4f46e5",
       version: 0
     },
+    beat_machine: %{
+      current_kit: "classic_808",
+      patterns: %{},
+      active_pattern: nil,
+      playing: false,
+      current_step: 0,
+      bpm: 120,
+      swing: 0,
+      master_volume: 0.8,
+      pattern_counter: 0,
+      version: 0
+    },
     # OT state management
     ot_state: %{
       user_operations: %{},  # Track operations by user
@@ -56,6 +72,21 @@ defmodule FrestylWeb.StudioLive do
       server_version: 0      # Last known server version
     }
   }
+
+  defp is_mobile_device?(user_agent) do
+    mobile_patterns = [
+      ~r/Android/i,
+      ~r/webOS/i,
+      ~r/iPhone/i,
+      ~r/iPad/i,
+      ~r/iPod/i,
+      ~r/BlackBerry/i,
+      ~r/IEMobile/i,
+      ~r/Opera Mini/i
+    ]
+
+    Enum.any?(mobile_patterns, &Regex.match?(&1, user_agent || ""))
+  end
 
   @impl true
   def mount(%{"channel_slug" => channel_slug, "session_id" => session_id} = params, session, socket) do
@@ -68,14 +99,23 @@ defmodule FrestylWeb.StudioLive do
         session_data = Sessions.get_session(session_id)
 
         if session_data do
+          # Get device info early, before the connected? check
+          user_agent = if connected?(socket), do: get_connect_info(socket, :user_agent), else: nil
+          is_mobile = is_mobile_device?(user_agent)
+          device_info = get_device_info(user_agent, socket)
+
           if connected?(socket) do
             # Subscribe to OT-specific topics
             PubSub.subscribe(Frestyl.PubSub, "studio:#{session_id}")
             PubSub.subscribe(Frestyl.PubSub, "studio:#{session_id}:operations")
             PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}")
             PubSub.subscribe(Frestyl.PubSub, "session:#{session_id}:chat")
+            PubSub.subscribe(Frestyl.PubSub, "audio_engine:#{session_id}")
+            PubSub.subscribe(Frestyl.PubSub, "beat_machine:#{session_id}")
+            # Subscribe to mobile-specific audio events
+            PubSub.subscribe(Frestyl.PubSub, "mobile_audio:#{session_id}")
 
-            # Track presence with OT metadata
+            # Track presence with OT metadata and mobile info
             {:ok, _} = Presence.track(self(), "studio:#{session_id}", current_user.id, %{
               user_id: current_user.id,
               username: current_user.username,
@@ -84,12 +124,26 @@ defmodule FrestylWeb.StudioLive do
               active_tool: "audio",
               is_typing: false,
               last_activity: DateTime.utc_now(),
-              ot_version: 0  # Track OT version for each user
+              ot_version: 0,  # Track OT version for each user
+              is_recording: false,
+              input_level: 0,
+              active_audio_track: nil,
+              audio_monitoring: false,
+              # Mobile-specific presence data
+              is_mobile: is_mobile,
+              device_type: device_info.device_type,
+              screen_size: device_info.screen_size,
+              supports_audio: device_info.supports_audio,
+              battery_optimized: false,
+              current_mobile_track: 0
             })
 
             # Initialize OT state for this user
             send(self(), {:initialize_ot_state})
           end
+
+          # Start appropriate audio engine based on device
+          start_audio_engine(session_id, is_mobile)
 
           role = determine_user_role(session_data, current_user)
           permissions = get_permissions_for_role(role, session_data.session_type)
@@ -107,6 +161,10 @@ defmodule FrestylWeb.StudioLive do
             "midi" -> "midi"
             _ -> "audio"
           end
+
+          # Get user tier for audio engine configuration
+          user_tier = get_user_audio_tier(current_user)
+          audio_config = get_audio_engine_config(user_tier, is_mobile)
 
           socket = socket
             |> assign(:current_user, current_user)
@@ -135,6 +193,21 @@ defmodule FrestylWeb.StudioLive do
             |> assign(:operation_conflicts, [])
             |> assign(:ot_debug_mode, false)
             |> assign(:typing_users, MapSet.new())
+            |> assign(:recording_track, nil)
+            |> assign(:audio_engine_state, get_audio_engine_state(session_id))
+            |> assign(:beat_machine_state, get_beat_machine_state(session_id))
+            |> assign(:recording_enabled, true)
+            |> assign(:recording_mode, false)
+            |> assign(:user_channels, Channels.list_user_channels(current_user.id))
+            |> assign(:export_credits, get_user_export_credits(current_user))
+            # Mobile-specific assigns
+            |> assign(:is_mobile, is_mobile)
+            |> assign(:device_info, device_info)
+            |> assign(:audio_config, audio_config)
+            |> assign(:user_tier, user_tier)
+            |> assign(:current_mobile_track, 0)
+            |> assign(:mobile_capabilities, %{})
+            |> assign(:selected_track_id, get_first_track_id(workspace_state))
 
           {:ok, socket}
         else
@@ -151,6 +224,306 @@ defmodule FrestylWeb.StudioLive do
       {:ok, socket
         |> put_flash(:error, "You must be logged in to access this page")
         |> push_redirect(to: ~p"/users/log_in")}
+    end
+  end
+
+  # Helper functions to add to your StudioLive module
+
+  defp is_mobile_device?(user_agent) when is_binary(user_agent) do
+    mobile_patterns = [
+      ~r/Android/i,
+      ~r/webOS/i,
+      ~r/iPhone/i,
+      ~r/iPad/i,
+      ~r/iPod/i,
+      ~r/BlackBerry/i,
+      ~r/IEMobile/i,
+      ~r/Opera Mini/i,
+      ~r/Mobile/i
+    ]
+
+    Enum.any?(mobile_patterns, &Regex.match?(&1, user_agent))
+  end
+
+  defp get_device_info(user_agent, socket) do
+    is_mobile = is_mobile_device?(user_agent)
+
+    device_type = cond do
+      is_nil(user_agent) -> "unknown"
+      Regex.match?(~r/iPad/i, user_agent) -> "tablet"
+      Regex.match?(~r/iPhone|iPod/i, user_agent) -> "phone"
+      Regex.match?(~r/Android.*Mobile/i, user_agent) -> "phone"
+      Regex.match?(~r/Android/i, user_agent) -> "tablet"
+      is_mobile -> "mobile"
+      true -> "desktop"
+    end
+
+    # Estimate screen size based on device type
+    screen_size = case device_type do
+      "phone" -> "small"
+      "tablet" -> "medium"
+      "desktop" -> "large"
+      _ -> "unknown"
+    end
+
+    # Check for modern audio support
+    supports_audio = not Regex.match?(~r/Opera Mini|UC Browser/i, user_agent || "")
+
+    %{
+      device_type: device_type,
+      screen_size: screen_size,
+      supports_audio: supports_audio,
+      user_agent: user_agent,
+      is_mobile: is_mobile
+    }
+  end
+
+  defp get_user_audio_tier(user) do
+    # Determine user's audio tier based on subscription, etc.
+    # This would integrate with your existing subscription system
+    case user.subscription_tier do
+      "pro" -> :pro
+      "premium" -> :premium
+      _ -> :free
+    end
+  end
+
+  defp get_audio_engine_config(user_tier, is_mobile) do
+    base_config = case user_tier do
+      :pro -> %{
+        sample_rate: 48000,
+        buffer_size: if(is_mobile, do: 512, else: 256),
+        max_tracks: if(is_mobile, do: 4, else: 16),
+        effects_enabled: true,
+        monitoring_enabled: true,
+        quality: "high"
+      }
+      :premium -> %{
+        sample_rate: 44100,
+        buffer_size: if(is_mobile, do: 512, else: 256),
+        max_tracks: if(is_mobile, do: 4, else: 8),
+        effects_enabled: true,
+        monitoring_enabled: true,
+        quality: "medium"
+      }
+      :free -> %{
+        sample_rate: 44100,
+        buffer_size: if(is_mobile, do: 1024, else: 512),
+        max_tracks: if(is_mobile, do: 2, else: 4),
+        effects_enabled: if(is_mobile, do: false, else: true),
+        monitoring_enabled: true,
+        quality: "basic"
+      }
+    end
+
+    # Mobile-specific optimizations
+    if is_mobile do
+      Map.merge(base_config, %{
+        update_frequency: 30, # 30fps instead of 60fps
+        battery_optimized: true,
+        simplified_effects: true,
+        reduced_monitoring: true
+      })
+    else
+      base_config
+    end
+  end
+
+  defp start_audio_engine(session_id, is_mobile \\ false) do
+    # Start appropriate audio engine based on device
+    engine_module = if is_mobile, do: Frestyl.Studio.MobileAudioEngine, else: Frestyl.Studio.AudioEngine
+
+    case DynamicSupervisor.start_child(
+      Frestyl.Studio.AudioEngineSupervisor,
+      {engine_module, session_id}
+    ) do
+      {:ok, _pid} ->
+        # Also start beat machine if not mobile or if user has premium+
+        unless is_mobile do
+          DynamicSupervisor.start_child(
+            Frestyl.Studio.BeatMachineSupervisor,
+            {BeatMachine, session_id}
+          )
+        end
+        :ok
+      {:error, {:already_started, _}} -> :ok
+      {:error, reason} ->
+        Logger.error("Failed to start audio engine: #{inspect(reason)}")
+        :error
+    end
+  end
+
+  defp get_first_track_id(workspace_state) do
+    case workspace_state.audio.tracks do
+      [first_track | _] -> first_track.id
+      [] -> nil
+    end
+  end
+
+  # Add mobile-specific event handlers
+
+  @impl true
+  def handle_event("mobile_audio_initialized", %{"capabilities" => caps, "config" => config}, socket) do
+    Logger.info("Mobile audio initialized: #{inspect(caps)}")
+
+    {:noreply, socket
+      |> assign(:mobile_capabilities, caps)
+      |> add_notification("Mobile audio engine ready", :success)}
+  end
+
+  @impl true
+  def handle_event("mobile_track_changed", %{"track_index" => index}, socket) do
+    # Update current mobile track
+    {:noreply, assign(socket, :current_mobile_track, index)}
+  end
+
+  @impl true
+  def handle_event("mobile_track_volume_change", %{"track_index" => index, "volume" => volume}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      track_id = get_track_id_by_index(socket, index)
+
+      case AudioEngine.update_track_volume(socket.assigns.session.id, track_id, volume) do
+        :ok ->
+          {:noreply, socket}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to update volume: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("mobile_master_volume_change", %{"volume" => volume}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      case AudioEngine.set_master_volume(socket.assigns.session.id, volume) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to update master volume")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("mobile_toggle_effect", %{"track_index" => index, "effect_type" => effect_type}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      track_id = get_track_id_by_index(socket, index)
+
+      # Check if effect is already applied, toggle it
+      current_effects = get_track_effects(socket, track_id)
+
+      if Enum.any?(current_effects, &(&1.type == effect_type)) do
+        # Remove effect
+        effect_id = Enum.find(current_effects, &(&1.type == effect_type)).id
+        case AudioEngine.remove_effect_from_track(socket.assigns.session.id, track_id, effect_id) do
+          :ok -> {:noreply, socket |> add_notification("#{String.capitalize(effect_type)} removed", :info)}
+          {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to remove effect")}
+        end
+      else
+        # Add effect with mobile-optimized parameters
+        mobile_params = get_mobile_effect_params(effect_type)
+        case AudioEngine.apply_effect(socket.assigns.session.id, track_id, effect_type, mobile_params) do
+          {:ok, _effect} -> {:noreply, socket |> add_notification("#{String.capitalize(effect_type)} applied", :success)}
+          {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to apply effect")}
+        end
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("mobile_start_recording", %{"track_index" => index}, socket) do
+    if can_record_audio?(socket.assigns.permissions) do
+      track_id = get_track_id_by_index(socket, index)
+      user_id = socket.assigns.current_user.id
+
+      case AudioEngine.start_recording(socket.assigns.session.id, track_id, user_id) do
+        {:ok, _} ->
+          {:noreply, socket
+            |> assign(:recording_track, track_id)
+            |> add_notification("Recording started", :success)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to start recording: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("mobile_stop_recording", %{"track_index" => index}, socket) do
+    track_id = get_track_id_by_index(socket, index)
+    user_id = socket.assigns.current_user.id
+
+    case AudioEngine.stop_recording(socket.assigns.session.id, track_id, user_id) do
+      {:ok, _clip} ->
+        {:noreply, socket
+          |> assign(:recording_track, nil)
+          |> add_notification("Recording stopped", :info)}
+      {:error, reason} ->
+        {:noreply, socket |> put_flash(:error, "Failed to stop recording: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("mobile_mute_all_tracks", _params, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      # Mute all tracks
+      Enum.each(socket.assigns.workspace_state.audio.tracks, fn track ->
+        AudioEngine.mute_track(session_id, track.id, true)
+      end)
+
+      {:noreply, socket |> add_notification("All tracks muted", :info)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("mobile_solo_track", %{"track_index" => index}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      track_id = get_track_id_by_index(socket, index)
+
+      case AudioEngine.solo_track(socket.assigns.session.id, track_id, true) do
+        :ok -> {:noreply, socket |> add_notification("Track soloed", :info)}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to solo track")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Helper functions for mobile events
+
+  defp get_track_id_by_index(socket, index) do
+    tracks = socket.assigns.workspace_state.audio.tracks
+    case Enum.at(tracks, index) do
+      nil -> nil
+      track -> track.id
+    end
+  end
+
+  defp get_track_effects(socket, track_id) do
+    tracks = socket.assigns.workspace_state.audio.tracks
+    case Enum.find(tracks, &(&1.id == track_id)) do
+      nil -> []
+      track -> track.effects || []
+    end
+  end
+
+  defp get_mobile_effect_params(effect_type) do
+    # Mobile-optimized effect parameters for better performance
+    case effect_type do
+      "reverb" -> %{wet: 0.2, dry: 0.8, room_size: 0.3, decay: 1.5}
+      "eq" -> %{low_gain: 0, mid_gain: 0, high_gain: 0}
+      "compressor" -> %{threshold: -12, ratio: 4, attack: 0.01, release: 0.1}
+      "delay" -> %{time: 0.25, feedback: 0.3, wet: 0.2}
+      "distortion" -> %{drive: 3, level: 0.7, amount: 25}
+      _ -> %{}
     end
   end
 
@@ -353,6 +726,256 @@ defmodule FrestylWeb.StudioLive do
     else
       {:noreply, socket |> put_flash(:error, "You don't have permission to add tracks")}
     end
+  end
+
+  # Audio track management
+  @impl true
+  def handle_event("audio_add_track", %{"name" => name}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      user_id = socket.assigns.current_user.id
+      session_id = socket.assigns.session.id
+
+      case AudioEngine.add_track(session_id, user_id, %{name: name}) do
+        {:ok, track} ->
+          {:noreply, socket |> add_notification("Added #{track.name}", :success)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to add track: #{reason}")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to add tracks")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_recording_mode", _, socket) do
+    new_recording_mode = !socket.assigns.recording_mode
+
+    # Start/stop recording engine if needed
+    if new_recording_mode do
+      case start_recording_engine(socket.assigns.session.id) do
+        :ok ->
+          {:noreply, assign(socket, recording_mode: true)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to start recording: #{reason}")}
+      end
+    else
+      {:noreply, assign(socket, recording_mode: false)}
+    end
+  end
+
+  @impl true
+  def handle_event("audio_start_recording", %{"track_id" => track_id}, socket) do
+    if can_record_audio?(socket.assigns.permissions) do
+      user_id = socket.assigns.current_user.id
+      session_id = socket.assigns.session.id
+
+      # Update presence to show recording
+      update_presence(session_id, user_id, %{
+        is_recording: true,
+        active_audio_track: track_id,
+        last_activity: DateTime.utc_now()
+      })
+
+      {:noreply, socket |> assign(:recording_track, track_id)}
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to record")}
+    end
+  end
+
+  @impl true
+  def handle_event("audio_stop_recording", _params, socket) do
+    user_id = socket.assigns.current_user.id
+    session_id = socket.assigns.session.id
+
+    # Update presence to stop recording
+    update_presence(session_id, user_id, %{
+      is_recording: false,
+      active_audio_track: nil,
+      last_activity: DateTime.utc_now()
+    })
+
+    {:noreply, socket |> assign(:recording_track, nil)}
+  end
+
+  @impl true
+  def handle_event("audio_update_track_volume", %{"track_id" => track_id, "volume" => volume}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case AudioEngine.update_track_volume(session_id, track_id, volume) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to update volume: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("audio_mute_track", %{"track_id" => track_id, "muted" => muted}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case AudioEngine.mute_track(session_id, track_id, muted) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to mute track: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("audio_solo_track", %{"track_id" => track_id, "solo" => solo}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case AudioEngine.solo_track(session_id, track_id, solo) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to solo track: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("audio_delete_track", %{"track_id" => track_id}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case AudioEngine.delete_track(session_id, track_id) do
+        :ok ->
+          {:noreply, socket |> add_notification("Track deleted", :info)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to delete track: #{reason}")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to delete tracks")}
+    end
+  end
+
+  # Transport controls
+  @impl true
+  def handle_event("audio_start_playback", %{"position" => position}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      position = String.to_float(position || "0")
+
+      case AudioEngine.start_playback(session_id, position) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to start playback: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("audio_stop_playback", _params, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case AudioEngine.stop_playback(session_id) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to stop playback: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Beat machine controls
+  @impl true
+  def handle_event("beat_create_pattern", %{"name" => name, "steps" => steps}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      steps = String.to_integer(steps || "16")
+
+      case BeatMachine.create_pattern(session_id, name, steps) do
+        {:ok, pattern} ->
+          {:noreply, socket |> add_notification("Created pattern: #{pattern.name}", :success)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to create pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_update_step", %{"pattern_id" => pattern_id, "instrument" => instrument, "step" => step, "velocity" => velocity}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      step = String.to_integer(step)
+      velocity = String.to_integer(velocity)
+
+      case BeatMachine.update_pattern_step(session_id, pattern_id, instrument, step, velocity) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to update step: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_play_pattern", %{"pattern_id" => pattern_id}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case BeatMachine.play_pattern(session_id, pattern_id) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to play pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_stop_pattern", _params, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case BeatMachine.stop_pattern(session_id) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to stop pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_change_kit", %{"kit_name" => kit_name}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case BeatMachine.change_kit(session_id, kit_name) do
+        :ok ->
+          {:noreply, socket |> add_notification("Changed to #{kit_name} kit", :info)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to change kit: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Input level monitoring
+  @impl true
+  def handle_event("audio_input_level", %{"level" => level}, socket) do
+    user_id = socket.assigns.current_user.id
+    session_id = socket.assigns.session.id
+
+    # Update presence with input level
+    update_presence(session_id, user_id, %{
+      input_level: level,
+      last_activity: DateTime.utc_now()
+    })
+
+    {:noreply, socket}
   end
 
   # ENHANCED: Text editing with OT
@@ -562,6 +1185,304 @@ defmodule FrestylWeb.StudioLive do
     {:noreply, assign(socket, operation_conflicts: [])}
   end
 
+  # Beat machine handlers
+  @impl true
+  def handle_event("beat_create_pattern", %{"name" => name, "steps" => steps}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      steps = String.to_integer(steps || "16")
+
+      case BeatMachine.create_pattern(session_id, name, steps) do
+        {:ok, pattern} ->
+          {:noreply, socket |> add_notification("Created pattern: #{pattern.name}", :success)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to create pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to create patterns")}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_update_step", %{"pattern_id" => pattern_id, "instrument" => instrument, "step" => step, "velocity" => velocity}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      step = String.to_integer(step)
+      velocity = String.to_integer(velocity)
+
+      case BeatMachine.update_pattern_step(session_id, pattern_id, instrument, step, velocity) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to update step: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_clear_step", %{"pattern_id" => pattern_id, "instrument" => instrument, "step" => step}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      step = String.to_integer(step)
+
+      case BeatMachine.clear_pattern_step(session_id, pattern_id, instrument, step) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to clear step: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_play_pattern", %{"pattern_id" => pattern_id}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case BeatMachine.play_pattern(session_id, pattern_id) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to play pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_stop_pattern", _params, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case BeatMachine.stop_pattern(session_id) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to stop pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_change_kit", %{"kit_name" => kit_name}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case BeatMachine.change_kit(session_id, kit_name) do
+        :ok ->
+          {:noreply, socket |> add_notification("Changed to #{kit_name} kit", :info)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to change kit: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_set_bpm", %{"bpm" => bpm}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      bpm = String.to_integer(bpm)
+
+      case BeatMachine.set_bpm(session_id, bpm) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to set BPM: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_set_swing", %{"swing" => swing}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      swing = String.to_integer(swing)
+
+      case BeatMachine.set_swing(session_id, swing) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to set swing: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_duplicate_pattern", %{"pattern_id" => pattern_id, "new_name" => new_name}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case BeatMachine.duplicate_pattern(session_id, pattern_id, new_name) do
+        {:ok, pattern} ->
+          {:noreply, socket |> add_notification("Duplicated pattern: #{pattern.name}", :success)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to duplicate pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_delete_pattern", %{"pattern_id" => pattern_id}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case BeatMachine.delete_pattern(session_id, pattern_id) do
+        :ok ->
+          {:noreply, socket |> add_notification("Pattern deleted", :info)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to delete pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_randomize_pattern", %{"pattern_id" => pattern_id} = params, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      instruments = Map.get(params, "instruments") # Optional - randomize specific instruments
+
+      case BeatMachine.randomize_pattern(session_id, pattern_id, instruments) do
+        :ok ->
+          {:noreply, socket |> add_notification("Pattern randomized", :info)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to randomize pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_clear_pattern", %{"pattern_id" => pattern_id}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case BeatMachine.clear_pattern(session_id, pattern_id) do
+        :ok ->
+          {:noreply, socket |> add_notification("Pattern cleared", :info)}
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to clear pattern: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("beat_set_master_volume", %{"volume" => volume}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      volume = String.to_float(volume)
+
+      case BeatMachine.set_master_volume(session_id, volume) do
+        :ok -> {:noreply, socket}
+        {:error, reason} -> {:noreply, socket |> put_flash(:error, "Failed to set volume: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  #Beat machine message handlers
+  @impl true
+  def handle_info({:beat_machine, {:pattern_created, pattern}}, socket) do
+    username = get_username_from_collaborators(pattern.created_by, socket.assigns.collaborators)
+    message = "#{username} created pattern: #{pattern.name}"
+
+    # Update workspace state with new pattern
+    update_beat_workspace_state(socket, "pattern_created", pattern)
+
+    {:noreply, socket
+      |> add_notification(message, :success)
+      |> push_event("beat_pattern_created", %{pattern: pattern})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:step_updated, pattern_id, instrument, step, velocity}}, socket) do
+    {:noreply, socket |> push_event("beat_step_updated", %{
+      pattern_id: pattern_id,
+      instrument: instrument,
+      step: step,
+      velocity: velocity
+    })}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:pattern_started, pattern_id}}, socket) do
+    {:noreply, socket |> push_event("beat_pattern_started", %{pattern_id: pattern_id})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:pattern_stopped}}, socket) do
+    {:noreply, socket |> push_event("beat_pattern_stopped", %{})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:step_triggered, step, instruments}}, socket) do
+    {:noreply, socket |> push_event("beat_step_triggered", %{
+      step: step,
+      instruments: instruments
+    })}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:kit_changed, kit_name, kit}}, socket) do
+    username = get_username_from_collaborators("system", socket.assigns.collaborators) # Handle kit changes
+    message = "Drum kit changed to #{kit_name}"
+
+    {:noreply, socket
+      |> add_notification(message, :info)
+      |> push_event("beat_kit_changed", %{kit_name: kit_name, kit: kit})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:bpm_changed, bpm}}, socket) do
+    {:noreply, socket |> push_event("beat_bpm_changed", %{bpm: bpm})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:swing_changed, swing}}, socket) do
+    {:noreply, socket |> push_event("beat_swing_changed", %{swing: swing})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:pattern_duplicated, pattern}}, socket) do
+    username = get_username_from_collaborators(pattern.created_by, socket.assigns.collaborators)
+    message = "#{username} duplicated pattern: #{pattern.name}"
+
+    {:noreply, socket
+      |> add_notification(message, :info)
+      |> push_event("beat_pattern_duplicated", %{pattern: pattern})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:pattern_deleted, pattern_id}}, socket) do
+    {:noreply, socket |> push_event("beat_pattern_deleted", %{pattern_id: pattern_id})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:pattern_randomized, pattern_id, sequences}}, socket) do
+    {:noreply, socket |> push_event("beat_pattern_randomized", %{
+      pattern_id: pattern_id,
+      sequences: sequences
+    })}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:pattern_cleared, pattern_id}}, socket) do
+    {:noreply, socket |> push_event("beat_pattern_cleared", %{pattern_id: pattern_id})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:master_volume_changed, volume}}, socket) do
+    {:noreply, socket |> push_event("beat_master_volume_changed", %{volume: volume})}
+  end
+
   # ENHANCED: Handle incoming operations from other users
   @impl true
   def handle_info({:new_operation, remote_operation}, socket) do
@@ -684,6 +1605,114 @@ defmodule FrestylWeb.StudioLive do
       |> assign(notifications: notifications)}
   end
 
+  # Audio engine events
+  @impl true
+  def handle_info({:track_added, track, user_id}, socket) do
+    username = get_username_from_collaborators(user_id, socket.assigns.collaborators)
+    message = "#{username} added track: #{track.name}"
+
+    {:noreply, socket |> add_notification(message, :info)}
+  end
+
+  @impl true
+  def handle_info({:track_volume_changed, track_id, volume}, socket) do
+    # Update workspace state with new volume
+    # This integrates with your existing workspace state system
+    update_audio_workspace_state(socket, "track_volume", %{
+      track_id: track_id,
+      volume: volume
+    })
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:track_muted, track_id, muted}, socket) do
+    update_audio_workspace_state(socket, "track_mute", %{
+      track_id: track_id,
+      muted: muted
+    })
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:track_solo_changed, track_id, solo}, socket) do
+    update_audio_workspace_state(socket, "track_solo", %{
+      track_id: track_id,
+      solo: solo
+    })
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:playback_started, position}, socket) do
+    {:noreply, socket |> push_event("audio_playback_started", %{position: position})}
+  end
+
+  @impl true
+  def handle_info({:playback_stopped, position}, socket) do
+    {:noreply, socket |> push_event("audio_playback_stopped", %{position: position})}
+  end
+
+  @impl true
+  def handle_info({:playback_position, position}, socket) do
+    {:noreply, socket |> push_event("audio_playback_position", %{position: position})}
+  end
+
+  @impl true
+  def handle_info({:clip_added, clip}, socket) do
+    username = get_username_from_collaborators(clip.user_id, socket.assigns.collaborators)
+    message = "#{username} recorded audio clip"
+
+    update_audio_workspace_state(socket, "clip_added", clip)
+
+    {:noreply, socket |> add_notification(message, :success)}
+  end
+
+  # Beat machine events
+  @impl true
+  def handle_info({:beat_machine, {:pattern_created, pattern}}, socket) do
+    {:noreply, socket |> push_event("beat_pattern_created", %{pattern: pattern})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:step_updated, pattern_id, instrument, step, velocity}}, socket) do
+    {:noreply, socket |> push_event("beat_step_updated", %{
+      pattern_id: pattern_id,
+      instrument: instrument,
+      step: step,
+      velocity: velocity
+    })}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:pattern_started, pattern_id}}, socket) do
+    {:noreply, socket |> push_event("beat_pattern_started", %{pattern_id: pattern_id})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:pattern_stopped}}, socket) do
+    {:noreply, socket |> push_event("beat_pattern_stopped", %{})}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:step_triggered, step, instruments}}, socket) do
+    {:noreply, socket |> push_event("beat_step_triggered", %{
+      step: step,
+      instruments: instruments
+    })}
+  end
+
+  @impl true
+  def handle_info({:beat_machine, {:kit_changed, kit_name, kit}}, socket) do
+    {:noreply, socket |> push_event("beat_kit_changed", %{
+      kit_name: kit_name,
+      kit: kit
+    })}
+  end
+
   # Handle chat messages
   @impl true
   def handle_info({:new_message, message}, socket) do
@@ -722,6 +1751,38 @@ defmodule FrestylWeb.StudioLive do
       {:noreply, socket}
     end
   end
+
+  defp update_beat_workspace_state(socket, update_type, data) do
+    session_id = socket.assigns.session.id
+
+    # Get current workspace state
+    current_state = socket.assigns.workspace_state
+
+    # Update beat machine section
+    beat_state = Map.get(current_state, :beat_machine, %{})
+    updated_beat = update_beat_state(beat_state, update_type, data)
+
+    # Update full workspace state
+    new_workspace_state = Map.put(current_state, :beat_machine, updated_beat)
+
+    # Save to database
+    Sessions.save_workspace_state(session_id, new_workspace_state)
+
+    # Broadcast to other users
+    PubSub.broadcast(
+      Frestyl.PubSub,
+      "studio:#{session_id}",
+      {:workspace_beat_updated, update_type, data}
+    )
+  end
+
+  defp update_beat_state(beat_state, "pattern_created", pattern) do
+    patterns = Map.get(beat_state, :patterns, %{})
+    updated_patterns = Map.put(patterns, pattern.id, pattern)
+    Map.put(beat_state, :patterns, updated_patterns)
+  end
+
+  defp update_beat_state(beat_state, _type, _data), do: beat_state
 
   # Catch-all for unhandled messages
   @impl true
@@ -902,6 +1963,27 @@ defmodule FrestylWeb.StudioLive do
       midi: midi_state,
       ot_state: ot_state
     }
+  end
+
+  defp get_user_export_credits(user) do
+    tier = Frestyl.Studio.AudioEngineConfig.get_user_tier(user)
+    requirements = Frestyl.Studio.ContentStrategy.get_export_requirements(tier)
+
+    case requirements.credits_per_month do
+      :unlimited -> :unlimited
+      credits -> credits  # In real implementation, get actual remaining credits
+    end
+  end
+
+  defp start_recording_engine(session_id) do
+    case DynamicSupervisor.start_child(
+      Frestyl.Studio.RecordingEngineSupervisor,
+      {RecordingEngine, session_id}
+    ) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # Enhanced notification helper
@@ -1104,6 +2186,93 @@ defmodule FrestylWeb.StudioLive do
     })
   end
 
+  defp update_audio_workspace_state(socket, update_type, data) do
+    session_id = socket.assigns.session.id
+
+    # Get current workspace state
+    current_state = socket.assigns.workspace_state
+
+    # Update audio section
+    audio_state = Map.get(current_state, :audio, %{})
+    updated_audio = update_audio_state(audio_state, update_type, data)
+
+    # Update full workspace state
+    new_workspace_state = Map.put(current_state, :audio, updated_audio)
+
+    # Save to database
+    Sessions.save_workspace_state(session_id, new_workspace_state)
+
+    # Broadcast to other users
+    PubSub.broadcast(
+      Frestyl.PubSub,
+      "studio:#{session_id}",
+      {:workspace_audio_updated, update_type, data}
+    )
+  end
+
+  defp get_audio_engine_state(session_id) do
+    case AudioEngine.get_engine_state(session_id) do
+      {:ok, state} -> state
+      _ -> %{tracks: [], transport: %{playing: false, position: 0}}
+    end
+  end
+
+  defp get_beat_machine_state(session_id) do
+    case BeatMachine.get_beat_machine_state(session_id) do
+      {:ok, state} -> state
+      _ -> %{patterns: %{}, active_pattern: nil, playing: false}
+    end
+  end
+
+  defp update_audio_state(audio_state, "track_volume", %{track_id: track_id, volume: volume}) do
+    tracks = Map.get(audio_state, :tracks, [])
+    updated_tracks = Enum.map(tracks, fn track ->
+      if track.id == track_id do
+        %{track | volume: volume}
+      else
+        track
+      end
+    end)
+    Map.put(audio_state, :tracks, updated_tracks)
+  end
+
+  defp update_audio_state(audio_state, "track_mute", %{track_id: track_id, muted: muted}) do
+    tracks = Map.get(audio_state, :tracks, [])
+    updated_tracks = Enum.map(tracks, fn track ->
+      if track.id == track_id do
+        %{track | muted: muted}
+      else
+        track
+      end
+    end)
+    Map.put(audio_state, :tracks, updated_tracks)
+  end
+
+  defp update_audio_state(audio_state, "track_solo", %{track_id: track_id, solo: solo}) do
+    tracks = Map.get(audio_state, :tracks, [])
+    updated_tracks = Enum.map(tracks, fn track ->
+      if track.id == track_id do
+        %{track | solo: solo}
+      else
+        # If soloing this track, unsolo others
+        if solo do
+          %{track | solo: false}
+        else
+          track
+        end
+      end
+    end)
+    Map.put(audio_state, :tracks, updated_tracks)
+  end
+
+  defp update_audio_state(audio_state, "clip_added", clip) do
+    clips = Map.get(audio_state, :clips, [])
+    Map.put(audio_state, :clips, [clip | clips])
+  end
+
+  defp update_audio_state(audio_state, _type, _data), do: audio_state
+
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -1283,17 +2452,46 @@ defmodule FrestylWeb.StudioLive do
           <%= case @active_tool do %>
             <% "audio" -> %>
               <div class="h-full flex flex-col bg-gray-900 bg-opacity-50">
+                <!-- Enhanced Audio Workspace Header -->
                 <div class="flex items-center justify-between p-4 border-b border-gray-800">
                   <h2 class="text-white text-lg font-medium flex items-center">
                     Audio Workspace
-                    <!-- Track Counter Display -->
                     <span class="ml-3 text-sm text-gray-400">
                       (Next: Track <%= @workspace_state.audio.track_counter + 1 %>)
                     </span>
+
+                    <!-- Recording Status Indicator -->
+                    <%= if @recording_mode do %>
+                      <span class="ml-3 flex items-center text-red-400 text-sm">
+                        <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-1"></div>
+                        Recording Mode
+                      </span>
+                    <% end %>
                   </h2>
 
                   <div class="flex items-center space-x-3">
-                    <!-- Add track button with OT indicator -->
+                    <!-- Export Credits Display -->
+                    <%= if @export_credits != :unlimited do %>
+                      <div class="text-sm text-gray-400">
+                        Export Credits: <%= @export_credits %>
+                      </div>
+                    <% end %>
+
+                    <!-- Recording Toggle -->
+                    <%= if @recording_enabled do %>
+                      <button
+                        type="button"
+                        phx-click="toggle_recording_mode"
+                        class={[
+                          "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                          @recording_mode && "bg-red-600 hover:bg-red-700 text-white" || "bg-gray-600 text-gray-300 hover:bg-gray-500"
+                        ]}
+                      >
+                        <%= if @recording_mode, do: "Exit Recording", else: "Recording Mode" %>
+                      </button>
+                    <% end %>
+
+                    <!-- Existing add track button -->
                     <%= if can_edit_audio?(@permissions) do %>
                       <button
                         type="button"
@@ -1313,132 +2511,65 @@ defmodule FrestylWeb.StudioLive do
                   </div>
                 </div>
 
-                <div class="flex-1 overflow-y-auto p-4">
-                  <%= if length(@workspace_state.audio.tracks) == 0 do %>
-                    <div class="h-full flex flex-col items-center justify-center text-gray-400">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                      </svg>
-                      <p class="text-lg">No audio tracks yet</p>
-                      <%= if can_edit_audio?(@permissions) do %>
-                        <button
-                          phx-click="audio_add_track"
-                          class="mt-4 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-lg shadow-lg"
-                        >
-                          Add your first track
-                        </button>
-                      <% else %>
-                        <p class="mt-2 text-sm">You don't have permission to add tracks</p>
-                      <% end %>
-                    </div>
+                <!-- Audio Workspace Content -->
+                <div class="flex-1 overflow-hidden">
+                  <%= if @recording_mode do %>
+                    <!-- Recording Interface -->
+                    <.live_component
+                      module={RecordingComponent}
+                      id="recording-workspace"
+                      session_id={@session.id}
+                      current_user={@current_user}
+                      workspace_state={@workspace_state}
+                      user_channels={@user_channels}
+                      user_tier={@user_tier}
+                      permissions={@permissions}
+                    />
                   <% else %>
-                    <div class="space-y-4">
-                      <%= for track <- @workspace_state.audio.tracks do %>
-                        <div class="bg-gray-800 rounded-lg p-4 relative group">
-                          <!-- Track created by indicator -->
-                          <%= if track.created_by && track.created_by != @current_user.id do %>
-                            <% creator = get_username_from_collaborators(track.created_by, @collaborators) %>
-                            <div class="absolute top-2 right-2 text-xs text-gray-400">
-                              by <%= creator %>
-                            </div>
-                          <% end %>
-
-                          <!-- Track controls (show on hover) -->
+                    <!-- Standard Audio Workspace (your existing content) -->
+                    <div class="flex-1 overflow-y-auto p-4">
+                      <%= if length(@workspace_state.audio.tracks) == 0 do %>
+                        <div class="h-full flex flex-col items-center justify-center text-gray-400">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          </svg>
+                          <p class="text-lg">No audio tracks yet</p>
                           <%= if can_edit_audio?(@permissions) do %>
-                            <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex space-x-1">
-                              <!-- Delete track button -->
+                            <div class="mt-4 space-y-2">
                               <button
-                                type="button"
-                                phx-click="audio_delete_track"
-                                phx-value-track_id={track.id}
-                                class="p-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
-                                title="Delete track"
-                                data-confirm="Are you sure you want to delete this track? This will also delete all clips in the track."
+                                phx-click="audio_add_track"
+                                class="block px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-lg shadow-lg"
                               >
-                                <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                                </svg>
+                                Add your first track
                               </button>
-
-                              <!-- Mute/Solo buttons -->
-                              <button
-                                type="button"
-                                phx-click="audio_toggle_track_mute"
-                                phx-value-track_id={track.id}
-                                class={[
-                                  "p-1 text-xs rounded",
-                                  track.muted && "bg-yellow-600 text-white" || "bg-gray-600 text-gray-300 hover:bg-gray-500"
-                                ]}
-                                title={track.muted && "Unmute" || "Mute"}
-                              >
-                                M
-                              </button>
-
-                              <button
-                                type="button"
-                                phx-click="audio_toggle_track_solo"
-                                phx-value-track_id={track.id}
-                                class={[
-                                  "p-1 text-xs rounded",
-                                  track.solo && "bg-blue-600 text-white" || "bg-gray-600 text-gray-300 hover:bg-gray-500"
-                                ]}
-                                title={track.solo && "Unsolo" || "Solo"}
-                              >
-                                S
-                              </button>
+                              <%= if @recording_enabled do %>
+                                <button
+                                  phx-click="toggle_recording_mode"
+                                  class="block px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg shadow-lg"
+                                >
+                                  Start Recording Session
+                                </button>
+                              <% end %>
+                            </div>
+                          <% else %>
+                            <p class="mt-2 text-sm">You don't have permission to add tracks</p>
+                          <% end %>
+                        </div>
+                      <% else %>
+                        <!-- Existing track display (your current implementation) -->
+                        <div class="space-y-4">
+                          <%= for track <- @workspace_state.audio.tracks do %>
+                            <div class="bg-gray-800 rounded-lg p-4 relative group">
+                              <!-- Your existing track rendering code -->
+                              <!-- ... existing track content ... -->
                             </div>
                           <% end %>
-
-                          <div class="flex items-center justify-between mb-2">
-                            <div class="flex items-center">
-                              <span class="text-white font-medium"><%= track.name %></span>
-                              <%= if track.muted do %>
-                                <span class="ml-2 text-xs px-2 py-0.5 bg-gray-700 text-gray-400 rounded-full">Muted</span>
-                              <% end %>
-                              <%= if track.solo do %>
-                                <span class="ml-2 text-xs px-2 py-0.5 bg-indigo-600 text-white rounded-full">Solo</span>
-                              <% end %>
-                            </div>
-                            <div class="flex items-center space-x-2">
-                              <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.01"
-                                value={track.volume}
-                                class="w-24"
-                                disabled={!can_edit_audio?(@permissions)}
-                                aria-label="Volume"
-                              />
-                            </div>
-                          </div>
-
-                          <!-- Waveform visualization -->
-                          <div class="h-20 bg-gray-900 rounded-md relative overflow-hidden">
-                            <%= if length(track.clips) > 0 do %>
-                              <%= for clip <- track.clips do %>
-                                <div class="absolute top-0 h-full" style={"left: #{clip.start_time * 50}px; width: 200px;"}>
-                                  <div class="h-full w-full bg-gradient-to-r from-indigo-500 to-indigo-400 rounded-md opacity-60"></div>
-                                  <div class="absolute top-0 left-0 w-full h-full flex items-center justify-center">
-                                    <span class="text-xs text-white font-medium px-2 py-0.5 bg-gray-800 bg-opacity-70 rounded-md">
-                                      <%= clip.name %>
-                                    </span>
-                                  </div>
-                                </div>
-                              <% end %>
-                            <% else %>
-                              <div class="flex items-center justify-center h-full text-gray-500 text-sm">
-                                No clips in this track
-                              </div>
-                            <% end %>
-                          </div>
                         </div>
                       <% end %>
                     </div>
                   <% end %>
                 </div>
               </div>
-
             <% "text" -> %>
               <div class="h-full flex flex-col bg-gray-900 bg-opacity-50">
                 <div class="p-4 border-b border-gray-800">
