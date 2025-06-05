@@ -20,6 +20,7 @@ defmodule Frestyl.Sessions.Session do
     field :is_public, :boolean, default: true
     field :waiting_room_enabled, :boolean, default: false
     field :max_participants, :integer
+    field :workspace_state, :map, default: %{}
 
     belongs_to :creator, User
     belongs_to :host, User

@@ -728,21 +728,22 @@ defmodule FrestylWeb.Studio.BeatMachineComponent do
 
                    <!-- Step Buttons -->
                    <%= for step <- 0..15 do %>
-                     <% velocity = get_step_velocity(@editing_pattern, instrument.id, step) %>
+                     <% velocity = get_step_velocity(@editing_pattern, instrument.id, step)
+                     pattern_id = @editing_pattern.id
+                     step_index = step
+                   %>
                      <button
-                       phx-click="toggle_step"
-                       phx-value-instrument={instrument.id}
-                       phx-value-step={step}
-                       phx-target={@myself}
-                       disabled={not can_edit_audio?(@permissions)}
-                       class={[
-                         "w-8 h-8 rounded-lg border-2 transition-all duration-150 relative group/step",
-                         velocity > 0 && "border-white/40 shadow-lg" || "border-white/20 hover:border-white/40",
-                         @current_step == step && @playing && "ring-2 ring-orange-400",
-                         not can_edit_audio?(@permissions) && "opacity-50 cursor-not-allowed"
-                       ]}
-                       style={velocity > 0 && "background-color: #{instrument.color}#{Integer.to_string(div(velocity * 255, 127), 16) |> String.pad_leading(2, "0")};" || ""}
-                       title="#{instrument.name} - Step #{step + 1} - Velocity: #{velocity}"
+                      id={"beat_step_#{pattern_id}_#{instrument}_#{step_index}"}
+                      phx-hook="BeatMachineStep"
+                      data-pattern-id={pattern_id}
+                      data-instrument={instrument}
+                      data-step={step_index}
+                      data-velocity={velocity}
+                      class={[
+                        "beat-step w-8 h-8 m-1 rounded border-2 transition-all duration-100",
+                        velocity > 0 && "step-active bg-indigo-600 border-indigo-400" || "step-off bg-gray-700 border-gray-600"
+                      ]}
+                      tabindex="0"
                      >
                        <!-- Velocity indicator -->
                        <%= if velocity > 0 do %>

@@ -3,6 +3,7 @@ defmodule Frestyl.Sessions do
   @moduledoc """
   The Sessions context.
   """
+  require Logger
 
   import Ecto.Query, warn: false
   alias Frestyl.Repo
@@ -934,10 +935,83 @@ defmodule Frestyl.Sessions do
     session = get_session(session_id)
 
     if session do
-      session.workspace_state
+      %{
+        text: %{
+          version: 0,
+          content: "",
+          pending_operations: [],
+          cursors: %{},
+          selection: nil
+        },
+        audio: %{
+          version: 0,
+          track_counter: 0,
+          tracks: [],
+          playing: false,
+          recording: false,
+          current_time: 0,
+          selected_track: nil,
+          zoom_level: 1.0
+        },
+        audio_settings: %{  # Add this
+          buffer_size: 256,
+          input_device: nil,
+          output_device: nil,
+          sample_rate: 44100,
+          track_counter: 0
+        },
+        midi: %{
+          version: 0,
+          notes: [],
+          current_instrument: "piano",
+          grid_size: 16,
+          octave: 4,
+          selected_notes: []
+        },
+        visual: %{
+          version: 0,
+          color: "#4f46e5",
+          tool: "brush",
+          brush_size: 5,
+          elements: [],
+          selected_element: nil
+        },
+        ot_state: %{
+          server_version: 0,
+          acknowledged_ops: MapSet.new([]),
+          local_version: 0,
+          operation_queue: [],
+          user_operations: %{}
+        },
+        pending_operations: [],
+        ot_version: 0
+      }
     else
       nil
     end
+  end
+
+  defp default_workspace_state do
+    %{
+      audio_settings: %{
+        input_device: nil,
+        output_device: nil,
+        sample_rate: 44100,
+        buffer_size: 256
+      },
+      video_settings: %{
+        camera_device: nil,
+        resolution: "720p",
+        frame_rate: 30
+      },
+      screen_share: %{
+        enabled: false,
+        source: nil
+      },
+      participants: [],
+      chat_enabled: true,
+      recording_enabled: false
+    }
   end
 
   @doc """

@@ -21,6 +21,7 @@ import {
   MobileLiveWaveform, 
   TakeWaveform 
 } from "./hooks/audio_workspace_hooks"
+import ToolDragDrop from "./hooks/tool_drag_drop"
 
 import {
   MobileChatHook,
@@ -30,6 +31,8 @@ import {
   ChatScrollManager,
   AutoResizeTextarea
 } from "./hooks/mobile_chat_hooks"
+import MobileGestures from "./hooks/mobile_gestures"
+
 
 import { 
   EffectsIntegrationHook, 
@@ -41,6 +44,7 @@ import AudioEngineHook from "./hooks/audio_engine_hook.js"
 import AudioEngine from "./audio/audio_engine.js"
 import { EnhancedEffectsEngine } from "./audio/enhanced_effects_engine"
 import { StudioAudioClient } from "./studio/audio_client"
+import { EnhancedAudioHooks } from "./enhanced_audio_hooks"
 
 // Import WebRTC client
 import RtcClient from "./streaming/rtc_client.js"
@@ -224,6 +228,7 @@ let Hooks = {
   BeatMachine: BeatMachineHook,
   CipherCanvas: CipherCanvas,
   MobileAudio: MobileAudioHook,
+  MobileGestures: MobileGestures,
   
   // Audio engine hooks
   AudioEngine: AudioEngineHook,
@@ -232,6 +237,8 @@ let Hooks = {
   ...StreamingHooks,
   StreamQuality: StreamQualityHook,
   ...BroadcastAudioHooks,
+
+  ...EnhancedAudioHooks,
 
     // Session and general hooks
   ...SessionHooks,
@@ -247,9 +254,13 @@ let Hooks = {
   BeatMachine,
   MobileLiveWaveform,
   TakeWaveform,
+    
+  ToolDragDrop: ToolDragDrop,
   
   // Mobile audio hook
   MobileAudioHook,
+  MobileChatHook,
+  MobileGestures: MobileGestures,
   
   // NEW: Audio effects hooks
   EffectsIntegrationHook,

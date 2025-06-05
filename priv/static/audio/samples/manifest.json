@@ -1,12 +1,12 @@
 {
   "version": "1.0.0",
   "stats": {
-    "total_kits": 3,
-    "total_samples": 24,
     "existing_samples": 24,
-    "missing_samples": 0
+    "missing_samples": 0,
+    "total_kits": 3,
+    "total_samples": 24
   },
-  "created_at": "2025-06-04T17:31:18.344840Z",
+  "created_at": "2025-06-05T16:40:39.370578Z",
   "kits": {
     "acoustic": {
       "crash": {

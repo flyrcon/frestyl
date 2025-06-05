@@ -183,10 +183,6 @@ defmodule FrestylWeb.ChannelLive.Show do
     end
   end
 
-  defp list_channel_sessions(channel_id) do
-    Sessions.list_active_sessions_for_channel(channel_id)
-  end
-
   defp list_channel_broadcasts(channel_id) do
     Sessions.list_upcoming_broadcasts_for_channel(channel_id)
   end
@@ -203,6 +199,8 @@ defmodule FrestylWeb.ChannelLive.Show do
 
     # Updated: Get channel by the new parameter name
     channel_identifier = params["id_or_slug"] || params["slug"] || params["id"]
+
+    changeset = Sessions.change_session(%Sessions.Session{})
 
     if is_nil(channel_identifier) do
       socket =
@@ -253,6 +251,8 @@ defmodule FrestylWeb.ChannelLive.Show do
             |> assign(:active_tab, active_tab)
             |> assign(:activity_tab, activity_tab)
             |> assign(:content_tab, "audio")
+            |> assign(:show_session_form, false)
+            |> assign(:session_changeset, changeset)
             |> assign(:show_block_modal, false)
             |> assign(:show_invite_modal, false)
             |> assign(:show_media_upload, false)
@@ -289,6 +289,23 @@ defmodule FrestylWeb.ChannelLive.Show do
         # It's a slug
         Channels.get_channel_by_slug(identifier)
     end
+  end
+
+  # Handle hiding the session form modal
+  @impl true
+  def handle_event("hide_session_form", _params, socket) do
+    {:noreply, assign(socket, :show_session_form, false)}
+  end
+
+  # Handle showing the session form modal
+  @impl true
+  def handle_event("show_session_form", _params, socket) do
+    changeset = Sessions.change_session(%Sessions.Session{})
+
+    {:noreply,
+    socket
+    |> assign(:show_session_form, true)
+    |> assign(:session_changeset, changeset)}
   end
 
   def handle_event("show_broadcast_form", _params, socket) do
@@ -1843,25 +1860,49 @@ defmodule FrestylWeb.ChannelLive.Show do
 
   @impl true
   def handle_event("create_session", %{"session" => session_params}, socket) do
+    IO.inspect(session_params, label: "Raw session_params")
+
     %{channel: channel, current_user: current_user} = socket.assigns
 
-    converted_params = session_params
+    # Add the required fields
+    session_attrs = session_params
       |> Map.put("channel_id", channel.id)
       |> Map.put("creator_id", current_user.id)
-      |> convert_session_params()
+      |> Map.put("session_type", "regular")  # Explicitly set to valid value
+      |> Map.put("status", "active")         # Set status to active for immediate sessions
 
-    case Sessions.create_session(converted_params) do
+    IO.inspect(session_attrs, label: "Session attrs")
+
+    case Sessions.create_session(session_attrs) do
       {:ok, session} ->
+        IO.inspect(session, label: "Created session")
+
+        # Force reload all session data
+        channel = socket.assigns.channel
+        fresh_sessions = Sessions.list_active_sessions_for_channel(channel.id)
+        fresh_current_activities = fresh_sessions ++ socket.assigns.active_broadcasts
+
+        # Recalculate stats with fresh data
+        stats = calculate_channel_stats(
+          fresh_sessions,
+          socket.assigns.broadcasts,
+          socket.assigns.media_files,
+          socket.assigns.members
+        )
+
         {:noreply,
         socket
         |> put_flash(:info, "Session created successfully.")
         |> assign(:show_session_form, false)
-        |> assign(:sessions, [session | socket.assigns.sessions])}
+        |> assign(:sessions, fresh_sessions)
+        |> assign(:current_activities, fresh_current_activities)
+        |> assign(stats)}
 
       {:error, changeset} ->
+        IO.inspect(changeset.errors, label: "Error details")
         {:noreply,
         socket
-        |> put_flash(:error, "Error creating session: #{error_message(changeset)}")
+        |> put_flash(:error, "Error creating session: #{inspect(changeset.errors)}")
         |> assign(:session_changeset, changeset)
         |> assign(:show_session_form, true)}
     end

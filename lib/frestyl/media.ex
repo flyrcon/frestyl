@@ -77,6 +77,25 @@ defmodule Frestyl.Media do
     end)
   end
 
+    def list_session_media_items(session_id) when is_binary(session_id) do
+    # Convert string to integer if needed
+    session_id = String.to_integer(session_id)
+    list_session_media_items(session_id)
+  end
+
+  def list_session_media_items(session_id) when is_integer(session_id) do
+    # Return empty list for now - implement actual logic later
+    []
+
+    # Future implementation might look like:
+    # from(m in MediaFile,
+    #   where: m.session_id == ^session_id,
+    #   order_by: [desc: m.inserted_at])
+    # |> Repo.all()
+  end
+
+  def list_session_media_items(_), do: []
+
   # Add this alias at the top of your media.ex file with your other aliases:
   alias Frestyl.Media.Comment
 

@@ -179,98 +179,191 @@
                   </div>
 
                   <%= if @activity_tab == "happening_now" do %>
-                    <!-- Active Broadcasts -->
-                    <%= if length(@active_broadcasts) > 0 do %>
+                    <!-- Live Activity Section -->
+                    <%= if length(@current_activities) > 0 do %>
                       <div class="space-y-4">
-                        <%= for broadcast <- @active_broadcasts do %>
-                          <div class="bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-xl border border-purple-200/50 rounded-2xl p-6 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-500 transform hover:scale-[1.02]">
-                            <div class="flex items-start justify-between">
-                              <div class="flex items-start gap-4 flex-1">
-                                <div class="w-16 h-16 bg-gradient-to-br from-[#8B5CF6] to-[#FF0080] rounded-2xl flex items-center justify-center shadow-xl border border-white/20 backdrop-blur-xl">
-                                  <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                                  </svg>
-                                </div>
-                                <div class="flex-1">
-                                  <div class="flex items-center gap-3 mb-3">
-                                    <h3 class="font-black text-gray-900 text-xl tracking-tight"><%= broadcast.title || "Live Broadcast" %></h3>
-                                    <span class="bg-gradient-to-r from-[#FF0080] to-[#FF4500] text-white px-3 py-1 text-xs rounded-full font-black animate-pulse shadow-lg">LIVE</span>
+                        <%= for activity <- @current_activities do %>
+                          <%= if activity.session_type == "broadcast" do %>
+                            <!-- Broadcast Template -->
+                            <div class="bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-xl border border-purple-200/50 rounded-2xl p-6 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-500 transform hover:scale-[1.02]">
+                              <div class="flex items-start justify-between">
+                                <div class="flex items-start gap-4 flex-1">
+                                  <div class="w-16 h-16 bg-gradient-to-br from-[#8B5CF6] to-[#FF0080] rounded-2xl flex items-center justify-center shadow-xl border border-white/20 backdrop-blur-xl">
+                                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                    </svg>
                                   </div>
-                                  <%= if broadcast.description do %>
-                                    <p class="text-gray-600 mb-4 leading-relaxed"><%= broadcast.description %></p>
+                                  <div class="flex-1">
+                                    <div class="flex items-center gap-3 mb-3">
+                                      <h3 class="font-black text-gray-900 text-xl tracking-tight"><%= activity.title || "Live Broadcast" %></h3>
+                                      <span class="bg-gradient-to-r from-[#FF0080] to-[#FF4500] text-white px-3 py-1 text-xs rounded-full font-black animate-pulse shadow-lg">LIVE</span>
+                                    </div>
+                                    <%= if activity.description do %>
+                                      <p class="text-gray-600 mb-4 leading-relaxed"><%= activity.description %></p>
+                                    <% end %>
+                                    <div class="flex items-center gap-4 text-sm">
+                                      <div class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-[#8B5CF6]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                        </svg>
+                                        <span class="font-black text-purple-600"><%= Sessions.get_participants_count(activity.id) || 0 %> viewers</span>
+                                      </div>
+                                      <div class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                        </svg>
+                                        <span class="text-gray-600 font-semibold">by <%= get_user_name(activity.host_id || activity.creator_id, @users_map) %></span>
+                                      </div>
+                                      <div class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                        <span class="text-gray-600 font-semibold">Started <%= time_ago(activity.started_at) %></span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div class="flex flex-col gap-2">
+                                  <%= cond do %>
+                                    <% @current_user && (activity.creator_id == @current_user.id || activity.host_id == @current_user.id) -> %>
+                                      <!-- User is broadcast host/creator -->
+                                      <.link navigate={~p"/channels/#{@channel.slug}/broadcasts/#{activity.id}/manage"}
+                                            class="relative overflow-hidden bg-gradient-to-r from-[#8B5CF6] to-[#FF0080] hover:from-[#7C3AED] hover:to-[#E60067] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-purple-500/30">
+                                        Manage Live
+                                      </.link>
+                                    
+                                    <% @current_user && user_registered_for_broadcast?(@current_user.id, activity.id) -> %>
+                                      <!-- User is registered for broadcast -->
+                                      <.link navigate={~p"/channels/#{@channel.slug}/broadcasts/#{activity.id}/live"}
+                                            class="relative overflow-hidden bg-gradient-to-r from-[#FF0080] to-[#FF4500] hover:from-[#E60067] hover:to-[#FF6B35] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-red-500/30">
+                                        🔴 Join Live
+                                      </.link>
+                                    
+                                    <% @current_user -> %>
+                                      <!-- User is not registered for broadcast -->
+                                      <button phx-click="register_for_broadcast" 
+                                              phx-value-id={activity.id}
+                                              data-broadcast-id={activity.id}
+                                              data-broadcast-status={activity.status}
+                                              class="register-btn relative overflow-hidden bg-gradient-to-r from-[#8B5CF6] to-[#FF0080] hover:from-[#7C3AED] hover:to-[#E60067] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-purple-500/30">
+                                        <span class="btn-text">Register & Join Live</span>
+                                      </button>
+                                    
+                                    <% true -> %>
+                                      <!-- User not logged in -->
+                                      <.link navigate={~p"/login"}
+                                            class="relative overflow-hidden bg-gradient-to-r from-[#00D4FF] to-[#8B5CF6] hover:from-[#0099CC] hover:to-[#7C3AED] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/30">
+                                        Login to Register
+                                      </.link>
                                   <% end %>
-                                  <div class="flex items-center gap-4 text-sm">
-                                    <div class="flex items-center gap-2">
-                                      <svg class="w-4 h-4 text-[#8B5CF6]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                      </svg>
-                                      <span class="font-black text-purple-600"><%= Sessions.get_participants_count(broadcast.id) || 0 %> viewers</span>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                      <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                                      </svg>
-                                      <span class="text-gray-600 font-semibold">by <%= (broadcast.host && broadcast.host.username) || broadcast.creator.username %></span>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                      <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                      </svg>
-                                      <span class="text-gray-600 font-semibold">Started <%= time_ago(broadcast.started_at) %></span>
-                                    </div>
-                                  </div>
                                 </div>
-                              </div>
-                              <div class="flex flex-col gap-2">
-                                <%= cond do %>
-                                  <% @current_user && (broadcast.creator_id == @current_user.id || broadcast.host_id == @current_user.id) -> %>
-                                    <!-- User is host/creator - FIXED: changed @broadcast to broadcast -->
-                                    <.link navigate={~p"/channels/#{@channel.slug}/broadcasts/#{broadcast.id}/manage"}
-                                          class="relative overflow-hidden bg-gradient-to-r from-[#8B5CF6] to-[#FF0080] hover:from-[#7C3AED] hover:to-[#E60067] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-purple-500/30">
-                                      Manage Live
-                                    </.link>
-                                  
-                                  <% @current_user && user_registered_for_broadcast?(@current_user.id, broadcast.id) -> %>
-                                    <!-- User is registered - FIXED: changed @broadcast to broadcast -->
-                                    <.link navigate={~p"/channels/#{@channel.slug}/broadcasts/#{broadcast.id}/live"}
-                                          class="relative overflow-hidden bg-gradient-to-r from-[#FF0080] to-[#FF4500] hover:from-[#E60067] hover:to-[#FF6B35] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-red-500/30">
-                                      🔴 Join Live
-                                    </.link>
-                                  
-                                  <% @current_user -> %>
-                                    <!-- User is not registered -->
-                                    <button phx-click="register_for_broadcast" 
-                                            phx-value-id={broadcast.id}
-                                            data-broadcast-id={broadcast.id}
-                                            data-broadcast-status={broadcast.status}
-                                            class="register-btn relative overflow-hidden bg-gradient-to-r from-[#8B5CF6] to-[#FF0080] hover:from-[#7C3AED] hover:to-[#E60067] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-purple-500/30">
-                                      <span class="btn-text">Register & Join Live</span>
-                                    </button>
-                                  
-                                  <% true -> %>
-                                    <!-- User not logged in -->
-                                    <.link navigate={~p"/login"}
-                                          class="relative overflow-hidden bg-gradient-to-r from-[#00D4FF] to-[#8B5CF6] hover:from-[#0099CC] hover:to-[#7C3AED] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/30">
-                                      Login to Register
-                                    </.link>
-                                <% end %>
                               </div>
                             </div>
-                          </div>
+
+                          <% else %>
+                            <!-- Regular Session Template -->
+                            <div class="bg-gradient-to-r from-blue-50/80 to-cyan-50/80 backdrop-blur-xl border border-blue-200/50 rounded-2xl p-6 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-500 transform hover:scale-[1.02]">
+                              <div class="flex items-start justify-between">
+                                <div class="flex items-start gap-4 flex-1">
+                                  <div class="w-16 h-16 bg-gradient-to-br from-[#0EA5E9] to-[#3B82F6] rounded-2xl flex items-center justify-center shadow-xl border border-white/20 backdrop-blur-xl">
+                                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                    </svg>
+                                  </div>
+                                  <div class="flex-1">
+                                    <div class="flex items-center gap-3 mb-3">
+                                      <h3 class="font-black text-gray-900 text-xl tracking-tight"><%= activity.title || "Live Session" %></h3>
+                                      <span class="bg-gradient-to-r from-[#0EA5E9] to-[#3B82F6] text-white px-3 py-1 text-xs rounded-full font-black animate-pulse shadow-lg">ACTIVE</span>
+                                    </div>
+                                    <%= if activity.description do %>
+                                      <p class="text-gray-600 mb-4 leading-relaxed"><%= activity.description %></p>
+                                    <% end %>
+                                    <div class="flex items-center gap-4 text-sm">
+                                      <div class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-[#0EA5E9]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                        </svg>
+                                        <span class="font-black text-blue-600"><%= Sessions.get_participants_count(activity.id) || 0 %> participants</span>
+                                      </div>
+                                      <div class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                        </svg>
+                                        <span class="text-gray-600 font-semibold">by <%= get_user_name(activity.creator_id, @users_map) %></span>
+                                      </div>
+                                      <%= if activity.inserted_at do %>
+                                        <div class="flex items-center gap-2">
+                                          <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                          </svg>
+                                          <span class="text-gray-600 font-semibold">Started <%= time_ago(activity.inserted_at) %></span>
+                                        </div>
+                                      <% end %>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div class="flex flex-col gap-2">
+                                  <%= cond do %>
+                                    <% @current_user && activity.creator_id == @current_user.id -> %>
+                                      <!-- Session creator - can manage and join session -->
+                                      <.link navigate={~p"/channels/#{@channel.slug}/sessions/#{activity.id}/edit"}
+                                            class="relative overflow-hidden bg-gradient-to-r from-[#7C3AED] to-[#8B5CF6] hover:from-[#6D28D9] hover:to-[#7C3AED] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-purple-500/30">
+                                        Manage Session
+                                      </.link>
+                                      <.link navigate={~p"/channels/#{@channel.slug}/sessions/#{activity.id}"}
+                                            class="relative overflow-hidden bg-gradient-to-r from-[#10B981] to-[#059669] hover:from-[#047857] hover:to-[#065F46] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-green-500/30">
+                                        Join Session
+                                      </.link>
+                                    
+                                    <% @current_user -> %>
+                                      <!-- Regular user - can join session -->
+                                      <.link navigate={~p"/channels/#{@channel.slug}/sessions/#{activity.id}"}
+                                            class="relative overflow-hidden bg-gradient-to-r from-[#0EA5E9] to-[#3B82F6] hover:from-[#0284C7] hover:to-[#2563EB] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/30">
+                                        Join Session
+                                      </.link>
+                                    
+                                    <% true -> %>
+                                      <!-- User not logged in -->
+                                      <.link navigate={~p"/login"}
+                                            class="relative overflow-hidden bg-gradient-to-r from-[#00D4FF] to-[#8B5CF6] hover:from-[#0099CC] hover:to-[#7C3AED] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/30">
+                                        Login to Join
+                                      </.link>
+                                  <% end %>
+                                </div>
+                              </div>
+                            </div>
+                          <% end %>
                         <% end %>
                       </div>
                     <% else %>
-                      <!-- No active broadcasts -->
-                      <div class="text-center py-16">
-                        <div class="w-20 h-20 mx-auto bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mb-6 shadow-lg border border-gray-200/50">
+                      <!-- Empty state when no activities -->
+                      <div class="text-center py-12">
+                        <div class="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-6">
                           <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
                           </svg>
                         </div>
-                        <h3 class="text-2xl font-black text-gray-900 mb-3 tracking-tight">Nothing happening right now</h3>
-                        <p class="text-gray-600 mb-8 text-lg leading-relaxed">Check upcoming events or start your own live session!</p>
+                        <h3 class="text-xl font-bold text-gray-900 mb-2">No Live Activities</h3>
+                        <p class="text-gray-600 mb-6">There are no live broadcasts or sessions happening right now.</p>
+                        <%= if @current_user do %>
+                          <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                            <button phx-click="open_start_session_modal" 
+                                    class="bg-gradient-to-r from-[#0EA5E9] to-[#3B82F6] hover:from-[#0284C7] hover:to-[#2563EB] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/30">
+                              Start Session
+                            </button>
+                            <button phx-click="open_schedule_broadcast_modal" 
+                                    class="bg-gradient-to-r from-[#8B5CF6] to-[#FF0080] hover:from-[#7C3AED] hover:to-[#E60067] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-purple-500/30">
+                              Schedule Broadcast
+                            </button>
+                          </div>
+                        <% else %>
+                          <.link navigate={~p"/login"}
+                                class="inline-block bg-gradient-to-r from-[#00D4FF] to-[#8B5CF6] hover:from-[#0099CC] hover:to-[#7C3AED] text-white font-black px-6 py-3 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-blue-500/30">
+                            Login to Start Activities
+                          </.link>
+                        <% end %>
                       </div>
                     <% end %>
                   <% else %>
@@ -346,6 +439,7 @@
                       </div>
                     <% end %>
                   <% end %>
+                  <!-- Add this temporarily at the top of your events section -->
                 </div>
 
               <% else %>
@@ -702,20 +796,44 @@
         </button>
       </div>
       
-      <.form for={@session_changeset} phx-submit="create_session">
+      <form phx-submit="create_session">
         <div class="space-y-6">
           <div>
             <label class="block text-sm font-black text-gray-700 mb-3">Session Title</label>
-            <input type="text" name="session[title]" class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-[#F59E0B]/50 focus:outline-none transition-all duration-200 font-semibold" placeholder="Enter session title" required>
+            <input 
+              type="text" 
+              name="session[title]" 
+              class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-[#F59E0B]/50 focus:outline-none transition-all duration-200 font-semibold" 
+              placeholder="Enter session title" 
+              required 
+            />
+            <%= if @session_changeset && @session_changeset.errors[:title] do %>
+              <p class="text-red-500 text-sm mt-1">Title is required</p>
+            <% end %>
           </div>
           
           <div>
             <label class="block text-sm font-black text-gray-700 mb-3">Description</label>
-            <textarea name="session[description]" rows="4" class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-[#F59E0B]/50 focus:outline-none transition-all duration-200 font-semibold resize-none" placeholder="What will you be working on?"></textarea>
+            <textarea 
+              name="session[description]" 
+              rows="4" 
+              class="w-full px-4 py-4 border-0 bg-gray-50 rounded-2xl focus:bg-white focus:ring-2 focus:ring-[#F59E0B]/50 focus:outline-none transition-all duration-200 font-semibold resize-none" 
+              placeholder="What will you be working on?"
+            ></textarea>
+            <%= if @session_changeset && @session_changeset.errors[:description] do %>
+              <p class="text-red-500 text-sm mt-1">Description error</p>
+            <% end %>
           </div>
           
           <div class="flex items-center gap-3">
-            <input type="checkbox" name="session[is_public]" id="session_public" class="rounded-lg border-gray-300 text-[#F59E0B] focus:ring-[#F59E0B]/50">
+            <input 
+              type="checkbox" 
+              name="session[is_public]" 
+              id="session_public" 
+              value="true"
+              class="rounded-lg border-gray-300 text-[#F59E0B] focus:ring-[#F59E0B]/50" 
+            />
+            <input type="hidden" name="session[is_public]" value="false" />
             <label for="session_public" class="text-sm font-bold text-gray-700">Public session (visible to all members)</label>
           </div>
         </div>
@@ -729,7 +847,7 @@
             <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 hover:opacity-20 transform -skew-x-12 translate-x-full hover:translate-x-[-200%] transition-transform duration-700"></div>
           </button>
         </div>
-      </.form>
+      </form>
     </div>
   </div>
 <% end %>

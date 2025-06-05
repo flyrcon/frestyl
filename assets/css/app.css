@@ -1474,3 +1474,48 @@ select:focus-visible,
   outline: 2px solid #8b5cf6;
   outline-offset: 2px;
 }
+
+/* Tool Drag & Drop Styles */
+.dragging {
+  opacity: 0.5;
+  transform: rotate(5deg);
+  z-index: 1000;
+}
+
+.drop-zone-active {
+  border: 2px dashed #4f46e5;
+  background-color: rgba(79, 70, 229, 0.1);
+}
+
+.drag-over {
+  background-color: rgba(79, 70, 229, 0.2);
+  border-color: #6366f1;
+}
+
+.drop-success {
+  background-color: rgba(34, 197, 94, 0.2);
+  border-color: #22c55e;
+  transition: all 0.3s ease;
+}
+
+.tool-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  color: #9ca3af;
+}
+
+/* Mobile bottom sheet styles */
+#mobile-tool-bottom-sheet {
+  max-height: 70vh;
+  overflow: hidden;
+}
+
+#mobile-tool-bottom-sheet .handle {
+  cursor: grab;
+}
+
+#mobile-tool-bottom-sheet .handle:active {
+  cursor: grabbing;
+}
