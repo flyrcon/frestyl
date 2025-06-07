@@ -1,8 +1,10 @@
 defmodule FrestylWeb.StudioLive do
   use FrestylWeb, :live_view
+  require Logger
 
   alias Frestyl.Accounts
   alias Frestyl.Channels
+  alias Frestyl.Content
   alias Frestyl.Media
   alias Frestyl.Sessions
   alias Frestyl.Presence
@@ -17,6 +19,7 @@ defmodule FrestylWeb.StudioLive do
   alias Frestyl.Collaboration.AudioOTIntegration
   alias Frestyl.UserPreferences
   alias FrestylWeb.StudioLive.AudioEnhancements
+  alias FrestylWeb.TextEditorComponent
 
   # Collaboration mode configurations
   @collaboration_modes %{
@@ -46,6 +49,36 @@ defmodule FrestylWeb.StudioLive do
         minimized: ["editor"]
       },
       workspace_type: "audio"
+    },
+
+    "lyrics_creation" => %{
+      description: "Create and sync lyrics with beats",
+      primary_tools: ["editor", "timeline", "recorder"],
+      secondary_tools: ["mixer", "effects", "chat"],
+      default_layout: %{
+        left_dock: ["editor"],
+        right_dock: ["chat"],
+        bottom_dock: ["timeline", "recorder"],
+        floating: [],
+        minimized: ["mixer", "effects"]
+      },
+      workspace_type: "audio_text",
+      audio_text_mode: "lyrics_with_audio"
+    },
+
+    "audiobook_production" => %{
+      description: "Record audiobooks with script sync",
+      primary_tools: ["script", "recorder", "timeline"],
+      secondary_tools: ["mixer", "effects", "chat"],
+      default_layout: %{
+        left_dock: ["script"],
+        right_dock: ["chat"],
+        bottom_dock: ["recorder", "timeline"],
+        floating: [],
+        minimized: ["mixer", "effects"]
+      },
+      workspace_type: "audio_text",
+      audio_text_mode: "audio_with_script"
     },
 
     "social_listening" => %{
@@ -134,11 +167,28 @@ defmodule FrestylWeb.StudioLive do
       version: 0
     },
     text: %{
+      document: nil,
+      active_document_id: nil,
+      editor_mode: "guided", # or "free_form"
+      collaborative_editing: true,
+      version_control: %{
+        current_branch: "main",
+        pending_changes: [],
+        merge_conflicts: []
+      },
+      # Enhanced text state with document integration
       content: "",
       cursors: %{},
       selection: nil,
-      version: 0,  # Critical for OT text operations
-      pending_operations: []  # Queue for unacknowledged operations
+      version: 0,
+      pending_operations: [],
+      # Mobile-specific text editing
+      mobile_text_config: %{
+        voice_input_enabled: true,
+        gesture_controls: true,
+        smart_suggestions: true,
+        offline_editing: true
+      }
     },
     visual: %{
       elements: [],
@@ -160,6 +210,57 @@ defmodule FrestylWeb.StudioLive do
       pattern_counter: 0,
       version: 0
     },
+    audio_text: %{
+      mode: "lyrics_with_audio", # or "audio_with_script"
+      sync_enabled: true,
+      current_text_block: nil,
+
+      # Timeline synchronization
+      timeline: %{
+        current_position: 0.0,  # in milliseconds
+        duration: 0.0,
+        markers: [],  # beat markers, verse markers, etc.
+        sync_points: []  # text-to-audio sync points
+      },
+
+      # Text synchronization data
+      text_sync: %{
+        blocks: [],  # text blocks with timing data
+        active_block_id: nil,
+        scroll_position: 0,
+        auto_scroll: true,
+        highlight_current: true
+      },
+
+      # Beat/rhythm detection for lyrics
+      beat_detection: %{
+        enabled: false,
+        bpm: 120,
+        detected_beats: [],
+        confidence: 0.0,
+        auto_align: false
+      },
+
+      # Recording with script/lyrics
+      script_recording: %{
+        enabled: false,
+        current_line: 0,
+        teleprompter_speed: 1.0,
+        auto_advance: true,
+        word_highlighting: true
+      },
+
+      # Mobile-specific settings
+      mobile_config: %{
+        simplified_timeline: true,
+        gesture_controls: true,
+        voice_activation: false,
+        large_text_mode: false
+      },
+
+      version: 0
+    },
+
     # OT state management
     ot_state: %{
       user_operations: %{},  # Track operations by user
@@ -272,6 +373,9 @@ defmodule FrestylWeb.StudioLive do
             "text" -> "text"
             "visual" -> "visual"
             "midi" -> "midi"
+            "lyrics" -> "audio_text"
+            "audiobook" -> "audio_text"
+            "audio_text" -> "audio_text"
             _ -> "audio"
           end
 
@@ -309,6 +413,9 @@ defmodule FrestylWeb.StudioLive do
             |> assign(:tool_layout, get_user_tool_layout(current_user.id, get_session_collaboration_mode(session_data)))
             |> assign(:dock_visibility, %{left: true, right: true, bottom: true})
             |> assign(:mobile_tool_drawer_open, false)
+            |> assign(:document_wizard_open, false)
+            |> assign(:document_suggestions, %{})
+            |> assign(:text_conflicts, [])
             # OT-specific assigns
             |> assign(:typing_users, MapSet.new())
             |> assign(:pending_operations, [])
@@ -335,6 +442,8 @@ defmodule FrestylWeb.StudioLive do
             |> assign(:show_more_mobile_tools, false)
             |> assign(:show_mobile_tool_modal, false)
             |> assign(:mobile_modal_tool, nil)
+
+          socket = mount_audio_text_features(socket, session_id, session_data)
 
           {:ok, socket}
         else
@@ -477,6 +586,74 @@ defmodule FrestylWeb.StudioLive do
       {:error, reason} ->
         Logger.error("Failed to start audio engine: #{inspect(reason)}")
         :error
+    end
+  end
+
+  def mount_audio_text_integration(socket, session_id, session_data) do
+    # Start audio-text sync engine if in audio-text mode
+    if session_data.session_type in ["lyrics", "audiobook", "audio_text"] do
+      mode = case session_data.session_type do
+        "lyrics" -> "lyrics_with_audio"
+        "audiobook" -> "audio_with_script"
+        _ -> "lyrics_with_audio"
+      end
+
+      case DynamicSupervisor.start_child(
+        Frestyl.Studio.AudioTextSyncSupervisor,
+        {Frestyl.Studio.AudioTextSync, session_id, mode}
+      ) do
+        {:ok, _pid} -> :ok
+        {:error, {:already_started, _}} -> :ok
+        {:error, reason} ->
+          Logger.error("Failed to start AudioTextSync: #{inspect(reason)}")
+          :error
+      end
+
+      # Subscribe to audio-text sync events
+      PubSub.subscribe(Frestyl.PubSub, "audio_text_sync:#{session_id}")
+    end
+
+    socket
+  end
+
+  defp mount_audio_text_features(socket, session_id, session_data) do
+    # Initialize audio-text features if session supports it
+    if session_data.session_type in ["lyrics", "audiobook", "audio_text"] or
+      get_in(socket.assigns.workspace_state, [:audio_text]) do
+
+      mode = case session_data.session_type do
+        "lyrics" -> "lyrics_with_audio"
+        "audiobook" -> "audio_with_script"
+        _ -> "lyrics_with_audio"
+      end
+
+      # Ensure audio-text state exists
+      workspace_state = ensure_audio_text_workspace_state(socket.assigns.workspace_state)
+
+      # Start audio-text sync engine - FIXED: Pass args as a single argument map/tuple
+      case DynamicSupervisor.start_child(
+        Frestyl.Studio.AudioTextSyncSupervisor,
+        {Frestyl.Studio.AudioTextSync, {session_id, mode}}  # Fixed: wrap args in tuple
+      ) do
+        {:ok, _pid} -> :ok
+        {:error, {:already_started, _}} -> :ok
+        {:error, reason} ->
+          Logger.error("Failed to start AudioTextSync: #{inspect(reason)}")
+      end
+
+      # Subscribe to audio-text events
+      PubSub.subscribe(Frestyl.PubSub, "audio_text_sync:#{session_id}")
+
+      socket
+      |> assign(workspace_state: workspace_state)
+      |> assign(:teleprompter_mode, false)
+      |> assign(:teleprompter_speed, 1.0)
+      |> assign(:timeline_zoom_level, 1.0)
+      |> assign(:mobile_simplified_mode, false)
+      |> assign(:mobile_text_size, "base")
+      |> assign(:voice_commands_active, false)
+    else
+      socket
     end
   end
 
@@ -644,6 +821,8 @@ defmodule FrestylWeb.StudioLive do
     end
   end
 
+
+
   # Helper functions for mobile events
 
   defp get_track_id_by_index(socket, index) do
@@ -659,6 +838,299 @@ defmodule FrestylWeb.StudioLive do
     case Enum.find(tracks, &(&1.id == track_id)) do
       nil -> []
       track -> track.effects || []
+    end
+  end
+
+  # AUDIO TEXT EVENT HANDLERS
+  @impl true
+  def handle_event("mobile_audio_text_gesture", %{"gesture" => gesture, "data" => data}, socket) do
+    case gesture do
+      "swipe_sync" ->
+        # Swipe gesture to create sync point
+        if data["block_id"] do
+          current_position = socket.assigns.workspace_state.audio_text.timeline.current_position
+          handle_event("sync_text_to_audio", %{
+            "block_id" => data["block_id"],
+            "position" => to_string(current_position)
+          }, socket)
+        else
+          {:noreply, socket}
+        end
+
+      "double_tap_record" ->
+        # Double tap to toggle recording
+        if socket.assigns.recording_track do
+          handle_event("mobile_stop_recording", %{"track_index" => 0}, socket)
+        else
+          handle_event("mobile_audio_text_record", %{"with_script" => true}, socket)
+        end
+
+      "long_press_voice" ->
+        # Long press for voice commands
+        {:noreply, assign(socket, :voice_commands_active, true)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("voice_command_complete", %{"command" => command, "text" => text}, socket) do
+    handle_event("mobile_voice_command", %{
+      "command" => command,
+      "data" => %{"text" => text}
+    }, socket)
+    |> then(fn {:noreply, updated_socket} ->
+      {:noreply, assign(updated_socket, :voice_commands_active, false)}
+    end)
+  end
+
+  @impl true
+  def handle_event("cancel_voice_commands", _params, socket) do
+    {:noreply, assign(socket, :voice_commands_active, false)}
+  end
+
+  defp ensure_audio_text_workspace_state(workspace_state) do
+    default_audio_text = %{
+      mode: "lyrics_with_audio",
+      sync_enabled: true,
+      current_text_block: nil,
+      timeline: %{
+        current_position: 0.0,
+        duration: 0.0,
+        markers: [],
+        sync_points: []
+      },
+      text_sync: %{
+        blocks: [],
+        active_block_id: nil,
+        scroll_position: 0,
+        auto_scroll: true,
+        highlight_current: true
+      },
+      beat_detection: %{
+        enabled: false,
+        bpm: 120,
+        detected_beats: [],
+        confidence: 0.0,
+        auto_align: false
+      },
+      script_recording: %{
+        enabled: false,
+        current_line: 0,
+        teleprompter_speed: 1.0,
+        auto_advance: true,
+        word_highlighting: true
+      },
+      mobile_config: %{
+        simplified_timeline: true,
+        gesture_controls: true,
+        voice_activation: false,
+        large_text_mode: false
+      },
+      version: 0
+    }
+
+    Map.put_new(workspace_state, :audio_text, default_audio_text)
+  end
+
+  @impl true
+  def handle_event("audio_text_mode_change", %{"mode" => mode}, socket) do
+    if mode in ["lyrics_with_audio", "audio_with_script"] do
+      session_id = socket.assigns.session.id
+
+      case Frestyl.Studio.AudioTextSync.set_mode(session_id, mode) do
+        :ok ->
+          # Update workspace state with new mode
+          new_audio_text_state = put_in(socket.assigns.workspace_state.audio_text.mode, mode)
+          new_workspace_state = %{socket.assigns.workspace_state | audio_text: new_audio_text_state}
+
+          {:noreply, socket
+            |> assign(workspace_state: new_workspace_state)
+            |> add_notification("Switched to #{format_mode_name(mode)}", :info)}
+
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to change mode: #{reason}")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "Invalid audio-text mode")}
+    end
+  end
+
+  @impl true
+  def handle_event("create_text_block", %{"content" => content, "type" => type}, socket) do
+    if can_edit_text?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      block = %{
+        content: content,
+        type: type,
+        created_by: socket.assigns.current_user.id,
+        created_at: DateTime.utc_now()
+      }
+
+      case Frestyl.Studio.AudioTextSync.add_text_block(session_id, block) do
+        {:ok, new_block} ->
+          {:noreply, socket |> add_notification("Added #{type}", :success)}
+
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to add block: #{reason}")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to edit text")}
+    end
+  end
+
+  @impl true
+  def handle_event("sync_text_to_audio", %{"block_id" => block_id, "position" => position}, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      position_float = String.to_float(position)
+
+      case Frestyl.Studio.AudioTextSync.sync_text_block(session_id, block_id, position_float) do
+        {:ok, sync_point} ->
+          {:noreply, socket
+            |> add_notification("Text synced to #{format_time(position_float)}", :success)
+            |> push_event("text_synced", %{block_id: block_id, position: position_float})}
+
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Sync failed: #{reason}")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to sync audio")}
+    end
+  end
+
+  @impl true
+  def handle_event("auto_detect_beats", _params, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      # Get current audio track data (simplified)
+      case get_primary_audio_track(socket.assigns.workspace_state) do
+        nil ->
+          {:noreply, socket |> put_flash(:error, "No audio track available for beat detection")}
+
+        track ->
+          # Mock audio data - in production you'd get real audio
+          audio_data = get_track_audio_data(track)
+
+          case Frestyl.Studio.AudioTextSync.detect_beats(session_id, audio_data) do
+            {:ok, beat_data} ->
+              {:noreply, socket
+                |> add_notification("Detected #{length(beat_data.beats)} beats at #{beat_data.bpm} BPM", :success)
+                |> push_event("beats_detected", beat_data)}
+
+            {:error, reason} ->
+              {:noreply, socket |> put_flash(:error, "Beat detection failed: #{reason}")}
+          end
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("auto_align_lyrics", _params, socket) do
+    if can_edit_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+
+      case Frestyl.Studio.AudioTextSync.get_sync_state(session_id) do
+        sync_state when sync_state.beat_detection.enabled ->
+          # Get all text content as lyrics
+          lyrics_text = get_all_text_content(sync_state.text_blocks)
+
+          case Frestyl.Studio.AudioTextSync.auto_align_lyrics(session_id, lyrics_text, sync_state.beat_detection) do
+            {:ok, aligned_blocks} ->
+              {:noreply, socket
+                |> add_notification("Lyrics automatically aligned", :success)
+                |> push_event("lyrics_aligned", %{blocks: aligned_blocks})}
+
+            {:error, reason} ->
+              {:noreply, socket |> put_flash(:error, "Auto-alignment failed: #{reason}")}
+          end
+
+        _ ->
+          {:noreply, socket |> put_flash(:error, "Beat detection required for auto-alignment")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+
+
+
+  # Mobile-specific audio-text events
+  @impl true
+  def handle_event("mobile_sync_gesture", %{"block_id" => block_id}, socket) do
+    current_position = socket.assigns.workspace_state.audio_text.timeline.current_position
+
+    handle_event("sync_text_to_audio", %{
+      "block_id" => block_id,
+      "position" => to_string(current_position)
+    }, socket)
+  end
+
+  @impl true
+  def handle_event("mobile_voice_command", %{"command" => command, "data" => data}, socket) do
+    case command do
+      "add_verse" ->
+        handle_event("create_text_block", %{
+          "content" => data["text"],
+          "type" => "verse"
+        }, socket)
+
+      "add_chorus" ->
+        handle_event("create_text_block", %{
+          "content" => data["text"],
+          "type" => "chorus"
+        }, socket)
+
+      "sync_now" ->
+        if data["block_id"] do
+          handle_event("mobile_sync_gesture", %{"block_id" => data["block_id"]}, socket)
+        else
+          {:noreply, socket |> put_flash(:error, "No block selected for sync")}
+        end
+
+      "start_recording" ->
+        handle_event("mobile_start_recording", %{"track_index" => 0}, socket)
+
+      "stop_recording" ->
+        handle_event("mobile_stop_recording", %{"track_index" => 0}, socket)
+
+      _ ->
+        {:noreply, socket |> add_notification("Voice command not recognized", :warning)}
+    end
+  end
+
+  # Enhanced mobile recording for audio-text workflows
+  @impl true
+  def handle_event("mobile_audio_text_record", %{"with_script" => with_script}, socket) do
+    if can_record_audio?(socket.assigns.permissions) do
+      session_id = socket.assigns.session.id
+      user_id = socket.assigns.current_user.id
+
+      # Prepare recording with script/lyrics context
+      recording_context = %{
+        with_script: with_script,
+        current_block: socket.assigns.workspace_state.audio_text.current_text_block,
+        sync_enabled: socket.assigns.workspace_state.audio_text.sync_enabled
+      }
+
+      case Frestyl.Studio.AudioEngine.start_recording_with_context(session_id, "mobile_track_1", user_id, recording_context) do
+        {:ok, _} ->
+          {:noreply, socket
+            |> assign(:recording_track, "mobile_track_1")
+            |> add_notification("Recording with script guidance", :success)
+            |> push_event("mobile_recording_started", %{with_script: with_script})}
+
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to start recording: #{reason}")}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
@@ -1547,8 +2019,33 @@ defmodule FrestylWeb.StudioLive do
 
   @impl true
   def handle_event("set_active_tool", %{"tool" => tool}, socket) do
-    update_presence(socket.assigns.session.id, socket.assigns.current_user.id, %{active_tool: tool})
-    {:noreply, assign(socket, active_tool: tool)}
+    # Map editor tool to text workspace
+    active_tool = case tool do
+      "editor" -> "text"
+      other -> other
+    end
+
+    update_presence(socket.assigns.session.id, socket.assigns.current_user.id, %{active_tool: active_tool})
+    {:noreply, assign(socket, active_tool: active_tool)}
+  end
+
+  @impl true
+  def handle_event("set_active_tool", %{"tool" => "text"}, socket) do
+    update_presence(socket.assigns.session.id, socket.assigns.current_user.id, %{active_tool: "text"})
+    {:noreply, assign(socket, active_tool: "text")}
+  end
+
+  # Also add this catch-all for the generic tool switcher:
+  @impl true
+  def handle_event("set_active_tool", %{"tool" => tool}, socket) do
+    # Map editor tool to text workspace
+    active_tool = case tool do
+      "editor" -> "text"
+      other -> other
+    end
+
+    update_presence(socket.assigns.session.id, socket.assigns.current_user.id, %{active_tool: active_tool})
+    {:noreply, assign(socket, active_tool: active_tool)}
   end
 
   @impl true
@@ -2190,6 +2687,405 @@ defmodule FrestylWeb.StudioLive do
     end
   end
 
+  @impl true
+  def handle_event("create_new_document", %{"document_type" => doc_type} = params, socket) do
+    if can_edit_text?(socket.assigns.permissions) do
+      user = socket.assigns.current_user
+      session_id = socket.assigns.session.id
+
+      document_attrs = %{
+        "document_type" => doc_type,
+        "title" => params["title"] || "Untitled Document",
+        "guided_setup" => params["guided_setup"] || true,
+        "collaboration_mode" => params["collaboration_mode"] || "open"
+      }
+
+      case Content.create_document(document_attrs, user, session_id) do
+        {:ok, document} ->
+          # Update workspace state
+          new_workspace_state = put_in(
+            socket.assigns.workspace_state,
+            [:text, :document],
+            document
+          )
+
+          new_workspace_state = put_in(
+            new_workspace_state,
+            [:text, :active_document_id],
+            document.id
+          )
+
+          # Broadcast document creation to collaborators
+          PubSub.broadcast(
+            Frestyl.PubSub,
+            "studio:#{session_id}",
+            {:document_created, document, user.id}
+          )
+
+          {:noreply, socket
+            |> assign(workspace_state: new_workspace_state)
+            |> assign(active_tool: "text")
+            |> add_notification("Document created: #{document.title}", :success)
+          }
+
+        {:error, changeset} ->
+          error_message = extract_error_message(changeset)
+          {:noreply, socket |> put_flash(:error, "Failed to create document: #{error_message}")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to create documents")}
+    end
+  end
+
+  @impl true
+  def handle_event("load_existing_document", %{"document_id" => document_id}, socket) do
+    if can_edit_text?(socket.assigns.permissions) do
+      user_id = socket.assigns.current_user.id
+
+      case Content.get_document_for_mobile(document_id, user_id) do
+        {:ok, document_data} ->
+          # Update workspace state with loaded document
+          new_workspace_state = socket.assigns.workspace_state
+          |> put_in([:text, :document], document_data.document)
+          |> put_in([:text, :active_document_id], document_id)
+          |> put_in([:text, :editor_mode], document_data.mobile_config.toolbar_mode)
+
+          # Subscribe to document updates
+          PubSub.subscribe(Frestyl.PubSub, "document:#{document_id}")
+
+          {:noreply, socket
+            |> assign(workspace_state: new_workspace_state)
+            |> assign(active_tool: "text")
+            |> add_notification("Document loaded: #{document_data.document.title}", :info)
+          }
+
+        {:error, :not_found} ->
+          {:noreply, socket |> put_flash(:error, "Document not found")}
+
+        {:error, :access_denied} ->
+          {:noreply, socket |> put_flash(:error, "You don't have access to this document")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to access documents")}
+    end
+  end
+
+  @impl true
+  def handle_event("start_document_wizard", params, socket) do
+    if can_edit_text?(socket.assigns.permissions) do
+      # Enhanced document type suggestion based on user input
+      user_input = params["user_input"] || ""
+      context = %{
+        session_type: socket.assigns.session.session_type,
+        user_history: get_user_writing_history(socket.assigns.current_user.id),
+        collaborators: length(socket.assigns.collaborators)
+      }
+
+      suggestions = Content.suggest_document_type(user_input, context)
+
+      {:noreply, socket
+        |> assign(:document_wizard_open, true)
+        |> assign(:document_suggestions, suggestions)
+        |> push_event("show_document_wizard", %{suggestions: suggestions})
+      }
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to create documents")}
+    end
+  end
+
+  @impl true
+  def handle_event("accept_document_suggestion", %{"document_type" => doc_type, "responses" => responses}, socket) do
+    if can_edit_text?(socket.assigns.permissions) do
+      user = socket.assigns.current_user
+      session_id = socket.assigns.session.id
+
+      # Create guided workflow based on user responses
+      workflow = Content.create_guided_workflow(doc_type, responses)
+
+      document_attrs = %{
+        "document_type" => doc_type,
+        "title" => responses["title"] || "Untitled #{format_document_type(doc_type)}",
+        "guided_setup" => true,
+        "workflow_data" => workflow,
+        "user_responses" => responses
+      }
+
+      case Content.create_document(document_attrs, user, session_id) do
+        {:ok, document} ->
+          # Update workspace with guided workflow
+          new_workspace_state = socket.assigns.workspace_state
+          |> put_in([:text, :document], document)
+          |> put_in([:text, :active_document_id], document.id)
+          |> put_in([:text, :editor_mode], "guided")
+          |> put_in([:text, :workflow], workflow)
+
+          {:noreply, socket
+            |> assign(workspace_state: new_workspace_state)
+            |> assign(active_tool: "text")
+            |> assign(:document_wizard_open, false)
+            |> add_notification("Let's start writing your #{format_document_type(doc_type)}!", :success)
+          }
+
+        {:error, changeset} ->
+          error_message = extract_error_message(changeset)
+          {:noreply, socket |> put_flash(:error, "Failed to create document: #{error_message}")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to create documents")}
+    end
+  end
+
+  @impl true
+  def handle_event("create_document_branch", %{"branch_name" => branch_name, "purpose" => purpose}, socket) do
+    if can_edit_text?(socket.assigns.permissions) do
+      document_id = socket.assigns.workspace_state.text.active_document_id
+      user = socket.assigns.current_user
+
+      if document_id do
+        case Content.create_collaboration_branch(document_id, branch_name, user, purpose: purpose) do
+          {:ok, branch} ->
+            # Update workspace state
+            new_workspace_state = put_in(
+              socket.assigns.workspace_state,
+              [:text, :version_control, :current_branch],
+              branch_name
+            )
+
+            # Notify collaborators
+            PubSub.broadcast(
+              Frestyl.PubSub,
+              "studio:#{socket.assigns.session.id}",
+              {:branch_created, branch, user.id}
+            )
+
+            {:noreply, socket
+              |> assign(workspace_state: new_workspace_state)
+              |> add_notification("Created branch: #{branch_name}", :success)
+            }
+
+          {:error, changeset} ->
+            error_message = extract_error_message(changeset)
+            {:noreply, socket |> put_flash(:error, "Failed to create branch: #{error_message}")}
+        end
+      else
+        {:noreply, socket |> put_flash(:error, "No active document to branch from")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to create branches")}
+    end
+  end
+
+  @impl true
+  def handle_event("merge_document_branch", %{"branch_id" => branch_id, "merge_strategy" => strategy}, socket) do
+    if can_edit_text?(socket.assigns.permissions) do
+      user = socket.assigns.current_user
+
+      case Content.merge_collaboration_branch(branch_id, user, strategy) do
+        {:ok, merged_document} ->
+          # Update workspace with merged document
+          new_workspace_state = socket.assigns.workspace_state
+          |> put_in([:text, :document], merged_document)
+          |> put_in([:text, :version_control, :current_branch], "main")
+          |> put_in([:text, :version_control, :merge_conflicts], [])
+
+          # Broadcast merge completion
+          PubSub.broadcast(
+            Frestyl.PubSub,
+            "studio:#{socket.assigns.session.id}",
+            {:branch_merged, branch_id, user.id}
+          )
+
+          {:noreply, socket
+            |> assign(workspace_state: new_workspace_state)
+            |> add_notification("Branch merged successfully", :success)
+          }
+
+        {:error, {:conflicts, conflicts}} ->
+          # Handle merge conflicts
+          new_workspace_state = put_in(
+            socket.assigns.workspace_state,
+            [:text, :version_control, :merge_conflicts],
+            conflicts
+          )
+
+          {:noreply, socket
+            |> assign(workspace_state: new_workspace_state)
+            |> add_notification("Merge conflicts detected. Please resolve manually.", :warning)
+          }
+
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Failed to merge branch: #{inspect(reason)}")}
+      end
+    else
+      {:noreply, socket |> put_flash(:error, "You don't have permission to merge branches")}
+    end
+  end
+
+  # Enhanced text update with operational transformation and media support
+  @impl true
+  def handle_event("enhanced_text_update", %{
+    "content" => new_content,
+    "selection" => selection,
+    "block_id" => block_id,
+    "media_attachments" => media_attachments
+  } = params, socket) do
+    if can_edit_text?(socket.assigns.permissions) do
+      user_id = socket.assigns.current_user.id
+      session_id = socket.assigns.session.id
+      document_id = socket.assigns.workspace_state.text.active_document_id
+
+      if document_id do
+        # Create comprehensive block operation
+        operation = %{
+          type: "enhanced_update",
+          block_id: block_id,
+          content: new_content,
+          selection: selection,
+          media_attachments: media_attachments || [],
+          user_id: user_id,
+          timestamp: System.system_time(:millisecond),
+          device_info: %{
+            is_mobile: socket.assigns.is_mobile,
+            input_method: params["input_method"] || "keyboard"
+          }
+        }
+
+        case Content.update_document_content(document_id, [operation], socket.assigns.current_user) do
+          {:ok, updated_blocks} ->
+            # Update workspace state
+            new_workspace_state = put_in(
+              socket.assigns.workspace_state,
+              [:text, :document, :blocks],
+              updated_blocks
+            )
+
+            # Update text cursors for collaboration
+            text_state = new_workspace_state.text
+            new_cursors = Map.put(text_state.cursors, user_id, selection)
+            new_text_state = %{text_state | cursors: new_cursors}
+            new_workspace_state = Map.put(new_workspace_state, :text, new_text_state)
+
+            # Real-time collaboration broadcast
+            PubSub.broadcast(
+              Frestyl.PubSub,
+              "document:#{document_id}",
+              {:block_updated, operation}
+            )
+
+            {:noreply, assign(socket, workspace_state: new_workspace_state)}
+
+          {:error, {:conflicts, conflicts}} ->
+            # Handle conflicts with smart resolution UI
+            {:noreply, socket
+              |> assign(:text_conflicts, conflicts)
+              |> add_notification("Content conflicts detected", :warning)
+              |> push_event("show_conflict_resolution", %{conflicts: conflicts})
+            }
+
+          {:error, reason} ->
+            {:noreply, socket |> put_flash(:error, "Failed to update text: #{inspect(reason)}")}
+        end
+      else
+        {:noreply, socket |> put_flash(:error, "No active document")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("mobile_voice_to_text", %{
+    "audio_data" => audio_data,
+    "block_id" => block_id,
+    "language" => language
+  } = params, socket) do
+    if can_edit_text?(socket.assigns.permissions) and socket.assigns.is_mobile do
+      user = socket.assigns.current_user
+      session_id = socket.assigns.session.id
+
+      # Process voice input (this would integrate with your transcription service)
+      case process_voice_transcription(audio_data, language, user.id) do
+        {:ok, transcription} ->
+          # Create voice note media attachment
+          voice_note_attrs = %{
+            "file_type" => "audio",
+            "metadata" => %{
+              "transcript" => transcription,
+              "language" => language,
+              "duration" => params["duration"],
+              "auto_transcribed" => true
+            }
+          }
+
+          case Media.create_media_file(voice_note_attrs, user, session_id) do
+            {:ok, media_file} ->
+              # Add as media attachment to block
+              attachment_attrs = %{
+                "attachment_type" => "audio",
+                "relationship" => "narrates",
+                "position" => %{"type" => "floating", "side" => "right"},
+                "metadata" => %{
+                  "transcript" => transcription,
+                  "auto_generated" => true
+                }
+              }
+
+              document_id = socket.assigns.workspace_state.text.active_document_id
+
+              case Content.add_media_attachment(document_id, block_id, attachment_attrs, user) do
+                {:ok, _attachment} ->
+                  {:noreply, socket
+                    |> add_notification("Voice note added with transcription", :success)
+                    |> push_event("voice_transcription_complete", %{
+                      block_id: block_id,
+                      transcription: transcription
+                    })
+                  }
+
+                {:error, reason} ->
+                  {:noreply, socket |> put_flash(:error, "Failed to attach voice note")}
+              end
+
+            {:error, reason} ->
+              {:noreply, socket |> put_flash(:error, "Failed to save voice note")}
+          end
+
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "Voice transcription failed: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("ai_writing_assist", %{
+    "block_id" => block_id,
+    "assist_type" => assist_type,
+    "context" => context
+  }, socket) do
+    if can_edit_text?(socket.assigns.permissions) do
+      document = socket.assigns.workspace_state.text.document
+
+      # Generate AI suggestions based on document type and context
+      case generate_ai_writing_suggestions(document, block_id, assist_type, context) do
+        {:ok, suggestions} ->
+          {:noreply, socket
+            |> assign(:ai_suggestions, suggestions)
+            |> push_event("show_ai_suggestions", %{
+              block_id: block_id,
+              suggestions: suggestions
+            })
+          }
+
+        {:error, reason} ->
+          {:noreply, socket |> put_flash(:error, "AI assistance unavailable: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
   #Beat machine message handlers
   @impl true
   def handle_info({:beat_machine, {:pattern_created, pattern}}, socket) do
@@ -2327,6 +3223,233 @@ defmodule FrestylWeb.StudioLive do
       end
 
       {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Handle incoming audio-text sync events
+  @impl true
+  def handle_info({:mode_changed, mode}, socket) do
+    new_audio_text_state = put_in(socket.assigns.workspace_state.audio_text.mode, mode)
+    new_workspace_state = %{socket.assigns.workspace_state | audio_text: new_audio_text_state}
+
+    {:noreply, socket
+      |> assign(workspace_state: new_workspace_state)
+      |> push_event("audio_text_mode_changed", %{mode: mode})}
+  end
+
+  @impl true
+  def handle_info({:text_synced, sync_point}, socket) do
+    username = get_username_from_collaborators(sync_point.user_id || "system", socket.assigns.collaborators)
+
+    {:noreply, socket
+      |> add_notification("#{username} synced text at #{format_time(sync_point.start_time)}", :info)
+      |> push_event("sync_point_created", sync_point)}
+  end
+
+  @impl true
+  def handle_info({:text_block_added, block}, socket) do
+    username = get_username_from_collaborators(block.created_by || "system", socket.assigns.collaborators)
+
+    {:noreply, socket
+      |> add_notification("#{username} added #{block.type}", :info)
+      |> push_event("text_block_added", block)}
+  end
+
+  @impl true
+  def handle_info({:text_block_updated, block_id, content}, socket) do
+    {:noreply, socket
+      |> push_event("text_block_updated", %{block_id: block_id, content: content})}
+  end
+
+  @impl true
+  def handle_info({:current_block_changed, block_id}, socket) do
+    # Update current block in workspace state
+    new_audio_text_state = put_in(socket.assigns.workspace_state.audio_text.current_text_block, block_id)
+    new_workspace_state = %{socket.assigns.workspace_state | audio_text: new_audio_text_state}
+
+    {:noreply, socket
+      |> assign(workspace_state: new_workspace_state)
+      |> push_event("current_block_changed", %{block_id: block_id})}
+  end
+
+  @impl true
+  def handle_info({:beats_detected, beat_data}, socket) do
+    {:noreply, socket
+      |> add_notification("Beat detection complete: #{beat_data.bpm} BPM", :success)
+      |> push_event("beats_detected", beat_data)}
+  end
+
+  @impl true
+  def handle_info({:lyrics_auto_aligned, aligned_blocks}, socket) do
+    {:noreply, socket
+      |> add_notification("Lyrics automatically aligned to beats", :success)
+      |> push_event("lyrics_aligned", %{blocks: aligned_blocks})}
+  end
+
+  @impl true
+  def handle_info({:sync_playback_started, position}, socket) do
+    # Update audio-text state when playback starts
+    new_audio_text_state = socket.assigns.workspace_state.audio_text
+    |> put_in([:timeline, :current_position], position)
+
+    new_workspace_state = %{socket.assigns.workspace_state | audio_text: new_audio_text_state}
+
+    {:noreply, socket
+      |> assign(workspace_state: new_workspace_state)
+      |> push_event("audio_text_playback_started", %{position: position})}
+  end
+
+  @impl true
+  def handle_info({:sync_playback_stopped, position}, socket) do
+    # Update audio-text state when playback stops
+    new_audio_text_state = socket.assigns.workspace_state.audio_text
+    |> put_in([:timeline, :current_position], position)
+
+    new_workspace_state = %{socket.assigns.workspace_state | audio_text: new_audio_text_state}
+
+    {:noreply, socket
+      |> assign(workspace_state: new_workspace_state)
+      |> push_event("audio_text_playback_stopped", %{position: position})}
+  end
+
+  @impl true
+  def handle_info({:timeline_seek, position}, socket) do
+    # Update audio-text sync when timeline position changes
+    session_id = socket.assigns.session.id
+    Frestyl.Studio.AudioTextSync.update_audio_position(session_id, position)
+
+    # Update workspace state
+    new_audio_text_state = put_in(
+      socket.assigns.workspace_state.audio_text.timeline.current_position,
+      position
+    )
+    new_workspace_state = %{socket.assigns.workspace_state | audio_text: new_audio_text_state}
+
+    {:noreply, socket
+      |> assign(workspace_state: new_workspace_state)
+      |> push_event("timeline_position_changed", %{position: position})}
+  end
+
+  @impl true
+  def handle_info({:sync_point_created, sync_point}, socket) do
+    username = get_username_from_collaborators(
+      sync_point.user_id || "system",
+      socket.assigns.collaborators
+    )
+
+    {:noreply, socket
+      |> push_event("sync_point_created", sync_point)
+      |> add_notification("#{username} created sync point at #{format_time(sync_point.start_time)}", :success)}
+  end
+
+  @impl true
+  def handle_info({:sync_point_deleted, block_id}, socket) do
+    {:noreply, socket
+      |> push_event("sync_point_deleted", %{block_id: block_id})
+      |> add_notification("Sync point removed", :info)}
+  end
+
+  @impl true
+  def handle_info({:mobile_block_focused, block_id}, socket) do
+    # Update current block focus for mobile interface
+    new_audio_text_state = put_in(
+      socket.assigns.workspace_state.audio_text.current_text_block,
+      block_id
+    )
+    new_workspace_state = %{socket.assigns.workspace_state | audio_text: new_audio_text_state}
+
+    {:noreply, socket
+      |> assign(workspace_state: new_workspace_state)
+      |> push_event("mobile_block_focused", %{block_id: block_id})}
+  end
+
+  @impl true
+  def handle_info({:teleprompter_toggled, enabled}, socket) do
+    {:noreply, socket
+      |> assign(:teleprompter_mode, enabled)
+      |> push_event("teleprompter_toggled", %{enabled: enabled})}
+  end
+
+  @impl true
+  def handle_info({:teleprompter_speed_changed, speed}, socket) do
+    {:noreply, socket
+      |> assign(:teleprompter_speed, speed)
+      |> push_event("teleprompter_speed_changed", %{speed: speed})}
+  end
+
+  @impl true
+  def handle_info({:mobile_simplified_mode_toggled, enabled}, socket) do
+    {:noreply, socket
+      |> assign(:mobile_simplified_mode, enabled)
+      |> push_event("mobile_simplified_mode_toggled", %{enabled: enabled})}
+  end
+
+  @impl true
+  def handle_info({:mobile_text_size_changed, size}, socket) do
+    {:noreply, socket
+      |> assign(:mobile_text_size, size)
+      |> push_event("mobile_text_size_changed", %{size: size})}
+  end
+
+  @impl true
+  def handle_info({:audio_text_content_changed, block_id, content}, socket) do
+    # Update workspace state with new content and broadcast to other users
+    session_id = socket.assigns.session.id
+
+    # Broadcast to other users
+    PubSub.broadcast(
+      Frestyl.PubSub,
+      "studio:#{session_id}",
+      {:audio_text_content_updated, block_id, content, socket.assigns.current_user.id}
+    )
+
+    {:noreply, socket |> push_event("text_content_updated", %{block_id: block_id, content: content})}
+  end
+
+  @impl true
+  def handle_info({:audio_text_block_added, block}, socket) do
+    session_id = socket.assigns.session.id
+
+    # Broadcast to other users
+    PubSub.broadcast(
+      Frestyl.PubSub,
+      "studio:#{session_id}",
+      {:audio_text_block_added, block, socket.assigns.current_user.id}
+    )
+
+    {:noreply, socket |> push_event("audio_text_block_added", block)}
+  end
+
+  @impl true
+  def handle_info({:activate_voice_commands}, socket) do
+    {:noreply, socket
+      |> assign(:voice_commands_active, true)
+      |> push_event("voice_commands_activated", %{})}
+  end
+
+  @impl true
+  def handle_info({:audio_text_content_updated, block_id, content, user_id}, socket) do
+    if user_id != socket.assigns.current_user.id do
+      username = get_username_from_collaborators(user_id, socket.assigns.collaborators)
+
+      {:noreply, socket
+        |> push_event("remote_audio_text_update", %{block_id: block_id, content: content})
+        |> add_notification("#{username} updated text", :info)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:audio_text_block_added, block, user_id}, socket) do
+    if user_id != socket.assigns.current_user.id do
+      username = get_username_from_collaborators(user_id, socket.assigns.collaborators)
+
+      {:noreply, socket
+        |> push_event("remote_audio_text_block_added", block)
+        |> add_notification("#{username} added #{block.type}", :info)}
     else
       {:noreply, socket}
     end
@@ -2686,6 +3809,98 @@ defmodule FrestylWeb.StudioLive do
       |> push_event("dock_toggled", %{dock: dock, visible: new_visibility[String.to_atom(dock)]})}
   end
 
+  # Handle incoming real-time document updates from other users
+  @impl true
+  def handle_info({:document_updated, %{blocks: updated_blocks, user_id: user_id}}, socket) do
+    if user_id != socket.assigns.current_user.id do
+      # Update local document state with remote changes
+      new_workspace_state = put_in(
+        socket.assigns.workspace_state,
+        [:text, :document, :blocks],
+        updated_blocks
+      )
+
+      username = get_username_from_collaborators(user_id, socket.assigns.collaborators)
+
+      {:noreply, socket
+        |> assign(workspace_state: new_workspace_state)
+        |> add_notification("#{username} updated the document", :info)
+        |> push_event("document_updated_remotely", %{blocks: updated_blocks})
+      }
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:document_created, document, user_id}, socket) do
+    if user_id != socket.assigns.current_user.id do
+      username = get_username_from_collaborators(user_id, socket.assigns.collaborators)
+
+      {:noreply, socket
+        |> add_notification("#{username} created a new document: #{document.title}", :info)
+      }
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:branch_created, branch, user_id}, socket) do
+    if user_id != socket.assigns.current_user.id do
+      username = get_username_from_collaborators(user_id, socket.assigns.collaborators)
+
+      {:noreply, socket
+        |> add_notification("#{username} created branch: #{branch.name}", :info)
+      }
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:block_updated, operation}, socket) do
+    if operation.user_id != socket.assigns.current_user.id do
+      # Handle real-time block updates from other users
+      document_id = socket.assigns.workspace_state.text.active_document_id
+
+      if document_id do
+        # Apply the operation to local state
+        current_blocks = socket.assigns.workspace_state.text.document.blocks
+
+        case apply_remote_operation(current_blocks, operation) do
+          {:ok, updated_blocks} ->
+            new_workspace_state = put_in(
+              socket.assigns.workspace_state,
+              [:text, :document, :blocks],
+              updated_blocks
+            )
+
+            username = get_username_from_collaborators(operation.user_id, socket.assigns.collaborators)
+
+            {:noreply, socket
+              |> assign(workspace_state: new_workspace_state)
+              |> push_event("remote_block_update", %{
+                block_id: operation.block_id,
+                operation: operation
+              })
+            }
+
+          {:error, :conflict} ->
+            # Handle operation conflicts
+            {:noreply, socket
+              |> add_notification("Content conflict detected - refreshing", :warning)
+              |> push_event("reload_document", %{})
+            }
+        end
+      else
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
   defp assign_defaults(assigns) do
     defaults = %{
       recording_track: nil,
@@ -2699,6 +3914,78 @@ defmodule FrestylWeb.StudioLive do
     }
 
     Map.merge(defaults, assigns)
+  end
+
+  defp get_audio_text_sync_state(workspace_state) do
+    # Get sync state from AudioTextSync GenServer or return default
+    case Map.get(workspace_state, :audio_text) do
+      nil ->
+        %{
+          mode: "lyrics_with_audio",
+          text_blocks: [],
+          sync_points: [],
+          current_position: 0.0,
+          current_block: nil,
+          beat_detection: %{enabled: false, bpm: 120, beats: []},
+          playing: false
+        }
+      audio_text_state ->
+        Map.merge(%{
+          text_blocks: [],
+          sync_points: [],
+          current_position: 0.0,
+          current_block: nil,
+          beat_detection: %{enabled: false, bpm: 120, beats: []},
+          playing: false
+        }, audio_text_state)
+    end
+  end
+
+  defp format_mode_name(mode) do
+    case mode do
+      "lyrics_with_audio" -> "Lyrics with Audio"
+      "audio_with_script" -> "Audio with Script"
+      _ -> String.capitalize(mode)
+    end
+  end
+
+  defp get_primary_audio_track(workspace_state) do
+    case workspace_state.audio.tracks do
+      [first_track | _] -> first_track
+      [] -> nil
+    end
+  end
+
+  defp get_track_audio_data(track) do
+    # Mock implementation - in production you'd load actual audio file
+    # This would integrate with your media storage system
+    <<1, 2, 3, 4, 5, 6, 7, 8>>
+  end
+
+  defp get_all_text_content(text_blocks) do
+    text_blocks
+    |> Enum.map(& &1.content)
+    |> Enum.join(" ")
+  end
+
+  defp format_time(milliseconds) when is_number(milliseconds) do
+    seconds = div(trunc(milliseconds), 1000)
+    minutes = div(seconds, 60)
+    remaining_seconds = rem(seconds, 60)
+
+    "#{String.pad_leading(to_string(minutes), 2, "0")}:#{String.pad_leading(to_string(remaining_seconds), 2, "0")}"
+  end
+  defp format_time(_), do: "00:00"
+
+  defp get_username_from_collaborators(user_id, collaborators) do
+    case Enum.find(collaborators, fn c ->
+      (is_map(c) and Map.get(c, :user_id) == user_id) or
+      (is_map(c) and Map.get(c, :id) == user_id)
+    end) do
+      %{username: username} -> username
+      %{name: name} -> name
+      _ -> "Someone"
+    end
   end
 
   defp update_beat_workspace_state(socket, update_type, data) do
@@ -2867,8 +4154,6 @@ defmodule FrestylWeb.StudioLive do
       _ -> nil
     end
   end
-
-  # Add these helper functions to your StudioLive module
 
   defp list_media_items(session_id) do
     Media.list_session_media_items(session_id)
@@ -3056,6 +4341,9 @@ defmodule FrestylWeb.StudioLive do
       "audio" -> "audio_production"
       "text" -> "collaborative_writing"
       "visual" -> "multimedia_creation"
+      "lyrics" -> "lyrics_creation"
+      "audiobook" -> "audiobook_production"
+      "audio_text" -> "lyrics_creation"
       _ -> "audio_production"  # This catches "regular" and any other types
     end
   end
@@ -3484,6 +4772,130 @@ defmodule FrestylWeb.StudioLive do
             </button>
           </div>
         </form>
+      </div>
+    </div>
+    """
+  end
+
+  # Enhanced render function additions for audio-text workspace
+  def render_audio_text_workspace(assigns) do
+    ~H"""
+    <div class="h-full flex flex-col bg-gray-900">
+      <!-- Audio-Text Mode Header -->
+      <div class="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-700">
+        <div class="flex items-center space-x-4">
+          <h2 class="text-white font-medium">
+            <%= if @workspace_state.audio_text.mode == "lyrics_with_audio", do: "Lyrics Studio", else: "Script Studio" %>
+          </h2>
+
+          <!-- Mode switcher -->
+          <select
+            phx-change="audio_text_mode_change"
+            class="bg-gray-700 border-gray-600 text-white rounded text-sm"
+          >
+            <option value="lyrics_with_audio" selected={@workspace_state.audio_text.mode == "lyrics_with_audio"}>
+              Lyrics with Audio
+            </option>
+            <option value="audio_with_script" selected={@workspace_state.audio_text.mode == "audio_with_script"}>
+              Audio with Script
+            </option>
+          </select>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <!-- Sync status -->
+          <%= if @workspace_state.audio_text.sync_enabled do %>
+            <span class="text-green-400 text-sm flex items-center">
+              <div class="w-2 h-2 bg-green-400 rounded-full mr-1"></div>
+              Sync Active
+            </span>
+          <% else %>
+            <span class="text-gray-400 text-sm">Sync Disabled</span>
+          <% end %>
+
+          <!-- Beat detection status -->
+          <%= if get_in(@workspace_state, [:audio_text, :beat_detection, :enabled]) do %>
+            <span class="text-purple-400 text-sm">
+              🎵 <%= get_in(@workspace_state, [:audio_text, :beat_detection, :bpm]) || 120 %> BPM
+            </span>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Main workspace layout -->
+      <div class="flex-1 flex overflow-hidden">
+        <!-- Desktop Layout -->
+        <div class="hidden lg:flex flex-1">
+          <!-- Text Editor Panel -->
+          <div class="w-1/2 border-r border-gray-700">
+            <.live_component
+              module={FrestylWeb.StudioLive.AudioTextEditorComponent}
+              id="audio-text-editor"
+              session_id={@session.id}
+              sync_state={get_audio_text_sync_state(@workspace_state)}
+              permissions={@permissions}
+              current_user={@current_user}
+              is_mobile={false}
+              recording_track={@recording_track}
+              teleprompter_mode={@teleprompter_mode || false}
+              teleprompter_speed={@teleprompter_speed || 1.0}
+            />
+          </div>
+
+          <!-- Timeline and Controls -->
+          <div class="w-1/2 flex flex-col">
+            <!-- Audio controls -->
+            <div class="p-3 bg-gray-800 border-b border-gray-700">
+              <div class="flex items-center space-x-3">
+                <button
+                  phx-click="audio_start_playback"
+                  phx-value-position={@workspace_state.audio_text.timeline.current_position}
+                  class="p-2 bg-green-600 hover:bg-green-700 text-white rounded"
+                >
+                  ▶️
+                </button>
+
+                <button
+                  phx-click="audio_stop_playback"
+                  class="p-2 bg-red-600 hover:bg-red-700 text-white rounded"
+                >
+                  ⏹️
+                </button>
+
+                <span class="text-white text-sm font-mono">
+                  <%= format_time(@workspace_state.audio_text.timeline.current_position) %>
+                </span>
+              </div>
+            </div>
+
+            <!-- Timeline Component -->
+            <div class="flex-1">
+              <.live_component
+                module={FrestylWeb.StudioLive.TimelineComponent}
+                id="audio-text-timeline"
+                session_id={@session.id}
+                sync_state={get_audio_text_sync_state(@workspace_state)}
+                zoom_level={@timeline_zoom_level || 1.0}
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Mobile Layout -->
+        <div class="lg:hidden flex-1">
+          <.live_component
+            module={FrestylWeb.StudioLive.MobileAudioTextInterface}
+            id="mobile-audio-text"
+            session_id={@session.id}
+            sync_state={get_audio_text_sync_state(@workspace_state)}
+            permissions={@permissions}
+            current_user={@current_user}
+            recording_track={@recording_track}
+            simplified_mode={@mobile_simplified_mode || false}
+            mobile_text_size={@mobile_text_size || "base"}
+            voice_commands_active={@voice_commands_active || false}
+          />
+        </div>
       </div>
     </div>
     """
@@ -4460,6 +5872,94 @@ defmodule FrestylWeb.StudioLive do
     end
   end
 
+  defp extract_error_message(changeset) do
+    changeset.errors
+    |> Enum.map(fn {field, {message, _}} -> "#{field}: #{message}" end)
+    |> Enum.join(", ")
+  end
+
+  defp format_document_type(doc_type) do
+    doc_type
+    |> String.replace("_", " ")
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp get_user_writing_history(user_id) do
+    # Get user's previous documents for better suggestions
+    try do
+      Content.get_user_document_history(user_id, limit: 10)
+    rescue
+      _ -> []  # Return empty list if function doesn't exist yet
+    end
+  end
+
+  defp apply_remote_operation(current_blocks, operation) do
+    case operation.type do
+      "enhanced_update" ->
+        # Find and update the specific block
+        updated_blocks = Enum.map(current_blocks, fn block ->
+          if block.id == operation.block_id do
+            %{block | content: operation.content, updated_at: DateTime.utc_now()}
+          else
+            block
+          end
+        end)
+        {:ok, updated_blocks}
+
+      "block_insert" ->
+        # Insert new block at specified position
+        new_block = %{
+          id: operation.block_id,
+          content: operation.content,
+          type: operation.block_type || "paragraph",
+          position: operation.position,
+          created_at: DateTime.utc_now(),
+          updated_at: DateTime.utc_now()
+        }
+
+        updated_blocks = insert_block_at_position(current_blocks, new_block, operation.position)
+        {:ok, updated_blocks}
+
+      "block_delete" ->
+        updated_blocks = Enum.reject(current_blocks, &(&1.id == operation.block_id))
+        {:ok, updated_blocks}
+
+      _ ->
+        {:error, :unknown_operation}
+    end
+  rescue
+    error ->
+      Logger.error("Failed to apply remote operation: #{inspect(error)}")
+      {:error, :conflict}
+  end
+
+  defp insert_block_at_position(blocks, new_block, position) do
+    {before, after_blocks} = Enum.split(blocks, position)
+    before ++ [new_block] ++ after_blocks
+  end
+
+  defp process_voice_transcription(audio_data, language, user_id) do
+    # Integrate with your transcription service (Whisper, Google Speech, etc.)
+    # This is a placeholder for the actual implementation
+    {:ok, "This is a transcribed voice note."}
+  end
+
+  defp generate_ai_writing_suggestions(document, block_id, assist_type, context) do
+    # Integrate with your AI service for writing assistance
+    # This is a placeholder for the actual implementation
+    suggestions = case assist_type do
+      "continue_writing" -> ["Continue with the next logical point...", "Consider adding an example here"]
+      "improve_clarity" -> ["Try simplifying this sentence", "Add a transition word"]
+      "expand_ideas" -> ["Elaborate on this concept", "Add supporting evidence"]
+      _ -> ["General writing suggestion"]
+    end
+
+    {:ok, suggestions}
+  end
+
+
   defp update_audio_workspace_state(socket, update_type, data) do
     session_id = socket.assigns.session.id
 
@@ -4546,6 +6046,295 @@ defmodule FrestylWeb.StudioLive do
 
   defp update_audio_state(audio_state, _type, _data), do: audio_state
 
+  @impl true
+  def handle_event("resolve_conflict", %{"conflict_id" => conflict_id, "resolution" => resolution}, socket) do
+    conflicts = socket.assigns[:text_conflicts] || []
+
+    case Enum.find(conflicts, &(&1.id == conflict_id)) do
+      nil ->
+        {:noreply, socket}
+
+      conflict ->
+        resolved_content = case resolution do
+          "local" -> conflict.local_content
+          "remote" -> conflict.remote_content
+          "merge" -> merge_conflict_content(conflict.local_content, conflict.remote_content)
+        end
+
+        # Apply resolution to document
+        document_id = socket.assigns.workspace_state.text.active_document_id
+        user = socket.assigns.current_user
+
+        case Content.resolve_content_conflict(document_id, conflict.block_id, resolved_content, user) do
+          {:ok, updated_document} ->
+            # Update workspace state
+            new_workspace_state = put_in(
+              socket.assigns.workspace_state,
+              [:text, :document],
+              updated_document
+            )
+
+            # Remove resolved conflict
+            remaining_conflicts = Enum.reject(conflicts, &(&1.id == conflict_id))
+
+            {:noreply, socket
+              |> assign(workspace_state: new_workspace_state)
+              |> assign(text_conflicts: remaining_conflicts)
+              |> add_notification("Conflict resolved", :success)}
+
+          {:error, reason} ->
+            {:noreply, socket |> put_flash(:error, "Failed to resolve conflict")}
+        end
+    end
+  end
+
+  @impl true
+  def handle_event("auto_resolve_conflicts", _params, socket) do
+    conflicts = socket.assigns[:text_conflicts] || []
+    document_id = socket.assigns.workspace_state.text.active_document_id
+    user = socket.assigns.current_user
+
+    case Content.auto_resolve_all_conflicts(document_id, conflicts, user) do
+      {:ok, updated_document} ->
+        new_workspace_state = put_in(
+          socket.assigns.workspace_state,
+          [:text, :document],
+          updated_document
+        )
+
+        {:noreply, socket
+          |> assign(workspace_state: new_workspace_state)
+          |> assign(text_conflicts: [])
+          |> add_notification("All conflicts auto-resolved", :success)}
+
+      {:error, reason} ->
+        {:noreply, socket |> put_flash(:error, "Failed to auto-resolve conflicts")}
+    end
+  end
+
+  @impl true
+  def handle_event("cancel_conflict_resolution", _params, socket) do
+    {:noreply, assign(socket, text_conflicts: [])}
+  end
+
+  @impl true
+  def handle_event("close_document_wizard", _params, socket) do
+    {:noreply, assign(socket, document_wizard_open: false)}
+  end
+
+  @impl true
+  def handle_event("create_blank_document", _params, socket) do
+    user = socket.assigns.current_user
+    session_id = socket.assigns.session.id
+
+    document_attrs = %{
+      "document_type" => "plain_text",
+      "title" => "Untitled Document",
+      "guided_setup" => false
+    }
+
+    case Content.create_document(document_attrs, user, session_id) do
+      {:ok, document} ->
+        new_workspace_state = socket.assigns.workspace_state
+        |> put_in([:text, :document], document)
+        |> put_in([:text, :active_document_id], document.id)
+
+        {:noreply, socket
+          |> assign(workspace_state: new_workspace_state)
+          |> assign(document_wizard_open: false)
+          |> assign(active_tool: "text")
+          |> add_notification("Blank document created", :success)}
+
+      {:error, changeset} ->
+        error_message = extract_error_message(changeset)
+        {:noreply, socket |> put_flash(:error, "Failed to create document: #{error_message}")}
+    end
+  end
+
+  # Helper function for merging conflicting content
+  defp merge_conflict_content(local_content, remote_content) do
+    # Simple merge strategy - in production you'd want more sophisticated merging
+    "#{local_content}\n\n--- MERGED CONTENT ---\n\n#{remote_content}"
+  end
+
+  defp conflict_resolution_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+      <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <!-- Background overlay -->
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <!-- Modal panel -->
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+          <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <div class="sm:flex sm:items-start">
+              <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 sm:mx-0 sm:h-10 sm:w-10">
+                <svg class="h-6 w-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">
+                  Content Conflicts Detected
+                </h3>
+                <div class="mt-2">
+                  <p class="text-sm text-gray-500 mb-4">
+                    Multiple users edited the same content. Please choose how to resolve these conflicts:
+                  </p>
+
+                  <%= for conflict <- @conflicts do %>
+                    <div class="border border-gray-200 rounded-lg p-4 mb-4">
+                      <h4 class="font-medium text-gray-900 mb-2">Block: <%= conflict.block_id %></h4>
+
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Your version -->
+                        <div class="border-l-4 border-blue-500 pl-3">
+                          <div class="text-sm font-medium text-blue-700 mb-1">Your Changes</div>
+                          <div class="text-sm text-gray-700 bg-blue-50 p-2 rounded">
+                            <%= conflict.local_content %>
+                          </div>
+                          <button
+                            phx-click="resolve_conflict"
+                            phx-value-conflict-id={conflict.id}
+                            phx-value-resolution="local"
+                            class="mt-2 text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                          >
+                            Use My Version
+                          </button>
+                        </div>
+
+                        <!-- Their version -->
+                        <div class="border-l-4 border-green-500 pl-3">
+                          <div class="text-sm font-medium text-green-700 mb-1">Their Changes</div>
+                          <div class="text-sm text-gray-700 bg-green-50 p-2 rounded">
+                            <%= conflict.remote_content %>
+                          </div>
+                          <button
+                            phx-click="resolve_conflict"
+                            phx-value-conflict-id={conflict.id}
+                            phx-value-resolution="remote"
+                            class="mt-2 text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
+                          >
+                            Use Their Version
+                          </button>
+                        </div>
+                      </div>
+
+                      <!-- Merge option -->
+                      <div class="mt-3 pt-3 border-t border-gray-200">
+                        <button
+                          phx-click="resolve_conflict"
+                          phx-value-conflict-id={conflict.id}
+                          phx-value-resolution="merge"
+                          class="text-xs bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700"
+                        >
+                          Smart Merge Both
+                        </button>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+            <button
+              phx-click="auto_resolve_conflicts"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm"
+            >
+              Auto-Resolve All
+            </button>
+            <button
+              phx-click="cancel_conflict_resolution"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp document_wizard_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+      <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <!-- Background overlay -->
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <!-- Modal panel -->
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+          <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <div class="sm:flex sm:items-start">
+              <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 sm:mx-0 sm:h-10 sm:w-10">
+                <svg class="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </div>
+              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">
+                  Document Creation Wizard
+                </h3>
+                <div class="mt-2">
+                  <p class="text-sm text-gray-500 mb-4">
+                    Based on your description, here are some suggested document types:
+                  </p>
+
+                  <%= for suggestion <- @suggestions do %>
+                    <div class="border border-gray-200 rounded-lg p-4 mb-3 hover:border-indigo-300 cursor-pointer">
+                      <div class="flex items-start">
+                        <span class="text-2xl mr-3"><%= suggestion.icon %></span>
+                        <div class="flex-1">
+                          <h4 class="font-medium text-gray-900"><%= suggestion.title %></h4>
+                          <p class="text-sm text-gray-600 mt-1"><%= suggestion.description %></p>
+                          <div class="mt-2">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                              <%= suggestion.confidence %>% match
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          phx-click="accept_document_suggestion"
+                          phx-value-document-type={suggestion.type}
+                          phx-value-responses={Jason.encode!(suggestion.responses || %{})}
+                          class="ml-3 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-sm"
+                        >
+                          Use This
+                        </button>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+            <button
+              phx-click="create_blank_document"
+              class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm"
+            >
+              Create Blank Document
+            </button>
+            <button
+              phx-click="close_document_wizard"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:w-auto sm:text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
 
   @impl true
   def render(assigns) do
@@ -4937,11 +6726,35 @@ defmodule FrestylWeb.StudioLive do
               <div class="h-full flex flex-col bg-gray-900 bg-opacity-50">
                 <!-- Keep your existing audio workspace content -->
               </div>
-            <% "text" -> %>
-              <!-- Your existing text workspace -->
-              <div class="h-full flex flex-col bg-gray-900 bg-opacity-50">
-                <!-- Keep your existing text workspace content -->
-              </div>
+
+            <% tool when tool in ["text", "editor"] -> %>
+              <.render_text_workspace
+                workspace_state={@workspace_state}
+                current_user={@current_user}
+                permissions={@permissions}
+                is_mobile={@is_mobile}
+                collaboration_mode={@collaboration_mode}
+                session={@session}
+                document_wizard_open={Map.get(assigns, :document_wizard_open, false)}
+                document_suggestions={Map.get(assigns, :document_suggestions, %{})}
+                text_conflicts={Map.get(assigns, :text_conflicts, [])}
+              />
+
+            <% "audio_text" -> %>
+              <.render_audio_text_workspace
+                workspace_state={@workspace_state}
+                session={@session}
+                current_user={@current_user}
+                permissions={@permissions}
+                recording_track={@recording_track}
+                teleprompter_mode={Map.get(assigns, :teleprompter_mode, false)}
+                teleprompter_speed={Map.get(assigns, :teleprompter_speed, 1.0)}
+                timeline_zoom_level={Map.get(assigns, :timeline_zoom_level, 1.0)}
+                mobile_simplified_mode={Map.get(assigns, :mobile_simplified_mode, false)}
+                mobile_text_size={Map.get(assigns, :mobile_text_size, "base")}
+                voice_commands_active={Map.get(assigns, :voice_commands_active, false)}
+              />
+
             <% _ -> %>
               <div class="h-full flex items-center justify-center">
                 <p class="text-white">Workspace for <%= @active_tool %></p>
@@ -5223,4 +7036,147 @@ defmodule FrestylWeb.StudioLive do
     </div>
     """
   end
+
+  def render_text_workspace(assigns) do
+    ~H"""
+    <div class="h-full flex flex-col bg-white">
+      <%= if Map.get(@workspace_state.text, :document) do %>
+        <!-- Active Document Editor -->
+        <.live_component
+          module={TextEditorComponent}
+          id="text-editor"
+          document={@workspace_state.text.document}
+          current_user={@current_user}
+          permissions={@permissions}
+          is_mobile={@is_mobile}
+          collaboration_mode={@collaboration_mode}
+          session_id={@session.id}
+        />
+      <% else %>
+        <!-- Document Creation Interface -->
+        <div class="h-full flex items-center justify-center p-8">
+          <div class="text-center max-w-md">
+            <div class="mb-8">
+              <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Start Writing</h3>
+            <p class="text-gray-500 mb-8">Create a new document or load an existing one to begin collaborative writing.</p>
+
+            <div class="space-y-4">
+              <!-- Smart Document Creation -->
+              <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg p-6 text-white">
+                <h4 class="font-semibold mb-2">✨ Let AI Guide You</h4>
+                <p class="text-sm mb-4 opacity-90">Tell us what you want to write and we'll help you get started</p>
+                <div class="flex space-x-2">
+                  <input
+                    type="text"
+                    placeholder="I want to write a..."
+                    class="flex-1 px-3 py-2 bg-white bg-opacity-20 border border-white border-opacity-30 rounded text-white placeholder-white placeholder-opacity-70 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50"
+                    phx-keyup="document_wizard_input"
+                    phx-debounce="500"
+                  />
+                  <button
+                    phx-click="start_document_wizard"
+                    class="px-4 py-2 bg-white text-indigo-600 font-medium rounded hover:bg-gray-100 transition-colors"
+                  >
+                    Start
+                  </button>
+                </div>
+              </div>
+
+              <!-- Quick Templates -->
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <button
+                  phx-click="create_new_document"
+                  phx-value-document-type="blog_post"
+                  class="p-4 text-left border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                >
+                  <div class="flex items-center space-x-3">
+                    <span class="text-2xl">📝</span>
+                    <div>
+                      <h5 class="font-medium text-gray-900">Blog Post</h5>
+                      <p class="text-sm text-gray-500">Articles, tutorials, thoughts</p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  phx-click="create_new_document"
+                  phx-value-document-type="book_chapter"
+                  class="p-4 text-left border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                >
+                  <div class="flex items-center space-x-3">
+                    <span class="text-2xl">📚</span>
+                    <div>
+                      <h5 class="font-medium text-gray-900">Book Chapter</h5>
+                      <p class="text-sm text-gray-500">Fiction, non-fiction, memoir</p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  phx-click="create_new_document"
+                  phx-value-document-type="screenplay"
+                  class="p-4 text-left border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                >
+                  <div class="flex items-center space-x-3">
+                    <span class="text-2xl">🎬</span>
+                    <div>
+                      <h5 class="font-medium text-gray-900">Screenplay</h5>
+                      <p class="text-sm text-gray-500">Film, TV, stage scripts</p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  phx-click="create_new_document"
+                  phx-value-document-type="plain_text"
+                  class="p-4 text-left border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                >
+                  <div class="flex items-center space-x-3">
+                    <span class="text-2xl">📄</span>
+                    <div>
+                      <h5 class="font-medium text-gray-900">Plain Text</h5>
+                      <p class="text-sm text-gray-500">Simple text document</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <!-- Load Existing -->
+              <div class="pt-4 border-t border-gray-200">
+                <button
+                  phx-click="show_document_library"
+                  class="text-indigo-600 hover:text-indigo-700 font-medium text-sm"
+                >
+                  Or load an existing document →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Document Wizard Modal -->
+      <%= if Map.get(assigns, :document_wizard_open, false) do %>
+        <.document_wizard_modal
+          suggestions={Map.get(assigns, :document_suggestions, %{})}
+          current_user={@current_user}
+        />
+      <% end %>
+
+      <!-- Conflict Resolution Modal -->
+      <%= if Map.get(assigns, :text_conflicts, []) != [] do %>
+        <.conflict_resolution_modal
+          conflicts={@text_conflicts}
+          document={Map.get(@workspace_state.text, :document)}
+        />
+      <% end %>
+    </div>
+    """
+  end
+
 end

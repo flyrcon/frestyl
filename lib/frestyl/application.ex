@@ -17,6 +17,9 @@ defmodule Frestyl.Application do
 
       # StudioSupervisor handles ALL studio registries and supervisors
       Frestyl.Studio.StudioSupervisor,
+      # Audio-Text Sync Registry and Supervisor
+      {Registry, keys: :unique, name: Frestyl.Studio.AudioTextSyncRegistry},
+      {DynamicSupervisor, strategy: :one_for_one, name: Frestyl.Studio.AudioTextSyncSupervisor},
 
       # Supervisor for WebRTC connections
       Frestyl.Streaming.ConnectionSupervisor,

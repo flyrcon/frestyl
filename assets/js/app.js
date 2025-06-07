@@ -23,6 +23,8 @@ import {
 } from "./hooks/audio_workspace_hooks"
 import ToolDragDrop from "./hooks/tool_drag_drop"
 
+import { AudioTextHooks } from "./audio_text_hooks"
+
 import {
   MobileChatHook,
   MobileChatScroll,
@@ -38,6 +40,8 @@ import {
   EffectsIntegrationHook, 
   EffectVisualization 
 } from "./hooks/effects_integration_hook"
+
+import { TextEditor } from "./hooks/text_editor"
 
 // Import new audio engine components
 import AudioEngineHook from "./hooks/audio_engine_hook.js"
@@ -57,6 +61,9 @@ window.rtcClient = null;
 window.audioEngine = null;
 window.EnhancedEffectsEngine = EnhancedEffectsEngine;
 window.StudioAudioClient = StudioAudioClient;
+
+// Text editor
+window.TextEditor = TextEditor;
 
 // Enhanced timezone handling
 document.addEventListener('DOMContentLoaded', updateTimezoneDisplays);
@@ -232,6 +239,8 @@ let Hooks = {
   
   // Audio engine hooks
   AudioEngine: AudioEngineHook,
+
+  ...AudioTextHooks,
   
   // Enhanced streaming hooks
   ...StreamingHooks,

@@ -43,7 +43,7 @@ defmodule FrestylWeb.BroadcastLive.AudioMixerComponent do
     socket = assign(socket, assigns)
 
     # Check if we need to initialize audio engine
-    socket = if not socket.assigns[:audio_engine_initialized] do
+    socket = if not Map.get(socket.assigns, :audio_engine_initialized, false) do
       initialize_audio_engine(socket)
     else
       socket
@@ -60,7 +60,7 @@ defmodule FrestylWeb.BroadcastLive.AudioMixerComponent do
     new_state = !socket.assigns.mixer_open
 
     # Initialize audio engine when opening mixer
-    socket = if new_state and not socket.assigns[:audio_engine_initialized] do
+    socket = if new_state and not Map.get(socket.assigns, :audio_engine_initialized, false) do
       initialize_audio_engine(socket)
     else
       socket
@@ -68,6 +68,7 @@ defmodule FrestylWeb.BroadcastLive.AudioMixerComponent do
 
     {:noreply, assign(socket, mixer_open: new_state)}
   end
+
 
   @impl true
   def handle_event("switch_mixer_mode", %{"mode" => mode}, socket) do
