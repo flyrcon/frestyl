@@ -22,6 +22,12 @@ import {
   TakeWaveform 
 } from "./hooks/audio_workspace_hooks"
 import ToolDragDrop from "./hooks/tool_drag_drop"
+import VideoCapture from "./hooks/video_capture"
+import Sortable from "./hooks/sortable"
+import FileUpload from "./hooks/file_upload"
+import MediaSortable from "./hooks/media_sortable"
+import SectionSortable from "./hooks/section_sortable"
+import Sortable from 'sortablejs'
 
 import { AudioTextHooks } from "./audio_text_hooks"
 
@@ -77,6 +83,8 @@ function initializeRTC(userToken, userId) {
   }
   return window.rtcClient;
 }
+
+window.Sortable = Sortable;
 
 // Enhanced fullscreen with audio context resume
 window.addEventListener('phx:toggle_fullscreen', async (e) => {
@@ -227,6 +235,8 @@ if (typeof window.ReactDOM === 'undefined') {
   });
 }
 
+
+
 // Enhanced hooks collection
 let Hooks = {
   // Existing hooks
@@ -263,8 +273,14 @@ let Hooks = {
   BeatMachine,
   MobileLiveWaveform,
   TakeWaveform,
-    
+
+  // Portfolio features 
+  Sortable: Sortable,
+  VideoCapture: VideoCapture,
+  FileUpload: FileUpload,
+  MediaSortable: MediaSortable,
   ToolDragDrop: ToolDragDrop,
+  SectionSortable: SectionSortable,
   
   // Mobile audio hook
   MobileAudioHook,
@@ -1204,6 +1220,223 @@ window.addEventListener('click', () => {
   }
 }, { once: true });
 
+// Portfolio video capture
+window.Hooks = window.Hooks || {};
+
+window.Hooks.VideoCapture = {
+  mounted() {
+    this.mediaRecorder = null;
+    this.recordedChunks = [];
+    this.stream = null;
+    this.recordedBlob = null;
+
+    this.initializeCamera();
+    this.setupEventListeners();
+  },
+
+  destroyed() {
+    this.cleanup();
+  },
+
+  async initializeCamera() {
+    try {
+      const constraints = {
+        video: {
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          aspectRatio: { ideal: 16/9 },
+          facingMode: 'user',
+          frameRate: { ideal: 30 }
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100
+        }
+      };
+
+      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const videoElement = document.getElementById('camera-preview');
+      if (videoElement) {
+        videoElement.srcObject = this.stream;
+      }
+
+      // Notify LiveView that camera is ready
+      this.pushEvent('camera_ready', {});
+
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      let message = 'Camera access failed';
+      
+      if (error.name === 'NotAllowedError') {
+        message = 'Camera permission denied. Please allow camera access and refresh.';
+      } else if (error.name === 'NotFoundError') {
+        message = 'No camera found. Please connect a camera and try again.';
+      } else if (error.name === 'NotReadableError') {
+        message = 'Camera is already in use by another application.';
+      }
+
+      this.pushEvent('camera_error', { 
+        error: error.name, 
+        message: message 
+      });
+    }
+  },
+
+  setupEventListeners() {
+    // Handle events from LiveView
+    this.handleEvent('start_countdown', () => {
+      console.log('Countdown started');
+    });
+
+    this.handleEvent('start_recording', () => {
+      this.startRecording();
+    });
+
+    this.handleEvent('stop_recording', () => {
+      this.stopRecording();
+    });
+
+    this.handleEvent('retake_video', () => {
+      this.resetForRetake();
+    });
+
+    this.handleEvent('upload_video', () => {
+      this.uploadVideo();
+    });
+  },
+
+  startRecording() {
+    if (!this.stream) {
+      console.error('No stream available for recording');
+      return;
+    }
+
+    this.recordedChunks = [];
+    
+    const options = {
+      mimeType: 'video/webm;codecs=vp8,opus',
+      videoBitsPerSecond: 2500000, // 2.5 Mbps for good quality
+      audioBitsPerSecond: 128000   // 128 kbps for audio
+    };
+
+    try {
+      this.mediaRecorder = new MediaRecorder(this.stream, options);
+      
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.recordedChunks.push(event.data);
+        }
+      };
+
+      this.mediaRecorder.onstop = () => {
+        this.recordedBlob = new Blob(this.recordedChunks, { type: 'video/webm' });
+        this.showPreview();
+      };
+
+      this.mediaRecorder.start(1000); // Collect data every second
+      console.log('Recording started');
+
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      this.pushEvent('camera_error', { 
+        error: 'RecordingError', 
+        message: 'Failed to start recording. Please try again.' 
+      });
+    }
+  },
+
+  stopRecording() {
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+      console.log('Recording stopped');
+    }
+  },
+
+  showPreview() {
+    const previewElement = document.getElementById('playback-video');
+    const loadingElement = document.getElementById('video-loading');
+    
+    if (previewElement && this.recordedBlob) {
+      const url = URL.createObjectURL(this.recordedBlob);
+      previewElement.src = url;
+      
+      previewElement.onloadeddata = () => {
+        if (loadingElement) {
+          loadingElement.style.display = 'none';
+        }
+      };
+    }
+  },
+
+  resetForRetake() {
+    // Clean up previous recording
+    if (this.recordedBlob) {
+      URL.revokeObjectURL(this.recordedBlob);
+      this.recordedBlob = null;
+    }
+    
+    this.recordedChunks = [];
+    
+    // Reset video elements
+    const previewElement = document.getElementById('playback-video');
+    const loadingElement = document.getElementById('video-loading');
+    
+    if (previewElement) {
+      previewElement.src = '';
+    }
+    
+    if (loadingElement) {
+      loadingElement.style.display = 'flex';
+    }
+  },
+
+  async uploadVideo() {
+    if (!this.recordedBlob) {
+      console.error('No recorded video to upload');
+      return;
+    }
+
+    try {
+      // Convert blob to base64 for sending to LiveView
+      const arrayBuffer = await this.recordedBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const binaryString = uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '');
+      const base64String = btoa(binaryString);
+
+      // Send to LiveView
+      this.pushEvent('video_blob_ready', {
+        blob_data: base64String,
+        mime_type: this.recordedBlob.type,
+        file_size: this.recordedBlob.size
+      });
+
+    } catch (error) {
+      console.error('Upload failed:', error);
+      this.pushEvent('camera_error', { 
+        error: 'UploadError', 
+        message: 'Failed to upload video. Please try again.' 
+      });
+    }
+  },
+
+  cleanup() {
+    if (this.stream) {
+      this.stream.getTracks().forEach(track => track.stop());
+      this.stream = null;
+    }
+    
+    if (this.recordedBlob) {
+      URL.revokeObjectURL(this.recordedBlob);
+      this.recordedBlob = null;
+    }
+    
+    this.recordedChunks = [];
+  }
+};
+
+
 // assets/js/app.js
 
 // Import Phoenix and LiveView
@@ -1409,6 +1642,254 @@ let Hooks = {
       }
     }
   },
+
+  // ENHANCED HOOKS DEFINITION
+const Hooks = {
+  // Section Sortable Hook - for drag-and-drop section reordering
+  SectionSortable: {
+    mounted() {
+      console.log('SectionSortable hook mounted', this.el);
+      this.initializeSortable();
+    },
+
+    updated() {
+      console.log('SectionSortable hook updated');
+      this.destroySortable();
+      this.initializeSortable();
+    },
+
+    destroyed() {
+      console.log('SectionSortable hook destroyed');
+      this.destroySortable();
+    },
+
+    initializeSortable() {
+      if (typeof Sortable === 'undefined') {
+        console.error('Sortable library not found. Please install SortableJS.');
+        return;
+      }
+
+      this.destroySortable();
+
+      this.sortable = new Sortable(this.el, {
+        animation: 200,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        dragClass: 'sortable-drag',
+        handle: '.drag-handle',
+        forceFallback: true,
+        
+        onStart: (evt) => {
+          console.log('Drag started');
+          evt.item.classList.add('dragging');
+          document.body.classList.add('sections-reordering');
+        },
+
+        onEnd: (evt) => {
+          console.log('Drag ended');
+          evt.item.classList.remove('dragging');
+          document.body.classList.remove('sections-reordering');
+          
+          const sectionIds = Array.from(this.el.children)
+            .map(child => child.getAttribute('data-section-id'))
+            .filter(Boolean);
+
+          console.log('New section order:', sectionIds);
+          this.pushEvent('reorder_sections', { sections: sectionIds });
+        }
+      });
+
+      console.log('SectionSortable initialized successfully');
+    },
+
+    destroySortable() {
+      if (this.sortable) {
+        this.sortable.destroy();
+        this.sortable = null;
+      }
+    }
+  },
+
+  // Media Sortable Hook - for drag-and-drop media reordering
+  MediaSortable: {
+    mounted() {
+      console.log('MediaSortable hook mounted', this.el);
+      this.initializeSortable();
+    },
+
+    updated() {
+      this.destroySortable();
+      this.initializeSortable();
+    },
+
+    destroyed() {
+      this.destroySortable();
+    },
+
+    initializeSortable() {
+      if (typeof Sortable === 'undefined') return;
+
+      this.destroySortable();
+
+      this.sortable = new Sortable(this.el, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        dragClass: 'sortable-drag',
+        
+        onEnd: (evt) => {
+          const sectionId = this.el.getAttribute('data-section-id');
+          const mediaIds = Array.from(this.el.children)
+            .map(child => child.getAttribute('data-media-id'))
+            .filter(Boolean);
+
+          console.log('Media reordered:', mediaIds);
+          this.pushEvent('reorder_media', { 
+            section_id: sectionId, 
+            media_order: mediaIds 
+          });
+        }
+      });
+    },
+
+    destroySortable() {
+      if (this.sortable) {
+        this.sortable.destroy();
+        this.sortable = null;
+      }
+    }
+  },
+
+  // File Upload Hook - for enhanced file upload handling
+  FileUpload: {
+    mounted() {
+      console.log('FileUpload hook mounted');
+      this.el.addEventListener('change', this.handleFileSelect.bind(this));
+    },
+
+    handleFileSelect(event) {
+      const files = Array.from(event.target.files);
+      console.log('Files selected:', files.length);
+      
+      const maxSize = 50 * 1024 * 1024; // 50MB
+      const validFiles = files.filter(file => file.size <= maxSize);
+      
+      if (validFiles.length !== files.length) {
+        alert(`Some files were too large. Maximum size is 50MB.`);
+      }
+    }
+  },
+
+  // File Upload Zone Hook - for drag-and-drop file uploads
+  FileUploadZone: {
+    mounted() {
+      console.log('FileUploadZone hook mounted');
+      
+      this.el.addEventListener('dragover', this.handleDragOver.bind(this));
+      this.el.addEventListener('dragleave', this.handleDragLeave.bind(this));
+      this.el.addEventListener('drop', this.handleDrop.bind(this));
+    },
+
+    handleDragOver(event) {
+      event.preventDefault();
+      this.el.classList.add('drag-over');
+    },
+
+    handleDragLeave(event) {
+      event.preventDefault();
+      this.el.classList.remove('drag-over');
+    },
+
+    handleDrop(event) {
+      event.preventDefault();
+      this.el.classList.remove('drag-over');
+      
+      const files = Array.from(event.dataTransfer.files);
+      console.log('Files dropped:', files.length);
+      
+      const fileInput = this.el.querySelector('input[type="file"]');
+      if (fileInput) {
+        fileInput.files = event.dataTransfer.files;
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+  },
+
+  // Auto Focus Hook - for modal inputs
+  AutoFocus: {
+    mounted() {
+      setTimeout(() => {
+        this.el.focus();
+      }, 100);
+    }
+  },
+
+  // Copy to Clipboard Hook
+  CopyToClipboard: {
+    mounted() {
+      this.handleEvent('copy_to_clipboard', (payload) => {
+        navigator.clipboard.writeText(payload.text).then(() => {
+          console.log('Text copied to clipboard');
+        }).catch(err => {
+          console.error('Failed to copy text: ', err);
+        });
+      });
+    }
+  },
+
+  // Video Capture Hook - for video intro recording
+  VideoCapture: {
+    mounted() {
+      console.log('VideoCapture hook mounted');
+      this.componentId = this.el.getAttribute('data-component-id');
+      this.stream = null;
+      this.mediaRecorder = null;
+      this.recordedChunks = [];
+      
+      this.initializeCamera();
+    },
+
+    destroyed() {
+      this.cleanup();
+    },
+
+    async initializeCamera() {
+      try {
+        const preview = document.getElementById('camera-preview');
+        if (!preview) return;
+
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 }
+          },
+          audio: true
+        });
+
+        preview.srcObject = this.stream;
+        this.pushEventTo(`#video-capture-${this.componentId}`, 'camera_ready', {});
+        
+      } catch (error) {
+        console.error('Camera access failed:', error);
+        this.pushEventTo(`#video-capture-${this.componentId}`, 'camera_error', {
+          error: error.name,
+          message: error.message
+        });
+      }
+    },
+
+    cleanup() {
+      if (this.stream) {
+        this.stream.getTracks().forEach(track => track.stop());
+      }
+      if (this.mediaRecorder) {
+        this.mediaRecorder = null;
+      }
+    }
+  }
+},
+
   
   // Effects Parameter Control hook for real-time sliders
   EffectParameterControl: {

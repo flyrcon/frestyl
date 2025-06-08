@@ -10,7 +10,7 @@
     <.live_title default="Frestyl" suffix=" · Phoenix Framework">
       <%= assigns[:page_title] %>
     </.live_title>
-
+    
     <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
 
@@ -31,5 +31,55 @@
 
   <body class="bg-white antialiased">
     <%= @inner_content %>
+
+        <script>
+      // Dropdown functionality for portfolio cards and modals
+      window.toggleDropdown = function(event) {
+        event.stopPropagation();
+        const menu = event.target.closest('[data-dropdown]').querySelector('[data-dropdown-menu]');
+        
+        // Close other dropdowns
+        document.querySelectorAll('[data-dropdown-menu]').forEach(otherMenu => {
+          if (otherMenu !== menu) {
+            otherMenu.classList.add('hidden');
+          }
+        });
+        
+        // Toggle this dropdown
+        menu.classList.toggle('hidden');
+      }
+
+      window.closeDropdown = function() {
+        document.querySelectorAll('[data-dropdown-menu]').forEach(menu => {
+          menu.classList.add('hidden');
+        });
+      }
+
+      // Close dropdown when clicking outside
+      document.addEventListener('click', window.closeDropdown);
+      
+      // Portfolio modal enhancements
+      window.initializePortfolioModal = function() {
+        // Auto-scroll template selection on mobile
+        const templateContainer = document.querySelector('.template-scroll-container');
+        if (templateContainer) {
+          let isScrolling = false;
+          templateContainer.addEventListener('scroll', function() {
+            if (!isScrolling) {
+              window.requestAnimationFrame(function() {
+                // Add scroll shadows or indicators if needed
+                isScrolling = false;
+              });
+              isScrolling = true;
+            }
+          });
+        }
+      }
+
+      // Initialize when DOM is loaded
+      document.addEventListener('DOMContentLoaded', function() {
+        console.log('Portfolio scripts initialized');
+      });
+    </script>
   </body>
 </html>

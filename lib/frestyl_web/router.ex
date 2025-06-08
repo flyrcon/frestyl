@@ -124,9 +124,8 @@ defmodule FrestylWeb.Router do
   scope "/", FrestylWeb do
     pipe_through [:browser]
 
-    live "/p/:slug", PortfolioLive.View, :view
-    live "/portfolios/:slug", PortfolioLive.View, :view
-    live "/portfolios/share/:token", PortfolioLive.View, :shared
+    get "/p/:slug", PortfolioController, :show  # This should work now
+    get "/p/:slug/export", PortfolioController, :export
   end
 
   # Authenticated routes
@@ -208,7 +207,7 @@ defmodule FrestylWeb.Router do
 
       # Portfolio routes - Clean module names
       live "/portfolios", PortfolioLive.Index, :index
-      live "/p/:slug", PortfolioLive.View, :show
+      live "/portfolios/new", PortfolioLive.New, :new
       live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
       live "/portfolios/:id/share", PortfolioLive.Share, :share
       live "/portfolios/:id/analytics", PortfolioLive.Analytics, :analytics

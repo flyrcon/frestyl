@@ -5,6 +5,7 @@
   "packages": {},
   "dependencies": {
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "sortablejs": "^1.15.0"
   }
 }

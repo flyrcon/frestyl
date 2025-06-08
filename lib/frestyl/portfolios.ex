@@ -9,7 +9,7 @@ defmodule Frestyl.Portfolios do
   alias Frestyl.Portfolios.{Portfolio, PortfolioSection, PortfolioMedia,
                           PortfolioShare, PortfolioVisit}
   alias Frestyl.Accounts.User
-  alias Frestyl.Portfolios.PortfolioFeedback
+  alias Frestyl.Portfolios.{Portfolio, PortfolioFeedback, PortfolioVisit}
   alias Frestyl.Notifications
 
   # Portfolio CRUD operations
@@ -36,10 +36,7 @@ defmodule Frestyl.Portfolios do
   end
 
   def get_portfolio_by_slug(slug) do
-    case Repo.get_by(Portfolio, slug: slug) do
-      nil -> {:error, :not_found}
-      portfolio -> {:ok, portfolio}
-    end
+    Repo.get_by(Portfolio, slug: slug)
   end
 
   def get_portfolio_for_share!(share_token) do
@@ -139,6 +136,10 @@ defmodule Frestyl.Portfolios do
     Repo.get_by(PortfolioShare, token: token)
   end
 
+  def change_share(%PortfolioShare{} = share, attrs \\ %{}) do
+    PortfolioShare.changeset(share, attrs)
+  end
+
   def create_share(attrs \\ %{}) do
     %PortfolioShare{}
     |> PortfolioShare.changeset(attrs)
@@ -185,6 +186,36 @@ defmodule Frestyl.Portfolios do
     |> Repo.all()
   end
 
+  defp get_feedback_stats(portfolio_id) do
+    try do
+      # Only try to get feedback stats if the table exists
+      query = from f in PortfolioFeedback,
+        where: f.portfolio_id == ^portfolio_id,
+        group_by: f.status,
+        select: {f.status, count(f.id)}
+
+      stats = Repo.all(query) |> Enum.into(%{})
+
+      %{
+        total: Map.values(stats) |> Enum.sum(),
+        pending: Map.get(stats, :pending, 0),
+        reviewed: Map.get(stats, :reviewed, 0),
+        implemented: Map.get(stats, :implemented, 0),
+        dismissed: Map.get(stats, :dismissed, 0)
+      }
+    rescue
+      _ ->
+        # Return safe defaults if PortfolioFeedback doesn't exist yet
+        %{
+          total: 0,
+          pending: 0,
+          reviewed: 0,
+          implemented: 0,
+          dismissed: 0
+        }
+    end
+  end
+
   # Resume parsing functions
 
   @doc """
@@ -223,71 +254,301 @@ defmodule Frestyl.Portfolios do
 
   # Portfolio setup helpers
 
-  def create_default_portfolio(user_id) do
-    with {:ok, portfolio} <- create_portfolio(user_id, %{title: "My Professional Portfolio"}) do
-      # Create default sections
-      create_section(%{
-        portfolio_id: portfolio.id,
-        title: "Introduction",
-        section_type: :intro,
-        position: 1,
-        content: %{
-          headline: "Hello, I'm [Your Name]",
-          summary: "A brief introduction about yourself and your professional journey."
-        }
-      })
-
-      create_section(%{
-        portfolio_id: portfolio.id,
-        title: "Experience",
-        section_type: :experience,
-        position: 2,
-        content: %{
-          jobs: []
-        }
-      })
-
-      create_section(%{
-        portfolio_id: portfolio.id,
-        title: "Education",
-        section_type: :education,
-        position: 3,
-        content: %{
-          education: []
-        }
-      })
-
-      create_section(%{
-        portfolio_id: portfolio.id,
-        title: "Skills",
-        section_type: :skills,
-        position: 4,
-        content: %{
-          skills: []
-        }
-      })
-
-      create_section(%{
-        portfolio_id: portfolio.id,
-        title: "Contact Information",
-        section_type: :contact,
-        position: 5,
-        content: %{
-          email: "",
-          phone: "",
-          location: ""
-        }
-      })
-
-      {:ok, portfolio}
+  def create_default_portfolio(user_id, attrs \\ %{}) do
+    # Generate a unique slug if not provided
+    title = Map.get(attrs, :title, "My Professional Portfolio")
+    slug = case Map.get(attrs, :slug) do
+      nil -> generate_unique_slug(title)
+      existing_slug -> existing_slug
     end
+
+    # Get template configuration
+    theme = Map.get(attrs, :theme, "executive")
+    template_config = Frestyl.Portfolios.PortfolioTemplates.get_template_config(theme)
+
+    # Prepare portfolio attributes with defaults
+    portfolio_attrs = %{
+      title: title,
+      slug: slug,
+      description: Map.get(attrs, :description, "Welcome to my professional portfolio"),
+      theme: theme,
+      customization: Map.get(attrs, :customization, template_config),
+      visibility: Map.get(attrs, :visibility, :link_only),
+      user_id: user_id
+    }
+
+    case create_portfolio(user_id, portfolio_attrs) do
+      {:ok, portfolio} ->
+        # Create default sections based on template
+        create_default_sections(portfolio, theme)
+        {:ok, portfolio}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  # Create default sections based on template type
+  defp create_default_sections(portfolio, template) do
+    sections = case template do
+      "executive" -> [
+        %{
+          title: "Executive Summary",
+          section_type: :intro,
+          position: 1,
+          content: %{
+            "headline" => "Professional Executive",
+            "summary" => "Results-driven leader with proven track record of success.",
+            "location" => "Your City, State"
+          }
+        },
+        %{
+          title: "Professional Experience",
+          section_type: :experience,
+          position: 2,
+          content: %{"jobs" => []}
+        },
+        %{
+          title: "Key Achievements",
+          section_type: :achievements,
+          position: 3,
+          content: %{"achievements" => []}
+        },
+        %{
+          title: "Education",
+          section_type: :education,
+          position: 4,
+          content: %{"education" => []}
+        },
+        %{
+          title: "Contact Information",
+          section_type: :contact,
+          position: 5,
+          content: %{"email" => "", "phone" => "", "location" => ""}
+        }
+      ]
+
+      "developer" -> [
+        %{
+          title: "About Me",
+          section_type: :intro,
+          position: 1,
+          content: %{
+            "headline" => "Software Developer",
+            "summary" => "Passionate developer creating innovative solutions.",
+            "location" => "Your City, State"
+          }
+        },
+        %{
+          title: "Featured Projects",
+          section_type: :projects,
+          position: 2,
+          content: %{"projects" => []}
+        },
+        %{
+          title: "Technical Skills",
+          section_type: :skills,
+          position: 3,
+          content: %{"skills" => []}
+        },
+        %{
+          title: "Experience",
+          section_type: :experience,
+          position: 4,
+          content: %{"jobs" => []}
+        },
+        %{
+          title: "Contact",
+          section_type: :contact,
+          position: 5,
+          content: %{"email" => "", "phone" => "", "location" => ""}
+        }
+      ]
+
+      "designer" -> [
+        %{
+          title: "Creative Introduction",
+          section_type: :intro,
+          position: 1,
+          content: %{
+            "headline" => "Creative Designer",
+            "summary" => "Bringing ideas to life through thoughtful design.",
+            "location" => "Your City, State"
+          }
+        },
+        %{
+          title: "Featured Work",
+          section_type: :media_showcase,
+          position: 2,
+          content: %{
+            "title" => "Portfolio Gallery",
+            "description" => "A showcase of my best creative work"
+          }
+        },
+        %{
+          title: "Case Studies",
+          section_type: :case_study,
+          position: 3,
+          content: %{
+            "client" => "",
+            "project_title" => "",
+            "overview" => ""
+          }
+        },
+        %{
+          title: "Skills & Tools",
+          section_type: :skills,
+          position: 4,
+          content: %{"skills" => []}
+        },
+        %{
+          title: "Let's Connect",
+          section_type: :contact,
+          position: 5,
+          content: %{"email" => "", "phone" => "", "location" => ""}
+        }
+      ]
+
+      "consultant" -> [
+        %{
+          title: "Professional Overview",
+          section_type: :intro,
+          position: 1,
+          content: %{
+            "headline" => "Business Consultant",
+            "summary" => "Driving business growth through strategic insights.",
+            "location" => "Your City, State"
+          }
+        },
+        %{
+          title: "Client Results",
+          section_type: :achievements,
+          position: 2,
+          content: %{"achievements" => []}
+        },
+        %{
+          title: "Case Studies",
+          section_type: :case_study,
+          position: 3,
+          content: %{
+            "client" => "",
+            "project_title" => "",
+            "overview" => ""
+          }
+        },
+        %{
+          title: "Expertise Areas",
+          section_type: :skills,
+          position: 4,
+          content: %{"skills" => []}
+        },
+        %{
+          title: "Client Testimonials",
+          section_type: :testimonial,
+          position: 5,
+          content: %{"testimonials" => []}
+        },
+        %{
+          title: "Contact",
+          section_type: :contact,
+          position: 6,
+          content: %{"email" => "", "phone" => "", "location" => ""}
+        }
+      ]
+
+      "academic" -> [
+        %{
+          title: "Academic Profile",
+          section_type: :intro,
+          position: 1,
+          content: %{
+            "headline" => "Academic Researcher",
+            "summary" => "Advancing knowledge through research and teaching.",
+            "location" => "University, City"
+          }
+        },
+        %{
+          title: "Research Highlights",
+          section_type: :projects,
+          position: 2,
+          content: %{"projects" => []}
+        },
+        %{
+          title: "Publications",
+          section_type: :achievements,
+          position: 3,
+          content: %{"achievements" => []}
+        },
+        %{
+          title: "Education",
+          section_type: :education,
+          position: 4,
+          content: %{"education" => []}
+        },
+        %{
+          title: "Teaching Experience",
+          section_type: :experience,
+          position: 5,
+          content: %{"jobs" => []}
+        },
+        %{
+          title: "Contact Information",
+          section_type: :contact,
+          position: 6,
+          content: %{"email" => "", "phone" => "", "location" => ""}
+        }
+      ]
+
+      _ ->
+        # Default sections for any template
+        [
+          %{
+            title: "Introduction",
+            section_type: :intro,
+            position: 1,
+            content: %{
+              "headline" => "Welcome to My Portfolio",
+              "summary" => "Brief introduction about yourself and your professional journey.",
+              "location" => "Your City, State"
+            }
+          },
+          %{
+            title: "Experience",
+            section_type: :experience,
+            position: 2,
+            content: %{"jobs" => []}
+          },
+          %{
+            title: "Skills",
+            section_type: :skills,
+            position: 3,
+            content: %{"skills" => []}
+          },
+          %{
+            title: "Contact",
+            section_type: :contact,
+            position: 4,
+            content: %{"email" => "", "phone" => "", "location" => ""}
+          }
+        ]
+    end
+
+    # Create all sections
+    Enum.each(sections, fn section_attrs ->
+      section_attrs = Map.put(section_attrs, :portfolio_id, portfolio.id)
+      case create_section(section_attrs) do
+        {:ok, _section} -> :ok
+        {:error, error} ->
+          IO.puts("Warning: Failed to create section #{section_attrs.title}: #{inspect(error)}")
+      end
+    end)
   end
 
   # Subscription tier checks
 
   def can_create_portfolio?(%User{} = user) do
     # Logic to check if user can create (more) portfolios based on their subscription
-    # For free tier, limit to 1 portfolio
+    # For free tier, limit to 2 portfolios (updated from 1)
     case user.subscription_tier do
       "free" ->
         portfolio_count =
@@ -295,7 +556,7 @@ defmodule Frestyl.Portfolios do
           |> where([p], p.user_id == ^user.id)
           |> Repo.aggregate(:count, :id)
 
-        portfolio_count < 1
+        portfolio_count < 2  # Updated limit
 
       _ -> true
     end
@@ -305,28 +566,37 @@ defmodule Frestyl.Portfolios do
     # Return portfolio feature limits based on user's subscription tier
     case user.subscription_tier do
       "free" -> %{
-        max_portfolios: 1,
+        max_portfolios: 2,  # Updated from 1
         custom_domain: false,
         advanced_analytics: false,
         custom_themes: false,
         max_media_size_mb: 50,
-        ats_optimization: false
+        ats_optimization: false,
+        collaboration_features: true,  # New feature
+        stats_visibility: true,        # New feature
+        video_recording: true          # New feature
       }
       "basic" -> %{
-        max_portfolios: 3,
+        max_portfolios: 5,  # Increased
         custom_domain: false,
         advanced_analytics: true,
         custom_themes: true,
         max_media_size_mb: 200,
-        ats_optimization: false
+        ats_optimization: false,
+        collaboration_features: true,
+        stats_visibility: true,
+        video_recording: true
       }
       "premium" -> %{
-        max_portfolios: 10,
+        max_portfolios: 15,  # Increased
         custom_domain: true,
         advanced_analytics: true,
         custom_themes: true,
         max_media_size_mb: 500,
-        ats_optimization: true
+        ats_optimization: true,
+        collaboration_features: true,
+        stats_visibility: true,
+        video_recording: true
       }
       "pro" -> %{
         max_portfolios: -1, # unlimited
@@ -334,20 +604,516 @@ defmodule Frestyl.Portfolios do
         advanced_analytics: true,
         custom_themes: true,
         max_media_size_mb: 1000,
-        ats_optimization: true
+        ats_optimization: true,
+        collaboration_features: true,
+        stats_visibility: true,
+        video_recording: true
       }
       _ -> %{
-        max_portfolios: 1,
+        max_portfolios: 2,
         custom_domain: false,
         advanced_analytics: false,
         custom_themes: false,
         max_media_size_mb: 50,
-        ats_optimization: false
+        ats_optimization: false,
+        collaboration_features: true,
+        stats_visibility: true,
+        video_recording: true
       }
     end
   end
 
-    def get_portfolio_by_slug_with_sections(slug) do
+  @doc """
+  Gets the number of visits for a portfolio in the last 7 days.
+  """
+  def get_weekly_visits(portfolio_id) do
+    seven_days_ago = DateTime.utc_now() |> DateTime.add(-7 * 24 * 60 * 60, :second)
+
+    from(v in PortfolioVisit,
+      where: v.portfolio_id == ^portfolio_id,
+      where: v.inserted_at >= ^seven_days_ago,
+      select: count(v.id)
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets the number of visits for a portfolio today.
+  """
+  def get_daily_visits(portfolio_id) do
+    today = Date.utc_today()
+    start_of_day = DateTime.new!(today, ~T[00:00:00], "Etc/UTC")
+    end_of_day = DateTime.new!(today, ~T[23:59:59], "Etc/UTC")
+
+    from(v in PortfolioVisit,
+      where: v.portfolio_id == ^portfolio_id,
+      where: v.inserted_at >= ^start_of_day,
+      where: v.inserted_at <= ^end_of_day,
+      select: count(v.id)
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets visit statistics for a portfolio.
+  """
+  def get_portfolio_stats(portfolio_id) do
+    %{
+      total_visits: get_total_visits(portfolio_id),
+      weekly_visits: get_weekly_visits(portfolio_id),
+      daily_visits: get_daily_visits(portfolio_id),
+      unique_visits: get_unique_visits(portfolio_id)
+    }
+  end
+
+  @doc """
+  Gets recent visits for a portfolio with pagination.
+  """
+  def get_recent_visits(portfolio_id, limit \\ 10) do
+    from(v in PortfolioVisit,
+      where: v.portfolio_id == ^portfolio_id,
+      order_by: [desc: v.inserted_at],
+      limit: ^limit
+    )
+    |> Repo.all()
+  end
+
+  # Additional helper functions that might be missing
+
+  @doc """
+  Gets portfolio by slug for public viewing (simpler version)
+  """
+  def get_portfolio_by_slug_public(slug) do
+    query = from p in Portfolio,
+      where: p.slug == ^slug and p.visibility != :private,
+      preload: [:user, portfolio_sections: []]
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      portfolio -> {:ok, portfolio}
+    end
+  end
+
+  @doc """
+  Lists portfolio sections ordered by position
+  """
+  def list_portfolio_sections_ordered(portfolio_id) do
+    from(s in PortfolioSection,
+      where: s.portfolio_id == ^portfolio_id and s.visible == true,
+      order_by: [asc: s.position, asc: s.id]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets portfolio metadata for sharing
+  """
+  def get_portfolio_metadata(portfolio_id) do
+    from(p in Portfolio,
+      where: p.id == ^portfolio_id,
+      select: %{
+        id: p.id,
+        title: p.title,
+        description: p.description,
+        slug: p.slug,
+        visibility: p.visibility,
+        updated_at: p.updated_at
+      }
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Checks if portfolio is publicly accessible
+  """
+  def portfolio_public?(portfolio) do
+    portfolio.visibility in [:public, :link_only]
+  end
+
+  @doc """
+  Gets portfolio owner information
+  """
+  def get_portfolio_owner(portfolio_id) do
+    from(p in Portfolio,
+      join: u in User, on: u.id == p.user_id,
+      where: p.id == ^portfolio_id,
+      select: %{
+        id: u.id,
+        name: u.name,
+        username: u.username,
+        email: u.email
+      }
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Updates portfolio visibility
+  """
+  def update_portfolio_visibility(portfolio, visibility) do
+    portfolio
+    |> Portfolio.changeset(%{visibility: visibility})
+    |> Repo.update()
+  end
+
+  @doc """
+  Gets portfolio sharing statistics
+  """
+  def get_portfolio_share_stats(portfolio_id) do
+    total_shares = from(s in PortfolioShare,
+      where: s.portfolio_id == ^portfolio_id)
+      |> Repo.aggregate(:count, :id)
+
+    active_shares = from(s in PortfolioShare,
+      where: s.portfolio_id == ^portfolio_id and
+            (is_nil(s.expires_at) or s.expires_at > ^DateTime.utc_now()))
+      |> Repo.aggregate(:count, :id)
+
+    total_share_views = from(s in PortfolioShare,
+      where: s.portfolio_id == ^portfolio_id)
+      |> Repo.aggregate(:sum, :view_count)
+
+    %{
+      total_shares: total_shares,
+      active_shares: active_shares,
+      total_share_views: total_share_views || 0
+    }
+  end
+
+  @doc """
+  Validates portfolio slug availability
+  """
+  def slug_available?(slug, portfolio_id \\ nil) do
+    query = from(p in Portfolio, where: p.slug == ^slug)
+
+    query = if portfolio_id do
+      from(p in query, where: p.id != ^portfolio_id)
+    else
+      query
+    end
+
+    !Repo.exists?(query)
+  end
+
+  @doc """
+  Generates a unique slug for a portfolio
+  """
+  def generate_unique_slug(title, portfolio_id \\ nil) do
+    base_slug = title
+      |> String.downcase()
+      |> String.replace(~r/[^\w\s-]/, "")
+      |> String.replace(~r/\s+/, "-")
+      |> String.slice(0, 50)
+
+    if slug_available?(base_slug, portfolio_id) do
+      base_slug
+    else
+      # Append a number to make it unique
+      1..100
+      |> Enum.find_value(fn i ->
+        candidate = "#{base_slug}-#{i}"
+        if slug_available?(candidate, portfolio_id), do: candidate
+      end) || "#{base_slug}-#{System.unique_integer([:positive])}"
+    end
+  end
+
+  @doc """
+  Archives a portfolio (soft delete)
+  """
+  def archive_portfolio(portfolio) do
+    portfolio
+    |> Portfolio.changeset(%{
+      archived: true,
+      archived_at: DateTime.utc_now()
+    })
+    |> Repo.update()
+  end
+
+  @doc """
+  Restores an archived portfolio
+  """
+  def restore_portfolio(portfolio) do
+    portfolio
+    |> Portfolio.changeset(%{
+      archived: false,
+      archived_at: nil
+    })
+    |> Repo.update()
+  end
+
+  @doc """
+  Lists user's portfolios with filtering options
+  """
+  def list_user_portfolios_filtered(user_id, opts \\ []) do
+    query = from p in Portfolio,
+      where: p.user_id == ^user_id
+
+    query = case Keyword.get(opts, :archived, false) do
+      true -> from p in query, where: p.archived == true
+      false -> from p in query, where: is_nil(p.archived) or p.archived == false
+      :all -> query
+    end
+
+    query = case Keyword.get(opts, :visibility) do
+      nil -> query
+      visibility -> from p in query, where: p.visibility == ^visibility
+    end
+
+    order_by = Keyword.get(opts, :order_by, [desc: :updated_at])
+
+    query
+    |> order_by(^order_by)
+    |> Repo.all()
+  end
+
+    @doc """
+  Gets the total number of visits for a portfolio.
+
+  ## Examples
+
+      iex> get_total_visits(portfolio_id)
+      42
+
+  """
+  def get_total_visits(portfolio_id) do
+    from(v in PortfolioVisit,
+      where: v.portfolio_id == ^portfolio_id,
+      select: count(v.id)
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets the total number of unique visits for a portfolio (by IP address).
+
+  ## Examples
+
+      iex> get_unique_visits(portfolio_id)
+      25
+
+  """
+  def get_unique_visits(portfolio_id) do
+    from(v in PortfolioVisit,
+      where: v.portfolio_id == ^portfolio_id,
+      distinct: v.ip_address,
+      select: count(v.id)
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets visit statistics for a portfolio within a date range.
+
+  ## Examples
+
+      iex> get_visits_in_range(portfolio_id, ~D[2025-01-01], ~D[2025-01-31])
+      %{total: 42, unique: 25}
+
+  """
+  def get_visits_in_range(portfolio_id, start_date, end_date) do
+    start_datetime = DateTime.new!(start_date, ~T[00:00:00])
+    end_datetime = DateTime.new!(end_date, ~T[23:59:59])
+
+    base_query = from(v in PortfolioVisit,
+      where: v.portfolio_id == ^portfolio_id,
+      where: v.inserted_at >= ^start_datetime,
+      where: v.inserted_at <= ^end_datetime
+    )
+
+    total = from(v in base_query, select: count(v.id)) |> Repo.one()
+    unique = from(v in base_query, distinct: v.ip_address, select: count(v.id)) |> Repo.one()
+
+    %{total: total, unique: unique}
+  end
+
+  @doc """
+  Records a visit to a portfolio.
+
+  ## Examples
+
+      iex> create_portfolio_visit(%{portfolio_id: 1, ip_address: "127.0.0.1"})
+      {:ok, %PortfolioVisit{}}
+
+  """
+  def create_portfolio_visit(attrs \\ %{}) do
+    %PortfolioVisit{}
+    |> PortfolioVisit.changeset(attrs)
+    |> Repo.insert()
+  end
+
+    # Portfolio analytics functions
+  def get_portfolio_analytics(portfolio_id, user_id) do
+    # Verify ownership
+    portfolio = get_portfolio!(portfolio_id)
+    unless portfolio.user_id == user_id do
+      raise "Unauthorized access"
+    end
+
+    # Get various stats using your existing helper functions
+    total_visits = get_total_visits(portfolio_id)
+    weekly_visits = get_weekly_visits(portfolio_id)
+    share_stats = get_share_stats(portfolio_id)
+    feedback_stats = get_feedback_stats(portfolio_id) # Uses your existing function
+
+    %{
+      views: total_visits,
+      weekly_visits: weekly_visits,
+      shares: share_stats.total_shares,
+      active_shares: share_stats.active_shares,
+      feedback: feedback_stats.total,
+      last_updated: portfolio.updated_at,
+      created_at: portfolio.inserted_at
+    }
+  rescue
+    _ ->
+      # Return default stats if anything fails
+      %{
+        views: 0,
+        weekly_visits: 0,
+        shares: 0,
+        active_shares: 0,
+        feedback: 0,
+        last_updated: nil,
+        created_at: nil
+      }
+  end
+
+  def get_user_portfolio_overview(user_id) do
+    portfolios = list_user_portfolios(user_id)
+
+    total_visits = Enum.reduce(portfolios, 0, fn portfolio, acc ->
+      acc + get_total_visits(portfolio.id)
+    end)
+
+    total_shares = Enum.reduce(portfolios, 0, fn portfolio, acc ->
+      share_count = from(s in PortfolioShare, where: s.portfolio_id == ^portfolio.id)
+                   |> Repo.aggregate(:count, :id)
+      acc + share_count
+    end)
+
+    total_feedback = Enum.reduce(portfolios, 0, fn portfolio, acc ->
+      # Use your existing get_feedback_stats function
+      feedback_count = try do
+        feedback_stats = get_feedback_stats(portfolio.id)
+        feedback_stats.total
+      rescue
+        _ -> 0
+      end
+      acc + feedback_count
+    end)
+
+    %{
+      total_portfolios: length(portfolios),
+      total_visits: total_visits,
+      total_shares: total_shares,
+      total_feedback: total_feedback,
+      recent_activity: get_recent_activity(user_id)
+    }
+  rescue
+    _ ->
+      # Return safe defaults if anything fails
+      %{
+        total_portfolios: length(list_user_portfolios(user_id)),
+        total_visits: 0,
+        total_shares: 0,
+        total_feedback: 0,
+        recent_activity: %{recent_visits: [], recent_feedback: []}
+      }
+  end
+
+
+  defp get_share_stats(portfolio_id) do
+    try do
+      query = from s in PortfolioShare, where: s.portfolio_id == ^portfolio_id
+
+      total_shares = Repo.aggregate(query, :count, :id)
+      active_shares = query
+                     |> where([s], is_nil(s.expires_at) or s.expires_at > ^DateTime.utc_now())
+                     |> Repo.aggregate(:count, :id)
+
+      %{total_shares: total_shares, active_shares: active_shares}
+    rescue
+      _ -> %{total_shares: 0, active_shares: 0}
+    end
+  end
+
+  defp get_recent_activity(user_id) do
+    try do
+      # Get recent visits, feedback, shares for user's portfolios
+      portfolio_ids = from(p in Portfolio, where: p.user_id == ^user_id, select: p.id) |> Repo.all()
+
+      recent_visits = from(v in PortfolioVisit,
+                          where: v.portfolio_id in ^portfolio_ids,
+                          order_by: [desc: v.inserted_at],
+                          limit: 10,
+                          preload: [:portfolio])
+                     |> Repo.all()
+
+      recent_feedback = try do
+        from(f in PortfolioFeedback,
+            where: f.portfolio_id in ^portfolio_ids,
+            order_by: [desc: f.inserted_at],
+            limit: 5,
+            preload: [:portfolio, :reviewer])
+        |> Repo.all()
+      rescue
+        _ -> []
+      end
+
+      %{
+        recent_visits: recent_visits,
+        recent_feedback: recent_feedback
+      }
+    rescue
+      _ ->
+        %{
+          recent_visits: [],
+          recent_feedback: []
+        }
+    end
+  end
+
+  # Safe function to get portfolio by slug with sections
+  def get_portfolio_by_slug_with_sections_simple(slug) do
+    try do
+      case Repo.get_by(Portfolio, slug: slug)
+          |> Repo.preload([:user, :portfolio_sections]) do
+        nil ->
+          {:error, :not_found}
+        portfolio ->
+          normalized_portfolio = normalize_portfolio_for_template_simple(portfolio)
+          {:ok, normalized_portfolio}
+      end
+    rescue
+      _ -> {:error, :not_found}
+    end
+  end
+
+  # Simplified normalization without media files
+  def normalize_portfolio_for_template_simple(portfolio) do
+    # Convert theme to template_theme and ensure it's an atom
+    template_theme = case Map.get(portfolio, :theme, "executive") do
+      "creative" -> :creative
+      "corporate" -> :corporate
+      "minimalist" -> :minimalist
+      "executive" -> :executive
+      "developer" -> :developer
+      "designer" -> :designer
+      "consultant" -> :consultant
+      "academic" -> :academic
+      "default" -> :executive
+      _ -> :executive
+    end
+
+    # Convert portfolio_sections to sections and add template_theme
+    normalized = portfolio
+    |> Map.put(:template_theme, template_theme)
+    |> Map.put(:sections, Map.get(portfolio, :portfolio_sections, []))
+
+    normalized
+  end
+
+  def get_portfolio_by_slug_with_sections(slug) do
     query = from p in Portfolio,
       where: p.slug == ^slug,
       preload: [
@@ -424,37 +1190,6 @@ defmodule Frestyl.Portfolios do
       share ->
         portfolio = normalize_portfolio_for_template_simple(share.portfolio)
         {:ok, portfolio, share}
-    end
-  end
-
-  # Simplified normalization without media files
-  def normalize_portfolio_for_template_simple(portfolio) do
-    # Convert theme to template_theme and ensure it's an atom
-    template_theme = case Map.get(portfolio, :theme, "default") do
-      "creative" -> :creative
-      "corporate" -> :corporate
-      "minimalist" -> :minimalist
-      "default" -> :creative
-      _ -> :creative
-    end
-
-    # Convert portfolio_sections to sections and add template_theme
-    normalized = portfolio
-    |> Map.put(:template_theme, template_theme)
-    |> Map.put(:sections, Map.get(portfolio, :portfolio_sections, []))
-
-    normalized
-  end
-
-  # Also update your get_portfolio_by_slug_with_sections_simple/1 function:
-  def get_portfolio_by_slug_with_sections_simple(slug) do
-    case Repo.get_by(Portfolio, slug: slug)
-        |> Repo.preload([:user, :portfolio_sections]) do
-      nil ->
-        {:error, :not_found}
-      portfolio ->
-        normalized_portfolio = normalize_portfolio_for_template_simple(portfolio)
-        {:ok, normalized_portfolio}
     end
   end
 
@@ -584,26 +1319,6 @@ defmodule Frestyl.Portfolios do
   """
   def delete_feedback(%PortfolioFeedback{} = feedback) do
     Repo.delete(feedback)
-  end
-
-  @doc """
-  Gets feedback statistics for a portfolio
-  """
-  def get_feedback_stats(portfolio_id) do
-    query = from f in PortfolioFeedback,
-      where: f.portfolio_id == ^portfolio_id,
-      group_by: f.status,
-      select: {f.status, count(f.id)}
-
-    stats = Repo.all(query) |> Enum.into(%{})
-
-    %{
-      total: Map.values(stats) |> Enum.sum(),
-      pending: Map.get(stats, :pending, 0),
-      reviewed: Map.get(stats, :reviewed, 0),
-      implemented: Map.get(stats, :implemented, 0),
-      dismissed: Map.get(stats, :dismissed, 0)
-    }
   end
 
   @doc """

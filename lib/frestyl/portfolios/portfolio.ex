@@ -30,6 +30,7 @@ defmodule Frestyl.Portfolios.Portfolio do
     # Relations
     belongs_to :user, Frestyl.Accounts.User
     has_many :portfolio_sections, Frestyl.Portfolios.PortfolioSection
+    has_many :sections, Frestyl.Portfolios.PortfolioSection
     has_many :portfolio_media, Frestyl.Portfolios.PortfolioMedia
     has_many :portfolio_visits, Frestyl.Portfolios.PortfolioVisit
     has_many :portfolio_shares, Frestyl.Portfolios.PortfolioShare
@@ -49,7 +50,12 @@ defmodule Frestyl.Portfolios.Portfolio do
     |> validate_length(:slug, min: 5, max: 50)
     |> validate_slug()
     |> validate_inclusion(:visibility, [:public, :private, :link_only])
-    |> validate_inclusion(:theme, ["default", "creative", "corporate", "minimalist"])
+    |> validate_inclusion(:theme, [
+      "default", "creative", "corporate", "minimalist",
+      "executive", "developer", "designer", "consultant", "academic",
+      "artist", "entrepreneur", "freelancer", "photographer", "writer",
+      "marketing", "healthcare"
+    ])
     |> validate_inclusion(:resume_template, ["ats_friendly", "modern", "creative"])
     |> validate_customization()
     |> unique_constraint(:slug, message: "This URL is already taken")

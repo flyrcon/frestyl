@@ -26,9 +26,9 @@ defmodule Frestyl.Application do
       # Analytics for streaming
       Frestyl.Streaming.Analytics,
       {Frestyl.Cache, []},
+      {Frestyl.EventScheduler, []},
       # Start to serve requests, typically the last entry
       FrestylWeb.Endpoint,
-      {Frestyl.EventScheduler, []}
     ]
 
     # Initialize sample library on startup (development only)
@@ -46,6 +46,32 @@ defmodule Frestyl.Application do
   @impl true
   def config_change(changed, _new, removed) do
     FrestylWeb.Endpoint.config_change(changed, removed)
+    :ok
+  end
+
+  # Register MIME types that might not be included by default
+  defp register_mime_types do
+    # Audio formats
+    MIME.register("audio/ogg", ["ogg"])
+    MIME.register("audio/mpeg", ["mp3"])
+    MIME.register("audio/wav", ["wav"])
+
+    # Video formats
+    MIME.register("video/ogg", ["ogv"])
+    MIME.register("video/mp4", ["mp4"])
+    MIME.register("video/quicktime", ["mov"])
+    MIME.register("video/webm", ["webm"])
+
+    # Document formats
+    MIME.register("application/pdf", ["pdf"])
+    MIME.register("application/msword", ["doc"])
+    MIME.register("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ["docx"])
+
+    # Image formats (usually already registered, but just in case)
+    MIME.register("image/jpeg", ["jpg", "jpeg"])
+    MIME.register("image/png", ["png"])
+    MIME.register("image/gif", ["gif"])
+
     :ok
   end
 end

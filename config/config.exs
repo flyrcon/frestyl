@@ -102,8 +102,10 @@ config :mime, :types, %{
   "audio/wav" => ["wav"],
   "audio/ogg" => ["ogg"],
   "video/mp4" => ["mp4"],
+  "video/webm" => ["webm"],
+  "video/ogg" => ["ogv"],
   "video/quicktime" => ["mov"],
-  "video/webm" => ["webm"]
+  "application/ogg" => ["ogx"]
 }
 
   # For production, you might use something like:

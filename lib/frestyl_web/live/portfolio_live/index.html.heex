@@ -358,70 +358,160 @@
 </div>
 <!-- Create Portfolio Modal -->
 <%= if @show_create_modal do %>
-  <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" phx-click="hide_create_modal"></div>
-      
-      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-      
-      <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
-        <div class="bg-white px-6 pt-6 pb-4">
-          <div class="flex items-center justify-between mb-6">
-            <h3 class="text-2xl font-black text-gray-900">Create New Portfolio</h3>
-            <button phx-click="hide_create_modal" class="text-gray-400 hover:text-gray-600">
+  <div class="fixed inset-0 z-50 overflow-y-auto">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+         phx-click="hide_create_modal"></div>
+    
+    <!-- Modal Content -->
+    <div class="flex min-h-full items-center justify-center p-4">
+      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+        
+        <!-- Modal Header -->
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-2xl font-bold text-white">Create New Portfolio</h2>
+              <p class="text-blue-100 mt-1">Choose a template that best represents your professional brand</p>
+            </div>
+            <button phx-click="hide_create_modal"
+                    class="text-white hover:text-gray-200 transition-colors">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
           </div>
-          
-          <!-- Template Selection -->
-          <div class="mb-6">
-            <h4 class="text-lg font-bold text-gray-900 mb-4">Choose a Template</h4>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <%= for template <- ["minimalist", "creative", "corporate"] do %>
-                <% preview = template_preview(template) %>
-                <div class={["cursor-pointer border-2 rounded-xl p-4 transition-all duration-200",
-                  if @selected_template == template do
-                    "border-purple-500 bg-purple-50"
-                  else
-                    "border-gray-200 hover:border-purple-300"
-                  end
-                ]} phx-click="select_template" phx-value-template={template}>
-                  <div class={["w-full h-24 rounded-lg mb-3 flex items-center justify-center text-2xl bg-gradient-to-r", preview.color]}>
-                    <span class="text-white"><%= preview.icon %></span>
-                  </div>
-                  <h5 class="font-bold text-gray-900 mb-1"><%= preview.name %></h5>
-                  <p class="text-sm text-gray-600"><%= preview.description %></p>
-                </div>
-              <% end %>
-            </div>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-8 overflow-y-auto max-h-[calc(90vh-200px)]">
+          <!-- Portfolio Title Input -->
+          <div class="mb-8">
+            <label class="block text-sm font-semibold text-gray-900 mb-3">Portfolio Title</label>
+            <input type="text"
+                   id="portfolio-title"
+                   placeholder="e.g. John Doe - Senior Developer"
+                   class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
+                   phx-hook="AutoFocus" />
+            <p class="text-sm text-gray-600 mt-2">This will be the main title displayed on your portfolio</p>
           </div>
-          
-          <!-- Portfolio Title -->
-          <form phx-submit="create_portfolio" class="space-y-4">
-            <div>
-              <label for="portfolio_title" class="block text-sm font-bold text-gray-700 mb-2">Portfolio Title</label>
-              <input type="text" 
-                     id="portfolio_title" 
-                     name="title" 
-                     required
-                     placeholder="My Professional Portfolio"
-                     class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+
+          <!-- Template Selection Label -->
+          <div class="mb-8">
+            <label class="block text-sm font-semibold text-gray-900 mb-4">Choose Template</label>
+
+            <!-- Horizontal Scrollable Templates -->
+            <div class="overflow-x-auto pb-4">
+              <div class="flex space-x-6 min-w-max">
+                <%= for {template_key, template_info} <- @available_templates do %>
+                  <div class="template-option-card flex-shrink-0 w-80">
+                    <input type="radio"
+                           name="selected_template"
+                           value={template_key}
+                           id={"modal-template-#{template_key}"}
+                           checked={@selected_template == template_key}
+                           phx-click="select_template"
+                           phx-value-template={template_key}
+                           class="sr-only" />
+                    
+                    <label for={"modal-template-#{template_key}"} class="template-card block cursor-pointer">
+                      <!-- Template Preview -->
+                      <div class={[
+                        "h-32 rounded-t-xl bg-gradient-to-br flex items-center justify-center relative overflow-hidden",
+                        template_info.preview_color
+                      ]}>
+                        <div class="text-4xl z-10 relative">
+                          <%= template_info.icon %>
+                        </div>
+                        <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+                        
+                        <!-- Selected Indicator -->
+                        <div class="template-selected-indicator absolute top-4 right-4">
+                          <div class="w-8 h-8 bg-white bg-opacity-20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Template Info -->
+                      <div class="p-6 bg-white rounded-b-xl border-2 border-gray-200 border-t-0">
+                        <h3 class="text-xl font-bold text-gray-900 mb-2">
+                          <%= template_info.name %>
+                        </h3>
+                        <p class="text-gray-600 mb-4 text-sm leading-relaxed">
+                          <%= template_info.description %>
+                        </p>
+                        
+                        <!-- Best For -->
+                        <div class="mb-4">
+                          <p class="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">Best For:</p>
+                          <p class="text-sm text-gray-600"><%= template_info.best_for %></p>
+                        </div>
+                        
+                        <!-- Features -->
+                        <div class="space-y-2">
+                          <p class="text-xs font-semibold text-gray-700 uppercase tracking-wider">Features:</p>
+                          <div class="flex flex-wrap gap-2">
+                            <%= for feature <- Enum.take(template_info.features || [], 3) do %>
+                              <span class="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
+                                <%= feature %>
+                              </span>
+                            <% end %>
+                            <%= if length(template_info.features || []) > 3 do %>
+                              <span class="inline-block px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                                +<%= length(template_info.features) - 3 %> more
+                              </span>
+                            <% end %>
+                          </div>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                <% end %>
+              </div>
             </div>
             
-            <div class="flex justify-end space-x-3 pt-4">
-              <button type="button" 
-                      phx-click="hide_create_modal"
-                      class="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 font-semibold hover:bg-gray-50 transition-all">
+            <!-- Scroll Hint -->
+            <div class="flex items-center justify-center mt-4 text-sm text-gray-500">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18"/>
+              </svg>
+              Scroll to see all templates
+              <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="bg-gray-50 px-8 py-6 border-t border-gray-200">
+          <div class="flex items-center justify-between">
+            <div class="text-sm text-gray-600">
+              <%= if @selected_template do %>
+                Selected: <span class="font-semibold"><%= Map.get(@available_templates, @selected_template, %{name: "Template"}).name %></span>
+              <% else %>
+                Please select a template to continue
+              <% end %>
+            </div>
+            
+            <div class="flex space-x-4">
+              <button phx-click="hide_create_modal"
+                      class="px-6 py-3 border border-gray-300 rounded-xl text-gray-700 font-semibold hover:bg-gray-50 transition-all duration-200">
                 Cancel
               </button>
-              <button type="submit" 
-                      class="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all">
+              
+              <button phx-click="create_portfolio"
+                      phx-value-title=""
+                      disabled={is_nil(@selected_template)}
+                      onclick="this.setAttribute('phx-value-title', document.getElementById('portfolio-title').value)"
+                      class="px-8 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
                 Create Portfolio
               </button>
             </div>
-          </form>
+          </div>
         </div>
       </div>
     </div>

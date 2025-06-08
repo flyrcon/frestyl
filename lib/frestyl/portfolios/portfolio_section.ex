@@ -1,14 +1,26 @@
-# lib/frestyl/portfolios/portfolio_section.ex
+# Replace your portfolio_section.ex schema definition with this:
+
 defmodule Frestyl.Portfolios.PortfolioSection do
   use Ecto.Schema
   import Ecto.Changeset
 
   schema "portfolio_sections" do
     field :title, :string
-    field :section_type, Ecto.Enum, values: [:experience, :education, :skills, :projects,
-                                           :achievements, :custom, :contact, :intro,
-                                           :featured_project, :case_study, :testimonial,
-                                           :media_showcase, :code_showcase]
+    field :section_type, Ecto.Enum, values: [
+      :intro,
+      :experience,
+      :education,
+      :skills,
+      :projects,
+      :featured_project,
+      :case_study,
+      :achievements,
+      :testimonial,
+      :media_showcase,
+      :code_showcase,
+      :contact,
+      :custom
+    ]
     field :content, :map
     field :position, :integer
     field :visible, :boolean, default: true
@@ -30,6 +42,23 @@ defmodule Frestyl.Portfolios.PortfolioSection do
   @doc """
   Returns the default content structure for each section type
   """
+  def default_content_for_type(:intro) do
+    %{
+      "headline" => "Hello, I'm [Your Name]",
+      "summary" => "A brief introduction about yourself and your professional journey.",
+      "location" => "",
+      "website" => "",
+      "social_links" => %{
+        "linkedin" => "",
+        "github" => "",
+        "twitter" => "",
+        "portfolio" => ""
+      },
+      "availability" => "",
+      "call_to_action" => ""
+    }
+  end
+
   def default_content_for_type(:experience) do
     %{
       "jobs" => []
@@ -45,6 +74,12 @@ defmodule Frestyl.Portfolios.PortfolioSection do
   def default_content_for_type(:skills) do
     %{
       "skills" => []
+    }
+  end
+
+  def default_content_for_type(:projects) do
+    %{
+      "projects" => []
     }
   end
 
@@ -79,6 +114,12 @@ defmodule Frestyl.Portfolios.PortfolioSection do
     }
   end
 
+  def default_content_for_type(:achievements) do
+    %{
+      "achievements" => []
+    }
+  end
+
   def default_content_for_type(:testimonial) do
     %{
       "testimonials" => []
@@ -104,6 +145,28 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       "explanation" => "",
       "line_highlights" => [],
       "repository_url" => ""
+    }
+  end
+
+  def default_content_for_type(:contact) do
+    %{
+      "email" => "",
+      "phone" => "",
+      "location" => "",
+      "availability" => "",
+      "preferred_contact" => "email",
+      "timezone" => "",
+      "response_time" => "",
+      "social_links" => %{}
+    }
+  end
+
+  def default_content_for_type(:custom) do
+    %{
+      "title" => "",
+      "content" => "",
+      "layout" => "default",
+      "custom_fields" => %{}
     }
   end
 
