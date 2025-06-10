@@ -1,4 +1,4 @@
-# lib/frestyl_web/live/portfolio_live/video_intro_component.ex - FIXED VERSION
+# lib/frestyl_web/live/portfolio_live/video_intro_component.ex - COMPLETELY FIXED VERSION
 defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
   use FrestylWeb, :live_component
 
@@ -22,7 +22,7 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     {:ok, assign(socket, assigns)}
   end
 
-  # FIXED: Handle timer messages properly
+  # FIXED: Handle timer messages properly with component-specific IDs
   @impl true
   def handle_info({:countdown_tick, component_id}, socket) do
     if socket.assigns.id == component_id and socket.assigns.recording_state == :countdown do
@@ -88,11 +88,9 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
       socket =
         socket
         |> assign(recording_state: :countdown, countdown_timer: 3)
-        |> push_event("prepare_recording", %{})
 
       # Start countdown timer
       Process.send_after(self(), {:countdown_tick, socket.assigns.id}, 1000)
-
       {:noreply, socket}
     else
       {:noreply, put_flash(socket, :error, "Camera not ready. Please allow camera access.")}
@@ -139,13 +137,11 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     {:noreply, socket}
   end
 
+  # FIXED: Close modal properly
   @impl true
-  def handle_event("hide_video_intro", _params, socket) do
-    # Call the on_cancel callback if provided
-    if socket.assigns[:on_cancel] do
-      send(self(), {socket.assigns.on_cancel, %{}})
-    end
-
+  def handle_event("cancel_recording", _params, socket) do
+    # Send message to parent to close modal
+    send(self(), {:close_video_modal, %{}})
     {:noreply, socket}
   end
 
@@ -168,7 +164,6 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
             socket =
               socket
               |> assign(recording_state: :setup, elapsed_time: 0, countdown_timer: 3)
-              |> put_flash(:info, "Video introduction saved successfully!")
 
             # Send completion event to parent LiveView
             send(self(), {:video_intro_complete, %{
@@ -200,10 +195,7 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="bg-white rounded-xl shadow-2xl overflow-hidden"
-         phx-hook="VideoCapture"
-         id={"video-capture-#{@id}"}
-         data-component-id={@id}>
+    <div class="bg-white rounded-xl shadow-2xl overflow-hidden">
       <!-- Header -->
       <div class="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4">
         <div class="flex items-center justify-between">
@@ -218,7 +210,9 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
               <p class="text-purple-100 text-sm">Record a 60-second introduction for "<%= @portfolio.title %>"</p>
             </div>
           </div>
-          <button phx-click="hide_video_intro" phx-target={@myself} class="text-white hover:text-purple-200">
+          <!-- FIXED: Add Cancel Button -->
+          <button phx-click="cancel_recording" phx-target={@myself}
+                  class="text-white hover:text-purple-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -226,8 +220,12 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
         </div>
       </div>
 
-      <!-- Main Content -->
-      <div class="p-6">
+      <!-- FIXED: Main Content with proper hook integration -->
+      <div class="p-6"
+          phx-hook="VideoCapture"
+          id={"video-capture-#{@id}"}
+          data-component-id={@id}>
+
         <%= case @recording_state do %>
           <% :setup -> %>
             <%= render_setup_phase(assigns) %>
@@ -249,12 +247,12 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     """
   end
 
-  # Setup Phase - IMPROVED
+  # Setup Phase - IMPROVED with better error handling
   defp render_setup_phase(assigns) do
     ~H"""
     <div class="text-center mb-8">
-      <div class="w-24 h-24 mx-auto mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full flex items-center justify-center">
-        <svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
+      <div class="w-12 h-12 mx-auto mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full flex items-center justify-center">
+        <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
           <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
         </svg>
       </div>
@@ -310,11 +308,20 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
         </svg>
         Start Recording
       </button>
+
+      <!-- FIXED: Add Cancel Button -->
+      <button phx-click="cancel_recording" phx-target={@myself}
+              class="px-8 py-4 bg-gray-600 text-white font-bold rounded-xl hover:bg-gray-700 transition-all flex items-center">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+        Cancel
+      </button>
     </div>
     """
   end
 
-  # Other render functions remain the same...
+  # Countdown Phase
   defp render_countdown_phase(assigns) do
     ~H"""
     <div class="text-center">
@@ -337,10 +344,17 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
           </div>
         </div>
       </div>
+
+      <!-- Cancel button during countdown -->
+      <button phx-click="cancel_recording" phx-target={@myself}
+              class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+        Cancel
+      </button>
     </div>
     """
   end
 
+  # Recording Phase
   defp render_recording_phase(assigns) do
     ~H"""
     <div class="text-center">
@@ -387,6 +401,7 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     """
   end
 
+  # Preview Phase
   defp render_preview_phase(assigns) do
     ~H"""
     <div class="text-center">
@@ -423,11 +438,18 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
                 class="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all">
           Save Introduction
         </button>
+
+        <!-- Cancel button -->
+        <button phx-click="cancel_recording" phx-target={@myself}
+                class="px-6 py-3 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-all">
+          Cancel
+        </button>
       </div>
     </div>
     """
   end
 
+  # Saving Phase
   defp render_saving_phase(assigns) do
     ~H"""
     <div class="text-center py-12">

@@ -1,0 +1,29 @@
+cat > lib/frestyl_web/controllers/portfolio_html/show.html.heex << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Portfolio Debug</title>
+  <style>
+    <%= Phoenix.HTML.raw(@debug_css) %>
+  </style>
+</head>
+<body>
+  <div class="debug-test">
+    🔥 TEMPLATE AND CSS WORKING!<br>
+    Portfolio: <%= @portfolio.title %><br>
+    Primary: <%= Map.get(@customization_data, "primary_color") %><br>
+    Background: <%= Map.get(@customization_data, "background") %>
+  </div>
+  
+  <h1><%= @portfolio.title %></h1>
+  <p><%= @portfolio.description %></p>
+  
+  <%= for section <- @sections do %>
+    <div style="background: rgba(255,255,255,0.1); margin: 10px; padding: 20px; border-radius: 8px;">
+      <h2 style="color: <%= Map.get(@customization_data, "primary_color", "#f59e0b") %>;">
+        <%= section.title %>
+      </h2>
+    </div>
+  <% end %>
+</body>
+</html>

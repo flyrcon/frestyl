@@ -46,6 +46,13 @@ defmodule Frestyl.Portfolios do
     |> Repo.preload([:portfolio_sections, :portfolio_media])
   end
 
+  def get_portfolio_customization(portfolio_id) do
+    case get_portfolio!(portfolio_id) do
+      nil -> %{}
+      portfolio -> portfolio.customization || %{}
+    end
+  end
+
   def create_portfolio(user_id, attrs \\ %{}) do
     %Portfolio{user_id: user_id}
     |> Portfolio.changeset(attrs)
@@ -91,30 +98,59 @@ defmodule Frestyl.Portfolios do
 
   # Portfolio Media operations
 
-  def list_portfolio_media(portfolio_id) do
-    PortfolioMedia
-    |> where([m], m.portfolio_id == ^portfolio_id)
-    |> order_by([m], m.position)
-    |> Repo.all()
-  end
-
-  def get_media!(id), do: Repo.get!(PortfolioMedia, id)
-
-  def create_media(attrs \\ %{}) do
-    # Ensure the struct is correctly referenced
+  def create_media(attrs) do
     %PortfolioMedia{}
     |> PortfolioMedia.changeset(attrs)
     |> Repo.insert()
   end
 
-  def update_media(%PortfolioMedia{} = media, attrs) do
+  def list_section_media(section_id) do
+    from(m in PortfolioMedia,
+      where: m.section_id == ^section_id,
+      order_by: [asc: m.position, asc: m.inserted_at])
+    |> Repo.all()
+  end
+
+  def list_portfolio_media(portfolio_id) do
+    from(m in PortfolioMedia,
+      where: m.portfolio_id == ^portfolio_id,
+      order_by: [asc: m.position, asc: m.inserted_at])
+    |> Repo.all()
+  end
+
+  def get_media!(id), do: Repo.get!(PortfolioMedia, id)
+
+  def delete_media(media) do
+    Repo.delete(media)
+  end
+
+  def update_media(media, attrs) do
     media
     |> PortfolioMedia.changeset(attrs)
     |> Repo.update()
   end
 
-  def delete_media(%PortfolioMedia{} = media) do
-    Repo.delete(media)
+  def get_portfolio_analytics(portfolio_id, user_id) do
+    # Placeholder - implement your analytics logic
+    %{
+      total_visits: 0,
+      unique_visitors: 0,
+      last_visit: nil
+    }
+  end
+
+  def get_portfolio_by_slug_with_sections_simple(slug) do
+    # Create the ordered sections query separately
+    sections_query = from s in PortfolioSection, order_by: s.position
+
+    query = from p in Portfolio,
+      where: p.slug == ^slug,
+      preload: [portfolio_sections: ^sections_query]
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      portfolio -> {:ok, portfolio}
+    end
   end
 
   # Portfolio Share operations

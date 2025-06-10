@@ -8,7 +8,7 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     portfolio = Portfolios.get_portfolio!(id)
-    sections = Portfolios.list_portfolio_sections(portfolio.id)
+    sections = Portfolios.list_portfolio_sections(id)
     limits = Portfolios.get_portfolio_limits(socket.assigns.current_user)
 
     # Ensure user owns this portfolio
@@ -21,20 +21,26 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       form = Portfolios.change_portfolio(portfolio, %{}) |> to_form()
 
       # Load customization with proper defaults
-      customization = portfolio.customization || PortfolioTemplates.get_template_config(portfolio.theme || "executive")
+      default_customization = PortfolioTemplates.get_template_config(portfolio.theme || "executive")
+      current_customization = portfolio.customization || default_customization
+      normalized_customization = normalize_customization(current_customization)
 
       socket =
         socket
         |> assign(:page_title, "Edit #{portfolio.title}")
         |> assign(:portfolio, portfolio)
         |> assign(:sections, sections)
-        |> assign(:form, form)
-        |> assign(:customization, customization)
+        |> assign(:form, to_form(Portfolios.change_portfolio(portfolio)))
+        |> assign(:customization, normalized_customization)
         |> assign(:available_templates, PortfolioTemplates.available_templates())
         |> assign(:limits, %{
             max_media_size_mb: limits.max_media_size_mb || 50,
             max_media_size: limits.max_media_size_mb * 1_048_576 || 52_428_800
           })
+        |> allow_upload(:resume,
+            accept: ~w(.pdf .doc .docx .txt),
+            max_entries: 1,
+            max_file_size: 10 * 1_048_576) # 10MB
         |> assign(:active_tab, :overview)
         |> assign(:section_edit_id, nil)
         |> assign(:show_preview, false)
@@ -57,6 +63,20 @@ defmodule FrestylWeb.PortfolioLive.Edit do
             max_entries: 10,
             max_file_size: limits.max_media_size_mb * 1_048_576,
             auto_upload: false)
+        |> assign(:show_resume_import_modal, false)
+        |> assign(:parsed_resume_data, nil)
+        |> assign(:resume_parsing_state, :idle)
+        |> assign(:resume_error_message, nil)
+        |> assign(:section_mappings, %{})
+        |> allow_upload(:resume,
+            accept: ~w(.pdf .doc .docx),
+            max_entries: 1,
+            max_file_size: 10_000_000)
+        |> allow_upload(:media,
+            accept: ~w(.jpg .jpeg .png .gif .mp4 .mov .pdf .doc .docx),
+            max_entries: 10,
+            max_file_size: 50_000_000)
+
 
       {:ok, socket}
     end
@@ -130,14 +150,14 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   end
 
   @impl true
-  def handle_event("update_color", %{"color" => color_value, "name" => _color_name}, socket) do
-    # Get current customization with safe defaults
-    current_customization = socket.assigns.customization || %{}
-    current_color_scheme = Map.get(current_customization, :color_scheme, %{})
+  def handle_event("update_color", %{"color" => color_value, "name" => color_name}, socket) do
+    IO.puts("Color update event: #{color_name} = #{color_value}")
 
-    # Update the color scheme safely
-    updated_color_scheme = Map.put(current_color_scheme, :primary, color_value)
-    updated_customization = Map.put(current_customization, :color_scheme, updated_color_scheme)
+    # Use the SAME structure as templates - just update "primary_color" at root level
+    current_customization = stringify_keys(socket.assigns.customization || %{})
+    updated_customization = Map.put(current_customization, "primary_color", color_value)
+
+    IO.puts("Updated customization: #{inspect(updated_customization)}")
 
     case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
       {:ok, portfolio} ->
@@ -145,11 +165,19 @@ defmodule FrestylWeb.PortfolioLive.Edit do
         socket
         |> assign(:portfolio, portfolio)
         |> assign(:customization, updated_customization)
-        |> put_flash(:info, "Color updated!")}
+        |> put_flash(:info, "Color updated to #{color_name}!")}
 
-      {:error, _} ->
+      {:error, changeset} ->
+        IO.puts("Color update failed: #{inspect(changeset.errors)}")
         {:noreply, put_flash(socket, :error, "Failed to update color")}
     end
+  end
+
+  # Update your helper function to check for primary_color instead of nested structure:
+  defp get_current_primary_color(customization) do
+    normalized = stringify_keys(customization || %{})
+    # Check template structure first
+    Map.get(normalized, "primary_color", "#6366f1")
   end
 
   @impl true
@@ -159,9 +187,12 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     template_config = PortfolioTemplates.get_template_config(template)
     IO.puts("Template config loaded: #{inspect(template_config)}")
 
+    # FORCE template config to use string keys ONLY
+    normalized_config = stringify_keys(template_config)
+
     case Portfolios.update_portfolio(socket.assigns.portfolio, %{
       theme: template,
-      customization: template_config
+      customization: normalized_config
     }) do
       {:ok, portfolio} ->
         IO.puts("Portfolio updated successfully with template: #{template}")
@@ -169,7 +200,7 @@ defmodule FrestylWeb.PortfolioLive.Edit do
         {:noreply,
         socket
         |> assign(:portfolio, portfolio)
-        |> assign(:customization, template_config)
+        |> assign(:customization, normalized_config)
         |> put_flash(:info, "Template '#{template}' applied successfully!")}
 
       {:error, changeset} ->
@@ -206,6 +237,592 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   @impl true
   def handle_event("video_modal_escape", _params, socket) do
     {:noreply, assign(socket, :show_video_intro_modal, false)}
+  end
+
+  # Resume parsing
+  def handle_event("hide_resume_import", _params, socket) do
+    socket =
+      socket
+      |> assign(:show_resume_import_modal, false)
+      |> assign(:parsed_resume_data, nil)
+      |> assign(:resume_parsing_state, :idle)
+      |> assign(:resume_error_message, nil)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("upload_resume", _params, socket) do
+    # Check if file was uploaded
+    if socket.assigns.uploads.resume.entries == [] do
+      socket =
+        socket
+        |> assign(:resume_parsing_state, :error)
+        |> assign(:resume_error_message, "Please select a file to upload")
+
+      {:noreply, socket}
+    else
+      socket = assign(socket, :resume_parsing_state, :parsing)
+
+      # Process the uploaded file
+      uploaded_files = upload_and_consume_files(socket, :resume)
+
+      case uploaded_files do
+        [{file_path, _original_filename}] ->
+          # Parse the resume file in a separate process to avoid blocking
+          Task.start(fn ->
+            case Frestyl.ResumeParser.parse_resume(file_path) do
+              {:ok, parsed_data} ->
+                send(self(), {:resume_parsed, parsed_data})
+
+              {:error, reason} ->
+                send(self(), {:resume_parse_error, reason})
+            end
+
+            # Clean up temporary file
+            File.rm(file_path)
+          end)
+
+          {:noreply, socket}
+
+        [] ->
+          socket =
+            socket
+            |> assign(:resume_parsing_state, :error)
+            |> assign(:resume_error_message, "No file was uploaded")
+
+          {:noreply, socket}
+
+        {:error, reason} ->
+          socket =
+            socket
+            |> assign(:resume_parsing_state, :error)
+            |> assign(:resume_error_message, "Upload failed: #{reason}")
+
+          {:noreply, socket}
+      end
+    end
+  end
+
+  # Handle file validation
+  def handle_event("validate_resume", _params, socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("import_resume_sections", params, socket) do
+    portfolio = socket.assigns.portfolio
+    parsed_data = socket.assigns.parsed_resume_data
+
+    # Extract section mappings from form data (if any)
+    section_mappings = Map.get(params, "mapping", %{})
+
+    # Create sections based on parsed data
+    case create_sections_from_resume_data(portfolio, parsed_data, section_mappings) do
+      {:ok, created_sections} ->
+        # Reload the portfolio with new sections
+        updated_portfolio = Portfolios.get_portfolio!(portfolio.id)
+        updated_sections = Portfolios.list_portfolio_sections(portfolio.id)
+
+        socket =
+          socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:sections, updated_sections)
+          |> assign(:show_resume_import_modal, false)
+          |> assign(:parsed_resume_data, nil)
+          |> assign(:resume_parsing_state, :idle)
+          |> put_flash(:info, "Successfully imported #{length(created_sections)} sections from resume!")
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        socket = put_flash(socket, :error, "Failed to import sections: #{reason}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("show_resume_import", _params, socket) do
+    IO.inspect("=== BEFORE ASSIGN ===")
+    IO.inspect(socket.assigns, label: "Current assigns")
+
+    try do
+      updated_socket = assign(socket, :show_resume_import_modal, true)
+      IO.inspect("=== AFTER ASSIGN ===")
+      IO.inspect(updated_socket.assigns.show_resume_import_modal, label: "New assign value")
+
+      {:noreply, updated_socket}
+    rescue
+      error ->
+        IO.inspect(error, label: "ERROR in handle_event")
+        {:noreply, put_flash(socket, :error, "Failed to show import modal")}
+    end
+  end
+
+  @impl true
+  def handle_event("process_resume", _params, socket) do
+    case uploaded_entries(socket, :resume) do
+      {[entry], _} ->
+        # Process the resume file
+        consume_uploaded_entry(socket, entry, fn %{path: path} ->
+          process_resume_file(socket, path, entry.client_name)
+        end)
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Please upload a resume file.")}
+    end
+  end
+
+  def handle_info({:resume_parsed, parsed_data}, socket) do
+    socket =
+      socket
+      |> assign(:parsed_resume_data, parsed_data)
+      |> assign(:resume_parsing_state, :parsed)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:resume_parse_error, reason}, socket) do
+    socket =
+      socket
+      |> assign(:resume_parsing_state, :error)
+      |> assign(:resume_error_message, reason)
+
+    {:noreply, socket}
+  end
+
+  # Helper function to upload and consume files:
+  defp upload_and_consume_files(socket, upload_name) do
+    uploaded_files =
+      consume_uploaded_entries(socket, upload_name, fn %{path: path}, entry ->
+        # Create a temporary file with the original extension
+        temp_dir = System.tmp_dir!()
+        file_extension = Path.extname(entry.client_name)
+        temp_filename = "resume_#{System.unique_integer()}_#{entry.client_name}"
+        temp_path = Path.join(temp_dir, temp_filename)
+
+        # Copy the uploaded file to temp location
+        case File.cp(path, temp_path) do
+          :ok -> {:ok, {temp_path, entry.client_name}}
+          {:error, reason} -> {:error, reason}
+        end
+      end)
+
+    case uploaded_files do
+      [file_info] -> file_info
+      [] -> []
+      multiple -> List.first(multiple) # Take first file if multiple
+    end
+  end
+
+  defp parse_resume_file(%{"path" => path}) do
+    # This is a placeholder - you'll need to implement actual resume parsing
+    # For now, return mock data
+    {:ok, %{
+      "experience" => "Software Engineer at Company XYZ...",
+      "education" => "Bachelor of Science in Computer Science...",
+      "skills" => "JavaScript, Elixir, Phoenix, React..."
+    }}
+  end
+
+  def handle_info(:mock_parse_complete, socket) do
+    # Mock parsed data
+    mock_data = %{
+      "professional_summary" => "Experienced software engineer with 5+ years developing web applications using modern technologies including React, Node.js, and Python.",
+      "work_experience" => "Software Engineer at TechCorp (2020-2025): Led development of customer-facing web applications, improved system performance by 40%.",
+      "education" => "Bachelor of Science in Computer Science, State University (2016-2020). GPA: 3.8/4.0",
+      "skills" => "JavaScript, Python, React, Node.js, PostgreSQL, AWS, Docker, Git",
+      "certifications" => "AWS Certified Developer Associate, Google Cloud Professional"
+    }
+
+    socket =
+      socket
+      |> assign(:parsed_resume_data, mock_data)
+      |> assign(:resume_parsing_state, :parsed)
+
+    {:noreply, socket}
+  end
+
+  defp create_default_mappings(parsed_data) do
+    # Create default section mappings
+    Enum.reduce(parsed_data, %{}, fn {section_type, _content}, acc ->
+      Map.put(acc, section_type, "new")
+    end)
+  end
+
+  defp import_sections_to_portfolio(portfolio, parsed_data, params) do
+    # This is a placeholder - implement the actual import logic
+    # You'll want to create new portfolio sections based on the parsed data
+    {:ok, portfolio}
+  end
+
+
+  # Add this helper function:
+  defp process_resume_file(socket, file_path, filename) do
+    # Simple text extraction for demo - in production you'd use AI/ML
+    parsed_data = extract_resume_data(file_path, filename)
+
+    socket =
+      socket
+      |> assign(:parsed_resume_data, parsed_data)
+      |> assign(:show_resume_import_modal, true)
+
+    {:noreply, socket}
+  end
+
+  defp extract_resume_data(_file_path, _filename) do
+    # Mock data - replace with actual parsing logic
+    %{
+      personal_info: %{
+        name: "John Doe",
+        email: "john.doe@example.com",
+        phone: "555-123-4567",
+        location: "New York, NY"
+      },
+      experience: [
+        %{
+          title: "Senior Developer",
+          company: "Tech Corp",
+          start_date: "2020-01",
+          end_date: "Present",
+          description: "Led development team on various projects"
+        }
+      ],
+      education: [
+        %{
+          degree: "Bachelor of Science",
+          field: "Computer Science",
+          school: "University of Example",
+          graduation_year: "2019"
+        }
+      ],
+      skills: ["JavaScript", "Python", "React", "Node.js"],
+      unknown_sections: [
+        %{
+          title: "Certifications",
+          content: "AWS Certified Developer, Google Cloud Professional"
+        },
+        %{
+          title: "Languages",
+          content: "English (Native), Spanish (Fluent)"
+        }
+      ]
+    }
+  end
+
+  defp create_section_from_resume_data(portfolio_id, section_type, data) do
+    # Map resume data to portfolio section format
+    section_attrs = case section_type do
+      "contact" ->
+        %{
+          title: "Contact Information",
+          section_type: :contact,
+          content: %{
+            "email" => data["email"],
+            "phone" => data["phone"],
+            "location" => data["location"]
+          }
+        }
+
+      "experience" ->
+        %{
+          title: "Work Experience",
+          section_type: :experience,
+          content: %{"jobs" => data}
+        }
+
+      "education" ->
+        %{
+          title: "Education",
+          section_type: :education,
+          content: %{"education" => data}
+        }
+
+      "skills" ->
+        %{
+          title: "Skills & Expertise",
+          section_type: :skills,
+          content: %{"skills" => data}
+        }
+
+      "custom" ->
+        %{
+          title: data["title"] || "Additional Information",
+          section_type: :custom,
+          content: %{"content" => data["content"]}
+        }
+    end
+
+    section_attrs = Map.merge(section_attrs, %{
+      portfolio_id: portfolio_id,
+      position: get_next_section_position(portfolio_id),
+      visible: true
+    })
+
+    Portfolios.create_section(section_attrs)
+  end
+
+  defp get_next_section_position(portfolio_id) do
+    sections = Portfolios.list_portfolio_sections(portfolio_id)
+    case sections do
+      [] -> 1
+      sections -> Enum.max_by(sections, & &1.position).position + 1
+    end
+  end
+
+  defp extract_section_mappings(params) do
+    # Extract mapping data from form params
+    # params will contain something like %{"mapping" => %{"experience" => "new", "education" => "skip"}}
+    Map.get(params, "mapping", %{})
+  end
+
+  defp create_sections_from_resume_data(portfolio, parsed_data, section_mappings) do
+    created_sections = []
+
+    # Get current max position
+    existing_sections = Portfolios.list_portfolio_sections(portfolio.id)
+    max_position = case existing_sections do
+      [] -> 0
+      sections -> Enum.map(sections, & &1.position) |> Enum.max()
+    end
+
+    results =
+      Enum.reduce(parsed_data, {:ok, created_sections, max_position}, fn
+        {section_type, content}, {:ok, acc, position} ->
+          mapping = Map.get(section_mappings, to_string(section_type), "new")
+
+          case mapping do
+            "skip" ->
+              {:ok, acc, position}
+
+            "new" ->
+              case create_portfolio_section_from_resume_data(portfolio, section_type, content, position + 1) do
+                {:ok, section} -> {:ok, [section | acc], position + 1}
+                {:error, reason} -> {:error, reason}
+              end
+
+            _existing_section_id ->
+              # For now, just create new sections. Later you can implement merging
+              case create_portfolio_section_from_resume_data(portfolio, section_type, content, position + 1) do
+                {:ok, section} -> {:ok, [section | acc], position + 1}
+                {:error, reason} -> {:error, reason}
+              end
+          end
+
+        {_section_type, _content}, {:error, reason} ->
+          {:error, reason}
+      end)
+
+    case results do
+      {:ok, sections, _final_position} -> {:ok, Enum.reverse(sections)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp create_portfolio_section_from_resume_data(portfolio, section_type, content, position) do
+    # Map resume section types to your portfolio section types
+    {portfolio_section_type, section_title} = map_resume_section_type(section_type)
+
+    # Format content according to your schema
+    formatted_content = format_resume_content_for_section(portfolio_section_type, content)
+
+    section_attrs = %{
+      portfolio_id: portfolio.id,
+      title: section_title,
+      section_type: portfolio_section_type,
+      content: formatted_content,
+      position: position,
+      visible: true
+    }
+
+    # Use your existing context function
+    Portfolios.create_section(section_attrs)
+  end
+
+  defp format_section_title(section_type) do
+    section_type
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.split(" ")
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp map_resume_section_type(resume_section_type) do
+    case to_string(resume_section_type) do
+      "professional_summary" -> {:intro, "Professional Summary"}
+      "work_experience" -> {:experience, "Work Experience"}
+      "education" -> {:education, "Education"}
+      "skills" -> {:skills, "Skills"}
+      "certifications" -> {:achievements, "Certifications"}
+      "projects" -> {:projects, "Projects"}
+      _ -> {:custom, format_section_title(resume_section_type)}
+    end
+  end
+
+  defp format_resume_content_for_section(section_type, raw_content) do
+    case section_type do
+      :intro ->
+        %{
+          "headline" => "Professional Summary",
+          "summary" => to_string(raw_content),
+          "location" => "",
+          "website" => "",
+          "social_links" => %{},
+          "availability" => "",
+          "call_to_action" => ""
+        }
+
+      :experience ->
+        # Try to parse work experience into structured format
+        jobs = parse_work_experience(raw_content)
+        %{"jobs" => jobs}
+
+      :education ->
+        # Try to parse education into structured format
+        education = parse_education(raw_content)
+        %{"education" => education}
+
+      :skills ->
+        # Parse skills - could be comma-separated or structured
+        skills = parse_skills(raw_content)
+        %{"skills" => skills}
+
+      :achievements ->
+        # Parse certifications/achievements
+        achievements = parse_achievements(raw_content)
+        %{"achievements" => achievements}
+
+      :projects ->
+        # Parse projects if any
+        projects = parse_projects(raw_content)
+        %{"projects" => projects}
+
+      :custom ->
+        %{
+          "title" => "",
+          "content" => to_string(raw_content),
+          "layout" => "default",
+          "custom_fields" => %{}
+        }
+
+      _ ->
+        # Fallback for any other section type
+        %{"description" => to_string(raw_content)}
+    end
+  end
+
+  defp parse_work_experience(content) do
+    # For now, create a single job entry with the content
+    # Later you could use AI/NLP to extract multiple jobs
+    [%{
+      "company" => "",
+      "position" => "",
+      "start_date" => "",
+      "end_date" => "",
+      "description" => to_string(content),
+      "highlights" => [],
+      "technologies" => []
+    }]
+  end
+
+  defp parse_education(content) do
+    # Create a single education entry
+    [%{
+      "school" => "",
+      "degree" => "",
+      "field" => "",
+      "start_date" => "",
+      "end_date" => "",
+      "gpa" => "",
+      "description" => to_string(content),
+      "highlights" => []
+    }]
+  end
+
+  defp parse_skills(content) do
+    content_str = to_string(content)
+
+    if String.contains?(content_str, ",") do
+      # Parse comma-separated skills
+      content_str
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.map(fn skill ->
+        %{
+          "name" => skill,
+          "level" => "intermediate",
+          "category" => "general"
+        }
+      end)
+    else
+      # Single skill or paragraph - create one entry
+      [%{
+        "name" => content_str,
+        "level" => "intermediate",
+        "category" => "general"
+      }]
+    end
+  end
+
+  defp parse_achievements(content) do
+    # Create a single achievement entry
+    [%{
+      "title" => "Certification",
+      "description" => to_string(content),
+      "date" => "",
+      "issuer" => "",
+      "credential_id" => "",
+      "credential_url" => ""
+    }]
+  end
+
+  defp parse_projects(content) do
+    # Create a single project entry
+    [%{
+      "title" => "Project",
+      "description" => to_string(content),
+      "technologies" => [],
+      "role" => "",
+      "start_date" => "",
+      "end_date" => "",
+      "url" => "",
+      "github_url" => ""
+    }]
+  end
+
+
+  defp get_next_section_order(portfolio) do
+    # Get the highest order number and add 1
+    case Portfolios.get_portfolio_sections(portfolio.id) do
+      [] -> 1
+      sections ->
+        max_order = Enum.map(sections, & &1.order) |> Enum.max()
+        max_order + 1
+    end
+  end
+
+  defp update_existing_section_with_resume_data(section_id, content) do
+    # Implement if you want to support merging with existing sections
+    {:error, "Merging with existing sections not implemented yet"}
+  end
+
+  @impl true
+  def handle_info({:close_video_modal, _}, socket) do
+    {:noreply, assign(socket, :show_video_intro_modal, false)}
+  end
+
+  @impl true
+  def handle_info({:video_intro_complete, data}, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_video_intro_modal, false)
+    |> put_flash(:info, "Video introduction saved successfully!")}
+  end
+
+  # Catch-all for unhandled messages
+  @impl true
+  def handle_info(_msg, socket) do
+    {:noreply, socket}
   end
 
   @impl true
@@ -386,7 +1003,25 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
   @impl true
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
-    {:noreply, cancel_upload(socket, :media, ref)}
+    # Check which upload type to cancel based on what's available
+    socket =
+      cond do
+        # Check if this ref belongs to resume upload
+        Enum.any?(socket.assigns.uploads.resume.entries, &(&1.ref == ref)) ->
+          cancel_upload(socket, :resume, ref)
+
+        # Check if this ref belongs to media upload
+        Enum.any?(socket.assigns.uploads.media.entries, &(&1.ref == ref)) ->
+          cancel_upload(socket, :media, ref)
+
+        # Fallback - try both (one will succeed, one will be ignored)
+        true ->
+          socket
+          |> cancel_upload(:media, ref)
+          |> cancel_upload(:resume, ref)
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -419,6 +1054,31 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     end
   end
 
+  # Helper function to normalize customization data to use string keys consistently
+  defp normalize_customization(customization) when is_map(customization) do
+    customization
+    |> Enum.map(fn
+      # Convert atom keys to strings
+      {key, value} when is_atom(key) -> {to_string(key), normalize_value(value)}
+      # Keep string keys as-is but normalize values
+      {key, value} when is_binary(key) -> {key, normalize_value(value)}
+    end)
+    |> Enum.into(%{})
+  end
+
+  defp normalize_customization(_), do: %{}
+
+  # Helper function to normalize nested values
+  defp normalize_value(value) when is_map(value) do
+    value
+    |> Enum.map(fn
+      {key, val} when is_atom(key) -> {to_string(key), normalize_value(val)}
+      {key, val} when is_binary(key) -> {key, normalize_value(val)}
+    end)
+    |> Enum.into(%{})
+  end
+
+  defp normalize_value(value), do: value
 
   # Update the media upload section in render_section_editor function:
 
@@ -1012,11 +1672,13 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   def handle_event("update_color", %{"color" => color_value, "name" => color_name}, socket) do
     IO.puts("Color update event: #{color_name} = #{color_value}")
 
-    # Get current customization or default
-    current_customization = socket.assigns.customization || %{}
+    # Get current customization with safe defaults - ALWAYS use string keys
+    current_customization = normalize_customization(socket.assigns.customization || %{})
 
-    # Update the color scheme
-    updated_customization = put_in(current_customization, [:color_scheme, :primary], color_value)
+    # Update the color scheme with string keys
+    color_scheme = Map.get(current_customization, "color_scheme", %{})
+    updated_color_scheme = Map.put(color_scheme, "primary", color_value)
+    updated_customization = Map.put(current_customization, "color_scheme", updated_color_scheme)
 
     case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
       {:ok, portfolio} ->
@@ -1050,8 +1712,8 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       val -> val
     end
 
-    current_customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(current_customization, String.to_atom(option), converted_value)
+    current_customization = stringify_keys(socket.assigns.customization || %{})
+    updated_customization = Map.put(current_customization, option, converted_value)
 
     case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
       {:ok, portfolio} ->
@@ -1070,8 +1732,8 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   def handle_event("update_section_spacing", %{"spacing" => spacing}, socket) do
     IO.puts("Section spacing update event: #{spacing}")
 
-    current_customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(current_customization, :section_spacing, spacing)
+    current_customization = stringify_keys(socket.assigns.customization || %{})
+    updated_customization = Map.put(current_customization, "section_spacing", spacing)
 
     case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
       {:ok, portfolio} ->
@@ -1090,8 +1752,8 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   def handle_event("update_font_style", %{"font" => font}, socket) do
     IO.puts("Font style update event: #{font}")
 
-    current_customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(current_customization, :font_style, font)
+    current_customization = stringify_keys(socket.assigns.customization || %{})
+    updated_customization = Map.put(current_customization, "font_style", font)
 
     case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
       {:ok, portfolio} ->
@@ -1110,18 +1772,61 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   def handle_event("reset_customization", _params, socket) do
     default_customization = PortfolioTemplates.get_template_config(socket.assigns.portfolio.theme || "executive")
 
-    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: default_customization}) do
+    # FORCE default customization to use string keys
+    normalized_config = stringify_keys(default_customization)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: normalized_config}) do
       {:ok, portfolio} ->
         {:noreply,
         socket
         |> assign(:portfolio, portfolio)
-        |> assign(:customization, default_customization)
+        |> assign(:customization, normalized_config)
         |> put_flash(:info, "Customization reset to template defaults!")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to reset customization")}
     end
   end
+
+  @impl true
+  def handle_info({:countdown_tick, component_id}, socket) do
+    # This message is meant for the component, but sent to parent LiveView
+    # We don't need to forward it - the component handles its own timers
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:recording_tick, component_id}, socket) do
+    # Same here - component handles its own recording timers
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:video_intro_complete, data}, socket) do
+    # Handle successful video upload
+    {:noreply,
+    socket
+    |> assign(:show_video_intro_modal, false)
+    |> put_flash(:info, "Video introduction saved successfully!")}
+  end
+
+  # Catch-all for any other unhandled messages
+  @impl true
+  def handle_info(_msg, socket) do
+    {:noreply, socket}
+  end
+
+  # CRITICAL: This function converts ALL keys to strings recursively
+  defp stringify_keys(map) when is_map(map) do
+    map
+    |> Enum.map(fn
+      {key, value} when is_atom(key) -> {to_string(key), stringify_keys(value)}
+      {key, value} when is_binary(key) -> {key, stringify_keys(value)}
+    end)
+    |> Enum.into(%{})
+  end
+
+  defp stringify_keys(value), do: value
 
   @impl true
   def handle_event("cancel_edit", _params, socket) do
@@ -1178,6 +1883,157 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     |> assign(:unsaved_changes, false)
     |> put_flash(:info, "Section updated successfully!")
     |> push_patch(to: "/portfolios/#{socket.assigns.portfolio.id}/edit?tab=sections")}
+  end
+
+  @impl true
+  def handle_event("update_stats", %{"stat_name" => stat_name, "value" => value}, socket) do
+    current_customization = normalize_customization(socket.assigns.customization || %{})
+
+    # Update stats in customization
+    current_stats = Map.get(current_customization, "stats", %{})
+    updated_stats = Map.put(current_stats, stat_name, value)
+    updated_customization = Map.put(current_customization, "stats", updated_stats)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> put_flash(:info, "Stat updated!")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to update stat")}
+    end
+  end
+
+  @impl true
+  def handle_event("add_stat", %{"name" => name, "value" => value, "label" => label}, socket) do
+    current_customization = normalize_customization(socket.assigns.customization || %{})
+
+    # Add new stat
+    current_stats = Map.get(current_customization, "stats", %{})
+    new_stat = %{
+      "value" => value,
+      "label" => label,
+      "id" => System.unique_integer([:positive])
+    }
+    updated_stats = Map.put(current_stats, name, new_stat)
+    updated_customization = Map.put(current_customization, "stats", updated_stats)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> put_flash(:info, "New stat added!")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to add stat")}
+    end
+  end
+
+  @impl true
+  def handle_event("remove_stat", %{"stat_name" => stat_name}, socket) do
+    current_customization = normalize_customization(socket.assigns.customization || %{})
+
+    # Remove stat
+    current_stats = Map.get(current_customization, "stats", %{})
+    updated_stats = Map.delete(current_stats, stat_name)
+    updated_customization = Map.put(current_customization, "stats", updated_stats)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> put_flash(:info, "Stat removed!")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to remove stat")}
+    end
+  end
+
+  # Add this helper function to render the stats editor
+  defp render_stats_editor(assigns) do
+    ~H"""
+    <div class="stats-editor bg-gray-50 rounded-lg p-6 mb-6">
+      <h4 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Statistics</h4>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <%= for {stat_name, stat_data} <- get_portfolio_stats(@customization) do %>
+          <div class="stat-item bg-white p-4 rounded-lg border border-gray-200">
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-sm font-medium text-gray-700">
+                <%= Map.get(stat_data, "label", String.capitalize(stat_name)) %>
+              </label>
+              <button phx-click="remove_stat"
+                      phx-value-stat_name={stat_name}
+                      class="text-red-600 hover:text-red-800 text-sm">
+                Remove
+              </button>
+            </div>
+
+            <input type="text"
+                  value={Map.get(stat_data, "value", "")}
+                  phx-blur="update_stats"
+                  phx-value-stat_name={stat_name}
+                  placeholder="Enter value (e.g., 150, $2.5M, 95%)"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Add New Stat Form -->
+      <div class="border-t border-gray-200 pt-4">
+        <h5 class="text-md font-medium text-gray-900 mb-3">Add New Statistic</h5>
+        <form phx-submit="add_stat" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <input type="text"
+                name="name"
+                placeholder="Stat name (e.g., total_sales)"
+                required
+                class="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+
+          <input type="text"
+                name="label"
+                placeholder="Display label (e.g., Total Sales)"
+                required
+                class="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+
+          <div class="flex space-x-2">
+            <input type="text"
+                  name="value"
+                  placeholder="Value (e.g., $2.5M)"
+                  required
+                  class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+
+            <button type="submit"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium">
+              Add
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+  end
+
+  # Helper function to get portfolio stats
+  defp get_portfolio_stats(customization) do
+    normalized = normalize_customization(customization || %{})
+    stats = Map.get(normalized, "stats", %{})
+
+    # Default stats for executive template
+    default_stats = %{
+      "portfolio_views" => %{"label" => "Portfolio Views", "value" => "1,234"},
+      "projects_completed" => %{"label" => "Projects Completed", "value" => "47"},
+      "years_experience" => %{"label" => "Years Experience", "value" => "8"},
+      "client_satisfaction" => %{"label" => "Client Satisfaction", "value" => "98%"}
+    }
+
+    Map.merge(default_stats, stats)
   end
 
   # Portfolio Edit LiveView - Part 5: Main Render Function
@@ -1356,6 +2212,187 @@ defmodule FrestylWeb.PortfolioLive.Edit do
           </div>
         </div>
       <% end %>
+
+      <!-- Resume Import Modal -->
+      <div :if={@show_resume_import_modal} class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+
+          <!-- Modal Header -->
+          <div class="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-4 rounded-t-xl">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xl font-bold text-white flex items-center">
+                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Import Resume Data
+              </h3>
+              <button phx-click="hide_resume_import"
+                      class="text-white hover:text-gray-200 transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Modal Content -->
+          <div class="p-6">
+            <!-- Step 1: Upload Form -->
+            <div :if={@resume_parsing_state == :idle} class="space-y-6">
+              <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-emerald-100">
+                  <svg class="h-6 w-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                  </svg>
+                </div>
+                <h3 class="mt-2 text-lg font-medium text-gray-900">Upload Your Resume</h3>
+                <p class="mt-1 text-sm text-gray-500">
+                  Upload a PDF, DOC, or DOCX file to automatically extract and organize your information
+                </p>
+              </div>
+
+              <form phx-submit="upload_resume" phx-change="validate_resume" class="space-y-4">
+                <div class="space-y-4">
+                  <!-- File Upload Area -->
+                  <div phx-drop-target={@uploads.resume.ref}
+                      class="flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-emerald-400 transition-colors">
+                    <div class="space-y-1 text-center">
+                      <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      <div class="flex text-sm text-gray-600">
+                        <div class="relative cursor-pointer bg-white rounded-md font-medium text-emerald-600 hover:text-emerald-500">
+                          <span>Upload a file</span>
+                          <.live_file_input upload={@uploads.resume} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                        </div>
+                        <p class="pl-1">or drag and drop</p>
+                      </div>
+                      <p class="text-xs text-gray-500">PDF, DOC, DOCX up to 10MB</p>
+                    </div>
+                  </div>
+
+                  <!-- File List -->
+                  <div :if={@uploads.resume.entries != []} class="space-y-2">
+                    <h4 class="text-sm font-medium text-gray-900">Selected Files:</h4>
+                    <div :for={entry <- @uploads.resume.entries} class="flex items-center justify-between bg-gray-50 rounded-md p-3">
+                      <div class="flex items-center">
+                        <svg class="h-5 w-5 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm text-gray-900">{entry.client_name}</span>
+                        <span class="text-xs text-gray-500 ml-2">({Float.round(entry.client_size / 1024 / 1024, 1)} MB)</span>
+                      </div>
+
+                      <button type="button" phx-click="cancel_upload" phx-value-ref={entry.ref}
+                              class="text-red-500 hover:text-red-700">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Upload Progress -->
+                  <div :for={entry <- @uploads.resume.entries} :if={entry.progress > 0} class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                      <span class="text-gray-600">Uploading...</span>
+                      <span class="text-gray-600">{entry.progress}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                      <div class="bg-emerald-600 h-2 rounded-full transition-all duration-300" style={"width: #{entry.progress}%"}></div>
+                    </div>
+                  </div>
+
+                  <!-- Upload Errors -->
+                  <div :for={err <- upload_errors(@uploads.resume)} class="text-red-600 text-sm">
+                    {error_to_string(err)}
+                  </div>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                  <button type="button" phx-click="hide_resume_import"
+                          class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
+                    Cancel
+                  </button>
+                  <button type="submit"
+                          disabled={@uploads.resume.entries == []}
+                          class="px-4 py-2 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-md shadow-sm hover:bg-emerald-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                    Parse Resume
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Step 2: Parsing State -->
+            <div :if={@resume_parsing_state == :parsing} class="text-center py-8">
+              <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
+              <h3 class="mt-4 text-lg font-medium text-gray-900">Processing Resume</h3>
+              <p class="mt-2 text-sm text-gray-500">Extracting information from your resume...</p>
+            </div>
+
+            <!-- Step 3: Parsed Results -->
+            <div :if={@resume_parsing_state == :parsed and @parsed_resume_data} class="space-y-6">
+              <div class="text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
+                  <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                </div>
+                <h3 class="mt-2 text-lg font-medium text-gray-900">Resume Parsed Successfully</h3>
+                <p class="mt-1 text-sm text-gray-500">Review the extracted sections below and choose how to import them</p>
+              </div>
+
+              <div class="space-y-4">
+                <div :for={{section_type, content} <- @parsed_resume_data} class="border border-gray-200 rounded-lg p-4 hover:border-emerald-300 transition-colors">
+                  <div class="flex justify-between items-start mb-3">
+                    <h4 class="font-medium text-gray-900 capitalize flex items-center">
+                      <svg class="w-4 h-4 mr-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                      </svg>
+                      {String.replace(to_string(section_type), "_", " ")}
+                    </h4>
+                    <select name={"mapping[#{section_type}]"}
+                            class="text-sm border-gray-300 rounded-md shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                      <option value="new">Create New Section</option>
+                      <option value="skip">Skip This Section</option>
+                    </select>
+                  </div>
+
+                  <div class="text-sm text-gray-600 bg-gray-50 rounded-md p-3 max-h-24 overflow-y-auto">
+                    {String.slice(to_string(content), 0, 150)}<span :if={String.length(to_string(content)) > 150}>...</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                <button phx-click="hide_resume_import"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50">
+                  Cancel
+                </button>
+                <button phx-click="import_resume_sections"
+                        class="px-4 py-2 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-md shadow-sm hover:bg-emerald-700">
+                  Import Selected Sections
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 4: Error State -->
+            <div :if={@resume_parsing_state == :error} class="text-center py-8">
+              <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                </svg>
+              </div>
+              <h3 class="mt-2 text-lg font-medium text-gray-900">Parsing Failed</h3>
+              <p class="mt-1 text-sm text-gray-500">{@resume_error_message || "Unable to parse the resume file"}</p>
+              <button phx-click="reset_resume_import"
+                      class="mt-4 px-4 py-2 text-sm font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-md hover:bg-emerald-100">
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     """
   end
@@ -1441,32 +2478,51 @@ defmodule FrestylWeb.PortfolioLive.Edit do
             </div>
 
             <!-- Quick Actions -->
-            <div class="space-y-3">
-              <h3 class="text-lg font-semibold text-gray-900">Quick Actions</h3>
-
-              <button phx-click="show_video_intro"
-                      class="w-full flex items-center justify-center px-4 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            <div class="bg-white rounded-lg border border-gray-200 p-4">
+              <h3 class="text-base font-semibold text-gray-900 mb-3 flex items-center">
+                <svg class="w-4 h-4 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                 </svg>
-                Record Video Intro
-              </button>
+                Quick Actions
+              </h3>
 
-              <.link href={"/p/#{@portfolio.slug}"} target="_blank"
-                     class="w-full flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-                View Live Portfolio
-              </.link>
+              <div class="grid grid-cols-2 gap-2">
+                <!-- Import Resume -->
+                <button phx-click="show_resume_import"
+                        class="group flex items-center justify-center px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md hover:bg-emerald-100 hover:border-emerald-300 transition-all duration-200">
+                  <svg class="w-4 h-4 mr-1.5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                  Import Resume
+                </button>
 
-              <button phx-click="export_portfolio"
-                      class="w-full flex items-center justify-center px-4 py-3 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition-colors">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                Export Portfolio
-              </button>
+                <!-- Record Video -->
+                <button phx-click="show_video_intro"
+                        class="group flex items-center justify-center px-3 py-2 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-all duration-200">
+                  <svg class="w-4 h-4 mr-1.5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                  </svg>
+                  Video Intro
+                </button>
+
+                <!-- View Live -->
+                <.link href={"/p/#{@portfolio.slug}"} target="_blank"
+                      class="group flex items-center justify-center px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 hover:border-blue-300 transition-all duration-200">
+                  <svg class="w-4 h-4 mr-1.5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                  View Live
+                </.link>
+
+                <!-- Export PDF -->
+                <button phx-click="export_portfolio"
+                        class="group flex items-center justify-center px-3 py-2 text-xs font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 hover:border-gray-300 transition-all duration-200">
+                  <svg class="w-4 h-4 mr-1.5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                  Export PDF
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1689,39 +2745,28 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   end
 
   # FIXED section editor to prevent showing markup in input boxes:
-  defp render_section_content_editor(%{section_type: :intro} = section, assigns) do
+  defp render_section_content_editor(section, assigns) do
+    assigns =
+      assigns
+      |> assign(:section, section)
+      |> assign(:main_content, get_section_main_content(section))
+      |> assign(:formatted_type, format_section_type(section.section_type))
+
     ~H"""
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-semibold text-gray-800 mb-2">Headline</label>
-        <input type="text"
-              value={get_in(section.content, ["headline"]) || ""}
-              phx-blur="update_section_content"
-              phx-value-field="headline"
-              phx-value-section-id={section.id}
-              placeholder="Hello, I'm [Your Name]"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-      </div>
-
-      <div>
-        <label class="block text-sm font-semibold text-gray-800 mb-2">Summary</label>
+        <label class="block text-sm font-semibold text-gray-800 mb-2">Content</label>
         <textarea phx-blur="update_section_content"
-                  phx-value-field="summary"
-                  phx-value-section-id={section.id}
-                  rows="4"
-                  placeholder="A brief introduction about yourself and your professional journey..."
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= get_in(section.content, ["summary"]) || "" %></textarea>
+                  phx-value-field="main_content"
+                  phx-value-section-id={@section.id}
+                  rows="6"
+                  placeholder="Add content for this section..."
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">{@main_content}</textarea>
       </div>
 
-      <div>
-        <label class="block text-sm font-semibold text-gray-800 mb-2">Location</label>
-        <input type="text"
-              value={get_in(section.content, ["location"]) || ""}
-              phx-blur="update_section_content"
-              phx-value-field="location"
-              phx-value-section-id={section.id}
-              placeholder="City, State/Country"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+      <div class="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p><strong>Section Type:</strong> {@formatted_type}</p>
+        <p class="mt-1">This is a simplified editor. For advanced customization, specific editors for each section type can be implemented.</p>
       </div>
     </div>
     """
@@ -1941,8 +2986,40 @@ defmodule FrestylWeb.PortfolioLive.Edit do
           </div>
         </div>
 
+        <%= if @portfolio.theme == "executive" do %>
+          <div class="stats-editor bg-gray-50 rounded-lg p-6 mb-8">
+            <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 002 2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+              Executive Dashboard Statistics
+            </h4>
+            <p class="text-gray-600 mb-6">Customize the key metrics displayed on your executive dashboard.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <%= for {stat_name, stat_value} <- get_executive_stats(@customization) do %>
+                <div class="stat-item bg-white p-4 rounded-lg border border-gray-200">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <%= format_stat_label(stat_name) %>
+                  </label>
+
+                  <input type="text"
+                        value={stat_value}
+                        phx-blur="update_stats"
+                        phx-value-stat_name={stat_name}
+                        placeholder="Enter value (e.g., 150, $2.5M, 95%)"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+                </div>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+
         <!-- Customization Panel -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+            <%= if @portfolio.theme == "executive" do %>
+              <%= render_stats_editor(assigns) %>
+            <% end %>
           <h3 class="text-2xl font-semibold text-gray-900 mb-8">Customization Options</h3>
 
           <div class="space-y-10">
@@ -1965,7 +3042,7 @@ defmodule FrestylWeb.PortfolioLive.Edit do
                     <input type="radio"
                           name="primary_color"
                           value={color_value}
-                          checked={get_in(@customization, [:color_scheme, :primary]) == color_value}
+                          checked={get_current_primary_color(@customization) == color_value}
                           phx-click="update_color"
                           phx-value-color={color_value}
                           phx-value-name={color_name}
@@ -2010,7 +3087,7 @@ defmodule FrestylWeb.PortfolioLive.Edit do
                     <input type="radio"
                           name="font_style"
                           value={font_key}
-                          checked={Map.get(@customization, :font_style) == font_key}
+                          checked={get_current_font_style(@customization) == font_key}
                           phx-click="update_font_style"
                           phx-value-font={font_key}
                           class="sr-only" />
@@ -2060,7 +3137,7 @@ defmodule FrestylWeb.PortfolioLive.Edit do
                         <input type="radio"
                               name="section_spacing"
                               value={spacing_key}
-                              checked={Map.get(@customization, "section_spacing") == spacing_key}
+                              checked={get_current_section_spacing(@customization) == spacing_key}
                               phx-click="update_section_spacing"
                               phx-value-spacing={spacing_key}
                               class="sr-only" />
@@ -2104,10 +3181,16 @@ defmodule FrestylWeb.PortfolioLive.Edit do
                       </div>
                       <label class="toggle-switch">
                         <input type="checkbox"
-                              checked={Map.get(@customization, "fixed_navigation", true)}
+                              checked={get_current_layout_option(@customization, "fixed_navigation", true)}
                               phx-click="update_layout_option"
                               phx-value-option="fixed_navigation"
-                              phx-value-value={!Map.get(@customization, "fixed_navigation", true)} />
+                              phx-value-value={!get_current_layout_option(@customization, "fixed_navigation", true)} />
+
+                        <input type="checkbox"
+                              checked={get_current_layout_option(@customization, "dark_mode_support", false)}
+                              phx-click="update_layout_option"
+                              phx-value-option="dark_mode_support"
+                              phx-value-value={!get_current_layout_option(@customization, "dark_mode_support", false)} />
                         <span class="toggle-slider"></span>
                       </label>
                     </div>
@@ -2801,6 +3884,62 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     """
   end
 
+  defp render_resume_upload_form(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <div class="text-center">
+        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+          <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">Upload Resume</h3>
+        <p class="mt-1 text-sm text-gray-500">Select a PDF, DOC, or DOCX file to import</p>
+      </div>
+
+      <form phx-submit="upload_resume" phx-change="validate_resume" class="mt-4">
+        <input type="file" name="resume" accept=".pdf,.doc,.docx" required class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+
+        <div class="mt-4 flex justify-end">
+          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            Parse Resume
+          </button>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  defp render_parsed_resume_data(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <h4 class="text-lg font-medium text-gray-900">Parsed Resume Sections</h4>
+
+      <div :for={{section_type, content} <- @parsed_resume_data} class="border border-gray-200 rounded-lg p-4">
+        <div class="flex justify-between items-start mb-3">
+          <h5 class="font-medium text-gray-800 capitalize">{String.replace(section_type, "_", " ")}</h5>
+          <select name={"mapping[#{section_type}]"} class="text-sm border rounded px-2 py-1">
+            <option value="new">Create New Section</option>
+            <option value="skip">Skip This Section</option>
+            <!-- Add existing section options here -->
+          </select>
+        </div>
+
+        <div class="text-sm text-gray-600 bg-gray-50 rounded p-3 max-h-32 overflow-y-auto">
+          {String.slice(content, 0, 200)}<span :if={String.length(content) > 200}>...</span>
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-3 pt-4 border-t">
+        <button phx-click="hide_resume_import" class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+          Cancel
+        </button>
+        <button phx-click="import_resume_sections" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+          Import Sections
+        </button>
+      </div>
+    </div>
+    """
+  end
+
   # Helper functions for section editors
   defp get_section_main_content(section) do
     case section.section_type do
@@ -3133,44 +4272,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     Calendar.strftime(datetime, "%b %d, %Y")
   end
 
-
-  defp get_theme_classes(customization, portfolio) do
-    primary_color = get_in(customization, ["color_scheme", "primary"]) ||
-                    get_in(customization, [:color_scheme, :primary]) || "#6366f1"
-
-    font_style = get_in(customization, ["font_style"]) ||
-                get_in(customization, [:font_style]) || "inter"
-
-    spacing = get_in(customization, ["section_spacing"]) ||
-              get_in(customization, [:section_spacing]) || "normal"
-
-    %{
-      primary_color: primary_color,
-      font_class: font_class(font_style),
-      spacing_class: spacing_class(spacing),
-      theme: portfolio.theme || "executive"
-    }
-  end
-
-  defp font_class(font_style) do
-    case font_style do
-      "inter" -> "font-sans"
-      "merriweather" -> "font-serif"
-      "roboto" -> "font-mono"
-      "playfair" -> "font-serif"
-      _ -> "font-sans"
-    end
-  end
-
-  defp spacing_class(spacing) do
-    case spacing do
-      "compact" -> "space-y-4"
-      "normal" -> "space-y-6"
-      "spacious" -> "space-y-8"
-      _ -> "space-y-6"
-    end
-  end
-
   defp get_theme_gradient(theme) do
     case theme do
       "executive" -> "from-slate-800 to-slate-900"
@@ -3224,11 +4325,92 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   defp format_file_size(size) when size > 1_048_576 do
     "#{Float.round(size / 1_048_576, 1)} MB"
   end
+
   defp format_file_size(size) when size > 1024 do
     "#{Float.round(size / 1024, 1)} KB"
   end
+
   defp format_file_size(size) do
     "#{size} bytes"
   end
 
+  defp get_current_font_style(customization) do
+    normalized = stringify_keys(customization || %{})
+    Map.get(normalized, "font_style", "inter")
+  end
+
+  defp get_current_section_spacing(customization) do
+    normalized = stringify_keys(customization || %{})
+    Map.get(normalized, "section_spacing", "normal")
+  end
+
+  defp get_current_layout_option(customization, option, default) do
+    normalized = stringify_keys(customization || %{})
+    Map.get(normalized, option, default)
+  end
+
+  defp get_theme_classes(customization, portfolio) do
+    # Normalize customization first
+    normalized = normalize_customization(customization || %{})
+
+    # Always use string keys when accessing
+    primary_color = get_in(normalized, ["color_scheme", "primary"]) || "#6366f1"
+    font_style = Map.get(normalized, "font_style", "inter")
+    spacing = Map.get(normalized, "section_spacing", "normal")
+
+    %{
+      primary_color: primary_color,
+      font_class: font_class(font_style),
+      spacing_class: spacing_class(spacing),
+      theme: portfolio.theme || "executive"
+    }
+  end
+
+  defp font_class(font_style) do
+    case font_style do
+      "inter" -> "font-sans"
+      "merriweather" -> "font-serif"
+      "roboto" -> "font-mono"
+      "playfair" -> "font-serif"
+      _ -> "font-sans"
+    end
+  end
+
+  defp spacing_class(spacing) do
+    case spacing do
+      "compact" -> "space-y-4"
+      "normal" -> "space-y-6"
+      "spacious" -> "space-y-8"
+      _ -> "space-y-6"
+    end
+  end
+
+  defp get_executive_stats(customization) do
+    normalized = normalize_customization(customization || %{})
+    current_stats = Map.get(normalized, "stats", %{})
+
+    # Default executive stats
+    default_stats = %{
+      "portfolio_views" => "1,234",
+      "projects_completed" => "47",
+      "years_experience" => "8",
+      "client_satisfaction" => "98%",
+      "team_size" => "12",
+      "revenue_generated" => "$2.5M"
+    }
+
+    Map.merge(default_stats, current_stats)
+  end
+
+  defp format_stat_label(stat_name) do
+    case stat_name do
+      "portfolio_views" -> "Portfolio Views"
+      "projects_completed" -> "Projects Completed"
+      "years_experience" -> "Years Experience"
+      "client_satisfaction" -> "Client Satisfaction"
+      "team_size" -> "Team Size"
+      "revenue_generated" -> "Revenue Generated"
+      _ -> String.capitalize(String.replace(stat_name, "_", " "))
+    end
+  end
 end

@@ -7,6 +7,13 @@ defmodule FrestylWeb.PortfolioHTML do
   use Gettext, backend: FrestylWeb.Gettext
 
   def show(assigns) do
+    # 🔥 INJECT THE CSS FIRST
+    css_injection = if Map.has_key?(assigns, :customization_css) do
+      assigns.customization_css
+    else
+      ""
+    end
+
     # Get template config based on portfolio theme
     template_config = PortfolioTemplates.get_template_config(assigns.portfolio.theme || "executive")
 
@@ -14,14 +21,22 @@ defmodule FrestylWeb.PortfolioHTML do
     assigns = Map.put(assigns, :template_config, template_config)
     assigns = Map.put(assigns, :background_classes, PortfolioTemplates.get_background_classes(template_config))
     assigns = Map.put(assigns, :font_classes, PortfolioTemplates.get_font_classes(template_config))
+    assigns = Map.put(assigns, :css_injection, css_injection)  # 🔥 ADD THIS
 
-    case template_config.layout do
+    # Check if we have layout from database customization
+    layout_from_db = if Map.has_key?(assigns, :template_vars) do
+      assigns.template_vars.layout
+    else
+      template_config.layout
+    end
+
+    case layout_from_db do
       "dashboard" -> render_executive_layout(assigns)
       "terminal" -> render_developer_layout(assigns)
       "gallery" -> render_designer_layout(assigns)
       "case_study" -> render_consultant_layout(assigns)
-      "fullscreen" -> render_photographer_layout(assigns)  # This should render for your "photographer" theme
-      "services" -> render_freelancer_layout(assigns)
+      "fullscreen" -> render_photographer_layout(assigns)
+      "services" -> render_freelancer_layout(assigns)  # 🔥 This should match your DB data
       "exhibition" -> render_artist_layout(assigns)
       "typography" -> render_minimalist_layout(assigns)
       _ -> render_default_layout(assigns)
@@ -323,61 +338,80 @@ defmodule FrestylWeb.PortfolioHTML do
   # FREELANCER: Services Layout
   defp render_freelancer_layout(assigns) do
     ~H"""
-    <div class={[@background_classes, @font_classes, "min-h-screen text-white"]}>
-      <!-- Service Header -->
-      <header class="bg-gradient-to-r from-emerald-400 to-teal-600">
-        <div class="max-w-6xl mx-auto px-6 py-16">
-          <div class="text-center">
-            <h1 class="text-4xl lg:text-5xl font-semibold mb-6"><%= @portfolio.title %></h1>
-            <p class="text-xl text-emerald-100 mb-8 max-w-3xl mx-auto"><%= @portfolio.description %></p>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title><%= @portfolio.title %> - Portfolio</title>
+      <link phx-track-static rel="stylesheet" href="/assets/app.css" />
 
-            <!-- Service Highlights -->
-            <div class="grid md:grid-cols-3 gap-6 mt-12">
-              <div class="bg-white bg-opacity-10 rounded-xl p-6">
-                <div class="text-3xl mb-4">⚡</div>
-                <div class="font-semibold mb-2">Fast Delivery</div>
-                <div class="text-emerald-100 text-sm">Projects completed on time</div>
-              </div>
-              <div class="bg-white bg-opacity-10 rounded-xl p-6">
-                <div class="text-3xl mb-4">💎</div>
-                <div class="font-semibold mb-2">Premium Quality</div>
-                <div class="text-emerald-100 text-sm">Attention to every detail</div>
-              </div>
-              <div class="bg-white bg-opacity-10 rounded-xl p-6">
-                <div class="text-3xl mb-4">🎯</div>
-                <div class="font-semibold mb-2">Results Focused</div>
-                <div class="text-emerald-100 text-sm">Measurable outcomes</div>
+      <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+      <%= Phoenix.HTML.raw(@css_injection) %>
+    </head>
+    <body>
+      <!-- DEBUG: Test if CSS is working -->
+      <div class="debug-css-working">
+        🔥 CSS Debug: If you see this yellow box with red border, CSS is loading!
+        Colors: Primary=<%= Map.get(@template_vars || %{}, :primary_color, "default") %>,
+        Background=<%= Map.get(@template_vars || %{}, :background, "default") %>
+      </div>
+
+      <div class={[@background_classes, @font_classes, "min-h-screen text-white"]}>
+        <!-- Service Header -->
+        <header class="bg-gradient-to-r from-emerald-400 to-teal-600" style="background: var(--portfolio-bg) !important;">
+          <div class="max-w-6xl mx-auto px-6 py-16">
+            <div class="text-center">
+              <h1 class="text-4xl lg:text-5xl font-semibold mb-6 portfolio-primary"><%= @portfolio.title %></h1>
+              <p class="text-xl text-emerald-100 mb-8 max-w-3xl mx-auto portfolio-secondary"><%= @portfolio.description %></p>
+
+              <!-- Service Highlights -->
+              <div class="grid md:grid-cols-3 gap-6 mt-12">
+                <div class="portfolio-card rounded-xl p-6">
+                  <div class="text-3xl mb-4">⚡</div>
+                  <div class="font-semibold mb-2">Fast Delivery</div>
+                  <div class="text-emerald-100 text-sm">Projects completed on time</div>
+                </div>
+                <div class="portfolio-card rounded-xl p-6">
+                  <div class="text-3xl mb-4">💎</div>
+                  <div class="font-semibold mb-2">Premium Quality</div>
+                  <div class="text-emerald-100 text-sm">Attention to every detail</div>
+                </div>
+                <div class="portfolio-card rounded-xl p-6">
+                  <div class="text-3xl mb-4">🎯</div>
+                  <div class="font-semibold mb-2">Results Focused</div>
+                  <div class="text-emerald-100 text-sm">Measurable outcomes</div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <!-- Sticky Navigation -->
-      <nav class="sticky top-0 z-40 bg-teal-700 shadow-lg">
-        <div class="max-w-6xl mx-auto px-6">
-          <div class="flex space-x-8 overflow-x-auto py-4">
-            <%= for section <- @sections do %>
-              <a href={"#section-#{section.id}"}
-                 class="whitespace-nowrap text-teal-100 hover:text-white font-medium transition-colors">
-                <%= section.title %>
-              </a>
-            <% end %>
+        <!-- Sticky Navigation -->
+        <nav class="sticky top-0 z-40 shadow-lg portfolio-bg-secondary">
+          <div class="max-w-6xl mx-auto px-6">
+            <div class="flex space-x-8 overflow-x-auto py-4">
+              <%= for section <- @sections do %>
+                <a href={"#section-#{section.id}"}
+                  class="whitespace-nowrap hover:text-white font-medium transition-colors portfolio-accent">
+                  <%= section.title %>
+                </a>
+              <% end %>
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
 
-      <!-- Service Cards Content -->
-      <main class="bg-gradient-to-b from-teal-600 to-emerald-600 px-6 py-12">
-        <div class="max-w-6xl mx-auto">
-          <%= render_freelancer_sections(assigns) %>
-        </div>
-      </main>
-    </div>
+        <!-- Service Cards Content -->
+        <main class="px-6 py-12" style="background: var(--portfolio-bg);">
+          <div class="max-w-6xl mx-auto">
+            <%= render_freelancer_sections(assigns) %>
+          </div>
+        </main>
+      </div>
+    </body>
+    </html>
     """
   end
-
-  # Continue lib/frestyl_web/controllers/portfolio_html.ex - Part 3
 
   # ARTIST: Exhibition Layout
   defp render_artist_layout(assigns) do
@@ -515,8 +549,6 @@ defmodule FrestylWeb.PortfolioHTML do
     """
   end
 
-  # Continue lib/frestyl_web/controllers/portfolio_html.ex - Part 4
-
   # EXECUTIVE: Dashboard-style sections
   defp render_executive_sections(assigns) do
     ~H"""
@@ -622,8 +654,6 @@ defmodule FrestylWeb.PortfolioHTML do
     </div>
     """
   end
-
-  # Continue lib/frestyl_web/controllers/portfolio_html.ex - Part 5
 
   # PHOTOGRAPHER: Full-screen slide sections
   defp render_photographer_sections(assigns) do
@@ -758,8 +788,6 @@ defmodule FrestylWeb.PortfolioHTML do
     </div>
     """
   end
-
-  # Continue lib/frestyl_web/controllers/portfolio_html.ex - Part 6
 
   # Helper function to get section icons
   defp get_section_icon(section_type) do
@@ -1295,5 +1323,926 @@ defmodule FrestylWeb.PortfolioHTML do
   defp get_section_media_preview(_section), do: []
   defp get_media_url(_media), do: "/images/placeholder.jpg"
 
+
+  def show_with_css(assigns) do
+    # Get layout from database
+    layout = assigns.user_customization["layout"] || "gallery"
+
+    # For now, let's just use the designer layout since your DB shows "gallery"
+    render_designer_layout_with_css(assigns)
+  end
+
+  # Designer/Gallery layout with CSS injection (matches your "gallery" layout)
+
+  defp render_designer_layout_with_css(assigns) do
+    font_family = get_in(assigns.user_customization, ["typography", "font_family"]) || "Playfair Display"
+
+    # 🔥 Get Google Fonts URL for HTML head
+    google_fonts_link = get_google_fonts_link(font_family)
+
+    """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>#{assigns.portfolio.title} - Portfolio</title>
+
+      <!-- 🔥 LOAD GOOGLE FONTS PROPERLY -->
+      #{google_fonts_link}
+
+      <style>
+      #{assigns.customization_css}
+
+      /* 🔥 FORCE FONT APPLICATION EVERYWHERE */
+      * {
+        font-family: #{get_font_family_css(font_family)} !important;
+      }
+
+      body, html {
+        font-family: #{get_font_family_css(font_family)} !important;
+        background: var(--portfolio-bg) !important;
+        color: var(--portfolio-text) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      /* Gallery-specific styles */
+      .gallery-header {
+        background: var(--portfolio-bg);
+        color: var(--portfolio-text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .gallery-content {
+        background: var(--portfolio-bg);
+        color: var(--portfolio-text);
+        padding: 4rem 0;
+      }
+
+      .gallery-section {
+        background: var(--portfolio-card-bg);
+        margin: 2rem;
+        padding: var(--portfolio-spacing);
+        border-radius: 1rem;
+        backdrop-filter: blur(10px);
+        break-inside: avoid;
+        margin-bottom: 2rem;
+      }
+
+      .floating-nav {
+        position: fixed;
+        top: 2rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 9999px;
+        padding: 1rem 2rem;
+      }
+
+      .floating-nav a {
+        color: var(--portfolio-text);
+        margin: 0 1rem;
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.3s;
+        font-family: #{get_font_family_css(font_family)} !important;
+      }
+
+      .floating-nav a:hover {
+        color: var(--portfolio-primary-color);
+      }
+
+      .masonry-grid {
+        columns: 1;
+        gap: 2rem;
+        max-width: 75rem;
+        margin: 0 auto;
+        padding: 0 2rem;
+      }
+
+      @media (min-width: 768px) {
+        .masonry-grid {
+          columns: 2;
+        }
+      }
+
+      @media (min-width: 1024px) {
+        .masonry-grid {
+          columns: 3;
+        }
+      }
+
+      @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-20px); }
+      }
+
+      .animate-float {
+        animation: float 6s ease-in-out infinite;
+      }
+
+      .animate-float-reverse {
+        animation: float 8s ease-in-out infinite reverse;
+      }
+
+      /* 🔥 FONT DEBUG INDICATOR */
+      .font-debug {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: rgba(0,0,0,0.9);
+        color: white;
+        padding: 12px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        z-index: 9999;
+        font-family: 'Courier New', monospace !important;
+        border: 2px solid #00ff00;
+      }
+
+      /* 🔥 FONT TEST SAMPLES */
+      .font-sample {
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 20px;
+        margin: 20px;
+        border-radius: 8px;
+        border: 2px solid var(--portfolio-primary-color);
+      }
+
+      .font-sample h3 {
+        font-family: #{get_font_family_css(font_family)} !important;
+        font-size: 24px;
+        margin-bottom: 10px;
+      }
+
+      .font-sample p {
+        font-family: #{get_font_family_css(font_family)} !important;
+        font-size: 16px;
+        line-height: 1.5;
+      }
+      </style>
+    </head>
+    <body>
+
+      <!-- Floating Navigation -->
+      <nav class="floating-nav">
+        #{Enum.map_join(assigns.sections, "", fn section ->
+          "<a href=\"#section-#{section.id}\">#{section.title}</a>"
+        end)}
+      </nav>
+
+      <!-- Gallery Header -->
+      <header class="gallery-header">
+        <div style="text-align: center; z-index: 10; position: relative;">
+          <h1 style="font-size: 4rem; font-weight: bold; margin-bottom: 1.5rem; background: linear-gradient(45deg, var(--portfolio-primary-color), var(--portfolio-secondary-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-family: #{get_font_family_css(font_family)} !important;">
+            #{assigns.portfolio.title}
+          </h1>
+          <p style="font-size: 1.5rem; opacity: 0.9; max-width: 50rem; margin: 0 auto; line-height: 1.6; font-family: #{get_font_family_css(font_family)} !important;">
+            #{assigns.portfolio.description || "Creative Portfolio"}
+          </p>
+
+          <div style="margin-top: 3rem;">
+            <button style="background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 9999px; padding: 1rem 2rem; color: var(--portfolio-text); font-weight: 600; cursor: pointer; font-family: #{get_font_family_css(font_family)} !important;">
+              Explore My Work ↓
+            </button>
+          </div>
+        </div>
+
+        <!-- Animated Background Elements -->
+        <div class="animate-float" style="position: absolute; top: -10rem; right: -10rem; width: 20rem; height: 20rem; background: var(--portfolio-primary-color); border-radius: 50%; mix-blend-mode: multiply; filter: blur(40px); opacity: 0.7;"></div>
+        <div class="animate-float-reverse" style="position: absolute; bottom: -10rem; left: -10rem; width: 20rem; height: 20rem; background: var(--portfolio-secondary-color); border-radius: 50%; mix-blend-mode: multiply; filter: blur(40px); opacity: 0.7;"></div>
+      </header>
+
+      <!-- Gallery Content -->
+      <main class="gallery-content">
+        <div class="masonry-grid">
+          #{Enum.map_join(assigns.sections, "", fn section ->
+            "<section id=\"section-#{section.id}\" class=\"gallery-section\">
+              <h2 style=\"font-size: 2rem; font-weight: bold; margin-bottom: 1.5rem; background: linear-gradient(45deg, var(--portfolio-primary-color), var(--portfolio-accent-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; font-family: #{get_font_family_css(font_family)} !important;\">
+                #{section.title}
+              </h2>
+
+              <div style=\"line-height: 1.6; font-family: #{get_font_family_css(font_family)} !important;\">
+                #{render_section_content_simple(section)}
+              </div>
+
+              <div style=\"margin-top: 1.5rem; height: 1px; background: linear-gradient(90deg, var(--portfolio-primary-color), var(--portfolio-accent-color)); border-radius: 9999px;\"></div>
+            </section>"
+          end)}
+        </div>
+      </main>
+    </body>
+    </html>
+    """
+  end
+
+
+  # 🔥 Generate Google Fonts LINK tags for HTML head
+  defp get_google_fonts_link(font_family) do
+    case font_family do
+      "Inter" ->
+        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
+        <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>
+        <link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap\" rel=\"stylesheet\">"
+      "Roboto" ->
+        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
+        <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>
+        <link href=\"https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap\" rel=\"stylesheet\">"
+      "JetBrains Mono" ->
+        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
+        <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>
+        <link href=\"https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap\" rel=\"stylesheet\">"
+      "Merriweather" ->
+        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
+        <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>
+        <link href=\"https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&display=swap\" rel=\"stylesheet\">"
+      "Playfair Display" ->
+        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
+        <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>
+        <link href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap\" rel=\"stylesheet\">"
+      _ ->
+        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
+        <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>
+        <link href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap\" rel=\"stylesheet\">"
+    end
+  end
+
+  # 🔥 Get font family CSS
+  defp get_font_family_css(font_family) do
+    case font_family do
+      "Inter" -> "'Inter', sans-serif"
+      "Roboto" -> "'Roboto', sans-serif"
+      "JetBrains Mono" -> "'JetBrains Mono', monospace"
+      "Merriweather" -> "'Merriweather', serif"
+      "Playfair Display" -> "'Playfair Display', serif"
+      "Poppins" -> "'Poppins', sans-serif"
+      "Montserrat" -> "'Montserrat', sans-serif"
+      _ -> "'Playfair Display', serif"  # Default
+    end
+  end
+
+  # Simple section content renderer
+  defp render_section_content_simple(section) do
+    case section.content do
+      %{"summary" => summary} when is_binary(summary) -> summary
+      %{"description" => desc} when is_binary(desc) -> desc
+      %{"content" => content} when is_binary(content) -> content
+      _ -> "This section is being developed."
+    end
+  end
+
+  def render_gallery_layout(assigns) do
+    render_designer_layout_with_css(assigns)  # Use your existing function
+  end
+
+  # SERVICES LAYOUT
+  def render_services_layout(assigns) do
+    """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>#{assigns.portfolio.title} - Services Portfolio</title>
+      <link href="https://fonts.googleapis.com/css2?family=#{get_font_name(assigns)}:wght@400;700&display=swap" rel="stylesheet">
+
+      <style>
+      #{assigns.customization_css}
+
+      .services-header {
+        background: var(--portfolio-bg);
+        color: var(--portfolio-text);
+        padding: 4rem 0;
+        text-align: center;
+      }
+
+      .service-card {
+        background: var(--portfolio-card-bg);
+        padding: var(--portfolio-spacing);
+        border-radius: 1rem;
+        margin: 1rem;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .service-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+        max-width: 75rem;
+        margin: 0 auto;
+        padding: 4rem 2rem;
+      }
+
+      .service-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+      }
+      </style>
+    </head>
+    <body>
+      <!-- Services Header -->
+      <header class="services-header">
+        <div style="max-width: 60rem; margin: 0 auto; padding: 0 2rem;">
+          <h1 style="font-size: 3rem; font-weight: bold; color: var(--portfolio-primary-color); margin-bottom: 1rem;">
+            #{assigns.portfolio.title}
+          </h1>
+          <p style="font-size: 1.25rem; margin-bottom: 2rem; opacity: 0.9;">
+            #{assigns.portfolio.description}
+          </p>
+
+          <!-- Service Highlights -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2rem; margin-top: 3rem;">
+            <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 1rem;">
+              <div class="service-icon">⚡</div>
+              <div style="font-weight: 600; margin-bottom: 0.5rem;">Fast Delivery</div>
+              <div style="font-size: 0.875rem; opacity: 0.8;">Quick turnaround times</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 1rem;">
+              <div class="service-icon">💎</div>
+              <div style="font-weight: 600; margin-bottom: 0.5rem;">Premium Quality</div>
+              <div style="font-size: 0.875rem; opacity: 0.8;">Attention to detail</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); padding: 1.5rem; border-radius: 1rem;">
+              <div class="service-icon">🎯</div>
+              <div style="font-weight: 600; margin-bottom: 0.5rem;">Results Focused</div>
+              <div style="font-size: 0.875rem; opacity: 0.8;">Measurable outcomes</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Services Grid -->
+      <main style="background: var(--portfolio-bg);">
+        <div class="service-grid">
+          #{Enum.map_join(assigns.sections, "", fn section ->
+            "<div class=\"service-card\">
+              <h2 style=\"color: var(--portfolio-primary-color); font-size: 1.5rem; font-weight: bold; margin-bottom: 1rem;\">
+                #{section.title}
+              </h2>
+              <div style=\"line-height: 1.6; color: var(--portfolio-text);\">
+                #{render_section_content_simple(section)}
+              </div>
+              <div style=\"margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.2);\">
+                <button style=\"background: var(--portfolio-primary-color); color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 0.5rem; font-weight: 600; cursor: pointer;\">
+                  Learn More
+                </button>
+              </div>
+            </div>"
+          end)}
+        </div>
+      </main>
+    </body>
+    </html>
+    """
+  end
+
+  # DASHBOARD LAYOUT
+# Add or replace your render_dashboard_layout function in portfolio_html.ex:
+
+def render_dashboard_layout(assigns) do
+  font_family = get_in(assigns.user_customization, ["typography", "font_family"]) || "Inter"
+
+  # 🔥 Get font CSS directly
+  font_css = case font_family do
+    "Inter" -> "'Inter', sans-serif"
+    "Roboto" -> "'Roboto', sans-serif"
+    "JetBrains Mono" -> "'JetBrains Mono', monospace"
+    "Merriweather" -> "'Merriweather', serif"
+    "Playfair Display" -> "'Playfair Display', serif"
+    _ -> "'Inter', sans-serif"
+  end
+
+  # 🔥 Get Google Fonts link
+  google_fonts = case font_family do
+    "Inter" ->
+      "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap\" rel=\"stylesheet\">"
+    "Roboto" ->
+      "<link href=\"https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap\" rel=\"stylesheet\">"
+    "JetBrains Mono" ->
+      "<link href=\"https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap\" rel=\"stylesheet\">"
+    "Merriweather" ->
+      "<link href=\"https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700;900&display=swap\" rel=\"stylesheet\">"
+    "Playfair Display" ->
+      "<link href=\"https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap\" rel=\"stylesheet\">"
+    _ ->
+      "<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap\" rel=\"stylesheet\">"
+  end
+
+  """
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>#{assigns.portfolio.title} - Executive Dashboard</title>
+
+    <!-- 🔥 LOAD GOOGLE FONTS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    #{google_fonts}
+
+    <style>
+    #{assigns.customization_css}
+
+    /* 🔥 FORCE FONT APPLICATION */
+    * {
+      font-family: #{font_css} !important;
+    }
+
+    body, html {
+      font-family: #{font_css} !important;
+      background: var(--portfolio-bg) !important;
+      color: var(--portfolio-text) !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    /* Dashboard-specific styles */
+    .dashboard-header {
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      color: white;
+      padding: 3rem 0;
+    }
+
+    .metric-card {
+      background: white;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+
+    .sidebar {
+      background: #334155;
+      min-height: 100vh;
+      width: 16rem;
+      padding: 2rem;
+    }
+
+    .sidebar a {
+      display: block;
+      color: #cbd5e1;
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      text-decoration: none;
+      margin-bottom: 0.5rem;
+      transition: all 0.2s;
+      font-family: #{font_css} !important;
+    }
+
+    .sidebar a:hover {
+      background: #475569;
+      color: white;
+    }
+
+    /* 🔥 FONT DEBUG INDICATOR */
+    .font-debug {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.9);
+      color: white;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      z-index: 9999;
+      font-family: 'Courier New', monospace !important;
+      border: 2px solid #00ff00;
+    }
+
+    /* 🔥 LAYOUT DEBUG */
+    .layout-debug {
+      position: fixed;
+      top: 80px;
+      right: 10px;
+      background: rgba(255,0,0,0.9);
+      color: white;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      z-index: 9999;
+      font-family: 'Courier New', monospace !important;
+      border: 2px solid #ff0000;
+    }
+    </style>
+  </head>
+  <body>
+    <!-- 🔥 DEBUG INDICATORS -->
+    <div class="font-debug">
+      Font: #{font_family}<br>
+      CSS: #{font_css}
+    </div>
+
+    <div class="layout-debug">
+      🔥 DASHBOARD LAYOUT<br>
+      Layout: #{assigns.layout}<br>
+      Background: #{assigns.user_customization["background"]}
+    </div>
+
+    <!-- Dashboard Header -->
+    <header class="dashboard-header" style="background: var(--portfolio-bg);">
+      <div style="max-width: 75rem; margin: 0 auto; padding: 0 2rem;">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 3rem; align-items: center;">
+          <div>
+            <h1 style="font-size: 3rem; font-weight: bold; margin-bottom: 1rem; color: var(--portfolio-primary-color); font-family: #{font_css} !important;">
+              #{assigns.portfolio.title}
+            </h1>
+            <p style="font-size: 1.25rem; margin-bottom: 2rem; opacity: 0.9; font-family: #{font_css} !important;">
+              #{assigns.portfolio.description}
+            </p>
+
+            <!-- Executive Metrics -->
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem;">
+              <div style="text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold; color: var(--portfolio-accent-color);">10+</div>
+                <div style="font-size: 0.875rem; color: var(--portfolio-text); opacity: 0.8;">Years Experience</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold; color: var(--portfolio-secondary-color);">50+</div>
+                <div style="font-size: 0.875rem; color: var(--portfolio-text); opacity: 0.8;">Projects</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 2rem; font-weight: bold; color: var(--portfolio-primary-color);">150%</div>
+                <div style="font-size: 0.875rem; color: var(--portfolio-text); opacity: 0.8;">Growth</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="justify-self: end;">
+            <div style="width: 16rem; height: 16rem; background: linear-gradient(135deg, var(--portfolio-primary-color), var(--portfolio-secondary-color)); border-radius: 1rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 20px 25px rgba(0,0,0,0.25);">
+              <span style="font-size: 4rem; font-weight: bold; color: white; font-family: #{font_css} !important;">
+                #{String.first(assigns.portfolio.title)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Dashboard Content -->
+    <div style="display: flex; background: var(--portfolio-bg);">
+      <!-- Sidebar -->
+      <nav class="sidebar">
+        <div style="margin-bottom: 2rem;">
+          <h3 style="color: white; font-size: 1.125rem; font-weight: 600; margin-bottom: 1rem; font-family: #{font_css} !important;">Navigation</h3>
+          #{Enum.map_join(assigns.sections, "", fn section ->
+            "<a href=\"#section-#{section.id}\">#{section.title}</a>"
+          end)}
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <main style="flex: 1; padding: 2rem; background: var(--portfolio-bg);">
+        #{Enum.map_join(assigns.sections, "", fn section ->
+          "<section id=\"section-#{section.id}\" style=\"background: var(--portfolio-card-bg); border-radius: 0.75rem; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 2rem; margin-bottom: 2rem;\">
+            <div style=\"display: flex; align-items: center; justify-content: between; margin-bottom: 1.5rem;\">
+              <h2 style=\"color: var(--portfolio-primary-color); font-size: 1.5rem; font-weight: bold; font-family: #{font_css} !important;\">#{section.title}</h2>
+              <div style=\"width: 3rem; height: 3rem; background: var(--portfolio-accent-color); border-radius: 0.5rem; display: flex; align-items: center; justify-content: center;\">
+                📊
+              </div>
+            </div>
+            <div style=\"color: var(--portfolio-text); line-height: 1.6; font-family: #{font_css} !important;\">
+              #{render_section_content_simple(section)}
+            </div>
+          </section>"
+        end)}
+      </main>
+    </div>
+  </body>
+  </html>
+  """
+end
+
+  # TERMINAL LAYOUT
+  def render_terminal_layout(assigns) do
+    """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>#{assigns.portfolio.title} - Developer Terminal</title>
+
+      <style>
+      #{assigns.customization_css}
+
+      body {
+        background: #0f172a !important;
+        color: #22c55e !important;
+        font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+        margin: 0;
+      }
+
+      .terminal-header {
+        background: #1e293b;
+        border-bottom: 1px solid #22c55e;
+        padding: 1rem 2rem;
+      }
+
+      .terminal-window {
+        background: #1e293b;
+        border: 1px solid #22c55e;
+        border-radius: 0.5rem;
+        margin: 1rem;
+        overflow: hidden;
+      }
+
+      .terminal-title-bar {
+        background: #374151;
+        padding: 0.75rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .terminal-dot {
+        width: 0.75rem;
+        height: 0.75rem;
+        border-radius: 50%;
+      }
+
+      .terminal-content {
+        padding: 1rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.875rem;
+        line-height: 1.5;
+      }
+      </style>
+    </head>
+    <body>
+      <!-- Terminal Header -->
+      <header class="terminal-header">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <div style="display: flex; gap: 0.5rem;">
+            <div class="terminal-dot" style="background: #ef4444;"></div>
+            <div class="terminal-dot" style="background: #eab308;"></div>
+            <div class="terminal-dot" style="background: #22c55e;"></div>
+          </div>
+          <span style="color: #64748b;">~/portfolio/#{String.downcase(String.replace(assigns.portfolio.title, " ", "_"))}</span>
+        </div>
+      </header>
+
+      <!-- Terminal Content -->
+      <main style="padding: 2rem;">
+        <!-- README Section -->
+        <div class="terminal-window">
+          <div class="terminal-title-bar">
+            <span style="color: #3b82f6;">$</span>
+            <span style="color: #22c55e;">cat</span>
+            <span style="color: white;">README.md</span>
+          </div>
+          <div class="terminal-content">
+            <div style="color: white; font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem;"># #{assigns.portfolio.title}</div>
+            <div style="color: #9ca3af; margin-bottom: 1rem;">#{assigns.portfolio.description}</div>
+            <div style="color: #22c55e;">
+              ```bash<br/>
+              git clone https://github.com/developer/#{String.downcase(String.replace(assigns.portfolio.title, " ", "-"))}<br/>
+              cd portfolio && npm install<br/>
+              npm start<br/>
+              ```
+            </div>
+          </div>
+        </div>
+
+        <!-- Sections as Terminal Commands -->
+        #{Enum.map_join(assigns.sections, "", fn section ->
+          "<div class=\"terminal-window\">
+            <div class=\"terminal-title-bar\">
+              <span style=\"color: #3b82f6;\">$</span>
+              <span style=\"color: #22c55e;\">cat</span>
+              <span style=\"color: white;\">#{String.downcase(String.replace(section.title, " ", "_"))}.md</span>
+            </div>
+            <div class=\"terminal-content\">
+              <div style=\"color: #64748b; margin-bottom: 0.5rem;\"># #{section.title}</div>
+              <div style=\"color: #22c55e;\">
+                #{String.split(render_section_content_simple(section), "\n") |> Enum.map_join("<br/>", &"// #{&1}")}
+              </div>
+            </div>
+          </div>"
+        end)}
+      </main>
+    </body>
+    </html>
+    """
+  end
+
+  # FULLSCREEN LAYOUT
+  def render_fullscreen_layout(assigns) do
+    """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>#{assigns.portfolio.title} - Fullscreen Portfolio</title>
+
+      <style>
+      #{assigns.customization_css}
+
+      .fullscreen-slide {
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        background: var(--portfolio-bg);
+        color: var(--portfolio-text);
+      }
+
+      .slide-overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.6) 100%);
+      }
+
+      .slide-content {
+        position: relative;
+        z-index: 10;
+        text-align: center;
+        max-width: 60rem;
+        margin: 0 auto;
+        padding: 0 2rem;
+      }
+
+      .dot-nav {
+        position: fixed;
+        top: 50%;
+        right: 2rem;
+        transform: translateY(-50%);
+        z-index: 50;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .dot-nav a {
+        width: 0.75rem;
+        height: 0.75rem;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.3);
+        transition: all 0.3s;
+      }
+
+      .dot-nav a:hover {
+        background: rgba(255,255,255,1);
+      }
+      </style>
+    </head>
+    <body style="margin: 0; overflow-y: auto; scroll-snap-type: y mandatory;">
+      <!-- Dot Navigation -->
+      <nav class="dot-nav">
+        #{Enum.with_index(assigns.sections) |> Enum.map_join("", fn {section, _index} ->
+          "<a href=\"#section-#{section.id}\" title=\"#{section.title}\"></a>"
+        end)}
+      </nav>
+
+      <!-- Hero Slide -->
+      <section class="fullscreen-slide" style="scroll-snap-align: start;">
+        <div class="slide-overlay"></div>
+        <div class="slide-content">
+          <h1 style="font-size: 4rem; font-weight: 300; margin-bottom: 1.5rem;">
+            #{assigns.portfolio.title}
+          </h1>
+          <p style="font-size: 1.5rem; font-weight: 300; opacity: 0.8; max-width: 50rem; margin: 0 auto;">
+            #{assigns.portfolio.description}
+          </p>
+        </div>
+      </section>
+
+      <!-- Section Slides -->
+      #{Enum.map_join(assigns.sections, "", fn section ->
+        "<section id=\"section-#{section.id}\" class=\"fullscreen-slide\" style=\"scroll-snap-align: start;\">
+          <div class=\"slide-overlay\"></div>
+          <div class=\"slide-content\">
+            <h2 style=\"font-size: 3rem; font-weight: 300; margin-bottom: 2rem; color: var(--portfolio-primary-color);\">
+              #{section.title}
+            </h2>
+            <div style=\"font-size: 1.25rem; font-weight: 300; opacity: 0.9; line-height: 1.6;\">
+              #{render_section_content_simple(section)}
+            </div>
+          </div>
+        </section>"
+      end)}
+    </body>
+    </html>
+    """
+  end
+
+  # MINIMAL LAYOUT
+  def render_minimal_layout(assigns) do
+    """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>#{assigns.portfolio.title} - Minimal Portfolio</title>
+
+      <style>
+      #{assigns.customization_css}
+
+      body {
+        background: white !important;
+        color: #1f2937 !important;
+        font-family: var(--portfolio-font-family);
+        line-height: 1.6;
+        margin: 0;
+      }
+
+      .minimal-header {
+        border-bottom: 1px solid #e5e7eb;
+        padding: 4rem 0;
+        text-align: center;
+      }
+
+      .minimal-nav {
+        position: sticky;
+        top: 0;
+        background: white;
+        border-bottom: 1px solid #f3f4f6;
+        padding: 1.5rem 0;
+        z-index: 40;
+      }
+
+      .minimal-section {
+        max-width: 42rem;
+        margin: 0 auto;
+        padding: 3rem 1.5rem;
+      }
+
+      .minimal-separator {
+        display: flex;
+        justify-content: center;
+        margin: 3rem 0;
+      }
+
+      .minimal-separator::after {
+        content: '';
+        width: 3rem;
+        height: 1px;
+        background: #d1d5db;
+      }
+      </style>
+    </head>
+    <body>
+      <!-- Minimal Header -->
+      <header class="minimal-header">
+        <div style="max-width: 42rem; margin: 0 auto; padding: 0 1.5rem;">
+          <h1 style="font-size: 3rem; font-weight: normal; color: #1f2937; margin-bottom: 1.5rem; line-height: 1.2;">
+            #{assigns.portfolio.title}
+          </h1>
+          <p style="font-size: 1.25rem; color: #6b7280; max-width: 32rem; margin: 0 auto; line-height: 1.6;">
+            #{assigns.portfolio.description}
+          </p>
+        </div>
+      </header>
+
+      <!-- Minimal Navigation -->
+      <nav class="minimal-nav">
+        <div style="max-width: 42rem; margin: 0 auto; padding: 0 1.5rem;">
+          <div style="display: flex; justify-content: center; gap: 3rem;">
+            #{Enum.map_join(assigns.sections, "", fn section ->
+              "<a href=\"#section-#{section.id}\" style=\"color: #6b7280; text-decoration: none; font-weight: 500; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; transition: color 0.3s;\">
+                #{section.title}
+              </a>"
+            end)}
+          </div>
+        </div>
+      </nav>
+
+      <!-- Minimal Content -->
+      <main>
+        #{Enum.map_join(assigns.sections, "", fn section ->
+          "<section id=\"section-#{section.id}\" class=\"minimal-section\">
+            <h2 style=\"font-size: 2rem; font-weight: normal; color: #1f2937; margin-bottom: 2rem; text-align: center;\">
+              #{section.title}
+            </h2>
+            <div style=\"font-size: 1.125rem; color: #374151; line-height: 1.7; text-align: center;\">
+              #{render_section_content_simple(section)}
+            </div>
+            <div class=\"minimal-separator\"></div>
+          </section>"
+        end)}
+      </main>
+    </body>
+    </html>
+    """
+  end
+
+  # Helper function to get font name for Google Fonts
+  defp get_font_name(assigns) do
+    font_family = get_in(assigns.user_customization, ["typography", "font_family"]) || "Inter"
+    String.replace(font_family, " ", "+")
+  end
 
 end
