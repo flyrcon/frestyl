@@ -12,6 +12,7 @@
 
 /* Import your enhanced portfolio styles */
 @import "./portfolio_enhanced.css";
+@import "/portfolio_sections.css";
 
 /* Font family utilities - IMPORTANT: Use !important to override */
 .font-inter { font-family: 'Inter', system-ui, sans-serif !important; }
@@ -383,3 +384,426 @@ select:focus-visible {
 button, .btn, .card, .media-node {
   transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
 }
+
+/* PDF Preview Modal Styles */
+/* Add this to your app.css or create a separate CSS file */
+
+#pdf-preview-modal {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#pdf-preview-modal .fixed {
+  position: fixed;
+}
+
+#pdf-preview-modal .inset-0 {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+#pdf-preview-modal .z-50 {
+  z-index: 50;
+}
+
+#pdf-preview-modal .flex {
+  display: flex;
+}
+
+#pdf-preview-modal .items-center {
+  align-items: center;
+}
+
+#pdf-preview-modal .justify-center {
+  justify-content: center;
+}
+
+#pdf-preview-modal .justify-between {
+  justify-content: space-between;
+}
+
+#pdf-preview-modal .bg-black {
+  background-color: rgba(0, 0, 0, 0.75);
+}
+
+#pdf-preview-modal .bg-white {
+  background-color: white;
+}
+
+#pdf-preview-modal .bg-gray-50 {
+  background-color: #f9fafb;
+}
+
+#pdf-preview-modal .bg-gray-100 {
+  background-color: #f3f4f6;
+}
+
+#pdf-preview-modal .bg-blue-600 {
+  background-color: #2563eb;
+}
+
+#pdf-preview-modal .bg-green-600 {
+  background-color: #059669;
+}
+
+#pdf-preview-modal .hover\:bg-blue-700:hover {
+  background-color: #1d4ed8;
+}
+
+#pdf-preview-modal .hover\:bg-green-700:hover {
+  background-color: #047857;
+}
+
+#pdf-preview-modal .hover\:bg-gray-100:hover {
+  background-color: #f3f4f6;
+}
+
+#pdf-preview-modal .text-white {
+  color: white;
+}
+
+#pdf-preview-modal .text-gray-900 {
+  color: #111827;
+}
+
+#pdf-preview-modal .text-gray-600 {
+  color: #4b5563;
+}
+
+#pdf-preview-modal .text-gray-500 {
+  color: #6b7280;
+}
+
+#pdf-preview-modal .text-red-600 {
+  color: #dc2626;
+}
+
+#pdf-preview-modal .rounded-lg {
+  border-radius: 0.5rem;
+}
+
+#pdf-preview-modal .rounded-t-lg {
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+#pdf-preview-modal .rounded-b-lg {
+  border-bottom-left-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+}
+
+#pdf-preview-modal .shadow-2xl {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+#pdf-preview-modal .shadow-inner {
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+}
+
+#pdf-preview-modal .w-11\/12 {
+  width: 91.666667%;
+}
+
+#pdf-preview-modal .h-5\/6 {
+  height: 83.333333%;
+}
+
+#pdf-preview-modal .max-w-6xl {
+  max-width: 72rem;
+}
+
+#pdf-preview-modal .flex-col {
+  flex-direction: column;
+}
+
+#pdf-preview-modal .flex-1 {
+  flex: 1 1 0%;
+}
+
+#pdf-preview-modal .space-x-2 > * + * {
+  margin-left: 0.5rem;
+}
+
+#pdf-preview-modal .space-x-3 > * + * {
+  margin-left: 0.75rem;
+}
+
+#pdf-preview-modal .p-2 {
+  padding: 0.5rem;
+}
+
+#pdf-preview-modal .p-4 {
+  padding: 1rem;
+}
+
+#pdf-preview-modal .p-8 {
+  padding: 2rem;
+}
+
+#pdf-preview-modal .px-4 {
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+#pdf-preview-modal .py-2 {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+#pdf-preview-modal .border {
+  border-width: 1px;
+}
+
+#pdf-preview-modal .border-b {
+  border-bottom-width: 1px;
+}
+
+#pdf-preview-modal .border-t {
+  border-top-width: 1px;
+}
+
+#pdf-preview-modal .border-gray-200 {
+  border-color: #e5e7eb;
+}
+
+#pdf-preview-modal .border-gray-300 {
+  border-color: #d1d5db;
+}
+
+#pdf-preview-modal .text-lg {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+}
+
+#pdf-preview-modal .text-sm {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+#pdf-preview-modal .font-semibold {
+  font-weight: 600;
+}
+
+#pdf-preview-modal .w-4 {
+  width: 1rem;
+}
+
+#pdf-preview-modal .w-5 {
+  width: 1.25rem;
+}
+
+#pdf-preview-modal .w-6 {
+  width: 1.5rem;
+}
+
+#pdf-preview-modal .w-full {
+  width: 100%;
+}
+
+#pdf-preview-modal .h-4 {
+  height: 1rem;
+}
+
+#pdf-preview-modal .h-5 {
+  height: 1.25rem;
+}
+
+#pdf-preview-modal .h-6 {
+  height: 1.5rem;
+}
+
+#pdf-preview-modal .h-full {
+  height: 100%;
+}
+
+#pdf-preview-modal .transition-colors {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+#pdf-preview-modal .text-center {
+  text-align: center;
+}
+
+#pdf-preview-modal .text-blue-600 {
+  color: #2563eb;
+}
+
+#pdf-preview-modal .hover\:underline:hover {
+  text-decoration: underline;
+}
+
+#pdf-preview-modal .hover\:text-gray-700:hover {
+  color: #374151;
+}
+
+/* Animation for modal appearance */
+#pdf-preview-modal {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  #pdf-preview-modal .w-11\/12 {
+    width: 95%;
+  }
+  
+  #pdf-preview-modal .h-5\/6 {
+    height: 90%;
+  }
+  
+  #pdf-preview-modal .space-x-2 > * + * {
+    margin-left: 0.25rem;
+  }
+  
+  #pdf-preview-modal .px-4 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  
+  #pdf-preview-modal .text-lg {
+    font-size: 1rem;
+  }
+}
+
+const additionalCSS = `
+/* Section management animations */
+.section-highlight {
+  background: linear-gradient(135deg, #dbeafe, #bfdbfe) !important;
+  border-color: #3b82f6 !important;
+  transform: scale(1.02);
+  transition: all 0.3s ease;
+}
+
+.section-reordered {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0) !important;
+  transform: translateX(10px);
+  transition: all 0.3s ease;
+}
+
+.section-updated {
+  background: linear-gradient(135deg, #fef3c7, #fde68a) !important;
+  border-color: #f59e0b !important;
+  transition: all 0.3s ease;
+}
+
+.dragging {
+  opacity: 0.5 !important;
+  transform: rotate(2deg);
+  z-index: 1000;
+}
+
+.section-placeholder {
+  background: #dbeafe !important;
+  border: 2px dashed #3b82f6 !important;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0.5rem 0;
+}
+
+/* Template preview animations */
+.template-applied {
+  animation: templatePulse 0.5s ease-in-out;
+}
+
+@keyframes templatePulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.template-preview-card {
+  transition: all 0.2s ease;
+}
+
+.template-preview-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
+
+/* Color picker improvements */
+.color-swatch-primary,
+.color-swatch-secondary, 
+.color-swatch-accent {
+  transition: all 0.2s ease;
+  border: 2px solid rgba(255,255,255,0.8);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.color-swatch-primary:hover,
+.color-swatch-secondary:hover,
+.color-swatch-accent:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* Preview container */
+.preview-container {
+  transition: all 0.3s ease;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.preview-container.preview-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Uniform icon sizing - FIXED ICONS */
+.section-icon,
+.tab-icon,
+.action-icon,
+.nav-icon {
+  width: 1rem !important;
+  height: 1rem !important;
+  flex-shrink: 0;
+}
+
+.section-emoji {
+  font-size: 1.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: inline-block;
+  text-align: center;
+}
+
+/* Success/error feedback */
+.feedback-message {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 9999;
+  transition: all 0.3s ease;
+}
+
+.feedback-enter {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+.feedback-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.feedback-exit {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.feedback-exit-active {
+  opacity: 0;
+  transform: translateX(100%);
+}
+

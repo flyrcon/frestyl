@@ -65,6 +65,10 @@ defmodule Frestyl.MixProject do
       {:jason, "~> 1.4"},
       {:dns_cluster, "~> 0.1.1"},
       {:chromic_pdf, "~> 1.15"},
+      {:plug_cowboy, "~> 2.5"},
+      {:temp, "~> 0.4"},
+      {:pbkdf2_elixir, "~> 2.0"},
+      {:sweet_xml, "~> 0.7.0"},
       {:bandit, "~> 1.5"},
       {:timex, "~> 3.7"},
       {:tzdata, "~> 1.1"},
@@ -73,7 +77,6 @@ defmodule Frestyl.MixProject do
       {:ex_aws, "~> 2.4"},
       {:ex_aws_s3, "~> 2.3"},
       {:hackney, "~> 1.18"},
-      {:sweet_xml, "~> 0.7"},
       {:poison, "~> 5.0"},
       {:nimble_totp, "~> 1.0.0"},
       {:eqrcode, "~> 0.1.10"}

@@ -1111,17 +1111,28 @@ defmodule Frestyl.Portfolios do
 
   # Safe function to get portfolio by slug with sections
   def get_portfolio_by_slug_with_sections_simple(slug) do
-    try do
-      case Repo.get_by(Portfolio, slug: slug)
-          |> Repo.preload([:user, :portfolio_sections]) do
-        nil ->
-          {:error, :not_found}
-        portfolio ->
-          normalized_portfolio = normalize_portfolio_for_template_simple(portfolio)
-          {:ok, normalized_portfolio}
-      end
-    rescue
-      _ -> {:error, :not_found}
+    # Use a single query with proper preloading
+    query = from p in Portfolio,
+      where: p.slug == ^slug,
+      preload: [:user, portfolio_sections: []]
+
+    case Repo.one(query) do
+      nil ->
+        {:error, :not_found}
+      portfolio ->
+        # 🔥 DEBUG: Check what we actually loaded
+        IO.puts("🔥 Portfolio loaded from DB:")
+        IO.puts("🔥 User association loaded: #{Ecto.assoc_loaded?(portfolio.user)}")
+
+        if Ecto.assoc_loaded?(portfolio.user) do
+          IO.puts("🔥 User found - Name: #{inspect(portfolio.user.name)}, Username: #{inspect(portfolio.user.username)}")
+        else
+          IO.puts("🔥 USER NOT LOADED, forcing preload...")
+          portfolio = Repo.preload(portfolio, :user, force: true)
+          IO.puts("🔥 After force preload - loaded: #{Ecto.assoc_loaded?(portfolio.user)}")
+        end
+
+        {:ok, portfolio}
     end
   end
 

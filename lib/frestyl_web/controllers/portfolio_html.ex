@@ -8,6 +8,9 @@ defmodule FrestylWeb.PortfolioHTML do
 
   def show(assigns) do
     # 🔥 INJECT THE CSS FIRST
+    customization_css = get_portfolio_customization_css(assigns.portfolio)
+    assigns = Map.put(assigns, :customization_css, customization_css)
+
     css_injection = if Map.has_key?(assigns, :customization_css) do
       assigns.customization_css
     else
@@ -46,6 +49,8 @@ defmodule FrestylWeb.PortfolioHTML do
   # EXECUTIVE: Corporate Dashboard Layout
   defp render_executive_layout(assigns) do
     ~H"""
+    <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+    <%= Phoenix.HTML.raw(@customization_css) %>
     <div class={[@background_classes, @font_classes, "min-h-screen"]}>
       <!-- Corporate Header with Metrics -->
       <header class="relative overflow-hidden bg-slate-900 text-white">
@@ -110,6 +115,8 @@ defmodule FrestylWeb.PortfolioHTML do
   # DEVELOPER: Terminal-style Layout
   defp render_developer_layout(assigns) do
     ~H"""
+    <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+    <%= Phoenix.HTML.raw(@customization_css) %>
     <div class={[@background_classes, @font_classes, "min-h-screen text-green-400"]}>
       <!-- Terminal Header -->
       <header class="border-b border-green-800 bg-gray-900">
@@ -169,6 +176,8 @@ defmodule FrestylWeb.PortfolioHTML do
   # DESIGNER: Gallery/Masonry Layout
   defp render_designer_layout(assigns) do
     ~H"""
+    <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+    <%= Phoenix.HTML.raw(@customization_css) %>
     <div class={[@background_classes, @font_classes, "min-h-screen text-white"]}>
       <!-- Creative Header with Floating Navigation -->
       <header class="relative h-screen flex items-center justify-center overflow-hidden">
@@ -225,6 +234,8 @@ defmodule FrestylWeb.PortfolioHTML do
   # CONSULTANT: Case Study Layout
   defp render_consultant_layout(assigns) do
     ~H"""
+    <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+    <%= Phoenix.HTML.raw(@customization_css) %>
     <div class={[@background_classes, @font_classes, "min-h-screen"]}>
       <!-- Professional Header -->
       <header class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
@@ -284,6 +295,8 @@ defmodule FrestylWeb.PortfolioHTML do
   # PHOTOGRAPHER: Full-screen Layout
   defp render_photographer_layout(assigns) do
     ~H"""
+    <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+    <%= Phoenix.HTML.raw(@customization_css) %>
     <div class={[@background_classes, @font_classes, "min-h-screen"]}>
       <!-- Overlay Header -->
       <header class="fixed inset-x-0 top-0 z-50 bg-gradient-to-b from-black to-transparent">
@@ -338,6 +351,8 @@ defmodule FrestylWeb.PortfolioHTML do
   # FREELANCER: Services Layout
   defp render_freelancer_layout(assigns) do
     ~H"""
+    <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+    <%= Phoenix.HTML.raw(@customization_css) %>
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -416,6 +431,8 @@ defmodule FrestylWeb.PortfolioHTML do
   # ARTIST: Exhibition Layout
   defp render_artist_layout(assigns) do
     ~H"""
+    <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+    <%= Phoenix.HTML.raw(@customization_css) %>
     <div class={[@background_classes, @font_classes, "min-h-screen text-white"]}>
       <!-- Artistic Header -->
       <header class="relative h-screen flex items-center justify-center overflow-hidden">
@@ -477,6 +494,8 @@ defmodule FrestylWeb.PortfolioHTML do
   # MINIMALIST: Typography-focused Layout
   defp render_minimalist_layout(assigns) do
     ~H"""
+    <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+    <%= Phoenix.HTML.raw(@customization_css) %>
     <div class={[@background_classes, @font_classes, "min-h-screen bg-white text-gray-900"]}>
       <!-- Minimal Header -->
       <header class="border-b border-gray-200">
@@ -517,6 +536,8 @@ defmodule FrestylWeb.PortfolioHTML do
   # DEFAULT: Fallback Layout
   defp render_default_layout(assigns) do
     ~H"""
+    <!-- 🔥 INJECT CUSTOMIZATION CSS -->
+    <%= Phoenix.HTML.raw(@customization_css) %>
     <div class="min-h-screen bg-gray-50">
       <header class="bg-white shadow-sm">
         <div class="max-w-6xl mx-auto px-6 py-12">
@@ -1837,17 +1858,6 @@ def render_dashboard_layout(assigns) do
     </style>
   </head>
   <body>
-    <!-- 🔥 DEBUG INDICATORS -->
-    <div class="font-debug">
-      Font: #{font_family}<br>
-      CSS: #{font_css}
-    </div>
-
-    <div class="layout-debug">
-      🔥 DASHBOARD LAYOUT<br>
-      Layout: #{assigns.layout}<br>
-      Background: #{assigns.user_customization["background"]}
-    </div>
 
     <!-- Dashboard Header -->
     <header class="dashboard-header" style="background: var(--portfolio-bg);">
@@ -2243,6 +2253,124 @@ end
   defp get_font_name(assigns) do
     font_family = get_in(assigns.user_customization, ["typography", "font_family"]) || "Inter"
     String.replace(font_family, " ", "+")
+  end
+
+  # Add this new function to generate CSS from database customization
+  defp get_portfolio_customization_css(portfolio) do
+    # Get customization data from portfolio
+    customization = portfolio.customization || %{}
+
+    # Extract colors (handle both string and atom keys)
+    primary_color = get_config_value(customization, "primary_color") || "#3b82f6"
+    secondary_color = get_config_value(customization, "secondary_color") || "#64748b"
+    accent_color = get_config_value(customization, "accent_color") || "#f59e0b"
+
+    # Extract typography
+    typography = get_config_value(customization, "typography") || %{}
+    font_family = get_config_value(typography, "font_family") || "Inter"
+
+    # Extract background
+    background = get_config_value(customization, "background") || "white"
+
+    """
+    :root {
+      --portfolio-primary-color: #{primary_color};
+      --portfolio-secondary-color: #{secondary_color};
+      --portfolio-accent-color: #{accent_color};
+      --portfolio-font-family: #{get_font_family_css(font_family)};
+      #{get_background_css_vars(background)}
+    }
+
+    /* Apply variables to elements */
+    .portfolio-primary { color: var(--portfolio-primary-color) !important; }
+    .portfolio-secondary { color: var(--portfolio-secondary-color) !important; }
+    .portfolio-accent { color: var(--portfolio-accent-color) !important; }
+    .portfolio-bg-primary { background-color: var(--portfolio-primary-color) !important; }
+    .portfolio-bg-secondary { background-color: var(--portfolio-secondary-color) !important; }
+    .portfolio-bg-accent { background-color: var(--portfolio-accent-color) !important; }
+
+    body {
+      font-family: var(--portfolio-font-family) !important;
+      background: var(--portfolio-bg) !important;
+      color: var(--portfolio-text) !important;
+    }
+
+    /* Template-specific overrides */
+    .bg-slate-900 { background: var(--portfolio-header-bg) !important; }
+    .text-white { color: var(--portfolio-header-text) !important; }
+    """
+  end
+
+  # Helper function to get config values (handles both string and atom keys)
+  defp get_config_value(config, key) when is_map(config) do
+    config[key] || config[String.to_atom(key)]
+  end
+  defp get_config_value(_, _), do: nil
+
+  # Add these helper functions to the bottom of portfolio_html.ex
+
+  defp get_font_family_css(font_family) do
+    case font_family do
+      "Inter" -> "'Inter', system-ui, sans-serif"
+      "Roboto" -> "'Roboto', system-ui, sans-serif"
+      "JetBrains Mono" -> "'JetBrains Mono', 'Fira Code', monospace"
+      "Merriweather" -> "'Merriweather', Georgia, serif"
+      "Playfair Display" -> "'Playfair Display', Georgia, serif"
+      _ -> "system-ui, sans-serif"
+    end
+  end
+
+  defp get_background_css_vars(background) do
+    case background do
+      "gradient-ocean" ->
+        """
+        --portfolio-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --portfolio-text: #ffffff;
+        --portfolio-card-bg: rgba(255, 255, 255, 0.1);
+        --portfolio-header-bg: rgba(0, 0, 0, 0.3);
+        --portfolio-header-text: #ffffff;
+        """
+      "gradient-sunset" ->
+        """
+        --portfolio-bg: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        --portfolio-text: #ffffff;
+        --portfolio-card-bg: rgba(255, 255, 255, 0.15);
+        --portfolio-header-bg: rgba(0, 0, 0, 0.2);
+        --portfolio-header-text: #ffffff;
+        """
+      "gradient-forest" ->
+        """
+        --portfolio-bg: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+        --portfolio-text: #ffffff;
+        --portfolio-card-bg: rgba(255, 255, 255, 0.1);
+        --portfolio-header-bg: rgba(0, 0, 0, 0.3);
+        --portfolio-header-text: #ffffff;
+        """
+      "dark-mode" ->
+        """
+        --portfolio-bg: #1a1a1a;
+        --portfolio-text: #ffffff;
+        --portfolio-card-bg: #2a2a2a;
+        --portfolio-header-bg: #000000;
+        --portfolio-header-text: #ffffff;
+        """
+      "terminal-dark" ->
+        """
+        --portfolio-bg: #0f172a;
+        --portfolio-text: #22c55e;
+        --portfolio-card-bg: #1e293b;
+        --portfolio-header-bg: #000000;
+        --portfolio-header-text: #22c55e;
+        """
+      _ ->
+        """
+        --portfolio-bg: #ffffff;
+        --portfolio-text: #1f2937;
+        --portfolio-card-bg: #ffffff;
+        --portfolio-header-bg: #f9fafb;
+        --portfolio-header-text: #1f2937;
+        """
+    end
   end
 
 end

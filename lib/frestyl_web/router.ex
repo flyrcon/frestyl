@@ -120,13 +120,6 @@ defmodule FrestylWeb.Router do
     resources "/users", UserController, except: [:new, :create, :show]
   end
 
-  # Public portfolio viewing routes
-  scope "/", FrestylWeb do
-    pipe_through [:browser]
-
-    get "/p/:slug", PortfolioController, :show  # This should work now
-    get "/p/:slug/export", PortfolioController, :export
-  end
 
   # Authenticated routes
   scope "/", FrestylWeb do
@@ -210,10 +203,14 @@ defmodule FrestylWeb.Router do
       live "/portfolios/new", PortfolioLive.New, :new
       live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
       live "/portfolios/:id/share", PortfolioLive.Share, :share
+      live "/portfolios/:portfolio_id/resume-import", PortfolioLive.ResumeParser, :import
+
       live "/portfolios/:id/analytics", PortfolioLive.Analytics, :analytics
-      live "/portfolios/:portfolio_id/resume-parser", PortfolioLive.ResumeParser, :parse
+      # REMOVED: live "/portfolios/:portfolio_id/resume-parser", PortfolioLive.ResumeParser, :parse
       live "/portfolios/:portfolio_id/sections/new", PortfolioLive.SectionEdit, :new
       live "/portfolios/:portfolio_id/sections/:id/edit", PortfolioLive.SectionEdit, :edit
+      live "/p/:slug", PortfolioLive.Show, :show
+      live "/s/:token", PortfolioLive.SharedShow, :show
 
       # Users and Profile
       live "/invite", InviteUserLive, :index
@@ -345,6 +342,14 @@ defmodule FrestylWeb.Router do
     get "/content/media/:id", Api.MediaController, :show
     post "/content/media/:id/react", Api.MediaController, :react
 
+    # PDF Export endpoints
+    post "/portfolios/:slug/export", PdfExportController, :export
+    get "/portfolios/:slug/export/preview", PdfExportController, :preview
+    get "/exports/download/:filename", PdfExportController, :download
+
+    # Resume parsing endpoint (if needed for AJAX uploads)
+    post "/resume/parse", ResumeController, :parse
+
     # User preferences API
     get "/user/theme", Api.UserController, :get_theme
     put "/user/theme", Api.UserController, :set_theme
@@ -396,10 +401,33 @@ defmodule FrestylWeb.Router do
     resources "/admin/metrics", AdminMetricsController, only: [:index]
   end
 
+    # ADD: Portfolio download routes (protected)
+  scope "/downloads", FrestylWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    # PDF exports
+    get "/pdf/:user_id/:filename", PortfolioDownloadsController, :download_pdf
+    get "/export/:filename", PortfolioDownloadsController, :download_export
+
+    # Export management API
+    get "/exports", PortfolioDownloadsController, :list_exports
+    delete "/exports/cleanup", PortfolioDownloadsController, :cleanup_exports
+  end
+
+    # File serving for exports
+  scope "/exports" do
+    pipe_through :browser
+
+    # Serve generated PDF files
+    get "/:filename", FrestylWeb.PdfExportController, :download
+  end
+
   # Uploads: Separate static route
   scope "/uploads", FrestylWeb do
     pipe_through [:browser, :require_auth, :media_cache]
     get "/*path", MediaController, :serve_file
+
+    get "/portfolios/*path", PortfolioDownloadsController, :serve_static
   end
 
   defp debug_request(conn, _opts) do

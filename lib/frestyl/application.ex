@@ -21,6 +21,8 @@ defmodule Frestyl.Application do
       {Registry, keys: :unique, name: Frestyl.Studio.AudioTextSyncRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: Frestyl.Studio.AudioTextSyncSupervisor},
 
+      {ChromicPDF, chromic_pdf_opts()},
+
       # Supervisor for WebRTC connections
       Frestyl.Streaming.ConnectionSupervisor,
       # Analytics for streaming
@@ -73,5 +75,35 @@ defmodule Frestyl.Application do
     MIME.register("image/gif", ["gif"])
 
     :ok
+  end
+
+    # ChromicPDF configuration
+  defp chromic_pdf_opts do
+    case Mix.env() do
+      :prod ->
+        [
+          # Production settings - assumes Chrome/Chromium is installed
+          chrome_executable: System.get_env("CHROME_EXECUTABLE") || "/usr/bin/google-chrome",
+          chrome_args: [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--headless"
+          ]
+        ]
+
+      :test ->
+        [
+          # Test environment - might not have Chrome available
+          chrome_executable: System.get_env("CHROME_EXECUTABLE"),
+          chrome_args: ["--headless", "--no-sandbox", "--disable-gpu"]
+        ]
+
+      _ ->
+        [
+          # Development settings
+          chrome_args: ["--headless", "--no-sandbox", "--disable-gpu"]
+        ]
+    end
   end
 end

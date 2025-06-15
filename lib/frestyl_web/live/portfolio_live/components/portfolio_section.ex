@@ -6,19 +6,26 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
   def render(assigns) do
     ~H"""
     <article class={[
-      "portfolio-section",
+      "portfolio-section section-sortable",
       get_section_container_class(@template_theme, @section.section_type),
       get_section_size_class(@template_theme, @section.section_type)
     ]}
     id={"section-#{@section.id}"}
     data-section-id={@section.id}>
 
-      <!-- Section Header -->
+      <!-- Section Header with Drag Handle -->
       <header class={[
-        "section-header",
+        "section-header relative",
         get_section_header_class(@template_theme, @section.section_type)
       ]}>
-        <div class="flex items-center justify-between">
+        <!-- Drag Handle -->
+        <div class="absolute left-2 top-1/2 transform -translate-y-1/2 drag-handle cursor-move opacity-30 hover:opacity-70 transition-opacity">
+          <svg class="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M7 2a2 2 0 100 4 2 2 0 000-4zM7 8a2 2 0 100 4 2 2 0 000-4zM7 14a2 2 0 100 4 2 2 0 000-4zM13 2a2 2 0 100 4 2 2 0 000-4zM13 8a2 2 0 100 4 2 2 0 000-4zM13 14a2 2 0 100 4 2 2 0 000-4z"/>
+          </svg>
+        </div>
+
+        <div class="flex items-center justify-between pl-8">
           <div class="flex items-center space-x-3">
             <div class={[
               "section-icon",
@@ -161,76 +168,199 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
     jobs = get_in(assigns.section.content, ["jobs"]) || []
 
     ~H"""
-    <div class="space-y-6">
-      <%= for {job, index} <- Enum.with_index(jobs) do %>
-        <div class={[
-          "experience-item p-6 rounded-xl border-l-4 transition-all duration-300 hover:shadow-lg",
-          get_experience_item_class(@template_theme, index == 0)
-        ]}>
-          <div class="flex justify-between items-start mb-4">
-            <div class="flex-1">
-              <h4 class={[
-                "text-xl font-bold mb-1",
-                get_job_title_class(@template_theme)
-              ]}>
-                <%= Map.get(job, "title", "") %>
-              </h4>
+    <div class="experience-section space-y-8">
+      <%= if not Enum.empty?(jobs) do %>
+        <!-- Experience Timeline -->
+        <div class="experience-timeline relative">
+          <!-- Timeline Line -->
+          <div class="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-blue-500 via-purple-500 to-pink-500 hidden md:block"></div>
 
-              <p class={[
-                "text-lg font-semibold mb-2",
-                get_company_name_class(@template_theme)
-              ]}>
-                <%= Map.get(job, "company", "") %>
-              </p>
-
-              <p class={[
-                "text-sm font-medium",
-                get_job_duration_class(@template_theme)
-              ]}>
-                <%= Map.get(job, "start_date", "") %> -
-                <%= if Map.get(job, "current"), do: "Present", else: Map.get(job, "end_date", "") %>
-              </p>
-            </div>
-
-            <%= if Map.get(job, "current") do %>
-              <span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 text-sm font-bold rounded-full">
-                <div class="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></div>
-                Current
-              </span>
-            <% end %>
-          </div>
-
-          <%= if Map.get(job, "description") do %>
+          <%= for {job, index} <- Enum.with_index(jobs) do %>
             <div class={[
-              "prose max-w-none",
-              get_job_description_class(@template_theme)
+              "experience-item relative",
+              get_experience_item_class(@template_theme, Map.get(job, "current", false), index)
             ]}>
-              <%= Phoenix.HTML.raw(format_text_content(Map.get(job, "description"))) %>
-            </div>
-          <% end %>
+              <!-- Timeline Dot -->
+              <div class="absolute left-6 top-6 w-4 h-4 rounded-full border-4 border-white shadow-lg hidden md:block z-10"
+                   style={"background: #{get_timeline_dot_color(index, Map.get(job, "current", false))}"}>
+              </div>
 
-          <!-- Job-specific achievements or highlights -->
-          <%= if Map.get(job, "achievements") do %>
-            <div class="mt-4">
-              <h5 class="text-sm font-semibold text-gray-700 mb-2">Key Achievements:</h5>
-              <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
-                <%= for achievement <- Map.get(job, "achievements") do %>
-                  <li><%= achievement %></li>
+              <!-- Job Content -->
+              <div class="job-content ml-0 md:ml-16 p-6 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300">
+                <!-- Job Header -->
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between mb-4">
+                  <div class="flex-1">
+                    <h4 class={[
+                      "job-title text-xl font-bold mb-1",
+                      get_job_title_class(@template_theme)
+                    ]}>
+                      <%= Map.get(job, "title", "Position Title") %>
+                    </h4>
+
+                    <div class="company-info flex flex-col sm:flex-row sm:items-center sm:space-x-4 mb-2">
+                      <p class={[
+                        "company-name text-lg font-semibold",
+                        get_company_name_class(@template_theme)
+                      ]}>
+                        <%= Map.get(job, "company", "Company Name") %>
+                      </p>
+
+                      <%= if Map.get(job, "location") do %>
+                        <span class="location text-sm text-gray-500 flex items-center mt-1 sm:mt-0">
+                          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                          </svg>
+                          <%= Map.get(job, "location") %>
+                        </span>
+                      <% end %>
+                    </div>
+
+                    <!-- Employment Details -->
+                    <div class="employment-details flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                      <!-- Duration -->
+                      <div class="duration flex items-center">
+                        <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="font-medium">
+                          <%= format_job_duration(job) %>
+                        </span>
+                      </div>
+
+                      <!-- Employment Type -->
+                      <%= if Map.get(job, "employment_type") do %>
+                        <span class={[
+                          "employment-type px-2 py-1 rounded-full text-xs font-medium",
+                          get_employment_type_class(Map.get(job, "employment_type"))
+                        ]}>
+                          <%= Map.get(job, "employment_type") %>
+                        </span>
+                      <% end %>
+
+                      <!-- Current Position Badge -->
+                      <%= if Map.get(job, "current") do %>
+                        <span class="current-badge inline-flex items-center px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full">
+                          <div class="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></div>
+                          Current Position
+                        </span>
+                      <% end %>
+                    </div>
+                  </div>
+
+                  <!-- Company Logo Placeholder -->
+                  <%= if Map.get(job, "company_logo") do %>
+                    <div class="company-logo mt-4 lg:mt-0 lg:ml-6">
+                      <img src={Map.get(job, "company_logo")}
+                           alt={"#{Map.get(job, "company")} logo"}
+                           class="w-16 h-16 rounded-lg object-contain border border-gray-200" />
+                    </div>
+                  <% end %>
+                </div>
+
+                <!-- Job Description -->
+                <%= if Map.get(job, "description") do %>
+                  <div class={[
+                    "job-description prose max-w-none mb-4",
+                    get_job_description_class(@template_theme)
+                  ]}>
+                    <%= Phoenix.HTML.raw(format_text_content(Map.get(job, "description"))) %>
+                  </div>
                 <% end %>
-              </ul>
+
+                <!-- Key Responsibilities -->
+                <%= if Map.get(job, "responsibilities") && length(Map.get(job, "responsibilities")) > 0 do %>
+                  <div class="responsibilities mb-4">
+                    <h5 class="text-sm font-semibold text-gray-700 mb-2">Key Responsibilities:</h5>
+                    <ul class="responsibility-list space-y-1">
+                      <%= for responsibility <- Map.get(job, "responsibilities") do %>
+                        <li class="flex items-start text-sm text-gray-600">
+                          <svg class="w-3 h-3 text-blue-500 mt-1 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                          </svg>
+                          <%= responsibility %>
+                        </li>
+                      <% end %>
+                    </ul>
+                  </div>
+                <% end %>
+
+                <!-- Achievements -->
+                <%= if Map.get(job, "achievements") && length(Map.get(job, "achievements")) > 0 do %>
+                  <div class="achievements mb-4">
+                    <h5 class="text-sm font-semibold text-gray-700 mb-2">Key Achievements:</h5>
+                    <ul class="achievement-list space-y-1">
+                      <%= for achievement <- Map.get(job, "achievements") do %>
+                        <li class="flex items-start text-sm text-gray-600">
+                          <svg class="w-3 h-3 text-green-500 mt-1 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                          </svg>
+                          <%= achievement %>
+                        </li>
+                      <% end %>
+                    </ul>
+                  </div>
+                <% end %>
+
+                <!-- Skills Used -->
+                <%= if Map.get(job, "skills") && length(Map.get(job, "skills")) > 0 do %>
+                  <div class="job-skills">
+                    <h5 class="text-sm font-semibold text-gray-700 mb-2">Technologies & Skills:</h5>
+                    <div class="flex flex-wrap gap-1.5">
+                      <%= for skill <- Map.get(job, "skills") do %>
+                        <span class="skill-chip px-2 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-md border border-blue-200">
+                          <%= skill %>
+                        </span>
+                      <% end %>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
             </div>
           <% end %>
         </div>
-      <% end %>
 
-      <%= if Enum.empty?(jobs) do %>
-        <div class="text-center py-8">
-          <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- Experience Summary -->
+        <div class="experience-summary mt-8 p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-100">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+            <div class="summary-stat">
+              <div class="text-2xl font-bold text-blue-600"><%= length(jobs) %></div>
+              <div class="text-sm text-gray-600">Positions</div>
+            </div>
+            <div class="summary-stat">
+              <div class="text-2xl font-bold text-purple-600"><%= calculate_total_experience_years(jobs) %></div>
+              <div class="text-sm text-gray-600">Years Experience</div>
+            </div>
+            <div class="summary-stat">
+              <div class="text-2xl font-bold text-green-600"><%= count_unique_companies(jobs) %></div>
+              <div class="text-sm text-gray-600">Companies</div>
+            </div>
+          </div>
+        </div>
+      <% else %>
+        <!-- Empty State -->
+        <div class="text-center py-12">
+          <div class="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg class="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2h8z"/>
             </svg>
           </div>
-          <p class="text-gray-500">Professional experience details coming soon</p>
+          <h3 class="text-xl font-semibold text-gray-900 mb-3">No work experience added yet</h3>
+          <p class="text-gray-600 mb-6 max-w-md mx-auto">Add your professional experience to showcase your career journey and accomplishments</p>
+          <div class="flex flex-col space-y-2 text-xs text-gray-500">
+            <span class="inline-flex items-center justify-center space-x-1">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              <span>Tip: Include achievements and quantifiable results</span>
+            </span>
+            <span class="inline-flex items-center justify-center space-x-1">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span>Experience data is automatically optimized for ATS systems</span>
+            </span>
+          </div>
         </div>
       <% end %>
     </div>
@@ -239,30 +369,132 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
 
   defp render_skills_content(assigns) do
     skills = get_in(assigns.section.content, ["skills"]) || []
+    skill_categories = get_in(assigns.section.content, ["skill_categories"]) || %{}
 
     ~H"""
     <div class="space-y-6">
       <%= if not Enum.empty?(skills) do %>
-        <div class="flex flex-wrap gap-3">
-          <%= for {skill, index} <- Enum.with_index(skills) do %>
-            <span class={[
-              "skill-tag px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 hover:scale-105",
-              get_skill_tag_class(@template_theme, index)
-            ]}>
-              <%= skill %>
-            </span>
-          <% end %>
+        <!-- Skills organized by category if categories exist -->
+        <%= if map_size(skill_categories) > 0 do %>
+          <div class="space-y-6">
+            <%= for {category, category_skills} <- skill_categories do %>
+              <div class="skill-category">
+                <h4 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                  <%= category %>
+                </h4>
+                <div class="flex flex-wrap gap-2">
+                  <%= for {skill, index} <- Enum.with_index(category_skills) do %>
+                    <%= render_skill_tag(skill, index, @template_theme, category) %>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% else %>
+          <!-- All skills in one grid -->
+          <div class="skills-grid">
+            <div class="flex flex-wrap gap-2">
+              <%= for {skill, index} <- Enum.with_index(skills) do %>
+                <%= render_skill_tag(skill, index, @template_theme, nil) %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Skills Summary Stats -->
+        <div class="skills-summary mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div class="flex items-center justify-between text-sm">
+            <div class="flex items-center space-x-4">
+              <span class="text-gray-600">
+                <strong class="text-gray-900"><%= length(skills) %></strong> total skills
+              </span>
+              <%= if map_size(skill_categories) > 0 do %>
+                <span class="text-gray-600">
+                  <strong class="text-gray-900"><%= map_size(skill_categories) %></strong> categories
+                </span>
+              <% end %>
+            </div>
+            <div class="text-xs text-gray-500">
+              Skills are ATS-optimized for resume export
+            </div>
+          </div>
         </div>
       <% else %>
-        <div class="text-center py-8">
-          <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- Empty State -->
+        <div class="text-center py-12">
+          <div class="w-16 h-16 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
             </svg>
           </div>
-          <p class="text-gray-500">Skills and competencies will be showcased here</p>
+          <h3 class="text-lg font-semibold text-gray-900 mb-2">No skills added yet</h3>
+          <p class="text-gray-600 mb-4">Add your technical skills, soft skills, and expertise areas</p>
+          <div class="text-xs text-gray-500">
+            <span class="inline-flex items-center space-x-1">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              <span>Tip: Organize skills by category for better presentation</span>
+            </span>
+          </div>
         </div>
       <% end %>
+    </div>
+    """
+  end
+
+  defp render_skill_tag(skill, index, template_theme, category) do
+    assigns = %{skill: skill, index: index, template_theme: template_theme, category: category}
+
+    # Determine skill proficiency if it's a map
+    {skill_name, proficiency, years} = case skill do
+      %{"name" => name, "proficiency" => prof, "years" => y} -> {name, prof, y}
+      %{"name" => name, "proficiency" => prof} -> {name, prof, nil}
+      %{"name" => name} -> {name, nil, nil}
+      skill_string when is_binary(skill_string) -> {skill_string, nil, nil}
+      _ -> {"Unknown Skill", nil, nil}
+    end
+
+    ~H"""
+    <div class={[
+      "skill-tag group relative inline-flex items-center",
+      get_enhanced_skill_tag_class(@template_theme, @index, @category),
+      "px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:scale-105 hover:shadow-md"
+    ]}>
+      <!-- Skill Name -->
+      <span class="skill-name"><%= skill_name %></span>
+
+      <!-- Proficiency Indicator -->
+      <%= if proficiency do %>
+        <span class={[
+          "skill-proficiency ml-2 px-2 py-0.5 text-xs rounded-full",
+          get_proficiency_class(proficiency)
+        ]}>
+          <%= format_proficiency(proficiency) %>
+        </span>
+      <% end %>
+
+      <!-- Years Experience -->
+      <%= if years do %>
+        <span class="skill-years ml-2 text-xs opacity-70">
+          <%= years %>y
+        </span>
+      <% end %>
+
+      <!-- Hover Tooltip -->
+      <div class="skill-tooltip absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+        <%= cond do %>
+          <% proficiency && years -> %>
+            <%= skill_name %> • <%= format_proficiency(proficiency) %> • <%= years %> years
+          <% proficiency -> %>
+            <%= skill_name %> • <%= format_proficiency(proficiency) %>
+          <% years -> %>
+            <%= skill_name %> • <%= years %> years experience
+          <% true -> %>
+            <%= skill_name %>
+        <% end %>
+        <div class="tooltip-arrow absolute top-full left-1/2 transform -translate-x-1/2 border-2 border-transparent border-t-gray-900"></div>
+      </div>
     </div>
     """
   end
@@ -724,24 +956,160 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
     education = get_in(assigns.section.content, ["education"]) || []
 
     ~H"""
-    <div class="space-y-6">
-      <%= for edu <- education do %>
-        <div class="education-item p-6 rounded-xl border-l-4 border-l-purple-500 bg-purple-50">
-          <h4 class="text-xl font-bold text-purple-900 mb-1">
-            <%= Map.get(edu, "degree", "") %>
-            <%= if Map.get(edu, "field"), do: "in #{Map.get(edu, "field")}", else: "" %>
-          </h4>
-          <p class="text-purple-700 font-semibold mb-2">
-            <%= Map.get(edu, "institution", "") %>
-          </p>
-          <p class="text-purple-600 text-sm mb-3">
-            <%= Map.get(edu, "start_date", "") %> - <%= Map.get(edu, "end_date", "") %>
-          </p>
-          <%= if Map.get(edu, "description") do %>
-            <p class="text-purple-800 text-sm">
-              <%= Map.get(edu, "description") %>
-            </p>
+    <div class="education-section space-y-6">
+      <%= if not Enum.empty?(education) do %>
+        <div class="education-list space-y-6">
+          <%= for {edu, index} <- Enum.with_index(education) do %>
+            <div class={[
+              "education-item relative overflow-hidden",
+              get_education_item_class(@template_theme, index)
+            ]}>
+              <!-- Gradient Border -->
+              <div class="absolute inset-0 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 rounded-xl p-0.5">
+                <div class="bg-white rounded-lg h-full w-full p-6">
+                  <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between">
+                    <div class="flex-1">
+                      <!-- Degree & Field -->
+                      <h4 class="text-xl font-bold text-gray-900 mb-1">
+                        <%= Map.get(edu, "degree", "Degree") %>
+                        <%= if Map.get(edu, "field") do %>
+                          <span class="text-lg font-semibold text-purple-600">
+                            in <%= Map.get(edu, "field") %>
+                          </span>
+                        <% end %>
+                      </h4>
+
+                      <!-- Institution -->
+                      <p class="text-lg font-semibold text-purple-700 mb-2">
+                        <%= Map.get(edu, "institution", "Institution") %>
+                      </p>
+
+                      <!-- Education Details -->
+                      <div class="education-details flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-3">
+                        <!-- Duration -->
+                        <div class="duration flex items-center">
+                          <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                          </svg>
+                          <span class="font-medium">
+                            <%= format_education_duration(edu) %>
+                          </span>
+                        </div>
+
+                        <!-- Location -->
+                        <%= if Map.get(edu, "location") do %>
+                          <span class="location flex items-center">
+                            <svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                            <%= Map.get(edu, "location") %>
+                          </span>
+                        <% end %>
+
+                        <!-- GPA -->
+                        <%= if Map.get(edu, "gpa") do %>
+                          <span class="gpa px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                            GPA: <%= Map.get(edu, "gpa") %>
+                          </span>
+                        <% end %>
+
+                        <!-- Status -->
+                        <%= if Map.get(edu, "status") do %>
+                          <span class={[
+                            "status px-2 py-1 text-xs font-medium rounded-full",
+                            get_education_status_class(Map.get(edu, "status"))
+                          ]}>
+                            <%= Map.get(edu, "status") %>
+                          </span>
+                        <% end %>
+                      </div>
+
+                      <!-- Description -->
+                      <%= if Map.get(edu, "description") do %>
+                        <div class="education-description prose prose-sm max-w-none text-gray-700 mb-4">
+                          <%= Phoenix.HTML.raw(format_text_content(Map.get(edu, "description"))) %>
+                        </div>
+                      <% end %>
+
+                      <!-- Coursework -->
+                      <%= if Map.get(edu, "relevant_coursework") && length(Map.get(edu, "relevant_coursework")) > 0 do %>
+                        <div class="coursework mb-4">
+                          <h5 class="text-sm font-semibold text-gray-700 mb-2">Relevant Coursework:</h5>
+                          <div class="flex flex-wrap gap-1.5">
+                            <%= for course <- Map.get(edu, "relevant_coursework") do %>
+                              <span class="course-chip px-2 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-md border border-purple-200">
+                                <%= course %>
+                              </span>
+                            <% end %>
+                          </div>
+                        </div>
+                      <% end %>
+
+                      <!-- Activities & Honors -->
+                      <%= if Map.get(edu, "activities") && length(Map.get(edu, "activities")) > 0 do %>
+                        <div class="activities mb-4">
+                          <h5 class="text-sm font-semibold text-gray-700 mb-2">Activities & Honors:</h5>
+                          <ul class="activity-list space-y-1">
+                            <%= for activity <- Map.get(edu, "activities") do %>
+                              <li class="flex items-start text-sm text-gray-600">
+                                <svg class="w-3 h-3 text-purple-500 mt-1 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                </svg>
+                                <%= activity %>
+                              </li>
+                            <% end %>
+                          </ul>
+                        </div>
+                      <% end %>
+                    </div>
+
+                    <!-- Institution Logo -->
+                    <%= if Map.get(edu, "institution_logo") do %>
+                      <div class="institution-logo mt-4 lg:mt-0 lg:ml-6">
+                        <img src={Map.get(edu, "institution_logo")}
+                             alt={"#{Map.get(edu, "institution")} logo"}
+                             class="w-16 h-16 rounded-lg object-contain border border-gray-200" />
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            </div>
           <% end %>
+        </div>
+
+        <!-- Education Summary -->
+        <div class="education-summary mt-8 p-6 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-100">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
+            <div class="summary-stat">
+              <div class="text-2xl font-bold text-purple-600"><%= length(education) %></div>
+              <div class="text-sm text-gray-600">Educational Programs</div>
+            </div>
+            <div class="summary-stat">
+              <div class="text-2xl font-bold text-pink-600"><%= count_completed_education(education) %></div>
+              <div class="text-sm text-gray-600">Completed</div>
+            </div>
+          </div>
+        </div>
+      <% else %>
+        <!-- Empty State -->
+        <div class="text-center py-12">
+          <div class="w-20 h-20 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg class="w-10 h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0v5m0-5h-.01M12 14l-9 5m9-5l9 5"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold text-gray-900 mb-3">No education added yet</h3>
+          <p class="text-gray-600 mb-6 max-w-md mx-auto">Add your educational background including degrees, certifications, and relevant coursework</p>
+          <div class="flex flex-col space-y-2 text-xs text-gray-500">
+            <span class="inline-flex items-center justify-center space-x-1">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              <span>Tip: Include relevant coursework and academic achievements</span>
+            </span>
+          </div>
         </div>
       <% end %>
     </div>
@@ -828,6 +1196,146 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
       <% end %>
     </div>
     """
+  end
+
+    # Enhanced skill tag styling
+  defp get_enhanced_skill_tag_class(template_theme, index, category) do
+    base_classes = "relative"
+
+    # Color variations based on template theme and category
+    color_class = case {template_theme, category} do
+      {:executive, "Technical"} -> get_skill_color_by_index(index, ["bg-blue-100 text-blue-800 border-blue-200", "bg-indigo-100 text-indigo-800 border-indigo-200"])
+      {:executive, "Leadership"} -> get_skill_color_by_index(index, ["bg-purple-100 text-purple-800 border-purple-200", "bg-violet-100 text-violet-800 border-violet-200"])
+      {:developer, _} -> get_skill_color_by_index(index, ["bg-green-100 text-green-800 border-green-200", "bg-teal-100 text-teal-800 border-teal-200", "bg-cyan-100 text-cyan-800 border-cyan-200"])
+      {:designer, _} -> get_skill_color_by_index(index, ["bg-pink-100 text-pink-800 border-pink-200", "bg-rose-100 text-rose-800 border-rose-200", "bg-red-100 text-red-800 border-red-200"])
+      _ -> get_skill_color_by_index(index, ["bg-gray-100 text-gray-800 border-gray-200", "bg-slate-100 text-slate-800 border-slate-200"])
+    end
+
+    "#{base_classes} #{color_class} border"
+  end
+
+  defp get_skill_color_by_index(index, colors) do
+    Enum.at(colors, rem(index, length(colors)))
+  end
+
+  defp get_proficiency_class(proficiency) do
+    case String.downcase(proficiency) do
+      "expert" -> "bg-green-100 text-green-800 border-green-200"
+      "advanced" -> "bg-blue-100 text-blue-800 border-blue-200"
+      "intermediate" -> "bg-yellow-100 text-yellow-800 border-yellow-200"
+      "beginner" -> "bg-gray-100 text-gray-800 border-gray-200"
+      _ -> "bg-purple-100 text-purple-800 border-purple-200"
+    end
+  end
+
+  defp format_proficiency(proficiency) do
+    case String.downcase(proficiency) do
+      "expert" -> "Expert"
+      "advanced" -> "Advanced"
+      "intermediate" -> "Intermediate"
+      "beginner" -> "Beginner"
+      _ -> String.capitalize(proficiency)
+    end
+  end
+
+  # Experience helper functions
+  defp get_experience_item_class(template_theme, is_current, index) do
+    base = "mb-8"
+    current_class = if is_current, do: "ring-2 ring-blue-500 ring-opacity-50", else: ""
+
+    case template_theme do
+      :developer -> "#{base} #{current_class}"
+      :designer -> "#{base} #{current_class}"
+      _ -> "#{base} #{current_class}"
+    end
+  end
+
+  defp get_timeline_dot_color(index, is_current) do
+    if is_current do
+      "#10B981" # Green for current
+    else
+      case rem(index, 4) do
+        0 -> "#3B82F6" # Blue
+        1 -> "#8B5CF6" # Purple
+        2 -> "#EC4899" # Pink
+        3 -> "#F59E0B" # Amber
+      end
+    end
+  end
+
+  defp format_job_duration(job) do
+    start_date = Map.get(job, "start_date", "")
+    end_date = if Map.get(job, "current"), do: "Present", else: Map.get(job, "end_date", "")
+
+    case {start_date, end_date} do
+      {"", ""} -> "Duration not specified"
+      {start, ""} -> start
+      {"", end_val} -> "Until #{end_val}"
+      {start, end_val} -> "#{start} - #{end_val}"
+    end
+  end
+
+  defp get_employment_type_class(type) do
+    case String.downcase(type) do
+      "full-time" -> "bg-green-100 text-green-800"
+      "part-time" -> "bg-blue-100 text-blue-800"
+      "contract" -> "bg-orange-100 text-orange-800"
+      "freelance" -> "bg-purple-100 text-purple-800"
+      "internship" -> "bg-pink-100 text-pink-800"
+      _ -> "bg-gray-100 text-gray-800"
+    end
+  end
+
+  defp calculate_total_experience_years(jobs) do
+    # Simple calculation - could be enhanced with actual date parsing
+    length(jobs) * 2 # Rough estimate
+  end
+
+  defp count_unique_companies(jobs) do
+    jobs
+    |> Enum.map(&Map.get(&1, "company", ""))
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+    |> length()
+  end
+
+  # Education helper functions
+  defp get_education_item_class(template_theme, index) do
+    base = "transition-all duration-300 hover:shadow-lg"
+
+    case template_theme do
+      :academic -> "#{base} transform hover:scale-105"
+      _ -> base
+    end
+  end
+
+  defp format_education_duration(edu) do
+    start_date = Map.get(edu, "start_date", "")
+    end_date = Map.get(edu, "end_date", "")
+    status = Map.get(edu, "status", "")
+
+    case {start_date, end_date, status} do
+      {"", "", _} -> "Duration not specified"
+      {start, "", "In Progress"} -> "#{start} - Present"
+      {start, "", _} -> start
+      {"", end_val, _} -> "Graduated #{end_val}"
+      {start, end_val, _} -> "#{start} - #{end_val}"
+    end
+  end
+
+  defp get_education_status_class(status) do
+    case String.downcase(status) do
+      "completed" -> "bg-green-100 text-green-800"
+      "in progress" -> "bg-blue-100 text-blue-800"
+      "transferred" -> "bg-orange-100 text-orange-800"
+      "dropped out" -> "bg-red-100 text-red-800"
+      _ -> "bg-gray-100 text-gray-800"
+    end
+  end
+
+  defp count_completed_education(education) do
+    education
+    |> Enum.count(&(Map.get(&1, "status", "completed") == "completed"))
   end
 
   # Helper functions

@@ -1,0 +1,616 @@
+/* assets/css/portfolio_sections.css - Enhanced styles for sortable sections */
+
+/* ============================================================================
+   SECTION SORTABLE STYLES - Enhanced drag and drop
+   ============================================================================ */
+
+.section-sortable {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.section-sortable.dragging {
+  opacity: 0.5;
+  transform: rotate(2deg);
+  z-index: 1000;
+}
+
+.section-sortable .drag-handle {
+  cursor: grab;
+  transition: all 0.2s ease;
+}
+
+.section-sortable .drag-handle:hover {
+  opacity: 1 !important;
+  color: #4F46E5;
+  transform: scale(1.1);
+}
+
+.section-sortable .drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Sortable states */
+.section-ghost {
+  opacity: 0.4;
+  background: linear-gradient(45deg, #E5E7EB, #F3F4F6);
+  border: 2px dashed #9CA3AF;
+  border-radius: 12px;
+}
+
+.section-chosen {
+  transform: scale(1.02);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  z-index: 999;
+}
+
+.section-drag {
+  opacity: 0.8;
+  transform: rotate(3deg) scale(1.05);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  z-index: 1001;
+}
+
+/* Reordering active state */
+.reordering-active {
+  background: linear-gradient(135deg, #EEF2FF, #F0F9FF);
+  border-radius: 16px;
+  padding: 8px;
+}
+
+.reordering-active .section-sortable:not(.dragging) {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reordering-active .section-sortable:not(.dragging):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Body classes for drag states */
+.sections-reordering {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.sections-reordering * {
+  cursor: grabbing !important;
+}
+
+/* ============================================================================
+   ENHANCED SKILLS DISPLAY - Meta-style tags
+   ============================================================================ */
+
+.skills-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.skill-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  cursor: default;
+  border: 1px solid;
+}
+
+.skill-tag:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.skill-tag .skill-proficiency {
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.skill-tag .skill-years {
+  margin-left: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* Skill tooltip */
+.skill-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: rgba(17, 24, 39, 0.9);
+  color: white;
+  font-size: 12px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+}
+
+.skill-tag:hover .skill-tooltip {
+  opacity: 1;
+}
+
+.tooltip-arrow {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid rgba(17, 24, 39, 0.9);
+}
+
+/* Skill categories */
+.skill-category {
+  margin-bottom: 24px;
+}
+
+.skill-category h4 {
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.75px;
+  margin-bottom: 12px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #E5E7EB;
+}
+
+/* ============================================================================
+   EXPERIENCE TIMELINE STYLES - Enhanced visual hierarchy
+   ============================================================================ */
+
+.experience-timeline {
+  position: relative;
+  padding-left: 0;
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 5px rgba(16, 185, 129, 0.5);
+  }
+  to {
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.8);
+  }
+}
+
+/* Responsibility and achievement lists */
+.responsibility-list li,
+.achievement-list li {
+  transition: all 0.2s ease;
+}
+
+.responsibility-list li:hover,
+.achievement-list li:hover {
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 4px;
+  padding-left: 8px;
+  margin-left: -8px;
+}
+
+/* Job skills chips */
+.skill-chip {
+  transition: all 0.2s ease;
+}
+
+.skill-chip:hover {
+  background: #3B82F6;
+  color: white;
+  transform: scale(1.05);
+}
+
+/* ============================================================================
+   EDUCATION STYLES - Enhanced visual design
+   ============================================================================ */
+
+.education-item {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.education-item:hover {
+  transform: scale(1.02);
+}
+
+.education-item .education-content {
+  position: relative;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Gradient borders for education items */
+.education-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  background: linear-gradient(135deg, #8B5CF6, #EC4899, #F59E0B);
+  border-radius: 12px;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+/* Course chips */
+.course-chip {
+  transition: all 0.2s ease;
+}
+
+.course-chip:hover {
+  background: #8B5CF6;
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* Education status badges */
+.education-status {
+  position: relative;
+  overflow: hidden;
+}
+
+.education-status::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  transition: left 0.5s ease;
+}
+
+.education-status:hover::before {
+  left: 100%;
+}
+
+/* ============================================================================
+   MEDIA SORTABLE STYLES
+   ============================================================================ */
+
+.media-sortable {
+  transition: all 0.2s ease;
+}
+
+.media-ghost {
+  opacity: 0.3;
+  background: #F3F4F6;
+  border: 2px dashed #9CA3AF;
+  border-radius: 8px;
+}
+
+.media-chosen {
+  transform: scale(1.05);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  z-index: 999;
+}
+
+.media-drag {
+  opacity: 0.8;
+  transform: rotate(2deg) scale(1.1);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+}
+
+.media-reordering {
+  background: linear-gradient(135deg, #FEF3C7, #FEF9E7);
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.media-drag-handle {
+  cursor: grab;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.media-drag-handle:hover {
+  opacity: 1;
+}
+
+.media-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* ============================================================================
+   SUMMARY STATS STYLES
+   ============================================================================ */
+
+.experience-summary,
+.education-summary {
+  background: linear-gradient(135deg, #F0F9FF, #EEF2FF);
+  border: 1px solid #DBEAFE;
+  transition: all 0.3s ease;
+}
+
+.experience-summary:hover,
+.education-summary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px -5px rgba(59, 130, 246, 0.1);
+}
+
+.summary-stat {
+  position: relative;
+  padding: 16px;
+  text-align: center;
+}
+
+.summary-stat::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 2px;
+  background: linear-gradient(90deg, #3B82F6, #8B5CF6);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.summary-stat:hover::after {
+  opacity: 1;
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .experience-timeline {
+    padding-left: 0;
+  }
+  
+  .experience-timeline::before {
+    display: none;
+  }
+  
+  .timeline-dot {
+    display: none !important;
+  }
+  
+  .job-content {
+    margin-left: 0 !important;
+  }
+  
+  .skills-grid {
+    gap: 6px;
+  }
+  
+  .skill-tag {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  
+  .skill-tag:hover {
+    transform: scale(1.02);
+  }
+}
+
+@media (max-width: 640px) {
+  .summary-stat {
+    padding: 12px;
+  }
+  
+  .education-item {
+    margin-bottom: 16px;
+  }
+  
+  .experience-item {
+    margin-bottom: 20px;
+  }
+}
+
+/* ============================================================================
+   ACCESSIBILITY IMPROVEMENTS
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .section-sortable,
+  .skill-tag,
+  .experience-item .job-content,
+  .education-item {
+    transition: none;
+  }
+  
+  .current-badge {
+    animation: none;
+  }
+  
+  @keyframes pulse {
+    0%, 100% {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+  }
+}
+
+/* Focus states for keyboard navigation */
+.drag-handle:focus,
+.skill-tag:focus,
+.media-drag-handle:focus {
+  outline: 2px solid #3B82F6;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .section-ghost {
+    border-color: #000;
+    background: #fff;
+  }
+  
+  .skill-tag {
+    border-width: 2px;
+  }
+  
+  .timeline-dot {
+    border-width: 3px;
+    border-color: #000;
+  }
+}
+
+/* ============================================================================
+   PRINT STYLES
+   ============================================================================ */
+
+@media print {
+  .drag-handle,
+  .media-drag-handle {
+    display: none;
+  }
+  
+  .section-sortable {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  
+  .experience-item,
+  .education-item {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 16px;
+  }
+  
+  .skill-tag {
+    background: #f5f5f5 !important;
+    color: #000 !important;
+    border: 1px solid #ccc !important;
+  }
+}
+
+/* ============================================================================
+   DARK MODE SUPPORT (if implemented)
+   ============================================================================ */
+
+@media (prefers-color-scheme: dark) {
+  .section-sortable {
+    background: #1F2937;
+    border-color: #374151;
+  }
+  
+  .skill-tag {
+    background: #374151;
+    color: #F9FAFB;
+    border-color: #4B5563;
+  }
+  
+  .experience-item .job-content,
+  .education-item .education-content {
+    background: #1F2937;
+    border-color: #374151;
+  }
+  
+  .skill-tooltip {
+    background: rgba(255, 255, 255, 0.9);
+    color: #1F2937;
+  }
+  
+  .tooltip-arrow {
+    border-top-color: rgba(255, 255, 255, 0.9);
+  }
+}media (min-width: 768px) {
+  .experience-timeline {
+    padding-left: 32px;
+  }
+}
+
+.experience-item {
+  position: relative;
+  margin-bottom: 32px;
+}
+
+.experience-item .job-content {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #E5E7EB;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.experience-item .job-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #3B82F6, #8B5CF6, #EC4899);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.experience-item .job-content:hover::before {
+  opacity: 1;
+}
+
+.experience-item .job-content:hover {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+/* Timeline dots */
+.experience-timeline .timeline-dot {
+  position: absolute;
+  left: 24px;
+  top: 24px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 4px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+/* Current position styling */
+.experience-item.current .job-content {
+  border-color: #10B981;
+  background: linear-gradient(135deg, #ECFDF5, white);
+}
+
+.experience-item.current .timeline-dot {
+  background: #10B981;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+}
+
+/* Employment type badges */
+.employment-type {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Current position badge */
+.current-badge {
+  animation: glow 2s ease-in-out infinite alternate;
+}
+

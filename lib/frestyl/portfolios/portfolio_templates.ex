@@ -1,108 +1,61 @@
-# lib/frestyl/portfolios/portfolio_templates.ex - UPDATED with FIXED consultant and new templates
+# lib/frestyl/portfolios/portfolio_templates.ex - COMPLETELY FIXED VERSION
 
 defmodule Frestyl.Portfolios.PortfolioTemplates do
   @moduledoc """
-  Portfolio template configurations with subtle, professional color schemes
+  Portfolio template configurations with professional dashboard-style layouts
   """
 
   def available_templates do
-    %{
-      "executive" => %{
+    [
+      {"executive", %{
         name: "Executive",
-        description: "Clean corporate design with professional metrics",
-        icon: "💼",
-        preview_color: "from-slate-700 to-slate-800",
-        layout_type: "dashboard",
-        features: ["Executive summary", "Leadership metrics", "Board positions", "Strategic initiatives"],
-        best_for: "C-level executives, senior management, and business leaders"
-      },
-      "developer" => %{
+        description: "Professional corporate dashboard with metrics and KPIs",
+        preview_color: "from-slate-600 to-slate-700",
+        features: ["Executive summary", "Key metrics", "Leadership roles", "Strategic initiatives"]
+      }},
+      {"developer", %{
         name: "Developer",
-        description: "Code-focused interface with technical elements",
-        icon: "⚡",
-        preview_color: "from-gray-800 to-gray-900",
-        layout_type: "terminal",
-        features: ["Code repositories", "Technical skills", "Project demos", "GitHub integration"],
-        best_for: "Software engineers, programmers, and technical professionals"
-      },
-      "designer" => %{
+        description: "Technical dashboard with code portfolio and project metrics",
+        preview_color: "from-gray-700 to-gray-800",
+        features: ["Code repositories", "Technical stack", "Project demos", "Performance metrics"]
+      }},
+      {"designer", %{
         name: "Designer",
-        description: "Visual portfolio with clean gallery layout",
-        icon: "🎨",
-        preview_color: "from-indigo-500 to-indigo-600",
-        layout_type: "gallery",
-        features: ["Visual portfolio", "Case studies", "Design process", "Creative projects"],
-        best_for: "UI/UX designers, graphic designers, and creative professionals"
-      },
-      # FIXED: Consultant template (was incorrectly mapped to creative)
-      "consultant" => %{
+        description: "Creative dashboard with visual portfolio and case studies",
+        preview_color: "from-indigo-500 to-purple-600",
+        features: ["Visual portfolio", "Design process", "Case studies", "Client projects"]
+      }},
+      {"consultant", %{
         name: "Consultant",
-        description: "Professional services with case study focus",
-        icon: "📊",
+        description: "Professional services dashboard with client results and expertise",
         preview_color: "from-blue-600 to-blue-700",
-        layout_type: "case_study",
-        features: ["Case studies", "Industry expertise", "Client results", "Methodology"],
-        best_for: "Business consultants, advisors, and strategic professionals"
-      },
-      "academic" => %{
+        features: ["Client results", "Industry expertise", "Case studies", "Success metrics"]
+      }},
+      {"academic", %{
         name: "Academic",
-        description: "Research-focused with publication highlights",
-        icon: "🎓",
-        preview_color: "from-emerald-600 to-emerald-700",
-        layout_type: "research",
-        features: ["Publications", "Research projects", "Academic background", "Teaching experience"],
-        best_for: "Researchers, professors, and academic professionals"
-      },
-      "freelancer" => %{
-        name: "Freelancer",
-        description: "Service-oriented with client testimonials",
-        icon: "💡",
-        preview_color: "from-teal-600 to-teal-700",
-        layout_type: "services",
-        features: ["Service offerings", "Client testimonials", "Availability", "Pricing"],
-        best_for: "Independent contractors, consultants, and service providers"
-      },
-      # NEW: Photographer template with black background
-      "photographer" => %{
-        name: "Photographer",
-        description: "Visual-first with elegant image galleries",
-        icon: "📸",
-        preview_color: "from-gray-900 to-black",
-        layout_type: "fullscreen",
-        features: ["Photo galleries", "Visual stories", "Client work", "Equipment expertise"],
-        best_for: "Professional photographers, visual artists, and media creators"
-      },
-      # NEW: Minimalist templates
-      "minimalist" => %{
-        name: "Minimalist",
-        description: "Clean typography-focused design",
-        icon: "📝",
-        preview_color: "from-gray-300 to-gray-400",
-        layout_type: "typography",
-        features: ["Clean layout", "Typography focus", "Minimal distractions", "Content first"],
-        best_for: "Writers, academics, and content-focused professionals"
-      },
-      # NEW: Artist template
-      "artist" => %{
-        name: "Artist",
-        description: "Creative expression with bold visuals",
-        icon: "🎭",
+        description: "Research-focused dashboard with publications and academic achievements",
+        preview_color: "from-emerald-600 to-teal-600",
+        features: ["Publications", "Research projects", "Academic roles", "Citations"]
+      }},
+      {"corporate", %{
+        name: "Corporate",
+        description: "Traditional business dashboard with structured layout",
+        preview_color: "from-gray-500 to-gray-600",
+        features: ["Professional timeline", "Company roles", "Industry expertise", "Achievements"]
+      }},
+      {"creative", %{
+        name: "Creative",
+        description: "Bold artistic dashboard with visual storytelling",
         preview_color: "from-purple-600 to-pink-600",
-        layout_type: "creative",
-        features: ["Artistic portfolio", "Creative projects", "Exhibition history", "Artist statement"],
-        best_for: "Fine artists, sculptors, painters, and creative professionals"
-      },
-      # NEW: Zen minimalist variation
-      "zen" => %{
-        name: "Zen",
-        description: "Ultra-minimal with serene aesthetics",
-        icon: "🕯️",
-        preview_color: "from-gray-200 to-gray-300",
-        layout_type: "zen",
-        features: ["Minimal design", "Peaceful colors", "Spacious layout", "Focus on content"],
-        best_for: "Mindfulness coaches, wellness professionals, and minimalist creators"
-      }
-    }
+        features: ["Visual portfolio", "Creative projects", "Artistic journey", "Inspiration"]
+      }},
+      {"minimalist", %{
+        name: "Minimalist",
+        description: "Clean, typography-focused dashboard with minimal distractions",
+        preview_color: "from-gray-300 to-gray-400",
+        features: ["Clean layout", "Typography focus", "Essential content", "Distraction-free"]
+      }}
+    ]
   end
 
   def get_template_config(theme) do
@@ -110,293 +63,328 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
       "executive" -> executive_config()
       "developer" -> developer_config()
       "designer" -> designer_config()
-      "consultant" -> consultant_config()  # FIXED: Now properly maps to consultant
+      "consultant" -> consultant_config()  # FIXED: Now properly maps
       "academic" -> academic_config()
-      "freelancer" -> freelancer_config()
-      "photographer" -> photographer_config()  # NEW
-      "minimalist" -> minimalist_config()      # NEW
-      "artist" -> artist_config()              # NEW
-      "zen" -> zen_config()                    # NEW
+      "corporate" -> corporate_config()   # NEW
+      "creative" -> creative_config()     # NEW
+      "minimalist" -> minimalist_config()
       _ -> executive_config()
     end
   end
 
-  # EXECUTIVE: Clean Corporate Style
+  # EXECUTIVE: Professional Corporate Dashboard
   defp executive_config do
     %{
       layout: "dashboard",
-      primary_color: "#334155",  # Slate-700
-      secondary_color: "#3b82f6", # Blue-500
-      accent_color: "#06b6d4",   # Cyan-500
-      background: "clean-white",
+      primary_color: "#334155",     # Slate-700
+      secondary_color: "#3b82f6",   # Blue-500
+      accent_color: "#059669",      # Emerald-600
+      background: "corporate-clean",
       typography: %{
         font_family: "Inter",
-        heading_weight: "font-bold",
-        body_weight: "font-medium",
-        heading_size: "text-2xl lg:text-3xl",
-        body_size: "text-base"
+        font_size: "base",
+        heading_weight: "bold",
+        body_weight: "medium"
       },
-      layout_config: %{
-        header_style: "corporate_header",
-        section_layout: "cards_with_metrics",
-        navigation: "sidebar",
-        spacing: "comfortable"
+      spacing: "normal",
+      card_style: "corporate",
+      dashboard_config: %{
+        header_type: "executive",
+        sidebar_style: "minimal",
+        card_layout: "grid",
+        metrics_display: true,
+        chart_style: "professional"
       }
     }
   end
 
-  # DEVELOPER: Terminal/Code Style
+  # DEVELOPER: Technical Dashboard
   defp developer_config do
     %{
-      layout: "terminal",
-      primary_color: "#1f2937",  # Gray-800
-      secondary_color: "#10b981", # Emerald-500
-      accent_color: "#6366f1",   # Indigo-500
-      background: "subtle-dark",
+      layout: "dashboard",
+      primary_color: "#1f2937",     # Gray-800
+      secondary_color: "#10b981",   # Emerald-500
+      accent_color: "#6366f1",      # Indigo-500
+      background: "tech-dark",
       typography: %{
         font_family: "JetBrains Mono",
-        heading_weight: "font-semibold",
-        body_weight: "font-normal",
-        heading_size: "text-xl lg:text-2xl",
-        body_size: "text-sm"
+        font_size: "base",
+        heading_weight: "semibold",
+        body_weight: "normal"
       },
-      layout_config: %{
-        header_style: "terminal_header",
-        section_layout: "code_blocks",
-        navigation: "tabs",
-        spacing: "compact"
+      spacing: "compact",
+      card_style: "technical",
+      dashboard_config: %{
+        header_type: "technical",
+        sidebar_style: "code",
+        card_layout: "masonry",
+        metrics_display: true,
+        chart_style: "technical"
       }
     }
   end
 
-  # DESIGNER: Clean Visual Style
+  # DESIGNER: Creative Dashboard
   defp designer_config do
     %{
-      layout: "gallery",
-      primary_color: "#4f46e5",  # Indigo-600
-      secondary_color: "#8b5cf6", # Violet-500
-      accent_color: "#f59e0b",   # Amber-500
-      background: "subtle-gradient",
-      typography: %{
-        font_family: "Playfair Display",
-        heading_weight: "font-bold",
-        body_weight: "font-normal",
-        heading_size: "text-3xl lg:text-4xl",
-        body_size: "text-lg"
-      },
-      layout_config: %{
-        header_style: "creative_header",
-        section_layout: "masonry_grid",
-        navigation: "floating",
-        spacing: "spacious"
-      }
-    }
-  end
-
-  # CONSULTANT: Professional Blue (FIXED)
-  defp consultant_config do
-    %{
-      layout: "case_study",
-      primary_color: "#2563eb",  # Blue-600
-      secondary_color: "#059669", # Emerald-600
-      accent_color: "#dc2626",   # Red-600
-      background: "professional-subtle",
+      layout: "dashboard",
+      primary_color: "#4f46e5",     # Indigo-600
+      secondary_color: "#8b5cf6",   # Violet-500
+      accent_color: "#f59e0b",      # Amber-500
+      background: "creative-gradient",
       typography: %{
         font_family: "Inter",
-        heading_weight: "font-semibold",
-        body_weight: "font-normal",
-        heading_size: "text-2xl lg:text-3xl",
-        body_size: "text-base"
+        font_size: "large",
+        heading_weight: "bold",
+        body_weight: "normal"
       },
-      layout_config: %{
-        header_style: "professional_header",
-        section_layout: "story_blocks",
-        navigation: "breadcrumb",
-        spacing: "normal"
+      spacing: "spacious",
+      card_style: "creative",
+      dashboard_config: %{
+        header_type: "creative",
+        sidebar_style: "visual",
+        card_layout: "featured",
+        metrics_display: false,
+        chart_style: "visual"
       }
     }
   end
 
-  # ACADEMIC: Emerald Professional
+  # CONSULTANT: Professional Services Dashboard (FIXED)
+  defp consultant_config do
+    %{
+      layout: "dashboard",
+      primary_color: "#2563eb",     # Blue-600
+      secondary_color: "#059669",   # Emerald-600
+      accent_color: "#dc2626",      # Red-600
+      background: "consulting-professional",
+      typography: %{
+        font_family: "Inter",
+        font_size: "base",
+        heading_weight: "semibold",
+        body_weight: "normal"
+      },
+      spacing: "normal",
+      card_style: "consulting",
+      dashboard_config: %{
+        header_type: "consulting",
+        sidebar_style: "professional",
+        card_layout: "case-study",
+        metrics_display: true,
+        chart_style: "business"
+      }
+    }
+  end
+
+  # ACADEMIC: Research Dashboard
   defp academic_config do
     %{
-      layout: "research",
-      primary_color: "#047857",  # Emerald-700
-      secondary_color: "#0891b2", # Cyan-600
-      accent_color: "#7c3aed",   # Violet-600
+      layout: "dashboard",
+      primary_color: "#047857",     # Emerald-700
+      secondary_color: "#0891b2",   # Cyan-600
+      accent_color: "#7c3aed",      # Violet-600
       background: "academic-clean",
       typography: %{
         font_family: "Merriweather",
-        heading_weight: "font-bold",
-        body_weight: "font-normal",
-        heading_size: "text-2xl lg:text-3xl",
-        body_size: "text-base"
+        font_size: "base",
+        heading_weight: "bold",
+        body_weight: "normal"
       },
-      layout_config: %{
-        header_style: "academic_header",
-        section_layout: "research_blocks",
-        navigation: "academic_nav",
-        spacing: "comfortable"
+      spacing: "comfortable",
+      card_style: "academic",
+      dashboard_config: %{
+        header_type: "academic",
+        sidebar_style: "research",
+        card_layout: "publication",
+        metrics_display: true,
+        chart_style: "academic"
       }
     }
   end
 
-  # FREELANCER: Teal Professional
-  defp freelancer_config do
+  # NEW: CORPORATE: Traditional Business Dashboard
+  defp corporate_config do
     %{
-      layout: "services",
-      primary_color: "#0d9488",  # Teal-600
-      secondary_color: "#2563eb", # Blue-600
-      accent_color: "#ea580c",   # Orange-600
-      background: "service-clean",
+      layout: "dashboard",
+      primary_color: "#374151",     # Gray-700
+      secondary_color: "#1f2937",   # Gray-800
+      accent_color: "#3b82f6",      # Blue-500
+      background: "corporate-traditional",
       typography: %{
         font_family: "Inter",
-        heading_weight: "font-semibold",
-        body_weight: "font-normal",
-        heading_size: "text-2xl lg:text-3xl",
-        body_size: "text-base"
+        font_size: "base",
+        heading_weight: "semibold",
+        body_weight: "normal"
       },
-      layout_config: %{
-        header_style: "service_header",
-        section_layout: "service_cards",
-        navigation: "sticky_nav",
-        spacing: "normal"
+      spacing: "normal",
+      card_style: "traditional",
+      dashboard_config: %{
+        header_type: "corporate",
+        sidebar_style: "traditional",
+        card_layout: "structured",
+        metrics_display: true,
+        chart_style: "corporate"
       }
     }
   end
 
-  # NEW: PHOTOGRAPHER: Dark Elegant
-  defp photographer_config do
+  # NEW: CREATIVE: Artistic Dashboard
+  defp creative_config do
     %{
-      layout: "fullscreen",
-      primary_color: "#ffffff",    # White text on dark
-      secondary_color: "#d1d5db",  # Gray-300
-      accent_color: "#f59e0b",     # Amber-500
-      background: "photo-dark",
+      layout: "dashboard",
+      primary_color: "#7c3aed",     # Violet-600
+      secondary_color: "#ec4899",   # Pink-500
+      accent_color: "#f59e0b",      # Amber-500
+      background: "artistic-bold",
       typography: %{
-        font_family: "Inter",
-        heading_weight: "font-light",
-        body_weight: "font-light",
-        heading_size: "text-4xl lg:text-5xl",
-        body_size: "text-lg"
+        font_family: "Playfair Display",
+        font_size: "large",
+        heading_weight: "bold",
+        body_weight: "normal"
       },
-      layout_config: %{
-        header_style: "overlay_header",
-        section_layout: "fullscreen_slides",
-        navigation: "dots",
-        spacing: "none"
+      spacing: "spacious",
+      card_style: "artistic",
+      dashboard_config: %{
+        header_type: "artistic",
+        sidebar_style: "creative",
+        card_layout: "gallery",
+        metrics_display: false,
+        chart_style: "artistic"
       }
     }
   end
 
-  # NEW: MINIMALIST: Ultra Clean
+  # MINIMALIST: Clean Dashboard
   defp minimalist_config do
     %{
-      layout: "typography",
-      primary_color: "#374151",  # Gray-700
-      secondary_color: "#6b7280", # Gray-500
-      accent_color: "#3b82f6",   # Blue-500
+      layout: "dashboard",
+      primary_color: "#374151",     # Gray-700
+      secondary_color: "#6b7280",   # Gray-500
+      accent_color: "#3b82f6",      # Blue-500
       background: "minimal-white",
       typography: %{
         font_family: "Inter",
-        heading_weight: "font-normal",
-        body_weight: "font-normal",
-        heading_size: "text-2xl lg:text-3xl",
-        body_size: "text-base"
+        font_size: "base",
+        heading_weight: "normal",
+        body_weight: "light"
       },
-      layout_config: %{
-        header_style: "minimal_header",
-        section_layout: "text_blocks",
-        navigation: "minimal_nav",
-        spacing: "comfortable"
+      spacing: "comfortable",
+      card_style: "minimal",
+      dashboard_config: %{
+        header_type: "minimal",
+        sidebar_style: "clean",
+        card_layout: "simple",
+        metrics_display: false,
+        chart_style: "minimal"
       }
     }
   end
 
-  # NEW: ARTIST: Creative Bold
-  defp artist_config do
-    %{
-      layout: "creative",
-      primary_color: "#7c3aed",  # Violet-600
-      secondary_color: "#ec4899", # Pink-500
-      accent_color: "#f59e0b",   # Amber-500
-      background: "creative-gradient",
-      typography: %{
-        font_family: "Playfair Display",
-        heading_weight: "font-bold",
-        body_weight: "font-normal",
-        heading_size: "text-4xl lg:text-5xl",
-        body_size: "text-lg"
-      },
-      layout_config: %{
-        header_style: "artistic_header",
-        section_layout: "creative_blocks",
-        navigation: "artistic_nav",
-        spacing: "spacious"
-      }
-    }
-  end
+  # Helper functions for styling
 
-  # NEW: ZEN: Serene Minimal
-  defp zen_config do
-    %{
-      layout: "zen",
-      primary_color: "#4b5563",  # Gray-600
-      secondary_color: "#9ca3af", # Gray-400
-      accent_color: "#059669",   # Emerald-600
-      background: "zen-minimal",
-      typography: %{
-        font_family: "Inter",
-        heading_weight: "font-light",
-        body_weight: "font-light",
-        heading_size: "text-3xl lg:text-4xl",
-        body_size: "text-lg"
-      },
-      layout_config: %{
-        header_style: "zen_header",
-        section_layout: "zen_blocks",
-        navigation: "zen_nav",
-        spacing: "extra-spacious"
-      }
-    }
-  end
+  def get_dashboard_layout_classes(config) do
+    base = "grid gap-6 auto-rows-min"
 
-  # Helper functions for template styling (existing code continues...)
-  def get_background_classes(template_config) do
-    case template_config.background do
-      "clean-white" -> "bg-white"
-      "subtle-dark" -> "bg-gray-50"
-      "subtle-gradient" -> "bg-gradient-to-br from-indigo-50 to-violet-50"
-      "professional-subtle" -> "bg-gradient-to-br from-blue-50 to-indigo-50"
-      "academic-clean" -> "bg-gradient-to-br from-emerald-50 to-teal-50"
-      "service-clean" -> "bg-gradient-to-br from-teal-50 to-cyan-50"
-      "photo-dark" -> "bg-gray-900 text-white"        # NEW
-      "minimal-white" -> "bg-white"
-      "creative-gradient" -> "bg-gradient-to-br from-purple-50 to-pink-50"  # NEW
-      "zen-minimal" -> "bg-gray-50"                     # NEW
-      _ -> "bg-white"
+    case config.dashboard_config.card_layout do
+      "grid" -> "#{base} grid-cols-1 lg:grid-cols-3 xl:grid-cols-4"
+      "masonry" -> "#{base} grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+      "featured" -> "#{base} grid-cols-1 lg:grid-cols-2"
+      "case-study" -> "#{base} grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
+      "publication" -> "#{base} grid-cols-1 lg:grid-cols-2"
+      "structured" -> "#{base} grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+      "gallery" -> "#{base} grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      "simple" -> "#{base} grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
+      _ -> "#{base} grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
     end
   end
 
-  def get_font_classes(template_config) do
-    case template_config.typography.font_family do
+  def get_card_classes(config) do
+    base = "bg-white rounded-xl shadow-lg border transition-all duration-300 hover:shadow-xl"
+
+    case config.card_style do
+      "corporate" -> "#{base} border-slate-200 hover:border-slate-300"
+      "technical" -> "#{base} border-gray-200 bg-gray-50 hover:border-gray-300"
+      "creative" -> "#{base} border-indigo-200 hover:border-indigo-300 hover:scale-[1.02]"
+      "consulting" -> "#{base} border-blue-200 hover:border-blue-300"
+      "academic" -> "#{base} border-emerald-200 hover:border-emerald-300"
+      "traditional" -> "#{base} border-gray-200 hover:border-gray-300"
+      "artistic" -> "#{base} border-purple-200 hover:border-purple-300 hover:scale-[1.02]"
+      "minimal" -> "#{base} border-gray-100 hover:border-gray-200 shadow-sm hover:shadow-md"
+      _ -> "#{base} border-gray-200 hover:border-gray-300"
+    end
+  end
+
+  def get_header_classes(config) do
+    base = "border-b bg-white/95 backdrop-blur-sm sticky top-0 z-40"
+
+    case config.dashboard_config.header_type do
+      "executive" -> "#{base} border-slate-200 shadow-sm"
+      "technical" -> "#{base} border-gray-300 bg-gray-50/95"
+      "creative" -> "#{base} border-indigo-200 bg-gradient-to-r from-indigo-50/95 to-violet-50/95"
+      "consulting" -> "#{base} border-blue-200 bg-blue-50/95"
+      "academic" -> "#{base} border-emerald-200 bg-emerald-50/95"
+      "corporate" -> "#{base} border-gray-200 bg-gray-50/95"
+      "artistic" -> "#{base} border-purple-200 bg-gradient-to-r from-purple-50/95 to-pink-50/95"
+      "minimal" -> "#{base} border-gray-100 shadow-none"
+      _ -> "#{base} border-gray-200"
+    end
+  end
+
+  def get_background_classes(config) do
+    case config.background do
+      "corporate-clean" -> "bg-slate-50"
+      "tech-dark" -> "bg-gray-100"
+      "creative-gradient" -> "bg-gradient-to-br from-indigo-50 via-white to-violet-50"
+      "consulting-professional" -> "bg-gradient-to-br from-blue-50 to-indigo-50"
+      "academic-clean" -> "bg-gradient-to-br from-emerald-50 to-teal-50"
+      "corporate-traditional" -> "bg-gray-50"
+      "artistic-bold" -> "bg-gradient-to-br from-purple-50 via-white to-pink-50"
+      "minimal-white" -> "bg-white"
+      _ -> "bg-gray-50"
+    end
+  end
+
+  def get_typography_classes(config) do
+    font = case config.typography.font_family do
       "JetBrains Mono" -> "font-mono"
       "Playfair Display" -> "font-serif"
       "Merriweather" -> "font-serif"
-      "Inter" -> "font-sans"
       _ -> "font-sans"
+    end
+
+    size = case config.typography.font_size do
+      "small" -> "text-sm"
+      "base" -> "text-base"
+      "large" -> "text-lg"
+      _ -> "text-base"
+    end
+
+    "#{font} #{size}"
+  end
+
+  def get_spacing_classes(config) do
+    case config.spacing do
+      "compact" -> "space-y-4 p-4"
+      "normal" -> "space-y-6 p-6"
+      "comfortable" -> "space-y-8 p-6"
+      "spacious" -> "space-y-12 p-8"
+      _ -> "space-y-6 p-6"
     end
   end
 
-  def get_section_spacing(template_config) do
-    case template_config.layout_config.spacing do
-      "compact" -> "space-y-4"
-      "normal" -> "space-y-6"
-      "comfortable" -> "space-y-8"
-      "spacious" -> "space-y-12"
-      "extra-spacious" -> "space-y-16"  # NEW
-      "none" -> ""
-      _ -> "space-y-6"
+  def get_metrics_config(config) do
+    if config.dashboard_config.metrics_display do
+      %{
+        show_stats: true,
+        chart_type: config.dashboard_config.chart_style,
+        layout: "dashboard"
+      }
+    else
+      %{
+        show_stats: false,
+        chart_type: "none",
+        layout: "simple"
+      }
     end
   end
 end
