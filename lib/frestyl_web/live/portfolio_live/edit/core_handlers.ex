@@ -54,11 +54,11 @@ defmodule FrestylWeb.PortfolioLive.Edit.CoreHandlers do
     |> assign(:preview_device, :desktop)
     |> assign(:unsaved_changes, false)
     |> assign(:section_edit_id, nil)
-    |> assign(:editing_section, nil)
-    |> assign(:show_add_section_dropdown, false)  # NEW
-    |> assign(:section_edit_tab, "content")       # NEW
-    |> assign(:show_stats_card, true)            # NEW
-    |> assign(:editing_section_media, [])        # NEW
+    |> assign(:editing_section, nil)              # CRITICAL: Always initialize this
+    |> assign(:show_add_section_dropdown, false)
+    |> assign(:section_edit_tab, "content")
+    |> assign(:show_stats_card, true)
+    |> assign(:editing_section_media, [])
     |> assign(:show_resume_import_modal, false)
     |> assign(:show_video_intro, false)
     |> assign(:video_intro_component_id, nil)
@@ -67,6 +67,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.CoreHandlers do
     |> assign(:resume_parsing_error, nil)
     |> configure_uploads()
   end
+
 
   defp setup_uploads(socket, limits) do
     socket
@@ -152,6 +153,35 @@ defmodule FrestylWeb.PortfolioLive.Edit.CoreHandlers do
       end
     else
       socket
+    end
+  end
+
+  def get_editing_section(socket) do
+    Map.get(socket.assigns, :editing_section, nil)
+  end
+
+  def has_editing_section?(socket) do
+    case Map.get(socket.assigns, :editing_section, nil) do
+      nil -> false
+      _ -> true
+    end
+  end
+
+  def editing_section_id(socket) do
+    case get_editing_section(socket) do
+      %{id: id} -> id
+      _ -> nil
+    end
+  end
+
+  def is_editing_section?(socket, section_id) when is_binary(section_id) do
+    is_editing_section?(socket, String.to_integer(section_id))
+  end
+
+  def is_editing_section?(socket, section_id) when is_integer(section_id) do
+    case get_editing_section(socket) do
+      %{id: ^section_id} -> true
+      _ -> false
     end
   end
 
@@ -560,5 +590,27 @@ defmodule FrestylWeb.PortfolioLive.Edit.CoreHandlers do
     # Add timestamp to ensure uniqueness
     timestamp = System.unique_integer([:positive])
     "#{base_slug}-#{timestamp}"
+  end
+
+  def safe_editing_section(assigns) do
+    Map.get(assigns, :editing_section, nil)
+  end
+
+  def safe_editing_section_id(assigns) do
+    case safe_editing_section(assigns) do
+      %{id: id} -> id
+      _ -> nil
+    end
+  end
+
+  def editing_section?(assigns, section_id) when is_binary(section_id) do
+    editing_section?(assigns, String.to_integer(section_id))
+  end
+
+  def editing_section?(assigns, section_id) when is_integer(section_id) do
+    case safe_editing_section(assigns) do
+      %{id: ^section_id} -> true
+      _ -> false
+    end
   end
 end

@@ -1,7 +1,9 @@
-# lib/frestyl/resume_parser.ex - Enhanced Resume Parser
+# lib/frestyl/resume_parser.ex - BACK TO BASICS + TARGETED FIXES
+
 defmodule Frestyl.ResumeParser do
   @moduledoc """
-  Enhanced resume parsing with AI integration and multiple file format support.
+  Enhanced resume parsing with AI integration, multiple file format support,
+  and advanced skills proficiency detection.
   """
 
   require Logger
@@ -69,102 +71,255 @@ defmodule Frestyl.ResumeParser do
     end
   end
 
+  # PDF extraction with multiple methods
   defp extract_from_pdf(file_path) do
-    # Try multiple PDF extraction methods
+    IO.puts("🔍 PDF DEBUG: Starting enhanced PDF extraction")
+
+    # Try Method 1: pdftotext (fastest)
     case System.cmd("pdftotext", [file_path, "-"], stderr_to_stdout: true) do
-      {text, 0} when byte_size(text) > 0 ->
+      {text, 0} when byte_size(text) > 100 ->
+        IO.puts("🔍 PDF DEBUG: pdftotext successful, length: #{byte_size(text)}")
         {:ok, clean_extracted_text(text)}
 
       {_, _} ->
-        # Fallback to Python-based extraction
-        extract_pdf_with_python(file_path)
+        # Try Method 2: pdfplumber (better for complex layouts)
+        case extract_pdf_with_pdfplumber(file_path) do
+          {:ok, text} when byte_size(text) > 100 ->
+            IO.puts("🔍 PDF DEBUG: pdfplumber successful")
+            {:ok, text}
+
+          {:error, _} ->
+            # Fallback to PyPDF2
+            extract_pdf_with_pypdf2(file_path)
+        end
     end
   rescue
     _ ->
-      extract_pdf_with_python(file_path)
+      extract_pdf_with_pdfplumber(file_path)
   end
 
-  defp extract_pdf_with_python(file_path) do
+  defp extract_pdf_with_pdfplumber(file_path) do
+    python_script = """
+    import pdfplumber
+    import sys
+
+    try:
+        text = ''
+        with pdfplumber.open('#{file_path}') as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + '\\n'
+
+        print(text)
+
+    except Exception as e:
+        sys.stderr.write(f"Error: {str(e)}")
+        sys.exit(1)
+    """
+
+    case System.cmd("python3", ["-c", python_script], stderr_to_stdout: true) do
+      {text, 0} when byte_size(text) > 50 ->
+        {:ok, clean_extracted_text(text)}
+
+      {error_output, _} ->
+        {:error, "pdfplumber failed: #{error_output}"}
+    end
+  rescue
+    error ->
+      {:error, "pdfplumber exception: #{Exception.message(error)}"}
+  end
+
+  defp extract_pdf_with_pypdf2(file_path) do
     python_script = """
     import PyPDF2
     import sys
+
     try:
         with open('#{file_path}', 'rb') as file:
             reader = PyPDF2.PdfReader(file)
             text = ''
             for page in reader.pages:
-                text += page.extract_text() + '\\n'
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + '\\n'
+
         print(text)
+
     except Exception as e:
-        sys.stderr.write(str(e))
+        sys.stderr.write(f"Error: {str(e)}")
         sys.exit(1)
     """
 
     case System.cmd("python3", ["-c", python_script], stderr_to_stdout: true) do
-      {text, 0} when byte_size(text) > 0 ->
+      {text, 0} when byte_size(text) > 50 ->
         {:ok, clean_extracted_text(text)}
 
-      {error, _} ->
-        Logger.warning("PDF extraction failed: #{error}")
-        {:error, "Could not extract text from PDF"}
+      {error_output, _} ->
+        {:error, "PyPDF2 failed: #{error_output}"}
     end
   rescue
-    _ ->
-      {:error, "PDF extraction not available"}
+    error ->
+      {:error, "PyPDF2 exception: #{Exception.message(error)}"}
   end
 
+  # DOCX extraction with multiple methods
   defp extract_from_docx(file_path) do
-    # Try using python-docx
+    IO.puts("🔍 DOCX DEBUG: Starting enhanced DOCX extraction for: #{file_path}")
+
+    # Try Method 1: python-docx (most reliable)
+    case extract_docx_with_python_docx(file_path) do
+      {:ok, text} when byte_size(text) > 100 ->
+        IO.puts("🔍 DOCX DEBUG: python-docx successful, length: #{byte_size(text)}")
+        {:ok, text}
+
+      {:error, reason} ->
+        IO.puts("🔍 DOCX DEBUG: python-docx failed: #{reason}")
+
+        # Try Method 2: mammoth (handles complex formatting better)
+        case extract_docx_with_mammoth(file_path) do
+          {:ok, text} when byte_size(text) > 100 ->
+            IO.puts("🔍 DOCX DEBUG: mammoth successful, length: #{byte_size(text)}")
+            {:ok, text}
+
+          {:error, reason2} ->
+            IO.puts("🔍 DOCX DEBUG: mammoth failed: #{reason2}")
+
+            # Fallback to manual XML extraction
+            extract_docx_manual_enhanced(file_path)
+        end
+    end
+  end
+
+  # Method 1: python-docx (most common)
+  defp extract_docx_with_python_docx(file_path) do
     python_script = """
     from docx import Document
     import sys
+
     try:
         doc = Document('#{file_path}')
         text = ''
+
+        # Extract paragraphs
         for paragraph in doc.paragraphs:
-            text += paragraph.text + '\\n'
+            if paragraph.text.strip():
+                text += paragraph.text + '\\n'
+
+        # Extract tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if cell.text.strip():
+                        text += cell.text + ' '
+                text += '\\n'
+
+        # Extract headers and footers
+        for section in doc.sections:
+            if section.header:
+                for paragraph in section.header.paragraphs:
+                    if paragraph.text.strip():
+                        text += paragraph.text + '\\n'
+            if section.footer:
+                for paragraph in section.footer.paragraphs:
+                    if paragraph.text.strip():
+                        text += paragraph.text + '\\n'
+
         print(text)
+
     except Exception as e:
-        sys.stderr.write(str(e))
+        sys.stderr.write(f"Error: {str(e)}")
         sys.exit(1)
     """
 
     case System.cmd("python3", ["-c", python_script], stderr_to_stdout: true) do
-      {text, 0} when byte_size(text) > 0 ->
-        {:ok, clean_extracted_text(text)}
+      {text, 0} when byte_size(text) > 50 ->
+        cleaned_text = clean_extracted_text(text)
+        IO.puts("🔍 DOCX DEBUG: python-docx extracted #{String.length(cleaned_text)} characters")
+        {:ok, cleaned_text}
 
-      {_, _} ->
-        # Fallback to unzip and XML parsing
-        extract_docx_manual(file_path)
+      {error_output, _} ->
+        {:error, "python-docx failed: #{error_output}"}
     end
   rescue
-    _ ->
-      extract_docx_manual(file_path)
+    error ->
+      {:error, "python-docx exception: #{Exception.message(error)}"}
   end
 
-  defp extract_docx_manual(file_path) do
-    # DOCX is a ZIP file with XML content
+  # Method 2: mammoth (better formatting preservation)
+  defp extract_docx_with_mammoth(file_path) do
+    python_script = """
+    import mammoth
+    import sys
+
+    try:
+        with open('#{file_path}', 'rb') as docx_file:
+            result = mammoth.extract_raw_text(docx_file)
+            print(result.value)
+
+    except Exception as e:
+        sys.stderr.write(f"Error: {str(e)}")
+        sys.exit(1)
+    """
+
+    case System.cmd("python3", ["-c", python_script], stderr_to_stdout: true) do
+      {text, 0} when byte_size(text) > 50 ->
+        cleaned_text = clean_extracted_text(text)
+        IO.puts("🔍 DOCX DEBUG: mammoth extracted #{String.length(cleaned_text)} characters")
+        {:ok, cleaned_text}
+
+      {error_output, _} ->
+        {:error, "mammoth failed: #{error_output}"}
+    end
+  rescue
+    error ->
+      {:error, "mammoth exception: #{Exception.message(error)}"}
+  end
+
+  # Enhanced manual extraction with better XML parsing
+  defp extract_docx_manual_enhanced(file_path) do
+    IO.puts("🔍 DOCX DEBUG: Trying enhanced manual DOCX extraction")
+
     case System.cmd("unzip", ["-p", file_path, "word/document.xml"], stderr_to_stdout: true) do
-      {xml_content, 0} ->
+      {xml_content, 0} when byte_size(xml_content) > 100 ->
+        IO.puts("🔍 DOCX DEBUG: Unzip successful, XML length: #{byte_size(xml_content)}")
+
+        # More sophisticated XML parsing
         text = xml_content
-               |> String.replace(~r/<[^>]+>/, " ")  # Remove XML tags
-               |> String.replace(~r/\s+/, " ")      # Normalize whitespace
+               |> String.replace(~r/<w:br[^>]*>/i, "\n")           # Convert breaks to newlines
+               |> String.replace(~r/<w:p[^>]*>/i, "\n")            # Convert paragraphs to newlines
+               |> String.replace(~r/<w:tab[^>]*>/i, " ")           # Convert tabs to spaces
+               |> String.replace(~r/<[^>]+>/, " ")                 # Remove all other XML tags
+               |> String.replace(~r/\s+/, " ")                     # Normalize whitespace
+               |> String.replace(~r/\n\s*\n/, "\n")               # Remove extra line breaks
                |> String.trim()
 
-        {:ok, text}
+        IO.puts("🔍 DOCX DEBUG: Enhanced manual extraction result length: #{String.length(text)}")
 
-      {_, _} ->
+        if String.length(text) > 50 do
+          {:ok, text}
+        else
+          {:error, "Extracted text too short"}
+        end
+
+      {error_output, _} ->
+        IO.puts("🔍 DOCX DEBUG: Unzip failed: #{error_output}")
         {:error, "Could not extract DOCX content"}
     end
   rescue
-    _ ->
-      {:error, "DOCX extraction failed"}
+    error ->
+      IO.puts("🔍 DOCX DEBUG: Manual extraction exception: #{Exception.message(error)}")
+      {:error, "Enhanced manual DOCX extraction failed"}
   end
 
+  # DOC file extraction
   defp extract_from_doc(file_path) do
+    IO.puts("🔍 DOC DEBUG: Starting DOC extraction")
+
     # Try antiword for .doc files
     case System.cmd("antiword", [file_path], stderr_to_stdout: true) do
       {text, 0} when byte_size(text) > 0 ->
+        IO.puts("🔍 DOC DEBUG: antiword successful, length: #{byte_size(text)}")
         {:ok, clean_extracted_text(text)}
 
       {_, _} ->
@@ -175,7 +330,10 @@ defmodule Frestyl.ResumeParser do
       {:error, "DOC extraction not available. Please convert to DOCX or PDF."}
   end
 
+  # RTF file extraction
   defp extract_from_rtf(file_path) do
+    IO.puts("🔍 RTF DEBUG: Starting RTF extraction")
+
     # Basic RTF parsing - strip RTF control codes
     case File.read(file_path) do
       {:ok, content} ->
@@ -185,6 +343,7 @@ defmodule Frestyl.ResumeParser do
                |> String.replace(~r/\s+/, " ")             # Normalize whitespace
                |> String.trim()
 
+        IO.puts("🔍 RTF DEBUG: Extracted #{String.length(text)} characters")
         {:ok, text}
 
       {:error, reason} ->
@@ -201,33 +360,411 @@ defmodule Frestyl.ResumeParser do
     |> String.trim()
   end
 
-  # Parse extracted text into structured data
+  # MAIN PARSING FUNCTION - ADD DEBUG BUT KEEP SIMPLE
   defp parse_resume_text(text, filename) do
+    IO.puts("🔍 PARSER DEBUG: ===== RESUME PARSING STARTED =====")
+    IO.puts("🔍 PARSER DEBUG: Filename: #{filename}")
+    IO.puts("🔍 PARSER DEBUG: Raw text length: #{String.length(text)} characters")
+
+    # DEBUG: Show actual text structure
+    lines = String.split(text, "\n", trim: true)
+    IO.puts("🔍 PARSER DEBUG: Found #{length(lines)} lines")
+    IO.puts("🔍 PARSER DEBUG: First 20 lines:")
+    lines |> Enum.take(20) |> Enum.with_index() |> Enum.each(fn {line, idx} ->
+      IO.puts("🔍 #{idx}: #{line}")
+    end)
+
     try do
-      # Enhanced parsing with multiple strategies
+      # SIMPLE parsing - back to basics
       parsed_data = %{
         "filename" => filename,
         "raw_text" => text,
         "personal_info" => extract_personal_info(text),
         "professional_summary" => extract_professional_summary(text),
-        "work_experience" => extract_work_experience(text),
-        "education" => extract_education(text),
-        "skills" => extract_skills(text),
-        "projects" => extract_projects(text),
-        "certifications" => extract_certifications(text),
-        "achievements" => extract_achievements(text),
-        "languages" => extract_languages(text)
+        "work_experience" => extract_work_experience_simple(text),
+        "education" => extract_education_simple(text),
+        "skills" => extract_skills_simple(text),
+        "projects" => extract_projects_simple(text),
+        "certifications" => extract_certifications_simple(text),
+        "achievements" => extract_achievements_simple(text),
+        "languages" => extract_languages_simple(text)
       }
+
+      # Add enhanced skills
+      enhanced_skills = process_skills_with_ai_detection(parsed_data["skills"], text, parsed_data["work_experience"])
+      parsed_data = Map.put(parsed_data, "skills", enhanced_skills)
+
+      IO.puts("🔍 PARSER DEBUG: ===== PARSING RESULTS =====")
+      IO.puts("🔍 PARSER DEBUG: Personal Info: #{inspect(parsed_data["personal_info"])}")
+      IO.puts("🔍 PARSER DEBUG: Enhanced Skills count: #{length(enhanced_skills)}")
+      IO.puts("🔍 PARSER DEBUG: Work Experience entries: #{length(parsed_data["work_experience"])}")
+      IO.puts("🔍 PARSER DEBUG: Education entries: #{length(parsed_data["education"])}")
 
       {:ok, parsed_data}
     rescue
       error ->
         Logger.error("Resume parsing failed: #{Exception.message(error)}")
-        {:error, "Failed to parse resume content"}
+        {:error, "Failed to parse resume content: #{Exception.message(error)}"}
     end
   end
 
-  # Extract personal information
+  # BACK TO BASICS - SIMPLE EXTRACTION FUNCTIONS
+
+  # Simple work experience extraction
+  defp extract_work_experience_simple(text) do
+    IO.puts("🔍 EXPERIENCE SIMPLE: Starting simple work experience extraction")
+
+    lines = String.split(text, "\n", trim: true)
+
+    # Look for "EXPERIENCE" or "WORK" section header
+    experience_start = Enum.find_index(lines, fn line ->
+      line_clean = String.trim(line) |> String.downcase()
+      line_clean in ["experience", "work experience", "professional experience", "employment", "work"] ||
+      String.contains?(line_clean, "experience") && String.length(line_clean) < 30
+    end)
+
+    if experience_start do
+      IO.puts("🔍 EXPERIENCE SIMPLE: Found experience section at line #{experience_start}: '#{Enum.at(lines, experience_start)}'")
+
+      # Get next section start
+      next_section = Enum.drop(lines, experience_start + 1)
+      |> Enum.find_index(fn line ->
+        line_clean = String.trim(line) |> String.downcase()
+        line_clean in ["education", "skills", "projects", "certifications", "awards"] ||
+        (String.length(line_clean) < 30 && String.match?(line_clean, ~r/^[a-z\s]+$/))
+      end)
+
+      end_index = if next_section, do: experience_start + next_section + 1, else: length(lines)
+
+      experience_lines = Enum.slice(lines, (experience_start + 1)..(end_index - 1))
+      experience_text = Enum.join(experience_lines, "\n")
+
+      IO.puts("🔍 EXPERIENCE SIMPLE: Extracted #{length(experience_lines)} lines of experience")
+      IO.puts("🔍 EXPERIENCE SIMPLE: Content preview: #{String.slice(experience_text, 0, 200)}...")
+
+      if String.length(experience_text) > 50 do
+        parse_simple_jobs(experience_text)
+      else
+        []
+      end
+    else
+      IO.puts("🔍 EXPERIENCE SIMPLE: No experience section found")
+      []
+    end
+  end
+
+  # Simple education extraction
+  defp extract_education_simple(text) do
+    IO.puts("🔍 EDUCATION SIMPLE: Starting simple education extraction")
+
+    lines = String.split(text, "\n", trim: true)
+
+    # Look for "EDUCATION" section header
+    education_start = Enum.find_index(lines, fn line ->
+      line_clean = String.trim(line) |> String.downcase()
+      line_clean in ["education", "academic background", "qualifications"] ||
+      String.contains?(line_clean, "education") && String.length(line_clean) < 30
+    end)
+
+    if education_start do
+      IO.puts("🔍 EDUCATION SIMPLE: Found education section at line #{education_start}: '#{Enum.at(lines, education_start)}'")
+
+      # Get next section start
+      next_section = Enum.drop(lines, education_start + 1)
+      |> Enum.find_index(fn line ->
+        line_clean = String.trim(line) |> String.downcase()
+        line_clean in ["experience", "skills", "projects", "certifications", "awards"] ||
+        (String.length(line_clean) < 30 && String.match?(line_clean, ~r/^[a-z\s]+$/))
+      end)
+
+      end_index = if next_section, do: education_start + next_section + 1, else: length(lines)
+
+      education_lines = Enum.slice(lines, (education_start + 1)..(end_index - 1))
+      education_text = Enum.join(education_lines, "\n")
+
+      IO.puts("🔍 EDUCATION SIMPLE: Extracted #{length(education_lines)} lines of education")
+      IO.puts("🔍 EDUCATION SIMPLE: Content preview: #{String.slice(education_text, 0, 200)}...")
+
+      if String.length(education_text) > 20 do
+        parse_simple_education(education_text)
+      else
+        []
+      end
+    else
+      IO.puts("🔍 EDUCATION SIMPLE: No education section found")
+      []
+    end
+  end
+
+  # Simple skills extraction
+  defp extract_skills_simple(text) do
+    IO.puts("🔍 SKILLS SIMPLE: Starting simple skills extraction")
+
+    lines = String.split(text, "\n", trim: true)
+
+    # Look for "SKILLS" section header
+    skills_start = Enum.find_index(lines, fn line ->
+      line_clean = String.trim(line) |> String.downcase()
+      line_clean in ["skills", "technical skills", "core competencies", "expertise"] ||
+      String.contains?(line_clean, "skills") && String.length(line_clean) < 30
+    end)
+
+    if skills_start do
+      IO.puts("🔍 SKILLS SIMPLE: Found skills section at line #{skills_start}: '#{Enum.at(lines, skills_start)}'")
+
+      # Get next section start
+      next_section = Enum.drop(lines, skills_start + 1)
+      |> Enum.find_index(fn line ->
+        line_clean = String.trim(line) |> String.downcase()
+        line_clean in ["experience", "education", "projects", "certifications", "awards"] ||
+        (String.length(line_clean) < 30 && String.match?(line_clean, ~r/^[a-z\s]+$/))
+      end)
+
+      end_index = if next_section, do: skills_start + next_section + 1, else: length(lines)
+
+      skills_lines = Enum.slice(lines, (skills_start + 1)..(end_index - 1))
+      skills_text = Enum.join(skills_lines, " ")
+
+      IO.puts("🔍 SKILLS SIMPLE: Extracted #{length(skills_lines)} lines of skills")
+      IO.puts("🔍 SKILLS SIMPLE: Content: #{skills_text}")
+
+      if String.length(skills_text) > 10 do
+        parse_simple_skills(skills_text)
+      else
+        []
+      end
+    else
+      IO.puts("🔍 SKILLS SIMPLE: No skills section found")
+      []
+    end
+  end
+
+  # ADD THESE NEW FUNCTIONS TO YOUR EXISTING resume_parser.ex
+
+  defp parse_simple_jobs(experience_text) do
+    Logger.info("🔍 JOBS_SIMPLE: Parsing jobs from text")
+
+    # Clean UTF-8 encoding issues
+    cleaned_text = experience_text
+    |> String.replace(~r/[^\x00-\x7F]/u, " ")  # Replace non-ASCII chars
+    |> String.replace(~r/\s+/, " ")            # Normalize whitespace
+
+    # Look for pipe-separated format: "Company | Title | Date"
+    pipe_jobs = Regex.scan(~r/([A-Za-z][^|\n]*?)\s*\|\s*([^|\n]+?)\s*\|\s*([^|\n]+)/i, cleaned_text)
+
+    if length(pipe_jobs) > 0 do
+      Logger.info("🔍 JOBS_SIMPLE: Found #{length(pipe_jobs)} pipe-separated jobs")
+
+      Enum.map(pipe_jobs, fn [_, company, title, date_range] ->
+        # Clean the date range
+        clean_date = String.replace(date_range, ~r/[^\x00-\x7F]/u, " ") |> String.trim()
+        current = String.contains?(String.downcase(clean_date), ["current", "present"])
+
+        %{
+          "company" => String.trim(company),
+          "title" => String.trim(title),
+          "start_date" => extract_start_date_clean(clean_date),
+          "end_date" => extract_end_date_clean(clean_date),
+          "current" => current,
+          "description" => String.replace(cleaned_text, ~r/[^\x00-\x7F]/u, " ") |> String.slice(0, 500),
+          "responsibilities" => [],
+          "achievements" => [],
+          "technologies" => []
+        }
+      end)
+    else
+      # Fallback logic stays the same
+      Logger.info("🔍 JOBS_SIMPLE: No pipe pattern found, creating single job")
+
+      [%{
+        "company" => "Professional Experience",
+        "title" => "Role",
+        "start_date" => "",
+        "end_date" => "",
+        "current" => false,
+        "description" => String.replace(cleaned_text, ~r/[^\x00-\x7F]/u, " ") |> String.slice(0, 800),
+        "responsibilities" => [],
+        "achievements" => [],
+        "technologies" => []
+      }]
+    end
+  end
+
+  defp extract_start_date_clean(date_range) do
+    case String.split(date_range, ~r/\s*[-–—]\s*|to\s+/i, parts: 2) do
+      [start, _] -> String.trim(start)
+      [single] -> String.trim(single)
+      _ -> ""
+    end
+  end
+
+  defp extract_end_date_clean(date_range) do
+    if String.contains?(String.downcase(date_range), ["current", "present"]) do
+      ""
+    else
+      case String.split(date_range, ~r/\s*[-–—]\s*|to\s+/i, parts: 2) do
+        [_, end_date] -> String.trim(end_date)
+        _ -> ""
+      end
+    end
+  end
+
+  defp extract_jobs_from_experience_text(text) do
+    # Look for the pattern we see in your resume: "Company | Title | Date"
+    pipe_jobs = Regex.scan(~r/([A-Za-z][^|\n]*?)\s*\|\s*([^|\n]+?)\s*\|\s*([^|\n]+)/i, text)
+    |> Enum.map(fn [_, company, title, date_range] ->
+      create_job_entry(String.trim(company), String.trim(title), String.trim(date_range), text)
+    end)
+
+    if length(pipe_jobs) > 0 do
+      pipe_jobs
+    else
+      # Try "Title at Company" pattern
+      at_jobs = Regex.scan(~r/([^(\n]+?)\s+at\s+([^(\n]+?)(?:\s*\(([^)]+)\))?/i, text)
+      |> Enum.map(fn matches ->
+        case matches do
+          [_, title, company, date_range] ->
+            create_job_entry(String.trim(company), String.trim(title), String.trim(date_range || ""), text)
+          [_, title, company] ->
+            create_job_entry(String.trim(company), String.trim(title), "", text)
+        end
+      end)
+
+      at_jobs
+    end
+  end
+
+  defp create_job_entry(company, title, date_range, full_text) do
+    {start_date, end_date, current} = parse_date_range(date_range)
+
+    %{
+      "company" => company,
+      "title" => title,
+      "start_date" => start_date,
+      "end_date" => end_date,
+      "current" => current,
+      "description" => extract_job_description(company, title, full_text),
+      "responsibilities" => extract_responsibilities_from_text(full_text),
+      "achievements" => [],
+      "technologies" => []
+    }
+  end
+
+  defp parse_date_range(date_range) do
+    cleaned = String.downcase(String.trim(date_range))
+
+    cond do
+      String.contains?(cleaned, "current") || String.contains?(cleaned, "present") ->
+        start_date = String.replace(cleaned, ~r/\s*[-–—]\s*(current|present).*$/i, "") |> String.trim()
+        {start_date, "", true}
+
+      String.contains?(cleaned, "–") || String.contains?(cleaned, "-") || String.contains?(cleaned, "to") ->
+        parts = String.split(cleaned, ~r/\s*[-–—]\s*|to\s+/i, parts: 2)
+        case parts do
+          [start_part, end_part] -> {String.trim(start_part), String.trim(end_part), false}
+          [single_part] -> {String.trim(single_part), "", false}
+        end
+
+      true ->
+        {String.trim(cleaned), "", false}
+    end
+  end
+
+  defp extract_job_description(company, title, full_text) do
+    # Simplified approach - just take a portion of the text
+    String.slice(full_text, 0, 500)
+  end
+
+  defp extract_responsibilities_from_text(text) do
+    text
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&String.starts_with?(&1, "•"))
+    |> Enum.map(&String.replace(&1, ~r/^•\s*/, ""))
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.take(10)  # Limit to 10 responsibilities
+  end
+
+  defp has_real_job_data?(jobs) do
+    Enum.any?(jobs, fn job ->
+      company = Map.get(job, "company", "")
+      title = Map.get(job, "title", "")
+
+      # Check if we have real data (not generic placeholders)
+      company != "Company" &&
+      company != "" &&
+      title != "Position" &&
+      title != "Experience Entry" &&
+      String.length(company) > 3 &&
+      String.length(title) > 3
+    end)
+  end
+
+  defp create_enhanced_fallback_job(text) do
+    # Try to extract any company name or meaningful title from the text
+    lines = String.split(text, "\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+
+    # Look for potential company names (lines with Inc, Corp, LLC, etc.)
+    potential_company = Enum.find(lines, fn line ->
+      String.contains?(String.downcase(line), ["inc", "corp", "llc", "company", "ltd"]) &&
+      String.length(line) < 100
+    end)
+
+    # Look for potential job titles (lines with job-related words)
+    potential_title = Enum.find(lines, fn line ->
+      String.contains?(String.downcase(line), ["engineer", "manager", "developer", "analyst", "consultant", "specialist", "coordinator", "director", "lead"]) &&
+      String.length(line) < 100
+    end)
+
+    %{
+      "company" => potential_company || "Professional Experience",
+      "title" => potential_title || "Professional Role",
+      "start_date" => "",
+      "end_date" => "",
+      "current" => false,
+      "description" => String.slice(text, 0, 800),
+      "responsibilities" => extract_responsibilities_from_text(text),
+      "achievements" => [],
+      "technologies" => []
+    }
+  end
+
+  defp parse_simple_education(education_text) do
+    # Very basic education parsing
+    if String.length(education_text) > 20 do
+      [%{
+        "institution" => "Institution",
+        "degree" => "Degree",
+        "field" => "",
+        "start_date" => "",
+        "end_date" => "",
+        "gpa" => "",
+        "description" => String.slice(education_text, 0, 200)
+      }]
+    else
+      []
+    end
+  end
+
+  defp parse_simple_skills(skills_text) do
+    # Simple skill parsing - split by common separators
+    skills_text
+    |> String.split(~r/[,;•\|\n]/)
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(fn skill ->
+      String.length(skill) > 2 && String.length(skill) < 50 &&
+      !Regex.match?(~r/^\d+$/, skill)
+    end)
+    |> Enum.take(50)  # Limit to 50 skills
+  end
+
+  # Keep all the other simple extraction functions basic
+  defp extract_projects_simple(_text), do: []
+  defp extract_certifications_simple(_text), do: []
+  defp extract_achievements_simple(_text), do: ""
+  defp extract_languages_simple(_text), do: ""
+
+  # Keep all the personal info and summary extraction as they were working
   defp extract_personal_info(text) do
     %{
       "name" => extract_name(text),
@@ -241,29 +778,23 @@ defmodule Frestyl.ResumeParser do
   end
 
   defp extract_name(text) do
-    # Look for name patterns at the beginning of the resume
     lines = String.split(text, "\n", trim: true)
-
-    # Get first few non-empty lines and look for name patterns
-    candidates =
-      lines
+    candidates = lines
       |> Enum.take(5)
-      |> Enum.filter(&(String.length(&1) > 2 && String.length(&1) < 50))
-      |> Enum.filter(&name_candidate?/1)
+      |> Enum.filter(&(String.length(&1) > 2 && String.length(&1) < 100))
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
 
-    case candidates do
-      [first_candidate | _] -> String.trim(first_candidate)
-      [] -> ""
-    end
-  end
+    # Look for lines that look like names
+    name = candidates
+      |> Enum.find(fn line ->
+        words = String.split(line, " ", trim: true)
+        length(words) >= 2 && length(words) <= 4 &&
+        Enum.all?(words, &String.match?(&1, ~r/^[A-Z][a-z]+$/)) &&
+        !String.contains?(String.downcase(line), ["email", "phone", "resume", "cv"])
+      end)
 
-  defp name_candidate?(line) do
-    # Simple heuristics for name detection
-    words = String.split(line, " ", trim: true)
-    length(words) >= 2 &&
-    length(words) <= 4 &&
-    Enum.all?(words, &String.match?(&1, ~r/^[A-Z][a-z]+$/)) &&
-    !String.contains?(String.downcase(line), ["email", "phone", "address", "resume", "cv"])
+    name || ""
   end
 
   defp extract_email(text) do
@@ -274,11 +805,9 @@ defmodule Frestyl.ResumeParser do
   end
 
   defp extract_phone(text) do
-    # Multiple phone number patterns
     patterns = [
-      ~r/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/,  # (123) 456-7890, 123-456-7890
-      ~r/\+1[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/,  # +1 (123) 456-7890
-      ~r/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/  # 123 456 7890
+      ~r/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/,
+      ~r/\+1[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/
     ]
 
     Enum.find_value(patterns, "", fn pattern ->
@@ -290,11 +819,9 @@ defmodule Frestyl.ResumeParser do
   end
 
   defp extract_location(text) do
-    # Look for city, state patterns
     location_patterns = [
-      ~r/([A-Z][a-z]+,\s*[A-Z]{2})/,  # City, ST
-      ~r/([A-Z][a-z]+\s+[A-Z][a-z]+,\s*[A-Z]{2})/,  # City Name, ST
-      ~r/([A-Z][a-z]+,\s*[A-Z][a-z]+)/  # City, Country
+      ~r/([A-Z][a-z]+,\s*[A-Z]{2})/,
+      ~r/([A-Z][a-z]+\s+[A-Z][a-z]+,\s*[A-Z]{2})/
     ]
 
     Enum.find_value(location_patterns, "", fn pattern ->
@@ -326,433 +853,176 @@ defmodule Frestyl.ResumeParser do
     end
   end
 
-  # Extract professional summary
   defp extract_professional_summary(text) do
     lines = String.split(text, "\n", trim: true)
+    summary_indicators = ["summary", "objective", "profile", "about"]
 
-    # Look for summary/objective sections
-    summary_indicators = ["summary", "objective", "profile", "about", "overview"]
-
-    Enum.find_value(lines, "", fn line ->
+    # Find explicit summary section
+    summary = Enum.find_value(lines, fn line ->
       if Enum.any?(summary_indicators, &String.contains?(String.downcase(line), &1)) do
-        # Find the next few lines after summary heading
         index = Enum.find_index(lines, &(&1 == line))
         if index do
-          lines
+          content = lines
           |> Enum.drop(index + 1)
-          |> Enum.take_while(&(!section_header?(&1)))
-          |> Enum.take(5)  # Limit to 5 lines
+          |> Enum.take_while(fn next_line ->
+            # Continue until we hit another section header
+            !(String.length(String.trim(next_line)) < 30 &&
+              String.downcase(String.trim(next_line)) in ["experience", "education", "skills", "projects"])
+          end)
+          |> Enum.take(5)
           |> Enum.join(" ")
           |> String.trim()
+
+          if String.length(content) > 20, do: content, else: nil
         end
       end
     end)
-  end
 
-  # Extract work experience
-  defp extract_work_experience(text) do
-    lines = String.split(text, "\n", trim: true)
-
-    # Find experience section
-    exp_start = find_section_start(lines, ["experience", "employment", "work history", "career"])
-
-    if exp_start do
-      exp_lines =
-        lines
-        |> Enum.drop(exp_start + 1)
-        |> Enum.take_while(&(!next_major_section?(&1)))
-
-      parse_experience_entries(exp_lines)
-    else
-      []
-    end
-  end
-
-  defp parse_experience_entries(lines) do
-    # Group lines into job entries based on patterns
-    job_entries = []
-    current_job = %{}
-
-    Enum.reduce(lines, [], fn line, acc ->
-      cond do
-        job_title_line?(line) ->
-          if map_size(current_job) > 0 do
-            [current_job | acc]
-          else
-            acc
-          end
-
-        company_line?(line) ->
-          acc
-
-        date_line?(line) ->
-          acc
-
-        true ->
-          acc
+    # If no explicit summary, look for a paragraph that seems like one
+    summary || Enum.find_value(lines, fn line ->
+      if String.length(line) > 100 &&
+         String.contains?(String.downcase(line), ["professional", "experience", "years"]) do
+        line
       end
+    end) || ""
+  end
+
+  # Keep the enhanced skills processing
+  defp process_skills_with_ai_detection(basic_skills, full_text, work_experience) do
+    IO.puts("🔍 SKILLS AI: Processing #{length(basic_skills)} skills with AI detection")
+
+    basic_skills
+    |> Enum.map(fn skill_name ->
+      proficiency = detect_skill_proficiency(skill_name, full_text)
+      years = calculate_skill_years(skill_name, work_experience, full_text)
+      category = auto_categorize_skill(skill_name)
+
+      %{
+        "name" => skill_name,
+        "proficiency" => proficiency,
+        "years" => years,
+        "category" => category,
+        "color_intensity" => get_color_intensity(proficiency),
+        "display_priority" => get_display_priority(proficiency, years)
+      }
     end)
-    |> Enum.reverse()
-    |> Enum.take(10)  # Limit to 10 most recent jobs
+    |> Enum.sort_by(fn skill -> -skill["display_priority"] end)
   end
 
-  defp job_title_line?(line) do
-    # Heuristics for job title detection
-    words = String.split(line, " ")
-    length(words) <= 6 &&
-    String.match?(line, ~r/^[A-Z]/) &&
-    !String.contains?(String.downcase(line), ["•", "-", "responsibilities"])
-  end
+  defp detect_skill_proficiency(skill_name, text) do
+    skill_lower = String.downcase(skill_name)
+    text_lower = String.downcase(text)
 
-  defp company_line?(line) do
-    # Look for company indicators
-    String.contains?(String.downcase(line), ["inc", "llc", "corp", "company", "ltd"])
-  end
-
-  defp date_line?(line) do
-    # Look for date patterns
-    String.match?(line, ~r/\d{4}/) ||
-    String.contains?(String.downcase(line), ["january", "february", "march", "april", "may", "june",
-                                            "july", "august", "september", "october", "november", "december"]) ||
-    String.contains?(line, ["present", "current"])
-  end
-
-  # Extract education
-  defp extract_education(text) do
-    lines = String.split(text, "\n", trim: true)
-
-    edu_start = find_section_start(lines, ["education", "academic", "qualifications"])
-
-    if edu_start do
-      edu_lines =
-        lines
-        |> Enum.drop(edu_start + 1)
-        |> Enum.take_while(&(!next_major_section?(&1)))
-
-      parse_education_entries(edu_lines)
-    else
-      []
-    end
-  end
-
-  defp parse_education_entries(lines) do
-    # Simple education parsing
-    lines
-    |> Enum.filter(&education_entry?/1)
-    |> Enum.map(&parse_single_education/1)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp education_entry?(line) do
-    String.contains?(String.downcase(line), ["bachelor", "master", "phd", "degree", "university", "college", "institute"])
-  end
-
-  defp parse_single_education(line) do
-    # Extract basic education info
-    %{
-      "institution" => extract_institution(line),
-      "degree" => extract_degree(line),
-      "field" => "",
-      "year" => extract_year(line),
-      "gpa" => extract_gpa(line)
-    }
-  end
-
-  defp extract_institution(line) do
-    # Look for institution names
-    words = String.split(line, " ")
-    institution_words = Enum.filter(words, &String.match?(&1, ~r/^[A-Z]/))
-    Enum.join(institution_words, " ")
-  end
-
-  defp extract_degree(line) do
-    degree_patterns = [
-      ~r/Bachelor[^\s]*|B\.?[AS]\.?/i,
-      ~r/Master[^\s]*|M\.?[AS]\.?/i,
-      ~r/PhD|Ph\.?D\.?|Doctorate/i
+    # Look for explicit proficiency mentions
+    proficiency_patterns = [
+      {~r/expert\s+(?:in\s+|with\s+|at\s+)?#{Regex.escape(skill_lower)}/i, "expert"},
+      {~r/#{Regex.escape(skill_lower)}\s+expert/i, "expert"},
+      {~r/advanced\s+#{Regex.escape(skill_lower)}/i, "advanced"},
+      {~r/proficient\s+(?:in\s+|with\s+)?#{Regex.escape(skill_lower)}/i, "advanced"},
+      {~r/experienced\s+(?:in\s+|with\s+)?#{Regex.escape(skill_lower)}/i, "intermediate"},
+      {~r/familiar\s+(?:with\s+)?#{Regex.escape(skill_lower)}/i, "beginner"}
     ]
 
-    Enum.find_value(degree_patterns, "", fn pattern ->
-      case Regex.run(pattern, line) do
-        [degree] -> degree
-        _ -> nil
-      end
-    end)
+    # Check each pattern
+    Enum.find_value(proficiency_patterns, fn {pattern, level} ->
+      if Regex.match?(pattern, text_lower), do: level, else: nil
+    end) || "intermediate"  # Default
   end
 
-  defp extract_year(line) do
-    case Regex.run(~r/\b(19|20)\d{2}\b/, line) do
-      [year] -> year
-      _ -> ""
+  defp calculate_skill_years(skill_name, work_experience, full_text) when is_list(work_experience) do
+    skill_lower = String.downcase(skill_name)
+
+    # First try to extract from explicit mentions
+    explicit_years = case Regex.run(~r/(\d+)\s*(?:\+)?\s*years?\s+(?:of\s+)?(?:experience\s+)?(?:with\s+|in\s+|using\s+)?#{Regex.escape(skill_lower)}/i, String.downcase(full_text)) do
+      [_, years_str] -> String.to_integer(years_str)
+      _ -> 0
     end
-  end
 
-  defp extract_gpa(line) do
-    case Regex.run(~r/GPA:?\s*(\d+\.?\d*)/i, line) do
-      [_, gpa] -> gpa
-      _ -> ""
-    end
-  end
-
-  # Extract skills
-  defp extract_skills(text) do
-    lines = String.split(text, "\n", trim: true)
-
-    skills_start = find_section_start(lines, ["skills", "technical skills", "core competencies", "expertise"])
-
-    if skills_start do
-      skills_lines =
-        lines
-        |> Enum.drop(skills_start + 1)
-        |> Enum.take_while(&(!next_major_section?(&1)))
-        |> Enum.join(" ")
-
-      parse_skills_text(skills_lines)
+    if explicit_years > 0 do
+      explicit_years
     else
-      # Try to extract skills from the entire text
-      extract_common_skills(text)
+      # Calculate from work history
+      work_experience
+      |> Enum.reduce(0, fn job, acc ->
+        job_text = [
+          Map.get(job, "description", ""),
+          Map.get(job, "title", ""),
+          Map.get(job, "responsibilities", []) |> Enum.join(" "),
+          Map.get(job, "technologies", []) |> Enum.join(" ")
+        ]
+        |> Enum.join(" ")
+        |> String.downcase()
+
+        if String.contains?(job_text, skill_lower) do
+          years = 1  # Default to 1 year per job if we can't calculate dates
+          acc + years
+        else
+          acc
+        end
+      end)
+      |> min(15)  # Cap at 15 years
     end
   end
+  defp calculate_skill_years(_skill_name, _work_experience, _full_text), do: 0
 
-  defp parse_skills_text(text) do
-    # Split by common delimiters and clean up
-    text
-    |> String.split(~r/[,•·\-\n|;]/)
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == "" || String.length(&1) < 2))
-    |> Enum.map(&clean_skill_name/1)
-    |> Enum.uniq()
-    |> Enum.take(50)  # Limit to 50 skills
-  end
+  defp auto_categorize_skill(skill_name) do
+    skill_lower = String.downcase(skill_name)
 
-  defp clean_skill_name(skill) do
-    skill
-    |> String.replace(~r/^\W+|\W+$/, "")  # Remove leading/trailing non-word chars
-    |> String.trim()
-  end
-
-  defp extract_common_skills(text) do
-    # Common technical skills to look for
-    common_skills = [
+    cond do
       # Programming Languages
-      "Python", "JavaScript", "Java", "C++", "C#", "Ruby", "PHP", "Go", "Rust", "Swift",
-      "Kotlin", "TypeScript", "Scala", "R", "MATLAB", "SQL",
+      skill_lower in ["javascript", "python", "java", "c++", "c#", "ruby", "go", "rust", "swift", "kotlin", "php", "typescript", "scala", "r", "matlab", "sql", "c", "objective-c", "dart", "elixir"] ->
+        "Programming Languages"
 
       # Frameworks & Libraries
-      "React", "Angular", "Vue.js", "Node.js", "Express", "Django", "Flask", "Spring",
-      "Laravel", "Rails", "Bootstrap", "jQuery",
+      skill_lower in ["react", "vue", "angular", "node.js", "express", "django", "flask", "spring", "laravel", "rails", "next.js", "gatsby", "nuxt", "svelte"] ->
+        "Frameworks & Libraries"
+
+      # Tools & Platforms
+      skill_lower in ["git", "docker", "kubernetes", "aws", "azure", "gcp", "jenkins", "gitlab", "github", "npm", "webpack", "babel", "eslint", "jest", "cypress"] ->
+        "Tools & Platforms"
 
       # Databases
-      "MySQL", "PostgreSQL", "MongoDB", "Redis", "Elasticsearch", "Oracle", "SQLite",
+      skill_lower in ["mysql", "postgresql", "mongodb", "redis", "elasticsearch", "sqlite", "oracle", "sql server", "dynamodb", "firebase"] ->
+        "Databases"
 
-      # Cloud & DevOps
-      "AWS", "Azure", "Google Cloud", "Docker", "Kubernetes", "Jenkins", "Git", "Linux",
-      "Apache", "Nginx",
+      # Design & Creative
+      skill_lower in ["photoshop", "illustrator", "figma", "sketch", "adobe xd", "canva", "ui design", "ux design", "graphic design", "web design"] ->
+        "Design & Creative"
 
-      # Other Technical
-      "Machine Learning", "Data Science", "Artificial Intelligence", "Blockchain",
-      "Cybersecurity", "API", "REST", "GraphQL", "Microservices"
-    ]
+      # Soft Skills
+      skill_lower in ["leadership", "communication", "teamwork", "project management", "time management", "problem solving", "critical thinking", "presentation"] ->
+        "Soft Skills"
 
-    found_skills =
-      common_skills
-      |> Enum.filter(&String.contains?(text, &1))
-      |> Enum.uniq()
+      # Data & Analytics
+      skill_lower in ["excel", "tableau", "power bi", "analytics", "data analysis", "statistics", "machine learning", "ai", "data science"] ->
+        "Data & Analytics"
 
-    found_skills
-  end
-
-  # Extract projects
-  defp extract_projects(text) do
-    lines = String.split(text, "\n", trim: true)
-
-    projects_start = find_section_start(lines, ["projects", "portfolio", "personal projects", "side projects"])
-
-    if projects_start do
-      project_lines =
-        lines
-        |> Enum.drop(projects_start + 1)
-        |> Enum.take_while(&(!next_major_section?(&1)))
-
-      parse_project_entries(project_lines)
-    else
-      []
+      # Default category
+      true ->
+        "Other"
     end
   end
 
-  defp parse_project_entries(lines) do
-    # Simple project parsing - each significant line is a project
-    lines
-    |> Enum.filter(&project_entry?/1)
-    |> Enum.map(&parse_single_project/1)
-    |> Enum.take(10)  # Limit to 10 projects
-  end
-
-  defp project_entry?(line) do
-    String.length(line) > 10 &&
-    !String.starts_with?(line, "•") &&
-    !String.starts_with?(line, "-") &&
-    String.match?(line, ~r/^[A-Z]/)
-  end
-
-  defp parse_single_project(line) do
-    %{
-      "title" => extract_project_title(line),
-      "description" => line,
-      "technologies" => extract_technologies_from_line(line),
-      "url" => extract_url_from_line(line),
-      "github_url" => extract_github_from_line(line)
-    }
-  end
-
-  defp extract_project_title(line) do
-    # First few words usually contain the title
-    line
-    |> String.split(" ")
-    |> Enum.take(4)
-    |> Enum.join(" ")
-    |> String.replace(~r/[^\w\s]/, "")
-    |> String.trim()
-  end
-
-  defp extract_technologies_from_line(line) do
-    # Look for technology names in parentheses or after keywords
-    tech_keywords = ["built with", "using", "technologies:", "stack:"]
-
-    # Extract technologies mentioned in the line
-    common_techs = ["React", "Python", "JavaScript", "Node.js", "MongoDB", "PostgreSQL", "AWS", "Docker"]
-
-    common_techs
-    |> Enum.filter(&String.contains?(line, &1))
-  end
-
-  defp extract_url_from_line(line) do
-    case Regex.run(~r/https?:\/\/[^\s]+/, line) do
-      [url] -> String.trim(url, ".,)")
-      _ -> ""
+  defp get_color_intensity(proficiency) do
+    case String.downcase(proficiency) do
+      "expert" -> "dark"
+      "advanced" -> "medium"
+      "intermediate" -> "light"
+      "beginner" -> "lightest"
+      _ -> "light"
     end
   end
 
-  defp extract_github_from_line(line) do
-    case Regex.run(~r/github\.com\/[\w-]+\/[\w-]+/, line) do
-      [github] -> "https://" <> github
-      _ -> ""
+  defp get_display_priority(proficiency, years) do
+    base_score = case String.downcase(proficiency) do
+      "expert" -> 100
+      "advanced" -> 75
+      "intermediate" -> 50
+      "beginner" -> 25
+      _ -> 40
     end
-  end
 
-  # Extract certifications
-  defp extract_certifications(text) do
-    lines = String.split(text, "\n", trim: true)
-
-    cert_start = find_section_start(lines, ["certifications", "certificates", "licenses", "credentials"])
-
-    if cert_start do
-      cert_lines =
-        lines
-        |> Enum.drop(cert_start + 1)
-        |> Enum.take_while(&(!next_major_section?(&1)))
-
-      parse_certification_entries(cert_lines)
-    else
-      []
-    end
-  end
-
-  defp parse_certification_entries(lines) do
-    lines
-    |> Enum.filter(&certification_entry?/1)
-    |> Enum.map(&parse_single_certification/1)
-    |> Enum.take(20)  # Limit to 20 certifications
-  end
-
-  defp certification_entry?(line) do
-    String.length(line) > 5 &&
-    (String.contains?(String.downcase(line), ["certified", "certification", "aws", "microsoft", "google", "cisco"]) ||
-     String.match?(line, ~r/^[A-Z]/))
-  end
-
-  defp parse_single_certification(line) do
-    %{
-      "title" => line,
-      "provider" => extract_cert_provider(line),
-      "date" => extract_year(line),
-      "credential_id" => ""
-    }
-  end
-
-  defp extract_cert_provider(line) do
-    providers = ["AWS", "Microsoft", "Google", "Cisco", "Oracle", "Salesforce", "Adobe", "CompTIA"]
-
-    Enum.find(providers, "", fn provider ->
-      String.contains?(line, provider)
-    end)
-  end
-
-  # Extract achievements
-  defp extract_achievements(text) do
-    lines = String.split(text, "\n", trim: true)
-
-    achieve_start = find_section_start(lines, ["achievements", "accomplishments", "awards", "honors"])
-
-    if achieve_start do
-      achieve_lines =
-        lines
-        |> Enum.drop(achieve_start + 1)
-        |> Enum.take_while(&(!next_major_section?(&1)))
-        |> Enum.join("\n")
-
-      achieve_lines
-    else
-      ""
-    end
-  end
-
-  # Extract languages
-  defp extract_languages(text) do
-    lines = String.split(text, "\n", trim: true)
-
-    lang_start = find_section_start(lines, ["languages", "language skills"])
-
-    if lang_start do
-      lang_lines =
-        lines
-        |> Enum.drop(lang_start + 1)
-        |> Enum.take_while(&(!next_major_section?(&1)))
-        |> Enum.join(" ")
-
-      lang_lines
-    else
-      ""
-    end
-  end
-
-  # Helper functions
-
-  defp find_section_start(lines, keywords) do
-    Enum.find_index(lines, fn line ->
-      Enum.any?(keywords, &String.contains?(String.downcase(line), &1)) &&
-      section_header?(line)
-    end)
-  end
-
-  defp section_header?(line) do
-    # Check if line looks like a section header
-    trimmed = String.trim(line)
-    String.length(trimmed) < 50 &&
-    String.length(trimmed) > 3 &&
-    (String.match?(trimmed, ~r/^[A-Z]/) ||
-     String.contains?(trimmed, ":") ||
-     String.match?(trimmed, ~r/^[A-Z\s]+$/))
-  end
-
-  defp next_major_section?(line) do
-    major_sections = [
-      "experience", "education", "skills", "projects", "certifications",
-      "achievements", "languages", "references", "contact", "summary",
-      "objective", "qualifications", "employment", "work history"
-    ]
-
-    section_header?(line) &&
-    Enum.any?(major_sections, &String.contains?(String.downcase(line), &1))
+    years_bonus = min(years * 5, 25)
+    base_score + years_bonus
   end
 end

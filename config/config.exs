@@ -149,6 +149,20 @@ config :esbuild,
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
 
+config :chromic_pdf,
+  # Increase timeout for large documents
+  timeout: 30_000,  # 30 seconds instead of default 5 seconds
+
+  # Optional: Configure session pool for better performance
+  session_pool: [
+    size: 2,
+    timeout: 30_000,
+    init_timeout: 10_000
+  ],
+
+  # Optional: Disable sandbox mode if you're having issues
+  sandbox: false
+
 # Configure tailwind (the version is required)
 config :tailwind,
   version: "3.4.3",
@@ -196,4 +210,6 @@ config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 # config/config.exs
 config :mime, :types, %{
   "audio/x-flac" => ["flac"]
+
+
 }

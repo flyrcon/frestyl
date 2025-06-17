@@ -37,7 +37,18 @@ Hooks.Countdown = {
     this.el.querySelector('.minutes').textContent = minutes.toString().padStart(2, '0')
     this.el.querySelector('.seconds').textContent = seconds.toString().padStart(2, '0')
   }
-}
+};
+
+export const SortableSections = {
+  mounted() {
+    console.log("SortableSections hook mounted - basic version");
+    // For now, just a placeholder to stop the error
+  },
+  
+  updated() {
+    // Placeholder
+  }
+};
 
 Hooks.ShowHidePrice = {
   mounted() {

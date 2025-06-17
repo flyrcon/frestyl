@@ -209,7 +209,7 @@ defmodule FrestylWeb.Router do
       # REMOVED: live "/portfolios/:portfolio_id/resume-parser", PortfolioLive.ResumeParser, :parse
       live "/portfolios/:portfolio_id/sections/new", PortfolioLive.SectionEdit, :new
       live "/portfolios/:portfolio_id/sections/:id/edit", PortfolioLive.SectionEdit, :edit
-      live "/p/:slug", PortfolioLive.Show, :show
+      live "/p/:slug", PortfolioLive.View, :show
       live "/s/:token", PortfolioLive.SharedShow, :show
 
       # Users and Profile

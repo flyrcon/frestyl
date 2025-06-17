@@ -326,6 +326,480 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     """
   end
 
+  # Enhanced Skills Editor with Visual Proficiency Management
+  defp render_skills_editor(assigns) do
+    content = assigns.editing_section.content || %{}
+    skills = get_in(content, ["skills"]) || []
+    skill_categories = get_in(content, ["skill_categories"]) || %{}
+
+    assigns = assign(assigns,
+      content: content,
+      skills: skills,
+      skill_categories: skill_categories,
+      editing_skill: assigns[:editing_skill],
+      show_add_skill_form: assigns[:show_add_skill_form] || false,
+      show_bulk_import: assigns[:show_bulk_import] || false
+    )
+
+    ~H"""
+    <div class="bg-white rounded-xl border border-gray-200 p-8 space-y-8">
+      <!-- Skills Editor Header -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-xl font-bold text-gray-900 flex items-center">
+            <svg class="w-6 h-6 mr-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+            Skills & Expertise
+          </h3>
+          <p class="text-gray-600 mt-1">
+            Add your skills with proficiency levels. Color intensity shows expertise level.
+          </p>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <button phx-click="toggle_bulk_import_skills" phx-target={@myself}
+                  class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium">
+            Bulk Import
+          </button>
+          <button phx-click="show_add_skill_form" phx-target={@myself}
+                  class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+            + Add Skill
+          </button>
+        </div>
+      </div>
+
+      <!-- Proficiency Legend -->
+      <div class="proficiency-legend bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200">
+        <h4 class="text-sm font-bold text-gray-800 mb-4 flex items-center">
+          <svg class="w-4 h-4 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Proficiency Levels Guide
+        </h4>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <%= for {level, description, color_class} <- [
+            {"beginner", "Learning the basics", "bg-blue-300"},
+            {"intermediate", "Comfortable with fundamentals", "bg-blue-500"},
+            {"advanced", "Highly proficient", "bg-blue-700"},
+            {"expert", "Deep expertise & mastery", "bg-blue-900 shadow-lg"}
+          ] do %>
+            <div class="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-200">
+              <div class={["w-8 h-8 rounded-lg", color_class]}></div>
+              <div>
+                <div class="font-semibold text-gray-900 capitalize"><%= level %></div>
+                <div class="text-xs text-gray-600"><%= description %></div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Add Skill Form -->
+      <%= if @show_add_skill_form do %>
+        <div class="add-skill-form bg-gray-50 rounded-xl p-6 border-2 border-dashed border-gray-300">
+          <h4 class="text-lg font-semibold text-gray-900 mb-4">Add New Skill</h4>
+
+          <form phx-submit="add_skill" phx-target={@myself} class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <!-- Skill Name -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Skill Name</label>
+                <input type="text" name="skill_name" required
+                      placeholder="e.g., JavaScript, Leadership"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              </div>
+
+              <!-- Proficiency Level -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Proficiency</label>
+                <select name="proficiency" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <option value="beginner">Beginner</option>
+                  <option value="intermediate" selected>Intermediate</option>
+                  <option value="advanced">Advanced</option>
+                  <option value="expert">Expert</option>
+                </select>
+              </div>
+
+              <!-- Years of Experience -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Years Experience</label>
+                <input type="number" name="years" min="0" max="50" placeholder="3"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+              </div>
+
+              <!-- Category -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                <select name="category" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  <option value="Programming Languages">Programming Languages</option>
+                  <option value="Frameworks & Libraries">Frameworks & Libraries</option>
+                  <option value="Tools & Platforms">Tools & Platforms</option>
+                  <option value="Soft Skills">Soft Skills</option>
+                  <option value="Design & Creative">Design & Creative</option>
+                  <option value="Leadership & Management">Leadership & Management</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Live Preview -->
+            <div class="live-preview mt-6 p-4 bg-white rounded-lg border border-gray-200">
+              <h5 class="text-sm font-medium text-gray-700 mb-3">Live Preview:</h5>
+              <div id="skill-preview" class="flex justify-center">
+                <!-- Preview will be rendered here via JavaScript -->
+                <div class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-blue-500 text-white border-2 border-blue-600 min-w-[100px] text-center">
+                  Preview Skill
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+              <button type="button" phx-click="hide_add_skill_form" phx-target={@myself}
+                      class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button type="submit"
+                      class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                Add Skill
+              </button>
+            </div>
+          </form>
+        </div>
+      <% end %>
+
+      <!-- Bulk Import Form -->
+      <%= if @show_bulk_import do %>
+        <div class="bulk-import-form bg-purple-50 rounded-xl p-6 border-2 border-dashed border-purple-300">
+          <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+            </svg>
+            Bulk Import Skills
+          </h4>
+
+          <form phx-submit="bulk_import_skills" phx-target={@myself} class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Skills List (one per line, format: "Skill Name, Proficiency, Years, Category")
+              </label>
+              <textarea name="skills_text" rows="8" required
+                        placeholder="JavaScript, Expert, 5, Programming Languages
+                          React, Advanced, 3, Frameworks & Libraries
+                          Leadership, Intermediate, 2, Soft Skills
+                          Docker, Advanced, 2, Tools & Platforms"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 font-mono text-sm"></textarea>
+              <p class="text-xs text-gray-600 mt-2">
+                You can also just list skill names (one per line) and set proficiency levels individually later.
+              </p>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+              <button type="button" phx-click="hide_bulk_import" phx-target={@myself}
+                      class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button type="submit"
+                      class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium">
+                Import Skills
+              </button>
+            </div>
+          </form>
+        </div>
+      <% end %>
+
+      <!-- Current Skills by Category -->
+      <%= if map_size(@skill_categories) > 0 or length(@skills) > 0 do %>
+        <div class="current-skills space-y-6">
+          <h4 class="text-lg font-semibold text-gray-900 flex items-center justify-between">
+            <span>Current Skills (<%= count_total_skills(@skills, @skill_categories) %>)</span>
+            <div class="flex items-center space-x-2 text-sm">
+              <button phx-click="organize_by_category" phx-target={@myself}
+                      class="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors">
+                Auto-Organize
+              </button>
+              <button phx-click="clear_all_skills" phx-target={@myself}
+                      data-confirm="Are you sure you want to remove all skills?"
+                      class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors">
+                Clear All
+              </button>
+            </div>
+          </h4>
+
+          <!-- Skills by Category -->
+          <%= if map_size(@skill_categories) > 0 do %>
+            <div class="space-y-8">
+              <%= for {category, category_skills} <- @skill_categories do %>
+                <div class="skill-category-editor border border-gray-200 rounded-xl p-6">
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center">
+                      <div class={["w-4 h-4 rounded-full mr-3", get_category_color(category)]}></div>
+                      <h5 class="text-lg font-bold text-gray-800"><%= category %></h5>
+                      <span class="ml-2 text-sm text-gray-500">(<%= length(category_skills) %> skills)</span>
+                    </div>
+                    <button phx-click="remove_category" phx-value-category={category} phx-target={@myself}
+                            data-confirm="Remove this entire category?"
+                            class="text-red-600 hover:text-red-700 text-sm font-medium">
+                      Remove Category
+                    </button>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <%= for {skill, index} <- Enum.with_index(category_skills) do %>
+                      <%= render_skill_editor_card(skill, category, index, assigns) %>
+                    <% end %>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% else %>
+            <!-- Uncategorized Skills -->
+            <div class="uncategorized-skills">
+              <h5 class="text-md font-semibold text-gray-700 mb-4">All Skills</h5>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <%= for {skill, index} <- Enum.with_index(@skills) do %>
+                  <%= render_skill_editor_card(skill, "general", index, assigns) %>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <!-- Empty State -->
+        <div class="empty-state text-center py-12">
+          <div class="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <svg class="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-gray-900 mb-3">Add Your First Skill</h3>
+          <p class="text-gray-600 mb-6 max-w-md mx-auto">
+            Start building your skills portfolio. Each skill will display with color intensity based on your proficiency level.
+          </p>
+          <div class="flex justify-center space-x-4">
+            <button phx-click="show_add_skill_form" phx-target={@myself}
+                    class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+              Add Your First Skill
+            </button>
+            <button phx-click="toggle_bulk_import_skills" phx-target={@myself}
+                    class="px-6 py-3 border border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 transition-colors font-medium">
+              Import Multiple Skills
+            </button>
+          </div>
+        </div>
+      <% end %>
+    </div>
+
+    <!-- JavaScript for Live Preview -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        // Live preview functionality for add skill form
+        const form = document.querySelector('form[phx-submit="add_skill"]');
+        if (form) {
+          const inputs = form.querySelectorAll('input, select');
+          const preview = document.getElementById('skill-preview');
+
+          inputs.forEach(input => {
+            input.addEventListener('input', updatePreview);
+            input.addEventListener('change', updatePreview);
+          });
+
+          function updatePreview() {
+            const name = form.querySelector('[name="skill_name"]').value || 'Preview Skill';
+            const proficiency = form.querySelector('[name="proficiency"]').value || 'intermediate';
+            const years = form.querySelector('[name="years"]').value;
+
+            const colorClass = getSkillColorClass(proficiency);
+
+            let html = `
+              <div class="relative inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-semibold border-2 min-w-[100px] text-center transition-all duration-300 ${colorClass}">
+                <span class="text-white relative z-10">${name}</span>
+                ${years ? `<span class="absolute -top-1 -right-1 bg-white text-gray-800 text-xs px-1.5 py-0.5 rounded-full font-bold border shadow-sm">${years}y</span>` : ''}
+                <div class="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex space-x-1">
+                  ${getProficiencyDots(proficiency)}
+                </div>
+              </div>
+            `;
+
+            preview.innerHTML = html;
+          }
+
+          function getSkillColorClass(proficiency) {
+            const classes = {
+              'beginner': 'bg-blue-300 border-blue-400 hover:bg-blue-400',
+              'intermediate': 'bg-blue-500 border-blue-600 hover:bg-blue-600',
+              'advanced': 'bg-blue-700 border-blue-800 hover:bg-blue-800',
+              'expert': 'bg-blue-900 border-blue-950 hover:bg-blue-950 shadow-lg'
+            };
+            return classes[proficiency] || classes['intermediate'];
+          }
+
+          function getProficiencyDots(proficiency) {
+            const dotCounts = { 'beginner': 1, 'intermediate': 2, 'advanced': 3, 'expert': 3 };
+            const count = dotCounts[proficiency] || 2;
+            const isExpert = proficiency === 'expert';
+
+            let dots = '';
+            for (let i = 1; i <= 3; i++) {
+              if (i <= count) {
+                const dotClass = isExpert ? 'bg-yellow-300 shadow-sm ring-1 ring-yellow-400' : 'bg-white shadow-sm';
+                dots += `<div class="w-1.5 h-1.5 rounded-full ${dotClass}"></div>`;
+              } else {
+                dots += `<div class="w-1.5 h-1.5 rounded-full bg-white bg-opacity-40"></div>`;
+              }
+            }
+            return dots;
+          }
+
+          // Initial preview
+          updatePreview();
+        }
+      });
+    </script>
+    """
+  end
+
+  # Individual skill editor card
+  defp render_skill_editor_card(skill, category, index, assigns) do
+    {skill_name, proficiency, years} = case skill do
+      %{"name" => name, "proficiency" => prof, "years" => y} -> {name, prof, y}
+      %{"name" => name, "proficiency" => prof} -> {name, prof, nil}
+      %{"name" => name} -> {name, "intermediate", nil}
+      skill_string when is_binary(skill_string) -> {skill_string, "intermediate", nil}
+      _ -> {"Unknown Skill", "intermediate", nil}
+    end
+
+    assigns = assign(assigns,
+      skill_name: skill_name,
+      proficiency: proficiency,
+      years: years,
+      category: category,
+      index: index
+    )
+
+    ~H"""
+    <div class="skill-editor-card bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all duration-200">
+      <!-- Visual Preview -->
+      <div class="flex justify-center mb-3">
+        <div class={[
+          "relative inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold border-2 min-w-[80px] text-center",
+          get_skill_color_class_for_editor(@proficiency, @category)
+        ]}>
+          <span class="text-white relative z-10"><%= @skill_name %></span>
+          <%= if @years do %>
+            <span class="absolute -top-1 -right-1 bg-white text-gray-800 text-xs px-1 py-0.5 rounded-full font-bold text-[10px]">
+              <%= @years %>y
+            </span>
+          <% end %>
+          <div class="absolute bottom-0.5 left-1/2 transform -translate-x-1/2 flex space-x-0.5">
+            <%= for i <- 1..3 do %>
+              <div class={[
+                "w-1 h-1 rounded-full",
+                get_dot_class_for_editor(@proficiency, i)
+              ]}></div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit Controls -->
+      <div class="space-y-2">
+        <input type="text" value={@skill_name}
+              phx-blur="update_skill_name"
+              phx-value-category={@category}
+              phx-value-index={@index}
+              phx-target={@myself}
+              class="w-full text-sm font-medium text-center border-0 border-b border-gray-200 focus:border-blue-500 focus:ring-0 bg-transparent">
+
+        <select phx-change="update_skill_proficiency"
+                phx-value-category={@category}
+                phx-value-index={@index}
+                phx-target={@myself}
+                class="w-full text-xs border border-gray-200 rounded px-2 py-1 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+          <%= for level <- ["beginner", "intermediate", "advanced", "expert"] do %>
+            <option value={level} selected={@proficiency == level}>
+              <%= String.capitalize(level) %>
+            </option>
+          <% end %>
+        </select>
+
+        <div class="flex items-center space-x-2">
+          <input type="number" value={@years}
+                min="0" max="50" placeholder="Years"
+                phx-blur="update_skill_years"
+                phx-value-category={@category}
+                phx-value-index={@index}
+                phx-target={@myself}
+                class="flex-1 text-xs border border-gray-200 rounded px-2 py-1 focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+
+          <button phx-click="remove_skill"
+                  phx-value-category={@category}
+                  phx-value-index={@index}
+                  phx-target={@myself}
+                  data-confirm="Remove this skill?"
+                  class="text-red-500 hover:text-red-700 text-xs">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # Helper functions for the editor
+  defp get_skill_color_class_for_editor(proficiency, category) do
+    # Simplified for editor (using blue as base)
+    case proficiency do
+      "beginner" -> "bg-blue-300 border-blue-400"
+      "intermediate" -> "bg-blue-500 border-blue-600"
+      "advanced" -> "bg-blue-700 border-blue-800"
+      "expert" -> "bg-blue-900 border-blue-950 shadow-lg"
+      _ -> "bg-blue-500 border-blue-600"
+    end
+  end
+
+  defp get_dot_class_for_editor(proficiency, dot_index) do
+    dots = case proficiency do
+      "beginner" -> 1
+      "intermediate" -> 2
+      "advanced" -> 3
+      "expert" -> 3
+      _ -> 2
+    end
+
+    if dot_index <= dots do
+      if proficiency == "expert" do
+        "bg-yellow-300 ring-1 ring-yellow-400"
+      else
+        "bg-white"
+      end
+    else
+      "bg-white bg-opacity-40"
+    end
+  end
+
+  defp get_category_color(category) do
+    case category |> to_string() |> String.downcase() do
+      cat when cat in ["programming", "programming languages"] -> "bg-blue-500"
+      cat when cat in ["frameworks", "frameworks & libraries"] -> "bg-blue-600"
+      cat when cat in ["tools", "tools & platforms"] -> "bg-orange-500"
+      cat when cat in ["soft skills", "communication"] -> "bg-green-500"
+      cat when cat in ["design", "design & creative"] -> "bg-purple-500"
+      cat when cat in ["leadership", "leadership & management"] -> "bg-indigo-500"
+      _ -> "bg-gray-500"
+    end
+  end
+
+  defp count_total_skills(skills, skill_categories) do
+    if map_size(skill_categories) > 0 do
+      skill_categories |> Map.values() |> List.flatten() |> length()
+    else
+      length(skills)
+    end
+  end
+
   defp render_featured_project_fields(assigns) do
     # FIXED: Assign content to assigns instead of using it as a variable
     content = assigns.editing_section.content || %{}
@@ -2452,9 +2926,41 @@ defp render_settings_tab(assigns) do
 
   defp render_modals(assigns) do
     ~H"""
-    <%= render_video_intro_modal(assigns) %>
+    <!-- Video Intro Modal -->
+    <%= if @show_video_intro do %>
+      <%= render_video_intro_modal(assigns) %>
+    <% end %>
+
+    <!-- Resume Import Modal -->
+    <%= if @show_resume_import_modal do %>
+      <.live_component
+        module={FrestylWeb.PortfolioLive.Edit.ResumeImportModal}
+        id="resume-import-modal"
+        portfolio={@portfolio}
+        parsing_stage={@resume_parsing_state}
+        parsed_data={@parsed_resume_data}
+        sections_to_import={@sections_to_import}
+        merge_options={@merge_options}
+        upload_progress={@upload_progress}
+        parsing_progress={@parsing_progress}
+        import_progress={@import_progress}
+        error_message={@resume_error_message}
+      />
+    <% end %>
     """
   end
+
+  @impl true
+  def handle_event("upload_resume", params, socket) do
+    require Logger
+    Logger.info("🔍 MODAL: upload_resume called with params: #{inspect(params)}")
+    Logger.info("🔍 MODAL: upload entries: #{inspect(socket.assigns.uploads.resume_file.entries)}")
+
+    # ... rest of the upload handling code from above
+  end
+
+# If this simple version works, then the issue is with the ResumeImportModal component itself.
+# If this doesn't work, then there's an issue with the render_modals being called.
 
   def render_enhanced_javascript(assigns) do
     ~H"""

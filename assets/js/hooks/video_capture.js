@@ -1,619 +1,273 @@
-// FIXED: assets/js/hooks/video_capture.js
+// assets/js/hooks/video_capture.js - FIXED VIDEO CAMERA HOOK
 
-export default {
+const VideoCapture = {
   mounted() {
-    console.log('🎬 VideoCapture hook mounted!');
-    console.log('🔍 Element:', this.el);
-    console.log('🆔 Element ID:', this.el.id);
-    
-    this.componentId = this.el.getAttribute('data-component-id');
-    console.log('🏷️ Component ID:', this.componentId);
-    
-    // Initialize state
-    this.stream = null;
+    console.log("🎥 VideoCapture hook mounted");
+    this.recording = false;
     this.mediaRecorder = null;
     this.recordedChunks = [];
-    this.recordedBlob = null;
-    this.isInitialized = false;
-    this.countdownTimer = null;
-    this.recordingTimer = null;
-    this.elapsedSeconds = 0;
+    this.stream = null;
+    this.countdown = null;
     
-    // Initialize camera immediately when hook mounts
+    // ISSUE 3 FIX: Initialize camera on mount
     this.initializeCamera();
     
-    console.log('✅ VideoCapture hook setup complete');
+    // Handle events from LiveView
+    this.handleEvent("start_recording", () => this.startRecording());
+    this.handleEvent("stop_recording", () => this.stopRecording());
+    this.handleEvent("save_video", () => this.saveVideo());
   },
 
-  destroyed() {
-    console.log('VideoCapture hook destroyed');
-    this.cleanup();
-  },
-
-  // FIXED: Robust camera initialization
+  // FIXED: Camera initialization
   async initializeCamera() {
-    console.log('🎥 Starting camera initialization...');
+    console.log("🎥 Initializing camera...");
     
     try {
-      await this.waitForElement('#camera-preview');
-      
-      const preview = this.el.querySelector('#camera-preview');
-      if (!preview) {
-        console.error('❌ Camera preview element not found');
-        this.handleCameraError('ElementNotFound', 'Camera preview element not found');
-        return;
-      }
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Camera access not supported in this browser');
-      }
-
-      console.log('📹 Requesting camera access...');
-
-      const constraints = {
+      // Request camera and microphone access
+      this.stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 60 },
-          facingMode: 'user'
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 }
         },
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true,
           sampleRate: 44100
         }
-      };
+      });
 
-      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log("🎥 Camera stream obtained successfully");
       
-      console.log('✅ Media stream acquired successfully');
-      
-      // Set up preview
-      preview.srcObject = this.stream;
-      preview.muted = true;
-      preview.playsInline = true;
-      
-      const onVideoReady = () => {
-        console.log('🎬 Video metadata loaded, starting playback...');
-        
-        if (!this.stream?.active) {
-          console.error('❌ Stream became inactive during initialization');
-          this.handleCameraError('StreamLost', 'Camera stream was lost during initialization');
-          return;
-        }
-        
-        const videoTracks = this.stream.getVideoTracks();
-        if (!videoTracks?.length) {
-          console.error('❌ No video tracks found');
-          this.handleCameraError('NoVideoTracks', 'No video tracks available in camera stream');
-          return;
-        }
-        
-        preview.play().then(() => {
-          console.log('▶️ Preview playing successfully');
-          this.isInitialized = true;
-          
-          // FIXED: Send camera_ready event to the component
-          this.pushEventToTarget('camera_ready', {
-            success: true,
-            videoTracks: videoTracks.length,
-            audioTracks: this.stream.getAudioTracks().length
-          });
-          
-        }).catch(error => {
-          console.error('❌ Preview play failed:', error);
-          this.handleCameraError('PlaybackError', 'Failed to start video preview: ' + error.message);
-        });
-      };
-
-      if (preview.readyState >= 2) {
-        onVideoReady();
-      } else {
-        preview.addEventListener('loadedmetadata', onVideoReady, { once: true });
-        
-        setTimeout(() => {
-          if (!this.isInitialized) {
-            console.log('⏰ Video not ready after timeout, trying anyway...');
-            onVideoReady();
-          }
-        }, 3000);
+      // Set up video preview
+      const video = this.el.querySelector('#camera-preview');
+      if (video) {
+        video.srcObject = this.stream;
+        video.play();
+        console.log("🎥 Video preview started");
       }
-      
+
+      // Notify component that camera is ready
+      this.pushEvent("camera_ready", {
+        videoTracks: this.stream.getVideoTracks().length,
+        audioTracks: this.stream.getAudioTracks().length,
+        success: true
+      });
+
     } catch (error) {
-      console.error('❌ Camera initialization failed:', error);
-      this.handleCameraError(error.name, this.getErrorMessage(error));
-    }
-  },
-
-  // Helper to wait for DOM elements
-  waitForElement(selector, timeout = 5000) {
-    return new Promise((resolve, reject) => {
-      const element = this.el.querySelector(selector);
-      if (element) {
-        resolve(element);
-        return;
+      console.error("🎥 Camera initialization failed:", error);
+      
+      // Send detailed error info to component
+      let errorType = "unknown";
+      let errorMessage = "Camera access failed";
+      
+      if (error.name === "NotAllowedError") {
+        errorType = "permission_denied";
+        errorMessage = "Camera permission denied. Please allow camera access and refresh.";
+      } else if (error.name === "NotFoundError") {
+        errorType = "no_camera";
+        errorMessage = "No camera found. Please connect a camera.";
+      } else if (error.name === "NotReadableError") {
+        errorType = "camera_busy";
+        errorMessage = "Camera is being used by another application.";
       }
-
-      let attempts = 0;
-      const maxAttempts = timeout / 100;
       
-      const checkElement = () => {
-        attempts++;
-        const el = this.el.querySelector(selector);
-        
-        if (el) {
-          resolve(el);
-        } else if (attempts >= maxAttempts) {
-          reject(new Error(`Element ${selector} not found after ${timeout}ms`));
-        } else {
-          setTimeout(checkElement, 100);
-        }
-      };
-      
-      checkElement();
-    });
+      this.pushEvent("camera_error", {
+        error: errorType,
+        message: errorMessage,
+        originalError: error.name
+      });
+    }
   },
 
-  // FIXED: Start countdown when button is clicked in component
-  startCountdown(duration = 3) {
-    console.log(`🎬 Starting countdown: ${duration} seconds`);
+  // FIXED: Recording functionality
+  async startRecording() {
+    console.log("🎥 Starting recording...");
     
-    if (this.countdownTimer) {
-      clearInterval(this.countdownTimer);
-    }
-    
-    if (!this.stream || !this.isInitialized) {
-      console.error('❌ Camera not ready for countdown');
-      this.handleCameraError('CameraNotReady', 'Camera not ready. Please allow camera access and try again.');
+    if (!this.stream) {
+      console.error("🎥 No camera stream available");
+      this.pushEvent("recording_error", { message: "Camera not ready" });
       return;
     }
-    
-    let count = duration;
-    
-    // Update UI immediately for first count
-    this.updateCountdownUI(count);
-    
-    this.countdownTimer = setInterval(() => {
-      count--;
-      console.log(`⏰ Countdown: ${count}`);
+
+    try {
+      // Initialize MediaRecorder
+      this.mediaRecorder = new MediaRecorder(this.stream, {
+        mimeType: 'video/webm;codecs=vp9,opus'
+      });
       
-      if (count > 0) {
-        this.updateCountdownUI(count);
-      } else {
-        console.log('⏰ Countdown finished, starting recording');
-        clearInterval(this.countdownTimer);
-        this.countdownTimer = null;
+      this.recordedChunks = [];
+      
+      // Handle data available
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.recordedChunks.push(event.data);
+          console.log("🎥 Recording chunk received:", event.data.size, "bytes");
+        }
+      };
+      
+      // Handle recording stop
+      this.mediaRecorder.onstop = () => {
+        console.log("🎥 Recording stopped, creating blob...");
+        this.createVideoBlob();
+      };
+      
+      // Start recording
+      this.mediaRecorder.start(1000); // Collect data every second
+      this.recording = true;
+      
+      // Start progress tracking
+      this.startProgressTracking();
+      
+      console.log("🎥 Recording started successfully");
+      
+    } catch (error) {
+      console.error("🎥 Failed to start recording:", error);
+      this.pushEvent("recording_error", { 
+        message: "Failed to start recording: " + error.message 
+      });
+    }
+  },
+
+  stopRecording() {
+    console.log("🎥 Stopping recording...");
+    
+    if (this.mediaRecorder && this.recording) {
+      this.mediaRecorder.stop();
+      this.recording = false;
+      this.stopProgressTracking();
+      console.log("🎥 Recording stop initiated");
+    }
+  },
+
+  // FIXED: Progress tracking
+  startProgressTracking() {
+    this.recordingStartTime = Date.now();
+    this.progressInterval = setInterval(() => {
+      if (this.recording) {
+        const elapsed = Math.floor((Date.now() - this.recordingStartTime) / 1000);
+        this.pushEvent("recording_progress", { elapsed: elapsed });
         
-        // Send countdown finished event
-        this.updateCountdownUI(0);
-        
-        // Start recording immediately after countdown
-        setTimeout(() => {
-          this.startRecording();
-        }, 200);
+        // Auto-stop at 60 seconds
+        if (elapsed >= 60) {
+          this.stopRecording();
+        }
       }
     }, 1000);
   },
 
-  updateCountdownUI(count) {
-    console.log(`🔢 Sending countdown update to component: ${count}`);
-    this.pushEventToTarget('countdown_update', { count: count });
+  stopProgressTracking() {
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = null;
+    }
   },
 
-  // FIXED: Start recording automatically after countdown
-  startRecording() {
-    console.log('🔴 Starting recording...');
-    
-    if (!this.stream) {
-      console.error('❌ No stream available');
-      this.handleCameraError('NoStream', 'Camera stream not available. Please refresh and try again.');
-      return;
-    }
+  // FIXED: Video blob creation and sending
+  async createVideoBlob() {
+    console.log("🎥 Creating video blob from", this.recordedChunks.length, "chunks");
     
     try {
-      this.recordedChunks = [];
-      this.elapsedSeconds = 0;
+      const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+      const duration = Math.floor((Date.now() - this.recordingStartTime) / 1000);
       
-      const mimeTypes = [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus', 
-        'video/webm',
-        'video/mp4'
-      ];
+      console.log("🎥 Video blob created:", blob.size, "bytes, duration:", duration, "seconds");
       
-      let selectedMimeType = null;
-      for (const mimeType of mimeTypes) {
-        if (MediaRecorder.isTypeSupported(mimeType)) {
-          selectedMimeType = mimeType;
-          break;
-        }
-      }
-      
-      if (!selectedMimeType) {
-        throw new Error('No supported video format found');
-      }
-      
-      console.log('🎬 Using MIME type:', selectedMimeType);
-      
-      const options = {
-        mimeType: selectedMimeType,
-        videoBitsPerSecond: 2500000,
-        audioBitsPerSecond: 128000
-      };
-      
-      this.mediaRecorder = new MediaRecorder(this.stream, options);
-      
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          this.recordedChunks.push(event.data);
-          console.log('📦 Recording chunk:', event.data.size, 'bytes');
-        }
-      };
-      
-      this.mediaRecorder.onstop = () => {
-        console.log('⏹️ Recording stopped, creating blob...');
-        this.createVideoBlob();
-      };
-
-      this.mediaRecorder.onerror = (event) => {
-        console.error('❌ MediaRecorder error:', event.error);
-        this.handleCameraError('RecordingError', 'Recording failed: ' + event.error.message);
-      };
-      
-      // Start recording with data collection every 100ms
-      this.mediaRecorder.start(100);
-      console.log('🎬 MediaRecorder started successfully');
-      
-      // Start recording timer
-      this.recordingTimer = setInterval(() => {
-        this.elapsedSeconds++;
-        console.log(`⏱️ Recording time: ${this.elapsedSeconds}s`);
+      // Convert to base64 for sending to server
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64Data = reader.result.split(',')[1]; // Remove data:video/webm;base64,
         
-        // Send progress update to component
-        this.pushEventToTarget('recording_progress', {
-          elapsed: this.elapsedSeconds,
-          maxDuration: 60
+        console.log("🎥 Sending video blob to server...");
+        this.pushEvent("video_blob_ready", {
+          blob_data: base64Data,
+          mime_type: "video/webm",
+          file_size: blob.size,
+          duration: duration,
+          success: true
         });
-        
-        // Auto-stop at 60 seconds
-        if (this.elapsedSeconds >= 60) {
-          console.log('⏰ Auto-stopping at 60 seconds');
-          this.stopRecording();
-        }
-      }, 1000);
+      };
+      
+      reader.onerror = () => {
+        console.error("🎥 Failed to read video blob");
+        this.pushEvent("video_blob_ready", {
+          success: false,
+          error: "Failed to process video data"
+        });
+      };
+      
+      reader.readAsDataURL(blob);
+      
+      // Set up playback preview
+      this.setupPlaybackPreview(blob);
       
     } catch (error) {
-      console.error('❌ Failed to start recording:', error);
-      this.handleCameraError('RecordingError', 'Failed to start recording: ' + error.message);
-    }
-  },
-
-  // FIXED: Stop recording
-  stopRecording() {
-    console.log('⏹️ Stopping recording...');
-    
-    // Clear recording timer
-    if (this.recordingTimer) {
-      clearInterval(this.recordingTimer);
-      this.recordingTimer = null;
-    }
-    
-    // Stop media recorder
-    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-      try {
-        this.mediaRecorder.stop();
-        console.log('🎬 MediaRecorder stopped');
-      } catch (error) {
-        console.error('❌ Error stopping recorder:', error);
-      }
-    }
-  },
-
-  // FIXED: Create video blob and show preview
-  createVideoBlob() {
-    console.log('📦 Creating video blob...');
-    
-    if (this.recordedChunks.length === 0) {
-      console.error('❌ No recorded data');
-      this.handleCameraError('NoData', 'No video data was recorded. Please try again.');
-      return;
-    }
-    
-    try {
-      this.recordedBlob = new Blob(this.recordedChunks, { 
-        type: this.mediaRecorder.mimeType || 'video/webm' 
+      console.error("🎥 Failed to create video blob:", error);
+      this.pushEvent("video_blob_ready", {
+        success: false,
+        error: error.message
       });
-      console.log('✅ Video blob created');
-      console.log('📊 Blob size:', this.recordedBlob.size, 'bytes');
-      console.log('📊 Blob type:', this.recordedBlob.type);
-      
-      // Show preview
-      this.showVideoPreview();
-      
-    } catch (error) {
-      console.error('❌ Failed to create blob:', error);
-      this.handleCameraError('BlobError', 'Failed to process video data: ' + error.message);
     }
   },
 
-  // FIXED: Show video preview
-  showVideoPreview() {
+  // FIXED: Playback preview
+  setupPlaybackPreview(blob) {
     const playbackVideo = this.el.querySelector('#playback-video');
     const loadingDiv = this.el.querySelector('#video-loading');
     
-    if (playbackVideo && this.recordedBlob) {
-      const videoUrl = URL.createObjectURL(this.recordedBlob);
+    if (playbackVideo) {
+      const url = URL.createObjectURL(blob);
+      playbackVideo.src = url;
       
-      playbackVideo.addEventListener('loadedmetadata', () => {
-        console.log('📺 Playback video loaded successfully');
+      playbackVideo.onloadeddata = () => {
+        console.log("🎥 Playback video loaded");
         if (loadingDiv) {
           loadingDiv.style.display = 'none';
         }
-        playbackVideo.currentTime = 0;
-      }, { once: true });
+      };
       
-      playbackVideo.addEventListener('error', (e) => {
-        console.error('❌ Playback error:', e);
-        if (loadingDiv) {
-          loadingDiv.innerHTML = '<div class="text-center"><p class="text-red-500 text-sm">Error loading video preview</p></div>';
-        }
-      });
-      
-      playbackVideo.src = videoUrl;
-      playbackVideo.load();
-      
-      // Store URL for cleanup
-      this.currentVideoUrl = videoUrl;
+      // Clean up URL when done
+      playbackVideo.onended = () => {
+        URL.revokeObjectURL(url);
+      };
     }
   },
 
-  // FIXED: Complete retake functionality
-  retakeVideo() {
-    console.log('🔄 Retaking video...');
+  // FIXED: Countdown handling
+  startCountdown() {
+    console.log("🎥 Starting countdown...");
+    let count = 3;
     
-    // Clear all timers
-    if (this.countdownTimer) {
-      clearInterval(this.countdownTimer);
-      this.countdownTimer = null;
-    }
-    
-    if (this.recordingTimer) {
-      clearInterval(this.recordingTimer);
-      this.recordingTimer = null;
-    }
-    
-    // Reset recording state
-    this.recordedChunks = [];
-    this.elapsedSeconds = 0;
-    
-    // Clean up recorded blob
-    if (this.recordedBlob) {
-      if (this.currentVideoUrl) {
-        URL.revokeObjectURL(this.currentVideoUrl);
-        this.currentVideoUrl = null;
-      }
-      this.recordedBlob = null;
-    }
-    
-    // Stop media recorder if running
-    if (this.mediaRecorder) {
-      if (this.mediaRecorder.state !== 'inactive') {
-        this.mediaRecorder.stop();
-      }
-      this.mediaRecorder = null;
-    }
-    
-    // Clear playback video
-    const playbackVideo = this.el.querySelector('#playback-video');
-    if (playbackVideo) {
-      playbackVideo.src = '';
-      playbackVideo.load();
-    }
-    
-    // Show loading div again
-    const loadingDiv = this.el.querySelector('#video-loading');
-    if (loadingDiv) {
-      loadingDiv.style.display = 'flex';
-      loadingDiv.innerHTML = `
-        <div class="text-center">
-          <div class="animate-spin w-8 h-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p class="text-white">Loading preview...</p>
-        </div>
-      `;
-    }
-    
-    // Camera should still be active from initial setup
-    console.log('📹 Camera stream should still be active for retake');
-  },
-
-  // FIXED: Upload video with proper base64 encoding
-  uploadVideo() {
-    console.log('⬆️ Uploading video...');
-    
-    if (!this.recordedBlob) {
-      console.error('❌ No video to upload');
-      this.pushEventToTarget('video_blob_ready', {
-        success: false,
-        error: 'No video to upload'
-      });
-      return;
-    }
-    
-    // Validate blob size (max 50MB)
-    const maxSize = 50 * 1024 * 1024;
-    if (this.recordedBlob.size > maxSize) {
-      console.error('❌ Video too large:', this.recordedBlob.size);
-      this.pushEventToTarget('video_blob_ready', {
-        success: false,
-        error: 'Video file too large. Maximum size is 50MB.'
-      });
-      return;
-    }
-    
-    console.log('📤 Converting video to base64...');
-    
-    const reader = new FileReader();
-    
-    reader.onload = () => {
-      try {
-        const result = reader.result;
-        
-        if (!result || typeof result !== 'string') {
-          throw new Error('Invalid file reader result');
-        }
-        
-        // Remove data URL prefix to get pure base64
-        const base64Data = result.split(',')[1];
-        
-        if (!base64Data) {
-          throw new Error('Failed to extract base64 data');
-        }
-        
-        console.log('✅ Video converted to base64');
-        console.log('📊 Base64 length:', base64Data.length);
-        
-        // Send to component
-        this.pushEventToTarget('video_blob_ready', {
-          blob_data: base64Data,
-          mime_type: this.recordedBlob.type,
-          file_size: this.recordedBlob.size,
-          duration: this.elapsedSeconds
-        });
-        
-      } catch (error) {
-        console.error('❌ Base64 conversion failed:', error);
-        this.pushEventToTarget('video_blob_ready', {
-          success: false,
-          error: 'Failed to process video data: ' + error.message
-        });
-      }
-    };
-    
-    reader.onerror = () => {
-      console.error('❌ FileReader error');
-      this.pushEventToTarget('video_blob_ready', {
-        success: false,
-        error: 'Failed to read video file'
-      });
-    };
-    
-    reader.readAsDataURL(this.recordedBlob);
-  },
-
-  // FIXED: Handle events from the component
-  handleEvent(event, payload) {
-    console.log('📡 Received event from component:', event, payload);
-    
-    switch (event) {
-      case 'start_countdown':
-        this.startCountdown(3);
-        break;
-      case 'start_recording':
+    const countdownInterval = setInterval(() => {
+      console.log("🎥 Countdown:", count);
+      this.pushEvent("countdown_update", { count: count });
+      
+      count--;
+      if (count < 0) {
+        clearInterval(countdownInterval);
+        console.log("🎥 Countdown finished, auto-starting recording");
         this.startRecording();
-        break;
-      case 'stop_recording':
-        this.stopRecording();
-        break;
-      case 'retake_video':
-        this.retakeVideo();
-        break;
-      case 'upload_video':
-        this.uploadVideo();
-        break;
-      default:
-        console.log('⚠️ Unhandled event:', event);
-    }
-  },
-
-  // FIXED: Push events to the specific component target
-  pushEventToTarget(event, payload) {
-    console.log(`📤 Pushing event '${event}' to component:`, payload);
-    this.pushEvent(event, payload, (reply, ref) => {
-      console.log(`📥 Event '${event}' reply:`, reply);
-    });
-  },
-
-  // FIXED: Error handling with component communication
-  handleCameraError(errorName, message) {
-    console.error('🚨 Camera Error:', errorName, message);
-    
-    this.pushEventToTarget('camera_error', {
-      error: errorName,
-      message: message,
-      timestamp: new Date().toISOString()
-    });
-  },
-
-  // Helper to get user-friendly error messages
-  getErrorMessage(error) {
-    const errorMessages = {
-      'NotAllowedError': 'Camera access was denied. Please allow camera access and refresh the page.',
-      'NotFoundError': 'No camera found. Please connect a camera and try again.',
-      'NotReadableError': 'Camera is already in use by another application. Please close other apps using the camera.',
-      'OverconstrainedError': 'Camera does not support the required settings. Try a different camera.',
-      'SecurityError': 'Camera access blocked due to security restrictions. Please check your browser settings.',
-      'AbortError': 'Camera access was aborted. Please try again.',
-      'TypeError': 'Camera not supported in this browser. Please use a modern browser.',
-      'default': 'Camera access failed. Please check your camera settings and try again.'
-    };
-
-    return errorMessages[error.name] || errorMessages['default'];
-  },
-
-  // FIXED: Complete cleanup
-  cleanup() {
-    console.log('🧹 Starting video capture cleanup...');
-    
-    // Clear all timers
-    if (this.countdownTimer) {
-      clearInterval(this.countdownTimer);
-      this.countdownTimer = null;
-    }
-    
-    if (this.recordingTimer) {
-      clearInterval(this.recordingTimer);
-      this.recordingTimer = null;
-    }
-    
-    // Stop media recorder
-    if (this.mediaRecorder) {
-      try {
-        if (this.mediaRecorder.state !== 'inactive') {
-          this.mediaRecorder.stop();
-        }
-      } catch (error) {
-        console.warn('⚠️ Error stopping MediaRecorder:', error);
       }
-      this.mediaRecorder = null;
-    }
+    }, 1000);
+  },
+
+  destroyed() {
+    console.log("🎥 VideoCapture hook destroyed");
     
-    // Stop all media tracks
+    // Clean up resources
+    this.stopProgressTracking();
+    
     if (this.stream) {
       this.stream.getTracks().forEach(track => {
-        console.log('⏹️ Stopping track:', track.kind, track.label);
         track.stop();
+        console.log("🎥 Stopped track:", track.kind);
       });
-      this.stream = null;
     }
-
-    // Clean up blob URLs
-    if (this.currentVideoUrl) {
-      try {
-        URL.revokeObjectURL(this.currentVideoUrl);
-        this.currentVideoUrl = null;
-      } catch (error) {
-        console.warn('⚠️ Error revoking blob URL:', error);
-      }
-    }
-
-    // Clean up recorded data
-    this.recordedChunks = [];
-    this.recordedBlob = null;
-    this.elapsedSeconds = 0;
-    this.isInitialized = false;
-    this.componentId = null;
     
-    console.log('✅ Video capture cleanup completed');
+    if (this.mediaRecorder && this.recording) {
+      this.mediaRecorder.stop();
+    }
   }
 };
+
+export default VideoCapture;

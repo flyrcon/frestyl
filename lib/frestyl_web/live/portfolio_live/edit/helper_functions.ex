@@ -78,6 +78,22 @@ defmodule FrestylWeb.PortfolioLive.Edit.HelperFunctions do
     end
   end
 
+  def get_section_type_icon(section_type) do
+    case section_type do
+      :intro -> "👋"
+      :experience -> "💼"
+      :education -> "🎓"
+      :skills -> "⚡"
+      :projects -> "🚀"
+      :contact -> "📞"
+      :achievements -> "🏆"
+      :testimonial -> "💬"
+      :media_showcase -> "🖼️"
+      :code_showcase -> "💻"
+      _ -> "📝"
+    end
+  end
+
   @doc """
   Gets emoji for section types
   """
@@ -557,18 +573,40 @@ defmodule FrestylWeb.PortfolioLive.Edit.HelperFunctions do
 
   def format_file_size(_), do: "Unknown size"
 
-  def get_section_media_count(section_id) do
+  def get_section_media_count(section) do
     try do
-      Frestyl.Portfolios.list_section_media(section_id) |> length()
+      case section do
+        %{id: section_id} when is_integer(section_id) ->
+          # Count media items for this section
+          Frestyl.Portfolios.list_section_media(section_id) |> length()
+
+        _ ->
+          0
+      end
     rescue
       _ -> 0
     end
   end
 
-  def get_section_media_preview(section_id, limit \\ 4) do
+  def get_section_media_preview(section, _opts \\ []) do
     try do
-      Frestyl.Portfolios.list_section_media(section_id)
-      |> Enum.take(limit)
+      case section do
+        %{id: section_id} when is_integer(section_id) ->
+          # Get first few media items as preview
+          Frestyl.Portfolios.list_section_media(section_id)
+          |> Enum.take(3)
+          |> Enum.map(fn media ->
+            %{
+              id: media.id,
+              title: media.title || "Untitled",
+              media_type: media.media_type || "image",
+              file_path: media.file_path
+            }
+          end)
+
+        _ ->
+          []
+      end
     rescue
       _ -> []
     end
@@ -583,6 +621,26 @@ defmodule FrestylWeb.PortfolioLive.Edit.HelperFunctions do
       Frestyl.Portfolios.get_total_visits(portfolio.id)
     rescue
       _ -> 0
+    end
+  end
+
+  def format_media_size(size) when is_integer(size) do
+    cond do
+      size > 1_000_000 -> "#{Float.round(size / 1_000_000, 1)} MB"
+      size > 1_000 -> "#{Float.round(size / 1_000, 1)} KB"
+      true -> "#{size} B"
+    end
+  end
+
+  def format_media_size(_), do: "Unknown"
+
+  def get_media_icon(media_type) do
+    case media_type do
+      "image" -> "📷"
+      "video" -> "🎥"
+      "document" -> "📄"
+      "pdf" -> "📋"
+      _ -> "📎"
     end
   end
 
@@ -769,6 +827,39 @@ defmodule FrestylWeb.PortfolioLive.Edit.HelperFunctions do
       :not_accepted -> "File type not supported"
       :external_client_failure -> "Upload failed - please try again"
       _ -> "Upload error occurred"
+    end
+  end
+
+  def get_section_main_content(section) do
+    case section.content do
+      %{"main_content" => content} when is_binary(content) -> content
+      %{"content" => content} when is_binary(content) -> content
+      %{"summary" => content} when is_binary(content) -> content
+      %{"description" => content} when is_binary(content) -> content
+      _ -> ""
+    end
+  end
+
+  # Also add this helper for the relative time formatting:
+  def format_relative_time(datetime) do
+    case datetime do
+      %DateTime{} = dt ->
+        diff = DateTime.diff(DateTime.utc_now(), dt, :second)
+        cond do
+          diff < 60 -> "Just now"
+          diff < 3600 -> "#{div(diff, 60)} minutes ago"
+          diff < 86400 -> "#{div(diff, 3600)} hours ago"
+          diff < 604800 -> "#{div(diff, 86400)} days ago"
+          true -> Calendar.strftime(dt, "%B %d, %Y")
+        end
+
+      %NaiveDateTime{} = dt ->
+        # Convert to DateTime assuming UTC
+        dt
+        |> DateTime.from_naive!("Etc/UTC")
+        |> format_relative_time()
+
+      _ -> "Unknown"
     end
   end
 end

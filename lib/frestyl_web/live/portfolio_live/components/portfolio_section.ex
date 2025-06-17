@@ -368,16 +368,31 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
   end
 
   defp render_skills_content(assigns) do
-    skills = get_in(assigns.section.content, ["skills"]) || []
-    skill_categories = get_in(assigns.section.content, ["skill_categories"]) || %{}
+    # FIX: Get skills from multiple possible content structures
+    content = assigns.section.content || %{}
+
+    # Check both flat skills array and categorized skills
+    skills = get_in(content, ["skills"]) || []
+    skill_categories = get_in(content, ["skill_categories"]) || %{}
+
+    # DEBUGGING: Log what we found
+    IO.puts("🔍 SKILLS DEBUG: skills=#{inspect(skills)}")
+    IO.puts("🔍 SKILLS DEBUG: skill_categories=#{inspect(skill_categories)}")
+    IO.puts("🔍 SKILLS DEBUG: content=#{inspect(content)}")
+
+    assigns = assign(assigns,
+      skills: skills,
+      skill_categories: skill_categories,
+      has_skills: has_any_skills?(skills, skill_categories)
+    )
 
     ~H"""
     <div class="space-y-6">
-      <%= if not Enum.empty?(skills) do %>
+      <%= if @has_skills do %>
         <!-- Skills organized by category if categories exist -->
-        <%= if map_size(skill_categories) > 0 do %>
+        <%= if map_size(@skill_categories) > 0 do %>
           <div class="space-y-6">
-            <%= for {category, category_skills} <- skill_categories do %>
+            <%= for {category, category_skills} <- @skill_categories do %>
               <div class="skill-category">
                 <h4 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
                   <%= category %>
@@ -391,10 +406,10 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
             <% end %>
           </div>
         <% else %>
-          <!-- All skills in one grid -->
+          <!-- FIXED: Display flat skills list -->
           <div class="skills-grid">
             <div class="flex flex-wrap gap-2">
-              <%= for {skill, index} <- Enum.with_index(skills) do %>
+              <%= for {skill, index} <- Enum.with_index(@skills) do %>
                 <%= render_skill_tag(skill, index, @template_theme, nil) %>
               <% end %>
             </div>
@@ -406,21 +421,18 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
           <div class="flex items-center justify-between text-sm">
             <div class="flex items-center space-x-4">
               <span class="text-gray-600">
-                <strong class="text-gray-900"><%= length(skills) %></strong> total skills
+                <strong class="text-gray-900"><%= count_total_skills(@skills, @skill_categories) %></strong> total skills
               </span>
-              <%= if map_size(skill_categories) > 0 do %>
+              <%= if map_size(@skill_categories) > 0 do %>
                 <span class="text-gray-600">
-                  <strong class="text-gray-900"><%= map_size(skill_categories) %></strong> categories
+                  <strong class="text-gray-900"><%= map_size(@skill_categories) %></strong> categories
                 </span>
               <% end %>
-            </div>
-            <div class="text-xs text-gray-500">
-              Skills are ATS-optimized for resume export
             </div>
           </div>
         </div>
       <% else %>
-        <!-- Empty State -->
+        <!-- FIXED: Better empty state -->
         <div class="text-center py-12">
           <div class="w-16 h-16 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -429,13 +441,9 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
           </div>
           <h3 class="text-lg font-semibold text-gray-900 mb-2">No skills added yet</h3>
           <p class="text-gray-600 mb-4">Add your technical skills, soft skills, and expertise areas</p>
-          <div class="text-xs text-gray-500">
-            <span class="inline-flex items-center space-x-1">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-              </svg>
-              <span>Tip: Organize skills by category for better presentation</span>
-            </span>
+          <!-- DEBUGGING INFO -->
+          <div class="text-xs text-red-500 mt-4 p-2 bg-red-50 rounded">
+            DEBUG: skills count = <%= length(@skills) %>, categories = <%= map_size(@skill_categories) %>
           </div>
         </div>
       <% end %>
@@ -443,60 +451,535 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
     """
   end
 
-  defp render_skill_tag(skill, index, template_theme, category) do
-    assigns = %{skill: skill, index: index, template_theme: template_theme, category: category}
+  defp has_any_skills?(skills, skill_categories) when is_list(skills) and is_map(skill_categories) do
+    # Check if we have skills in either format
+    skills_count = length(skills)
+    categories_count = skill_categories |> Map.values() |> List.flatten() |> length()
 
-    # Determine skill proficiency if it's a map
-    {skill_name, proficiency, years} = case skill do
-      %{"name" => name, "proficiency" => prof, "years" => y} -> {name, prof, y}
-      %{"name" => name, "proficiency" => prof} -> {name, prof, nil}
-      %{"name" => name} -> {name, nil, nil}
-      skill_string when is_binary(skill_string) -> {skill_string, nil, nil}
-      _ -> {"Unknown Skill", nil, nil}
+    IO.puts("🔍 SKILLS CHECK: flat skills = #{skills_count}, categorized = #{categories_count}")
+
+    skills_count > 0 || categories_count > 0
+  end
+
+  defp has_any_skills?(_, _), do: false
+
+  # FIXED: Better skill rendering
+  defp render_skill_tag(skill, index, template_theme, category) do
+    # Handle both string and map skill formats
+    {skill_name, skill_level, skill_years} = case skill do
+      %{"name" => name} = skill_map ->
+        {name, Map.get(skill_map, "proficiency", "intermediate"), Map.get(skill_map, "years")}
+      %{"skill" => name} = skill_map ->
+        {name, Map.get(skill_map, "level", "intermediate"), Map.get(skill_map, "years")}
+      skill_string when is_binary(skill_string) ->
+        {skill_string, "intermediate", nil}
+      _ ->
+        {"Unknown Skill", "intermediate", nil}
     end
+
+    assigns = %{
+      skill_name: skill_name,
+      skill_level: skill_level,
+      skill_years: skill_years,
+      index: index,
+      template_theme: template_theme,
+      category: category
+    }
 
     ~H"""
     <div class={[
-      "skill-tag group relative inline-flex items-center",
-      get_enhanced_skill_tag_class(@template_theme, @index, @category),
-      "px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 hover:scale-105 hover:shadow-md"
+      "relative inline-flex items-center px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 hover:scale-105",
+      get_skill_tag_class(@template_theme, @index)
     ]}>
-      <!-- Skill Name -->
-      <span class="skill-name"><%= skill_name %></span>
+      <span class="text-white relative z-10"><%= @skill_name %></span>
 
-      <!-- Proficiency Indicator -->
-      <%= if proficiency do %>
-        <span class={[
-          "skill-proficiency ml-2 px-2 py-0.5 text-xs rounded-full",
-          get_proficiency_class(proficiency)
-        ]}>
-          <%= format_proficiency(proficiency) %>
+      <%= if @skill_years do %>
+        <span class="absolute -top-1 -right-1 bg-white text-gray-800 text-xs px-1.5 py-0.5 rounded-full font-bold border shadow-sm">
+          <%= @skill_years %>y
         </span>
       <% end %>
 
-      <!-- Years Experience -->
-      <%= if years do %>
-        <span class="skill-years ml-2 text-xs opacity-70">
-          <%= years %>y
-        </span>
-      <% end %>
-
-      <!-- Hover Tooltip -->
-      <div class="skill-tooltip absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-        <%= cond do %>
-          <% proficiency && years -> %>
-            <%= skill_name %> • <%= format_proficiency(proficiency) %> • <%= years %> years
-          <% proficiency -> %>
-            <%= skill_name %> • <%= format_proficiency(proficiency) %>
-          <% years -> %>
-            <%= skill_name %> • <%= years %> years experience
-          <% true -> %>
-            <%= skill_name %>
+      <!-- Proficiency dots -->
+      <div class="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex space-x-1">
+        <%= for i <- 1..3 do %>
+          <div class={[
+            "w-1.5 h-1.5 rounded-full",
+            get_proficiency_dot_class(@skill_level, i)
+          ]}></div>
         <% end %>
-        <div class="tooltip-arrow absolute top-full left-1/2 transform -translate-x-1/2 border-2 border-transparent border-t-gray-900"></div>
       </div>
     </div>
     """
+  end
+
+  # Color intensity based on proficiency level
+  defp get_skill_color_class(proficiency, category, template_theme) do
+    base_color = get_category_base_color(category, template_theme)
+    intensity = get_proficiency_intensity(proficiency)
+
+    case {base_color, intensity} do
+      # Technical skills - Blue spectrum
+      {"blue", "beginner"} -> "bg-blue-300 border-blue-400 text-white hover:bg-blue-400"
+      {"blue", "intermediate"} -> "bg-blue-500 border-blue-600 text-white hover:bg-blue-600"
+      {"blue", "advanced"} -> "bg-blue-700 border-blue-800 text-white hover:bg-blue-800"
+      {"blue", "expert"} -> "bg-blue-900 border-blue-950 text-white hover:bg-blue-950 shadow-lg"
+
+      # Creative skills - Purple spectrum
+      {"purple", "beginner"} -> "bg-purple-300 border-purple-400 text-white hover:bg-purple-400"
+      {"purple", "intermediate"} -> "bg-purple-500 border-purple-600 text-white hover:bg-purple-600"
+      {"purple", "advanced"} -> "bg-purple-700 border-purple-800 text-white hover:bg-purple-800"
+      {"purple", "expert"} -> "bg-purple-900 border-purple-950 text-white hover:bg-purple-950 shadow-lg"
+
+      # Soft skills - Green spectrum
+      {"green", "beginner"} -> "bg-green-300 border-green-400 text-white hover:bg-green-400"
+      {"green", "intermediate"} -> "bg-green-500 border-green-600 text-white hover:bg-green-600"
+      {"green", "advanced"} -> "bg-green-700 border-green-800 text-white hover:bg-green-800"
+      {"green", "expert"} -> "bg-green-900 border-green-950 text-white hover:bg-green-950 shadow-lg"
+
+      # Tools/Platforms - Orange spectrum
+      {"orange", "beginner"} -> "bg-orange-300 border-orange-400 text-white hover:bg-orange-400"
+      {"orange", "intermediate"} -> "bg-orange-500 border-orange-600 text-white hover:bg-orange-600"
+      {"orange", "advanced"} -> "bg-orange-700 border-orange-800 text-white hover:bg-orange-800"
+      {"orange", "expert"} -> "bg-orange-900 border-orange-950 text-white hover:bg-orange-950 shadow-lg"
+
+      # Leadership skills - Indigo spectrum
+      {"indigo", "beginner"} -> "bg-indigo-300 border-indigo-400 text-white hover:bg-indigo-400"
+      {"indigo", "intermediate"} -> "bg-indigo-500 border-indigo-600 text-white hover:bg-indigo-600"
+      {"indigo", "advanced"} -> "bg-indigo-700 border-indigo-800 text-white hover:bg-indigo-800"
+      {"indigo", "expert"} -> "bg-indigo-900 border-indigo-950 text-white hover:bg-indigo-950 shadow-lg"
+
+      # Default/General skills - Gray spectrum
+      {_, "beginner"} -> "bg-gray-400 border-gray-500 text-white hover:bg-gray-500"
+      {_, "intermediate"} -> "bg-gray-600 border-gray-700 text-white hover:bg-gray-700"
+      {_, "advanced"} -> "bg-gray-800 border-gray-900 text-white hover:bg-gray-900"
+      {_, "expert"} -> "bg-gray-900 border-black text-white hover:bg-black shadow-lg"
+      {_, _} -> "bg-gray-500 border-gray-600 text-white hover:bg-gray-600"
+    end
+  end
+
+  # Color intensity based on proficiency level
+  defp get_skill_color_class(proficiency, category, template_theme) do
+    base_color = get_category_base_color(category, template_theme)
+    intensity = get_proficiency_intensity(proficiency)
+
+    case {base_color, intensity} do
+      # Technical skills - Blue spectrum
+      {"blue", "beginner"} -> "bg-blue-300 border-blue-400 text-white hover:bg-blue-400"
+      {"blue", "intermediate"} -> "bg-blue-500 border-blue-600 text-white hover:bg-blue-600"
+      {"blue", "advanced"} -> "bg-blue-700 border-blue-800 text-white hover:bg-blue-800"
+      {"blue", "expert"} -> "bg-blue-900 border-blue-950 text-white hover:bg-blue-950 shadow-lg"
+
+      # Creative skills - Purple spectrum
+      {"purple", "beginner"} -> "bg-purple-300 border-purple-400 text-white hover:bg-purple-400"
+      {"purple", "intermediate"} -> "bg-purple-500 border-purple-600 text-white hover:bg-purple-600"
+      {"purple", "advanced"} -> "bg-purple-700 border-purple-800 text-white hover:bg-purple-800"
+      {"purple", "expert"} -> "bg-purple-900 border-purple-950 text-white hover:bg-purple-950 shadow-lg"
+
+      # Soft skills - Green spectrum
+      {"green", "beginner"} -> "bg-green-300 border-green-400 text-white hover:bg-green-400"
+      {"green", "intermediate"} -> "bg-green-500 border-green-600 text-white hover:bg-green-600"
+      {"green", "advanced"} -> "bg-green-700 border-green-800 text-white hover:bg-green-800"
+      {"green", "expert"} -> "bg-green-900 border-green-950 text-white hover:bg-green-950 shadow-lg"
+
+      # Tools/Platforms - Orange spectrum
+      {"orange", "beginner"} -> "bg-orange-300 border-orange-400 text-white hover:bg-orange-400"
+      {"orange", "intermediate"} -> "bg-orange-500 border-orange-600 text-white hover:bg-orange-600"
+      {"orange", "advanced"} -> "bg-orange-700 border-orange-800 text-white hover:bg-orange-800"
+      {"orange", "expert"} -> "bg-orange-900 border-orange-950 text-white hover:bg-orange-950 shadow-lg"
+
+      # Leadership skills - Indigo spectrum
+      {"indigo", "beginner"} -> "bg-indigo-300 border-indigo-400 text-white hover:bg-indigo-400"
+      {"indigo", "intermediate"} -> "bg-indigo-500 border-indigo-600 text-white hover:bg-indigo-600"
+      {"indigo", "advanced"} -> "bg-indigo-700 border-indigo-800 text-white hover:bg-indigo-800"
+      {"indigo", "expert"} -> "bg-indigo-900 border-indigo-950 text-white hover:bg-indigo-950 shadow-lg"
+
+      # Default/General skills - Gray spectrum
+      {_, "beginner"} -> "bg-gray-400 border-gray-500 text-white hover:bg-gray-500"
+      {_, "intermediate"} -> "bg-gray-600 border-gray-700 text-white hover:bg-gray-700"
+      {_, "advanced"} -> "bg-gray-800 border-gray-900 text-white hover:bg-gray-900"
+      {_, "expert"} -> "bg-gray-900 border-black text-white hover:bg-black shadow-lg"
+      {_, _} -> "bg-gray-500 border-gray-600 text-white hover:bg-gray-600"
+    end
+  end
+
+  # Map categories to color schemes
+  defp get_category_base_color(category, _template_theme) do
+    case category |> to_string() |> String.downcase() do
+      # Technical/Programming
+      cat when cat in ["programming", "technical", "programming languages", "frameworks", "libraries", "databases"] -> "blue"
+
+      # Creative/Design
+      cat when cat in ["design", "creative", "ui/ux", "graphics", "multimedia", "design & creative"] -> "purple"
+
+      # Soft Skills/Communication
+      cat when cat in ["soft skills", "communication", "interpersonal", "personal"] -> "green"
+
+      # Tools/Platforms/DevOps
+      cat when cat in ["tools", "platforms", "devops", "cloud", "infrastructure", "tools & platforms"] -> "orange"
+
+      # Leadership/Management
+      cat when cat in ["leadership", "management", "project management", "business", "leadership & management"] -> "indigo"
+
+      # Default
+      _ -> "gray"
+    end
+  end
+
+  # Normalize proficiency levels
+  defp get_proficiency_intensity(proficiency) do
+    case proficiency |> to_string() |> String.downcase() do
+      p when p in ["beginner", "basic", "novice", "learning", "1"] -> "beginner"
+      p when p in ["intermediate", "competent", "developing", "2", "3"] -> "intermediate"
+      p when p in ["advanced", "proficient", "skilled", "4"] -> "advanced"
+      p when p in ["expert", "master", "specialist", "guru", "5"] -> "expert"
+      _ -> "intermediate"
+    end
+  end
+
+  defp count_total_skills(skills, skill_categories) when is_list(skills) and is_map(skill_categories) do
+    flat_count = length(skills)
+    categorized_count = skill_categories |> Map.values() |> List.flatten() |> length()
+
+    # Return the higher count (some portfolios might have both formats)
+    max(flat_count, categorized_count)
+  end
+  defp count_total_skills(_, _), do: 0
+
+  defp get_skill_tag_class(template_theme, index) do
+    base_classes = "bg-blue-500 border-blue-600"
+
+    color_variations = case template_theme do
+      :developer -> ["bg-indigo-500 border-indigo-600", "bg-purple-500 border-purple-600", "bg-blue-500 border-blue-600"]
+      :designer -> ["bg-pink-500 border-pink-600", "bg-rose-500 border-rose-600", "bg-purple-500 border-purple-600"]
+      _ -> ["bg-blue-500 border-blue-600", "bg-indigo-500 border-indigo-600", "bg-gray-500 border-gray-600"]
+    end
+
+    Enum.at(color_variations, rem(index, length(color_variations)), base_classes)
+  end
+
+  defp get_proficiency_dot_class(level, dot_index) do
+    dots_for_level = case level do
+      "beginner" -> 1
+      "intermediate" -> 2
+      "advanced" -> 3
+      "expert" -> 3
+      _ -> 2
+    end
+
+    if dot_index <= dots_for_level do
+      if level == "expert" do
+        "bg-yellow-300 ring-1 ring-yellow-400"
+      else
+        "bg-white shadow-sm"
+      end
+    else
+      "bg-white bg-opacity-40"
+    end
+  end
+
+
+  # Enhanced proficiency text descriptions
+  defp format_proficiency_text(proficiency) do
+    case get_proficiency_intensity(proficiency) do
+      "beginner" -> "Beginner • Learning the basics"
+      "intermediate" -> "Intermediate • Comfortable with fundamentals"
+      "advanced" -> "Advanced • Highly proficient"
+      "expert" -> "Expert • Deep expertise & mastery"
+      _ -> "Intermediate"
+    end
+  end
+
+  # Helper functions for enhanced stats (if you're using the enhanced section)
+  defp get_category_indicator_color(category) do
+    color = get_category_base_color(category, nil)
+    case color do
+      "blue" -> "bg-blue-500"
+      "purple" -> "bg-purple-500"
+      "green" -> "bg-green-500"
+      "orange" -> "bg-orange-500"
+      "indigo" -> "bg-indigo-500"
+      _ -> "bg-gray-500"
+    end
+  end
+
+  defp count_expert_skills(skills, skill_categories) do
+    all_skills = if map_size(skill_categories) > 0 do
+      skill_categories |> Map.values() |> List.flatten()
+    else
+      skills
+    end
+
+    Enum.count(all_skills, fn skill ->
+      proficiency = case skill do
+        %{"proficiency" => prof} -> prof
+        _ -> "intermediate"
+      end
+      get_proficiency_intensity(proficiency) == "expert"
+    end)
+  end
+
+  defp count_years_experience(skills, skill_categories) do
+    all_skills = if map_size(skill_categories) > 0 do
+      skill_categories |> Map.values() |> List.flatten()
+    else
+      skills
+    end
+
+    all_skills
+    |> Enum.map(fn skill ->
+      case skill do
+        %{"years" => years} when is_integer(years) -> years
+        %{"years" => years} when is_binary(years) -> String.to_integer(years)
+        _ -> 0
+      end
+    end)
+    |> Enum.sum()
+  end
+
+  # Map categories to color schemes
+  defp get_category_base_color(category, _template_theme) do
+    case category |> to_string() |> String.downcase() do
+      # Technical/Programming
+      cat when cat in ["programming", "technical", "programming languages", "frameworks", "libraries", "databases"] -> "blue"
+
+      # Creative/Design
+      cat when cat in ["design", "creative", "ui/ux", "graphics", "multimedia"] -> "purple"
+
+      # Soft Skills/Communication
+      cat when cat in ["soft skills", "communication", "interpersonal", "personal"] -> "green"
+
+      # Tools/Platforms/DevOps
+      cat when cat in ["tools", "platforms", "devops", "cloud", "infrastructure"] -> "orange"
+
+      # Leadership/Management
+      cat when cat in ["leadership", "management", "project management", "business"] -> "indigo"
+
+      # Default
+      _ -> "gray"
+    end
+  end
+
+  # Normalize proficiency levels
+  defp get_proficiency_intensity(proficiency) do
+    case proficiency |> to_string() |> String.downcase() do
+      p when p in ["beginner", "basic", "novice", "learning", "1"] -> "beginner"
+      p when p in ["intermediate", "competent", "developing", "2", "3"] -> "intermediate"
+      p when p in ["advanced", "proficient", "skilled", "4"] -> "advanced"
+      p when p in ["expert", "master", "specialist", "guru", "5"] -> "expert"
+      _ -> "intermediate"
+    end
+  end
+
+  # Proficiency dots (subtle indicators)
+  defp get_proficiency_dot_class(proficiency, dot_index) do
+    intensity = get_proficiency_intensity(proficiency)
+    filled_dots = case intensity do
+      "beginner" -> 1
+      "intermediate" -> 2
+      "advanced" -> 3
+      "expert" -> 3
+      _ -> 2
+    end
+
+    base_class = if dot_index <= filled_dots do
+      "bg-white shadow-sm"
+    else
+      "bg-white bg-opacity-40"
+    end
+
+    # Expert level gets special gold dots
+    if intensity == "expert" and dot_index <= filled_dots do
+      "bg-yellow-300 shadow-sm ring-1 ring-yellow-400"
+    else
+      base_class
+    end
+  end
+
+  # Enhanced proficiency text descriptions
+  defp format_proficiency_text(proficiency) do
+    case get_proficiency_intensity(proficiency) do
+      "beginner" -> "Beginner • Learning the basics"
+      "intermediate" -> "Intermediate • Comfortable with fundamentals"
+      "advanced" -> "Advanced • Highly proficient"
+      "expert" -> "Expert • Deep expertise & mastery"
+      _ -> "Intermediate"
+    end
+  end
+
+  # Enhanced skills section with legend
+  defp render_skills_section_enhanced(assigns) do
+    skills = get_in(assigns.section.content, ["skills"]) || []
+    skill_categories = get_in(assigns.section.content, ["skill_categories"]) || %{}
+
+    assigns = assign(assigns,
+      skills: skills,
+      skill_categories: skill_categories,
+      show_legend: length(skills) > 5 || map_size(skill_categories) > 1
+    )
+
+    ~H"""
+    <div class="skills-section space-y-6">
+      <!-- Skills Legend (only show if multiple skills/categories) -->
+      <%= if @show_legend do %>
+        <div class="skills-legend bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl p-4 border border-gray-200">
+          <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+            <svg class="w-4 h-4 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Proficiency Guide
+          </h4>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div class="flex items-center space-x-2">
+              <div class="w-6 h-6 bg-blue-300 rounded-lg"></div>
+              <span class="text-gray-700">Beginner</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <div class="w-6 h-6 bg-blue-500 rounded-lg"></div>
+              <span class="text-gray-700">Intermediate</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <div class="w-6 h-6 bg-blue-700 rounded-lg"></div>
+              <span class="text-gray-700">Advanced</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <div class="w-6 h-6 bg-blue-900 rounded-lg shadow-lg"></div>
+              <span class="text-gray-700">Expert</span>
+            </div>
+          </div>
+          <p class="text-xs text-gray-600 mt-2 italic">
+            Darker colors indicate higher proficiency • Hover for details
+          </p>
+        </div>
+      <% end %>
+
+      <!-- Skills Display -->
+      <%= if length(@skills) > 0 do %>
+        <!-- Skills organized by category if categories exist -->
+        <%= if map_size(@skill_categories) > 0 do %>
+          <div class="space-y-8">
+            <%= for {category, category_skills} <- @skill_categories do %>
+              <div class="skill-category">
+                <div class="flex items-center mb-4">
+                  <div class={[
+                    "w-3 h-3 rounded-full mr-3",
+                    get_category_indicator_color(category)
+                  ]}></div>
+                  <h4 class="text-lg font-bold text-gray-800 uppercase tracking-wide">
+                    <%= category %>
+                  </h4>
+                  <div class="flex-1 h-px bg-gray-200 ml-4"></div>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                  <%= for {skill, index} <- Enum.with_index(category_skills) do %>
+                    <%= render_skill_tag(skill, index, @template_theme, category) %>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% else %>
+          <!-- All skills in one enhanced grid -->
+          <div class="skills-grid">
+            <div class="flex flex-wrap gap-3 justify-center lg:justify-start">
+              <%= for {skill, index} <- Enum.with_index(@skills) do %>
+                <%= render_skill_tag(skill, index, @template_theme, "general") %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Enhanced Skills Summary Stats -->
+        <div class="skills-summary mt-8 p-6 bg-gradient-to-r from-gray-50 to-indigo-50 rounded-xl border border-gray-200">
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 text-center">
+            <div class="stat">
+              <div class="text-2xl font-bold text-blue-600"><%= length(@skills) %></div>
+              <div class="text-xs text-gray-600 uppercase tracking-wide">Total Skills</div>
+            </div>
+            <%= if map_size(@skill_categories) > 0 do %>
+              <div class="stat">
+                <div class="text-2xl font-bold text-purple-600"><%= map_size(@skill_categories) %></div>
+                <div class="text-xs text-gray-600 uppercase tracking-wide">Categories</div>
+              </div>
+            <% end %>
+            <div class="stat">
+              <div class="text-2xl font-bold text-green-600"><%= count_expert_skills(@skills, @skill_categories) %></div>
+              <div class="text-xs text-gray-600 uppercase tracking-wide">Expert Level</div>
+            </div>
+            <div class="stat">
+              <div class="text-2xl font-bold text-orange-600"><%= count_years_experience(@skills, @skill_categories) %></div>
+              <div class="text-xs text-gray-600 uppercase tracking-wide">Years Combined</div>
+            </div>
+          </div>
+        </div>
+      <% else %>
+        <!-- Enhanced Empty State -->
+        <div class="text-center py-16">
+          <div class="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <svg class="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-gray-900 mb-3">Showcase Your Expertise</h3>
+          <p class="text-gray-600 mb-6 max-w-md mx-auto">
+            Add your skills with proficiency levels. Color intensity will automatically show your expertise level.
+          </p>
+          <div class="inline-flex items-center text-sm text-gray-500 bg-gray-50 px-4 py-2 rounded-lg">
+            <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Tip: Darker colors = higher proficiency
+          </div>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  # Helper functions for enhanced stats
+  defp get_category_indicator_color(category) do
+    color = get_category_base_color(category, nil)
+    case color do
+      "blue" -> "bg-blue-500"
+      "purple" -> "bg-purple-500"
+      "green" -> "bg-green-500"
+      "orange" -> "bg-orange-500"
+      "indigo" -> "bg-indigo-500"
+      _ -> "bg-gray-500"
+    end
+  end
+
+  defp count_expert_skills(skills, skill_categories) do
+    all_skills = if map_size(skill_categories) > 0 do
+      skill_categories |> Map.values() |> List.flatten()
+    else
+      skills
+    end
+
+    Enum.count(all_skills, fn skill ->
+      proficiency = case skill do
+        %{"proficiency" => prof} -> prof
+        _ -> "intermediate"
+      end
+      get_proficiency_intensity(proficiency) == "expert"
+    end)
+  end
+
+  defp count_years_experience(skills, skill_categories) do
+    all_skills = if map_size(skill_categories) > 0 do
+      skill_categories |> Map.values() |> List.flatten()
+    else
+      skills
+    end
+
+    all_skills
+    |> Enum.map(fn skill ->
+      case skill do
+        %{"years" => years} when is_integer(years) -> years
+        %{"years" => years} when is_binary(years) -> String.to_integer(years)
+        _ -> 0
+      end
+    end)
+    |> Enum.sum()
   end
 
   defp render_featured_project_content(assigns) do
@@ -1757,47 +2240,6 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioSection do
     Map.get(section, :portfolio_media, []) ||
     Map.get(section, :media_files, []) ||
     []
-  end
-
-    # Styling helper functions for different template themes
-  defp get_skill_tag_class(template_theme, index) do
-    base_classes = "skill-tag px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 hover:scale-105"
-
-    color_class = case {template_theme, rem(index, 5)} do
-      {:executive, 0} -> "bg-blue-100 text-blue-800"
-      {:executive, 1} -> "bg-gray-100 text-gray-800"
-      {:executive, 2} -> "bg-indigo-100 text-indigo-800"
-      {:executive, 3} -> "bg-slate-100 text-slate-800"
-      {:executive, 4} -> "bg-zinc-100 text-zinc-800"
-
-      {:developer, 0} -> "bg-indigo-100 text-indigo-800"
-      {:developer, 1} -> "bg-purple-100 text-purple-800"
-      {:developer, 2} -> "bg-blue-100 text-blue-800"
-      {:developer, 3} -> "bg-cyan-100 text-cyan-800"
-      {:developer, 4} -> "bg-teal-100 text-teal-800"
-
-      {:designer, 0} -> "bg-pink-100 text-pink-800"
-      {:designer, 1} -> "bg-rose-100 text-rose-800"
-      {:designer, 2} -> "bg-purple-100 text-purple-800"
-      {:designer, 3} -> "bg-orange-100 text-orange-800"
-      {:designer, 4} -> "bg-red-100 text-red-800"
-
-      {:consultant, 0} -> "bg-blue-100 text-blue-800"
-      {:consultant, 1} -> "bg-cyan-100 text-cyan-800"
-      {:consultant, 2} -> "bg-teal-100 text-teal-800"
-      {:consultant, 3} -> "bg-green-100 text-green-800"
-      {:consultant, 4} -> "bg-emerald-100 text-emerald-800"
-
-      {:academic, 0} -> "bg-emerald-100 text-emerald-800"
-      {:academic, 1} -> "bg-teal-100 text-teal-800"
-      {:academic, 2} -> "bg-green-100 text-green-800"
-      {:academic, 3} -> "bg-blue-100 text-blue-800"
-      {:academic, 4} -> "bg-indigo-100 text-indigo-800"
-
-      _ -> "bg-gray-100 text-gray-800"
-    end
-
-    "#{base_classes} #{color_class}"
   end
 
   defp get_job_description_class(template_theme) do

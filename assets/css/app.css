@@ -807,3 +807,39 @@ const additionalCSS = `
   transform: translateX(100%);
 }
 
+/* Add this CSS temporarily to your app.css or in a <style> tag to debug modal visibility */
+
+/* Force modal to be visible for debugging */
+.resume-import-modal-debug {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  z-index: 9999 !important;
+  background: rgba(255, 0, 0, 0.8) !important; /* Red background to see if it's there */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.resume-import-modal-content-debug {
+  background: white !important;
+  padding: 2rem !important;
+  border-radius: 8px !important;
+  max-width: 500px !important;
+  width: 90% !important;
+  border: 5px solid blue !important; /* Blue border to make it obvious */
+}
+
+/* Check if any parent elements have overflow hidden */
+.portfolio-edit-container {
+  overflow: visible !important;
+}
+
+/* Force show any hidden modals */
+[class*="modal"] {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}

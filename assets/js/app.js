@@ -5,6 +5,8 @@ import { Socket } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import PortfolioHooks from "./portfolio_hooks" // Import our new hooks
+import { SortableSections, SimpleSortableSections } from "./hooks/sortable_sections.js";
+
 
 
 // Import Video Capture Hook
@@ -27,6 +29,8 @@ let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("
 let Hooks = {
   // FIXED: Video Capture Hook
   VideoCapture,
+  SortableSections: SortableSections,
+  SimpleSortableSections: SimpleSortableSections,
 
   // Auto Focus Hook - for modal inputs
   AutoFocus: {
@@ -38,11 +42,11 @@ let Hooks = {
     }
   },
 
-  Hooks.SortableSections = PortfolioHooks.SortableSections
-  Hooks.TemplatePreview = PortfolioHooks.TemplatePreview  
-  Hooks.SectionManager = PortfolioHooks.SectionManager
-  Hooks.ColorPicker = PortfolioHooks.ColorPicker
-  Hooks.PreviewFrame = PortfolioHooks.PreviewFrame
+  Hooks.SortableSections = PortfolioHooks.SortableSections,
+  Hooks.TemplatePreview = PortfolioHooks.TemplatePreview,  
+  Hooks.SectionManager = PortfolioHooks.SectionManager,
+  Hooks.ColorPicker = PortfolioHooks.ColorPicker,
+  Hooks.PreviewFrame = PortfolioHooks.PreviewFrame,
 
   // SINGLE PDF DOWNLOAD HOOK - FIXED
   PdfDownload: {
@@ -421,34 +425,133 @@ let Hooks = {
     }
   },
 
-  // Enhanced drag and drop for sections
-  Hooks.SortableSections = {
+  // Add this to your app.js or create a new file in assets/js/hooks/sortable_sections.js
+
+  export const SortableSections = {
     mounted() {
-      const el = this.el;
-      const sortable = new Sortable(el, {
+      this.initializeSortable();
+    },
+
+    updated() {
+      this.initializeSortable();
+    },
+
+    initializeSortable() {
+      const container = this.el;
+      
+      // Remove any existing sortable instance
+      if (this.sortable) {
+        this.sortable.destroy();
+      }
+
+      // Initialize drag and drop
+      this.sortable = new Sortable(container, {
         animation: 150,
-        ghostClass: 'opacity-50',
-        dragClass: 'shadow-2xl',
-        handle: '.section-drag-handle',
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        dragClass: 'sortable-drag',
+        handle: '.drag-handle', // Only allow dragging from specific handle
+        
         onEnd: (evt) => {
-          if (evt.oldIndex !== evt.newIndex) {
-            this.pushEvent("reorder_sections", {
-              old: evt.oldIndex.toString(),
-              new: evt.newIndex.toString()
-            });
-          }
+          // Get the new order of section IDs
+          const sectionIds = Array.from(container.children).map(child => {
+            return child.dataset.sectionId || child.getAttribute('data-section-id');
+          }).filter(id => id); // Remove any null/undefined values
+
+          console.log('🔄 Sections reordered:', sectionIds);
+
+          // Send the new order to LiveView
+          this.pushEvent('reorder_sections', {
+            sections: sectionIds,
+            old_index: evt.oldIndex,
+            new_index: evt.newIndex
+          });
         }
       });
-      
-      this.sortable = sortable;
+
+      console.log('✅ SortableSections hook initialized');
     },
-    
+
     destroyed() {
       if (this.sortable) {
         this.sortable.destroy();
       }
     }
-  },
+  };
+
+  // If you don't have Sortable.js installed, you can use a simpler drag-and-drop implementation:
+  export const SimpleSortableSections = {
+    mounted() {
+      this.initializeSimpleDragDrop();
+    },
+
+    updated() {
+      this.initializeSimpleDragDrop();
+    },
+
+    initializeSimpleDragDrop() {
+      const container = this.el;
+      let draggedElement = null;
+
+      // Add drag and drop event listeners to all section items
+      const sectionItems = container.querySelectorAll('[data-section-id]');
+      
+      sectionItems.forEach(item => {
+        // Make items draggable
+        item.draggable = true;
+        
+        item.addEventListener('dragstart', (e) => {
+          draggedElement = e.target.closest('[data-section-id]');
+          e.dataTransfer.effectAllowed = 'move';
+          e.target.classList.add('dragging');
+        });
+
+        item.addEventListener('dragend', (e) => {
+          e.target.classList.remove('dragging');
+          draggedElement = null;
+        });
+
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        });
+
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          
+          if (draggedElement && draggedElement !== e.target.closest('[data-section-id]')) {
+            const dropTarget = e.target.closest('[data-section-id]');
+            const container = dropTarget.parentNode;
+            
+            // Get positions
+            const draggedIndex = Array.from(container.children).indexOf(draggedElement);
+            const targetIndex = Array.from(container.children).indexOf(dropTarget);
+            
+            // Reorder in DOM
+            if (draggedIndex < targetIndex) {
+              container.insertBefore(draggedElement, dropTarget.nextSibling);
+            } else {
+              container.insertBefore(draggedElement, dropTarget);
+            }
+            
+            // Get the new order
+            const sectionIds = Array.from(container.children).map(child => {
+              return child.dataset.sectionId || child.getAttribute('data-section-id');
+            }).filter(id => id);
+
+            // Send to LiveView
+            this.pushEvent('reorder_sections', {
+              sections: sectionIds,
+              old_index: draggedIndex,
+              new_index: targetIndex
+            });
+          }
+        });
+      });
+
+      console.log('✅ SimpleSortableSections hook initialized');
+    }
+  };
 
   // Enhanced drag and drop for media
   Hooks.SortableMedia = {

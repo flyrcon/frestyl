@@ -888,49 +888,786 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
     end
   end
 
-def handle_reorder_education_entries(socket, %{"section-id" => section_id, "old_index" => old_index, "new_index" => new_index}) do
-  section_id_int = String.to_integer(section_id)
-  old_idx = String.to_integer(old_index)
-  new_idx = String.to_integer(new_index)
-  editing_section = socket.assigns.editing_section
+  def handle_reorder_education_entries(socket, %{"section-id" => section_id, "old_index" => old_index, "new_index" => new_index}) do
+    section_id_int = String.to_integer(section_id)
+    old_idx = String.to_integer(old_index)
+    new_idx = String.to_integer(new_index)
+    editing_section = socket.assigns.editing_section
 
-  if editing_section && editing_section.id == section_id_int do
-    current_content = editing_section.content || %{}
-    current_education = Map.get(current_content, "education", [])
+    if editing_section && editing_section.id == section_id_int do
+      current_content = editing_section.content || %{}
+      current_education = Map.get(current_content, "education", [])
 
-    if old_idx >= 0 and new_idx >= 0 and old_idx < length(current_education) and new_idx < length(current_education) do
-      # Reorder the education array
-      edu_to_move = Enum.at(current_education, old_idx)
-      updated_education = current_education
-      |> List.delete_at(old_idx)
-      |> List.insert_at(new_idx, edu_to_move)
+      if old_idx >= 0 and new_idx >= 0 and old_idx < length(current_education) and new_idx < length(current_education) do
+        # Reorder the education array
+        edu_to_move = Enum.at(current_education, old_idx)
+        updated_education = current_education
+        |> List.delete_at(old_idx)
+        |> List.insert_at(new_idx, edu_to_move)
 
-      updated_content = Map.put(current_content, "education", updated_education)
+        updated_content = Map.put(current_content, "education", updated_education)
 
-      case Portfolios.update_section(editing_section, %{content: updated_content}) do
-        {:ok, updated_section} ->
-          updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> put_flash(:info, "Education entries reordered")
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            socket = socket
+            |> put_flash(:error, "Failed to reorder education entries: #{format_errors(changeset)}")
+
+            {:noreply, socket}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Invalid indices for reordering")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  # Add these missing functions to your section_manager.ex file
+  # Insert them with your other handle_* functions
+
+  # Section content updating
+  def handle_update_section_content(socket, %{"field" => field, "value" => value, "section-id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
+    sections = socket.assigns.sections
+
+    # Find the section to update from the sections list
+    section_to_update = Enum.find(sections, &(&1.id == section_id_int))
+
+    if section_to_update do
+      current_content = section_to_update.content || %{}
+
+      # Handle different field types
+      updated_content = case field do
+        "technologies_string" ->
+          # Convert comma-separated string to list
+          tech_list = value
+          |> String.split(",")
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          Map.put(current_content, "technologies", tech_list)
+
+        "main_content" ->
+          Map.put(current_content, "content", value)
+
+        _ ->
+          Map.put(current_content, field, value)
+      end
+
+      case Portfolios.update_section(section_to_update, %{content: updated_content}) do
+        {:ok, db_updated_section} ->
+          updated_sections = Enum.map(sections, fn s ->
+            if s.id == section_id_int, do: db_updated_section, else: s
+          end)
 
           socket = socket
           |> assign(:sections, updated_sections)
-          |> assign(:editing_section, updated_section)
-          |> put_flash(:info, "Education entries reordered")
+          |> maybe_update_editing_section(updated_sections, section_id_int)
+          |> assign(:unsaved_changes, false)
+          |> push_event("section-content-updated", %{
+            section_id: section_id_int,
+            field: field,
+            value: value
+          })
 
           {:noreply, socket}
 
         {:error, changeset} ->
           socket = socket
-          |> put_flash(:error, "Failed to reorder education entries: #{format_errors(changeset)}")
+          |> put_flash(:error, "Failed to update section content: #{format_errors(changeset)}")
 
           {:noreply, socket}
       end
     else
-      {:noreply, put_flash(socket, :error, "Invalid indices for reordering")}
+      {:noreply, put_flash(socket, :error, "Section not found")}
     end
-  else
-    {:noreply, put_flash(socket, :error, "Section not found")}
   end
-end
+
+  # Helper function to update editing_section if it exists
+  defp maybe_update_editing_section(socket, updated_sections, section_id) do
+    case socket.assigns[:editing_section] do
+      %{id: ^section_id} ->
+        # Update the editing section if it matches the updated section
+        updated_section = Enum.find(updated_sections, &(&1.id == section_id))
+        assign(socket, :editing_section, updated_section)
+      _ ->
+        # No editing section or different section, don't update
+        socket
+    end
+  end
+
+  # Toggle section media support
+  def handle_toggle_section_media_support(socket, %{"id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
+    sections = socket.assigns.sections
+
+    # Find the section to update
+    section_to_update = Enum.find(sections, &(&1.id == section_id_int))
+
+    if section_to_update do
+      current_allow_media = Map.get(section_to_update, :allow_media, true)
+      new_allow_media = !current_allow_media
+
+      case Portfolios.update_section(section_to_update, %{allow_media: new_allow_media}) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(sections, fn s ->
+            if s.id == section_id_int, do: updated_section, else: s
+          end)
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> maybe_update_editing_section(updated_sections, section_id_int)
+          |> put_flash(:info, "Media support #{if new_allow_media, do: "enabled", else: "disabled"}")
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          socket = socket
+          |> put_flash(:error, "Failed to update media support: #{format_errors(changeset)}")
+
+          {:noreply, socket}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  # Apply section template
+  def handle_apply_section_template(socket, %{"section-id" => section_id, "template" => template}) do
+    section_id_int = String.to_integer(section_id)
+    sections = socket.assigns.sections
+
+    # Find the section to update
+    section_to_update = Enum.find(sections, &(&1.id == section_id_int))
+
+    if section_to_update do
+      # Get default content for the section type
+      default_content = get_default_content_for_section_type(section_to_update.section_type, template)
+
+      case Portfolios.update_section(section_to_update, %{content: default_content}) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(sections, fn s ->
+            if s.id == section_id_int, do: updated_section, else: s
+          end)
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> maybe_update_editing_section(updated_sections, section_id_int)
+          |> put_flash(:info, "Template applied successfully")
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          socket = socket
+          |> put_flash(:error, "Failed to apply template: #{format_errors(changeset)}")
+
+          {:noreply, socket}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  # Export section template
+  def handle_export_section_template(socket, %{"section-id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
+    sections = socket.assigns.sections
+
+    # Find the section to export
+    section_to_export = Enum.find(sections, &(&1.id == section_id_int))
+
+    if section_to_export do
+      template_data = %{
+        section_type: section_to_export.section_type,
+        title: section_to_export.title,
+        content: section_to_export.content,
+        created_at: DateTime.utc_now()
+      }
+
+      # Convert to JSON for download
+      json_data = Jason.encode!(template_data, pretty: true)
+
+      socket = socket
+      |> push_event("download-template", %{
+        filename: "#{section_to_export.title |> String.replace(" ", "_")}_template.json",
+        data: json_data,
+        content_type: "application/json"
+      })
+      |> put_flash(:info, "Template export ready for download")
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  # Show/Hide Add Skill Form
+  @impl true
+  def handle_event("show_add_skill_form", _params, socket) do
+    {:noreply, assign(socket, :show_add_skill_form, true)}
+  end
+
+  @impl true
+  def handle_event("hide_add_skill_form", _params, socket) do
+    {:noreply, assign(socket, :show_add_skill_form, false)}
+  end
+
+  # Add Individual Skill
+  @impl true
+  def handle_event("add_skill", params, socket) do
+    %{
+      "skill_name" => name,
+      "proficiency" => proficiency,
+      "years" => years_str,
+      "category" => category
+    } = params
+
+    # Parse years (handle empty string)
+    years = case years_str do
+      "" -> nil
+      str -> String.to_integer(str)
+    end
+
+    new_skill = %{
+      "name" => String.trim(name),
+      "proficiency" => proficiency,
+      "years" => years,
+      "category" => category
+    }
+
+    # Get current content
+    section = socket.assigns.editing_section
+    current_content = section.content || %{}
+    skill_categories = get_in(current_content, ["skill_categories"]) || %{}
+
+    # Add skill to appropriate category
+    updated_categories = Map.update(skill_categories, category, [new_skill], fn existing_skills ->
+      existing_skills ++ [new_skill]
+    end)
+
+    # Update section content
+    updated_content = Map.put(current_content, "skill_categories", updated_categories)
+
+    case Portfolios.update_section(section, %{content: updated_content}) do
+      {:ok, updated_section} ->
+        # Update sections list
+        updated_sections = Enum.map(socket.assigns.sections, fn s ->
+          if s.id == updated_section.id, do: updated_section, else: s
+        end)
+
+        {:noreply,
+        socket
+        |> assign(:sections, updated_sections)
+        |> assign(:editing_section, updated_section)
+        |> assign(:show_add_skill_form, false)
+        |> put_flash(:info, "Skill '#{name}' added successfully!")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to add skill.")}
+    end
+  end
+
+  # Bulk Import Skills
+  @impl true
+  def handle_event("toggle_bulk_import_skills", _params, socket) do
+    current_state = socket.assigns[:show_bulk_import] || false
+    {:noreply, assign(socket, :show_bulk_import, !current_state)}
+  end
+
+  @impl true
+  def handle_event("hide_bulk_import", _params, socket) do
+    {:noreply, assign(socket, :show_bulk_import, false)}
+  end
+
+  @impl true
+  def handle_event("bulk_import_skills", %{"skills_text" => skills_text}, socket) do
+    # Parse the bulk import text
+    imported_skills = parse_bulk_skills_text(skills_text)
+
+    if length(imported_skills) == 0 do
+      {:noreply, put_flash(socket, :error, "No valid skills found to import.")}
+    else
+      # Get current content
+      section = socket.assigns.editing_section
+      current_content = section.content || %{}
+      skill_categories = get_in(current_content, ["skill_categories"]) || %{}
+
+      # Group imported skills by category
+      updated_categories = Enum.reduce(imported_skills, skill_categories, fn skill, acc ->
+        category = skill["category"] || "Other"
+        Map.update(acc, category, [skill], fn existing_skills ->
+          existing_skills ++ [skill]
+        end)
+      end)
+
+      # Update section content
+      updated_content = Map.put(current_content, "skill_categories", updated_categories)
+
+      case Portfolios.update_section(section, %{content: updated_content}) do
+        {:ok, updated_section} ->
+          # Update sections list
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == updated_section.id, do: updated_section, else: s
+          end)
+
+          {:noreply,
+          socket
+          |> assign(:sections, updated_sections)
+          |> assign(:editing_section, updated_section)
+          |> assign(:show_bulk_import, false)
+          |> put_flash(:info, "Successfully imported #{length(imported_skills)} skills!")}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to import skills.")}
+      end
+    end
+  end
+
+  # Update Individual Skill Properties
+  @impl true
+  def handle_event("update_skill_name", params, socket) do
+    %{"value" => new_name, "category" => category, "index" => index_str} = params
+    index = String.to_integer(index_str)
+
+    update_skill_property(socket, category, index, "name", String.trim(new_name))
+  end
+
+  @impl true
+  def handle_event("update_skill_proficiency", params, socket) do
+    %{"value" => proficiency, "category" => category, "index" => index_str} = params
+    index = String.to_integer(index_str)
+
+    update_skill_property(socket, category, index, "proficiency", proficiency)
+  end
+
+  @impl true
+  def handle_event("update_skill_years", params, socket) do
+    %{"value" => years_str, "category" => category, "index" => index_str} = params
+    index = String.to_integer(index_str)
+
+    years = case years_str do
+      "" -> nil
+      str -> String.to_integer(str)
+    end
+
+    update_skill_property(socket, category, index, "years", years)
+  end
+
+  # Remove Individual Skill
+  @impl true
+  def handle_event("remove_skill", params, socket) do
+    %{"category" => category, "index" => index_str} = params
+    index = String.to_integer(index_str)
+
+    section = socket.assigns.editing_section
+    current_content = section.content || %{}
+    skill_categories = get_in(current_content, ["skill_categories"]) || %{}
+
+    case Map.get(skill_categories, category) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Category not found.")}
+
+      category_skills ->
+        # Remove skill at index
+        updated_skills = List.delete_at(category_skills, index)
+
+        # Update or remove category
+        updated_categories = if length(updated_skills) == 0 do
+          Map.delete(skill_categories, category)
+        else
+          Map.put(skill_categories, category, updated_skills)
+        end
+
+        # Update section content
+        updated_content = Map.put(current_content, "skill_categories", updated_categories)
+
+        case Portfolios.update_section(section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            # Update sections list
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == updated_section.id, do: updated_section, else: s
+            end)
+
+            {:noreply,
+            socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> put_flash(:info, "Skill removed successfully!")}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to remove skill.")}
+        end
+    end
+  end
+
+  # Remove Entire Category
+  @impl true
+  def handle_event("remove_category", %{"category" => category}, socket) do
+    section = socket.assigns.editing_section
+    current_content = section.content || %{}
+    skill_categories = get_in(current_content, ["skill_categories"]) || %{}
+
+    updated_categories = Map.delete(skill_categories, category)
+    updated_content = Map.put(current_content, "skill_categories", updated_categories)
+
+    case Portfolios.update_section(section, %{content: updated_content}) do
+      {:ok, updated_section} ->
+        # Update sections list
+        updated_sections = Enum.map(socket.assigns.sections, fn s ->
+          if s.id == updated_section.id, do: updated_section, else: s
+        end)
+
+        {:noreply,
+        socket
+        |> assign(:sections, updated_sections)
+        |> assign(:editing_section, updated_section)
+        |> put_flash(:info, "Category '#{category}' removed successfully!")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to remove category.")}
+    end
+  end
+
+  # Clear All Skills
+  @impl true
+  def handle_event("clear_all_skills", _params, socket) do
+    section = socket.assigns.editing_section
+    current_content = section.content || %{}
+
+    updated_content = Map.merge(current_content, %{
+      "skills" => [],
+      "skill_categories" => %{}
+    })
+
+    case Portfolios.update_section(section, %{content: updated_content}) do
+      {:ok, updated_section} ->
+        # Update sections list
+        updated_sections = Enum.map(socket.assigns.sections, fn s ->
+          if s.id == updated_section.id, do: updated_section, else: s
+        end)
+
+        {:noreply,
+        socket
+        |> assign(:sections, updated_sections)
+        |> assign(:editing_section, updated_section)
+        |> put_flash(:info, "All skills cleared successfully!")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to clear skills.")}
+    end
+  end
+
+  # Auto-organize skills by category
+  @impl true
+  def handle_event("organize_by_category", _params, socket) do
+    section = socket.assigns.editing_section
+    current_content = section.content || %{}
+
+    # Get all skills from both sources
+    skills = get_in(current_content, ["skills"]) || []
+    skill_categories = get_in(current_content, ["skill_categories"]) || %{}
+
+    # Flatten all skills
+    all_skills = if map_size(skill_categories) > 0 do
+      skill_categories |> Map.values() |> List.flatten()
+    else
+      Enum.map(skills, fn skill ->
+        case skill do
+          %{"name" => _} = s -> s
+          skill_string -> %{"name" => skill_string, "proficiency" => "intermediate"}
+        end
+      end)
+    end
+
+    # Auto-categorize skills
+    organized_categories = Enum.group_by(all_skills, &auto_categorize_skill/1)
+
+    updated_content = Map.merge(current_content, %{
+      "skills" => [],
+      "skill_categories" => organized_categories
+    })
+
+    case Portfolios.update_section(section, %{content: updated_content}) do
+      {:ok, updated_section} ->
+        # Update sections list
+        updated_sections = Enum.map(socket.assigns.sections, fn s ->
+          if s.id == updated_section.id, do: updated_section, else: s
+        end)
+
+        {:noreply,
+        socket
+        |> assign(:sections, updated_sections)
+        |> assign(:editing_section, updated_section)
+        |> put_flash(:info, "Skills organized by category automatically!")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to organize skills.")}
+    end
+  end
+
+  # Helper Functions
+
+  defp update_skill_property(socket, category, index, property, value) do
+    section = socket.assigns.editing_section
+    current_content = section.content || %{}
+    skill_categories = get_in(current_content, ["skill_categories"]) || %{}
+
+    case Map.get(skill_categories, category) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Category not found.")}
+
+      category_skills ->
+        case Enum.at(category_skills, index) do
+          nil ->
+            {:noreply, put_flash(socket, :error, "Skill not found.")}
+
+          skill ->
+            # Update the skill property
+            updated_skill = Map.put(skill, property, value)
+            updated_skills = List.replace_at(category_skills, index, updated_skill)
+            updated_categories = Map.put(skill_categories, category, updated_skills)
+            updated_content = Map.put(current_content, "skill_categories", updated_categories)
+
+            case Portfolios.update_section(section, %{content: updated_content}) do
+              {:ok, updated_section} ->
+                # Update sections list
+                updated_sections = Enum.map(socket.assigns.sections, fn s ->
+                  if s.id == updated_section.id, do: updated_section, else: s
+                end)
+
+                {:noreply,
+                socket
+                |> assign(:sections, updated_sections)
+                |> assign(:editing_section, updated_section)}
+
+              {:error, _changeset} ->
+                {:noreply, put_flash(socket, :error, "Failed to update skill.")}
+            end
+        end
+    end
+  end
+
+  defp parse_bulk_skills_text(text) do
+    text
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(&parse_skill_line/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp parse_skill_line(line) do
+    case String.split(line, ",") |> Enum.map(&String.trim/1) do
+      [name] when name != "" ->
+        %{
+          "name" => name,
+          "proficiency" => "intermediate",
+          "years" => nil,
+          "category" => auto_categorize_skill_name(name)
+        }
+
+      [name, proficiency] when name != "" ->
+        %{
+          "name" => name,
+          "proficiency" => normalize_proficiency(proficiency),
+          "years" => nil,
+          "category" => auto_categorize_skill_name(name)
+        }
+
+      [name, proficiency, years] when name != "" ->
+        parsed_years = case Integer.parse(years) do
+          {num, _} -> num
+          _ -> nil
+        end
+
+        %{
+          "name" => name,
+          "proficiency" => normalize_proficiency(proficiency),
+          "years" => parsed_years,
+          "category" => auto_categorize_skill_name(name)
+        }
+
+      [name, proficiency, years, category] when name != "" ->
+        parsed_years = case Integer.parse(years) do
+          {num, _} -> num
+          _ -> nil
+        end
+
+        %{
+          "name" => name,
+          "proficiency" => normalize_proficiency(proficiency),
+          "years" => parsed_years,
+          "category" => category
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp normalize_proficiency(prof_str) do
+    case prof_str |> String.downcase() |> String.trim() do
+      p when p in ["beginner", "basic", "novice", "learning", "1"] -> "beginner"
+      p when p in ["intermediate", "competent", "developing", "2", "3"] -> "intermediate"
+      p when p in ["advanced", "proficient", "skilled", "4"] -> "advanced"
+      p when p in ["expert", "master", "specialist", "guru", "5"] -> "expert"
+      _ -> "intermediate"
+    end
+  end
+
+  defp auto_categorize_skill(%{"name" => name}) do
+    auto_categorize_skill_name(name)
+  end
+
+  defp auto_categorize_skill_name(name) do
+    name_lower = String.downcase(name)
+
+    cond do
+      # Programming Languages
+      name_lower in ["javascript", "python", "java", "c++", "c#", "ruby", "go", "rust", "swift", "kotlin", "php", "typescript", "scala", "r", "matlab", "sql"] ->
+        "Programming Languages"
+
+      # Frameworks & Libraries
+      name_lower in ["react", "vue", "angular", "node.js", "express", "django", "flask", "spring", "laravel", "rails", "next.js", "gatsby", "nuxt", "svelte"] ->
+        "Frameworks & Libraries"
+
+      # Tools & Platforms
+      name_lower in ["git", "docker", "kubernetes", "aws", "azure", "gcp", "jenkins", "gitlab", "github", "npm", "webpack", "babel", "eslint", "jest", "cypress"] ->
+        "Tools & Platforms"
+
+      # Databases
+      name_lower in ["mysql", "postgresql", "mongodb", "redis", "elasticsearch", "sqlite", "oracle", "sql server", "dynamodb", "firebase"] ->
+        "Databases"
+
+      # Design & Creative
+      name_lower in ["photoshop", "illustrator", "figma", "sketch", "adobe xd", "canva", "ui design", "ux design", "graphic design", "web design"] ->
+        "Design & Creative"
+
+      # Soft Skills
+      name_lower in ["leadership", "communication", "teamwork", "project management", "time management", "problem solving", "critical thinking", "presentation", "negotiation", "mentoring"] ->
+        "Soft Skills"
+
+      # Data & Analytics
+      name_lower in ["excel", "tableau", "power bi", "analytics", "data analysis", "statistics", "machine learning", "ai", "data science", "big data"] ->
+        "Data & Analytics"
+
+      # Default category
+      true ->
+        "Other"
+    end
+  end
+
+  # Helper function to get default content for section types with templates
+  defp get_default_content_for_section_type(section_type, template \\ "default")
+
+  defp get_default_content_for_section_type(section_type, template) do
+    base_content = case section_type do
+      :intro -> %{
+        "headline" => "Your Professional Headline",
+        "summary" => "A compelling summary of your background and expertise.",
+        "location" => "Your City, State"
+      }
+      :experience -> %{
+        "jobs" => [
+          %{
+            "title" => "Your Position",
+            "company" => "Company Name",
+            "start_date" => "Month Year",
+            "end_date" => "Present",
+            "current" => true,
+            "description" => "Key responsibilities and achievements in this role."
+          }
+        ]
+      }
+      :skills -> %{
+        "skills" => ["Skill 1", "Skill 2", "Skill 3"]
+      }
+      _ -> %{}
+    end
+
+    # Apply template-specific modifications
+    case template do
+      "professional" -> apply_professional_template(base_content, section_type)
+      "creative" -> apply_creative_template(base_content, section_type)
+      "technical" -> apply_technical_template(base_content, section_type)
+      _ -> base_content
+    end
+  end
+
+  defp apply_professional_template(content, :intro) do
+    Map.merge(content, %{
+      "headline" => "Experienced Professional",
+      "summary" => "Results-driven professional with a proven track record of success."
+    })
+  end
+
+  defp apply_professional_template(content, _), do: content
+
+  defp apply_creative_template(content, :intro) do
+    Map.merge(content, %{
+      "headline" => "Creative Professional",
+      "summary" => "Innovative thinker bringing creativity to every project."
+    })
+  end
+
+  defp apply_creative_template(content, _), do: content
+
+  defp apply_technical_template(content, :intro) do
+    Map.merge(content, %{
+      "headline" => "Technical Expert",
+      "summary" => "Technology specialist with deep expertise in modern solutions."
+    })
+  end
+
+  defp apply_technical_template(content, _), do: content
+
+  # Basic section editing handlers
+  def handle_edit_section(socket, %{"id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
+    sections = socket.assigns.sections
+
+    section_to_edit = Enum.find(sections, &(&1.id == section_id_int))
+
+    if section_to_edit do
+      socket = socket
+      |> assign(:editing_section, section_to_edit)
+      |> assign(:section_edit_id, section_id_int)
+      |> assign(:section_edit_tab, "content")
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  def handle_cancel_edit_section(socket, _params) do
+    socket = socket
+    |> assign(:editing_section, nil)
+    |> assign(:section_edit_id, nil)
+
+    {:noreply, socket}
+  end
+
+  # Helper function to format errors
+  defp format_errors(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+      end)
+    end)
+    |> Enum.map_join(", ", fn {field, errors} ->
+      "#{field}: #{Enum.join(errors, ", ")}"
+    end)
+  end
 
     # Enhanced reordering functions
   defp parse_section_id(section_id) when is_binary(section_id) do
