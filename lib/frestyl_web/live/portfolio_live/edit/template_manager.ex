@@ -13,13 +13,13 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
 
   def handle_template_selection(socket, %{"template" => template_name}) do
     require Logger
-    Logger.info("Template selection by name: #{template_name}")
+    Logger.info("🔥 Template selection: #{template_name}")
 
     try do
-      # Get config from your PortfolioTemplates module
+      # Get template config from PortfolioTemplates module
       template_config = Frestyl.Portfolios.PortfolioTemplates.get_template_config(template_name)
 
-      # Convert atom keys to string keys for database storage
+      # Convert to string keys for database storage
       template_config_strings = convert_atoms_to_strings(template_config)
 
       # Update portfolio in database immediately
@@ -33,13 +33,21 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
         {:ok, updated_portfolio} ->
           Logger.info("✅ Template saved to database successfully")
 
+          # Generate new CSS for the template
+          preview_css = generate_preview_css_from_config(template_config_strings)
+
           socket
           |> assign(:portfolio, updated_portfolio)
           |> assign(:customization, template_config_strings)
           |> assign(:selected_template, template_name)
+          |> assign(:template_layout, get_template_layout(template_config_strings, template_name))
+          |> assign(:preview_css, preview_css)
           |> assign(:unsaved_changes, false)
-          |> maybe_update_preview_css()
           |> put_flash(:info, "Template changed to #{String.capitalize(template_name)}")
+          |> push_event("template-changed", %{
+            template: template_name,
+            layout: get_template_layout(template_config_strings, template_name)
+          })
 
         {:error, changeset} ->
           Logger.error("❌ Failed to save template: #{inspect(changeset.errors)}")
@@ -51,6 +59,26 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
       error ->
         Logger.error("Error in template selection: #{inspect(error)}")
         socket
+        |> put_flash(:error, "Failed to load template")
+    end
+  end
+
+  defp get_template_layout(config, template_name) do
+    case config do
+      %{"layout" => layout} when is_binary(layout) -> layout
+      %{:layout => layout} when is_binary(layout) -> layout
+      _ ->
+        # Fallback based on template name
+        case template_name do
+          "executive" -> "dashboard"
+          "developer" -> "terminal"
+          "designer" -> "gallery"
+          "consultant" -> "case_study"
+          "academic" -> "academic"
+          "creative" -> "gallery"
+          "minimalist" -> "minimal"
+          _ -> "dashboard"
+        end
     end
   end
 
@@ -514,24 +542,26 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
   defp handle_background_update(socket, %{"background" => background}) do
     IO.puts("🔥 BACKGROUND UPDATE CALLED")
     IO.puts("🔥 New background: #{background}")
-    IO.puts("🔥 Current customization: #{inspect(socket.assigns.customization)}")
 
     current_customization = socket.assigns.customization || %{}
     updated_customization = Map.put(current_customization, "background", background)
-
-    IO.puts("🔥 Updated customization: #{inspect(updated_customization)}")
 
     # Save to database immediately
     portfolio = socket.assigns.portfolio
     case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
       {:ok, updated_portfolio} ->
         IO.puts("🔥 ✅ Background saved to database successfully")
+
+        # Generate new CSS
+        preview_css = generate_preview_css_from_config(updated_customization)
+
         socket
         |> assign(:portfolio, updated_portfolio)
         |> assign(:customization, updated_customization)
+        |> assign(:preview_css, preview_css)
         |> assign(:unsaved_changes, false)
-        |> maybe_update_preview_css()
         |> put_flash(:info, "Background updated to #{String.capitalize(background)}")
+        |> push_event("background-changed", %{background: background})
 
       {:error, changeset} ->
         IO.puts("🔥 ❌ Failed to save background to database")

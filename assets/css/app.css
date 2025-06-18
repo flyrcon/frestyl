@@ -843,3 +843,142 @@ const additionalCSS = `
   visibility: visible !important;
   opacity: 1 !important;
 }
+
+/* Section Drag and Drop Styles */
+.section-ghost {
+  opacity: 0.5;
+  background: #f3f4f6;
+  transform: rotate(2deg);
+}
+
+.section-chosen {
+  transform: scale(1.02);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.section-drag {
+  transform: rotate(1deg);
+  z-index: 1000;
+}
+
+.section-item.dragging {
+  opacity: 0.8;
+  transform: scale(0.98);
+}
+
+.sections-reordering {
+  cursor: grabbing;
+}
+
+.sections-reordering * {
+  pointer-events: none;
+}
+
+.sections-reordering .section-drag-handle {
+  pointer-events: auto;
+}
+
+.reordering-active {
+  background: #f9fafb;
+}
+
+.section-drag-handle {
+  cursor: grab;
+}
+
+.section-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Prevent text selection during drag */
+.section-item {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Enhanced hover states */
+.section-item:hover {
+  transform: translateY(-2px);
+}
+
+.section-item:hover .section-drag-handle {
+  opacity: 1 !important;
+}
+
+/* Line clamp utility */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Loading state animations */
+@keyframes pulse-fade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.loading .section-item {
+  animation: pulse-fade 1.5s ease-in-out infinite;
+}
+
+/* Button hover animations */
+.hover\:scale-105:hover {
+  transform: scale(1.05);
+}
+
+.hover\:scale-110:hover {
+  transform: scale(1.1);
+}
+
+/* Smooth transitions */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+
+/* Experience entry animations */
+.experience-entry {
+  transition: all 0.3s ease;
+}
+
+.experience-entry:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Form focus states */
+.focus\:ring-amber-500:focus {
+  ring-color: #f59e0b;
+}
+
+.focus\:border-amber-500:focus {
+  border-color: #f59e0b;
+}
+
+/* Disabled input styling */
+input:disabled {
+  background-color: #f3f4f6;
+  cursor: not-allowed;
+}
+
+/* Tooltip animations */
+[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  background: #1f2937;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 5px;
+}

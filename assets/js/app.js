@@ -1,16 +1,20 @@
-// assets/js/app.js - FIXED VERSION with clean PdfDownload hook
+// assets/js/app.js - FIXED VERSION with proper hook registration
 
 import "phoenix_html"
 import { Socket } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"
 import topbar from "../vendor/topbar"
-import PortfolioHooks from "./portfolio_hooks" // Import our new hooks
-import { SortableSections, SimpleSortableSections } from "./hooks/sortable_sections.js";
-
-
 
 // Import Video Capture Hook
 import VideoCapture from "./hooks/video_capture"
+
+// Import template hooks
+import TemplateHooks from "./hooks/template_hooks"
+
+// Import Sortable Hooks
+import SortableHooks from "./hooks/sortable_hooks"
+
+import SortableSections from "./hooks/section_sortable"
 
 // Import Sortable for drag-and-drop
 import Sortable from 'sortablejs'
@@ -18,45 +22,46 @@ import Sortable from 'sortablejs'
 // Make Sortable globally available
 window.Sortable = Sortable;
 
+// Chart.js compatibility
 window.Chart = window.Chart || {};
 if (typeof window.Chart._adapters === 'undefined') {
   window.Chart._adapters = {};
-};
+}
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
-// FIXED: Portfolio-specific hooks with single PdfDownload definition
+// FIXED: Clean hooks object with no conflicts
 let Hooks = {
-  // FIXED: Video Capture Hook
+  // Video Recording
   VideoCapture,
+
+  // FIXED: Drag & Drop Hooks from sortable_hooks.js
+  SortableSections: SortableHooks.SectionSortable,
   SortableSections: SortableSections,
-  SimpleSortableSections: SimpleSortableSections,
+  SortableMedia: SortableHooks.MediaSortable,
+  SortableSkills: SortableHooks.SkillsSortable,
+  SortableExperience: SortableHooks.ExperienceSortable,
+  SortableEducation: SortableHooks.EducationSortable,
 
   // Auto Focus Hook - for modal inputs
   AutoFocus: {
     mounted() {
       setTimeout(() => {
         this.el.focus();
-        this.el.select(); // Also select text if it's an input
+        this.el.select();
       }, 100);
     }
   },
 
-  Hooks.SortableSections = PortfolioHooks.SortableSections,
-  Hooks.TemplatePreview = PortfolioHooks.TemplatePreview,  
-  Hooks.SectionManager = PortfolioHooks.SectionManager,
-  Hooks.ColorPicker = PortfolioHooks.ColorPicker,
-  Hooks.PreviewFrame = PortfolioHooks.PreviewFrame,
 
-  // SINGLE PDF DOWNLOAD HOOK - FIXED
+
+  // FIXED: Single PDF Download Hook
   PdfDownload: {
     mounted() {
       console.log('🎯 PdfDownload hook mounted successfully on element:', this.el.id)
       
       this.handleEvent("download_pdf", (data) => {
         console.log('🎯 Received download_pdf event with data:', data)
-        console.log('🎯 Filename:', data.filename)
-        console.log('🎯 Size:', data.size)
         
         if (!data.data) {
           console.error('❌ No PDF data received!')
@@ -97,8 +102,6 @@ let Hooks = {
     },
 
     createStyledModal(pdfUrl, filename, originalData, onClose) {
-      console.log('🎯 Creating fixed PDF modal...')
-      
       const existingModal = document.getElementById('pdf-preview-modal')
       if (existingModal) {
         existingModal.remove()
@@ -111,7 +114,6 @@ let Hooks = {
       
       modal.innerHTML = `
         <div class="bg-white rounded-2xl shadow-2xl w-11/12 max-w-4xl h-5/6 max-h-[90vh] flex flex-col overflow-hidden">
-          <!-- Modal Header with gradient - FIXED BUTTON COLORS -->
           <div class="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 rounded-t-2xl">
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-3">
@@ -126,7 +128,6 @@ let Hooks = {
                 </div>
               </div>
               
-              <!-- FIXED: Action buttons with proper visibility -->
               <div class="flex items-center space-x-2">
                 <button id="pdf-print-btn" class="bg-blue-700 hover:bg-blue-800 text-white px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center space-x-2 border border-blue-500">
                   <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,7 +152,6 @@ let Hooks = {
             </div>
           </div>
 
-          <!-- File info bar -->
           <div class="bg-gray-50 px-6 py-2 border-b border-gray-200">
             <div class="flex items-center justify-between text-xs">
               <div class="flex items-center space-x-3 text-gray-600">
@@ -167,7 +167,6 @@ let Hooks = {
             </div>
           </div>
           
-          <!-- PDF Viewer Container -->
           <div class="flex-1 p-4 bg-gray-100 min-h-0 overflow-hidden">
             <div class="h-full bg-white rounded-lg shadow-inner overflow-hidden border border-gray-300">
               <iframe 
@@ -175,26 +174,10 @@ let Hooks = {
                 class="w-full h-full border-0"
                 type="application/pdf"
                 title="Portfolio PDF Preview">
-                <div class="flex flex-col items-center justify-center h-full p-6 text-center bg-gray-50">
-                  <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                  </div>
-                  <h4 class="text-lg font-semibold text-gray-900 mb-2">PDF Preview Not Available</h4>
-                  <p class="text-gray-600 mb-6 max-w-sm">Your browser doesn't support inline PDF viewing. Use the download button to save the file.</p>
-                  <button id="pdf-fallback-download" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2">
-                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    <span class="text-white">Download PDF</span>
-                  </button>
-                </div>
               </iframe>
             </div>
           </div>
 
-          <!-- Footer -->
           <div class="bg-white px-6 py-3 border-t border-gray-200 rounded-b-2xl">
             <div class="flex items-center justify-between text-xs text-gray-600">
               <div class="flex items-center space-x-4">
@@ -237,23 +220,15 @@ let Hooks = {
       const printBtn = modal.querySelector('#pdf-print-btn')
       const downloadBtn = modal.querySelector('#pdf-download-btn')
       const closeBtn = modal.querySelector('#pdf-close-btn')
-      const fallbackBtn = modal.querySelector('#pdf-fallback-download')
-      const iframe = modal.querySelector('iframe')
 
       if (printBtn) {
         printBtn.addEventListener('click', () => {
-          this.handlePrint(iframe, pdfUrl)
+          this.handlePrint(modal.querySelector('iframe'), pdfUrl)
         })
       }
 
       if (downloadBtn) {
         downloadBtn.addEventListener('click', () => {
-          this.handleDownload(originalData)
-        })
-      }
-
-      if (fallbackBtn) {
-        fallbackBtn.addEventListener('click', () => {
           this.handleDownload(originalData)
         })
       }
@@ -425,170 +400,244 @@ let Hooks = {
     }
   },
 
-  // Add this to your app.js or create a new file in assets/js/hooks/sortable_sections.js
-
-  export const SortableSections = {
+    ...TemplateHooks,
+  
+  // Preview refresh hook
+  PreviewRefresh: {
     mounted() {
-      this.initializeSortable();
-    },
-
-    updated() {
-      this.initializeSortable();
-    },
-
-    initializeSortable() {
-      const container = this.el;
-      
-      // Remove any existing sortable instance
-      if (this.sortable) {
-        this.sortable.destroy();
-      }
-
-      // Initialize drag and drop
-      this.sortable = new Sortable(container, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        chosenClass: 'sortable-chosen',
-        dragClass: 'sortable-drag',
-        handle: '.drag-handle', // Only allow dragging from specific handle
-        
-        onEnd: (evt) => {
-          // Get the new order of section IDs
-          const sectionIds = Array.from(container.children).map(child => {
-            return child.dataset.sectionId || child.getAttribute('data-section-id');
-          }).filter(id => id); // Remove any null/undefined values
-
-          console.log('🔄 Sections reordered:', sectionIds);
-
-          // Send the new order to LiveView
-          this.pushEvent('reorder_sections', {
-            sections: sectionIds,
-            old_index: evt.oldIndex,
-            new_index: evt.newIndex
-          });
-        }
-      });
-
-      console.log('✅ SortableSections hook initialized');
-    },
-
-    destroyed() {
-      if (this.sortable) {
-        this.sortable.destroy();
-      }
-    }
-  };
-
-  // If you don't have Sortable.js installed, you can use a simpler drag-and-drop implementation:
-  export const SimpleSortableSections = {
-    mounted() {
-      this.initializeSimpleDragDrop();
-    },
-
-    updated() {
-      this.initializeSimpleDragDrop();
-    },
-
-    initializeSimpleDragDrop() {
-      const container = this.el;
-      let draggedElement = null;
-
-      // Add drag and drop event listeners to all section items
-      const sectionItems = container.querySelectorAll('[data-section-id]');
-      
-      sectionItems.forEach(item => {
-        // Make items draggable
-        item.draggable = true;
-        
-        item.addEventListener('dragstart', (e) => {
-          draggedElement = e.target.closest('[data-section-id]');
-          e.dataTransfer.effectAllowed = 'move';
-          e.target.classList.add('dragging');
-        });
-
-        item.addEventListener('dragend', (e) => {
-          e.target.classList.remove('dragging');
-          draggedElement = null;
-        });
-
-        item.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-        });
-
-        item.addEventListener('drop', (e) => {
-          e.preventDefault();
-          
-          if (draggedElement && draggedElement !== e.target.closest('[data-section-id]')) {
-            const dropTarget = e.target.closest('[data-section-id]');
-            const container = dropTarget.parentNode;
-            
-            // Get positions
-            const draggedIndex = Array.from(container.children).indexOf(draggedElement);
-            const targetIndex = Array.from(container.children).indexOf(dropTarget);
-            
-            // Reorder in DOM
-            if (draggedIndex < targetIndex) {
-              container.insertBefore(draggedElement, dropTarget.nextSibling);
-            } else {
-              container.insertBefore(draggedElement, dropTarget);
-            }
-            
-            // Get the new order
-            const sectionIds = Array.from(container.children).map(child => {
-              return child.dataset.sectionId || child.getAttribute('data-section-id');
-            }).filter(id => id);
-
-            // Send to LiveView
-            this.pushEvent('reorder_sections', {
-              sections: sectionIds,
-              old_index: draggedIndex,
-              new_index: targetIndex
-            });
-          }
-        });
-      });
-
-      console.log('✅ SimpleSortableSections hook initialized');
-    }
-  };
-
-  // Enhanced drag and drop for media
-  Hooks.SortableMedia = {
-    mounted() {
-      const el = this.el;
-      const sectionId = el.dataset.sectionId;
-      
-      const sortable = new Sortable(el, {
-        animation: 150,
-        ghostClass: 'media-ghost',
-        dragClass: 'media-drag',
-        chosenClass: 'media-chosen',
-        onEnd: (evt) => {
-          if (evt.oldIndex !== evt.newIndex) {
-            const mediaIds = Array.from(el.children).map(child => 
-              child.dataset.mediaId
-            );
-            
-            this.pushEvent("reorder_media", {
-              section_id: sectionId,
-              media_ids: mediaIds
-            });
-          }
-        }
+      this.handleEvent("refresh_portfolio_preview", ({timestamp}) => {
+        console.log("🔄 Refreshing portfolio preview");
+        this.refreshPreview();
       });
       
-      this.sortable = sortable;
+      this.handleEvent("schedule_preview_refresh", ({delay, timestamp}) => {
+        clearTimeout(this.refreshTimeout);
+        this.refreshTimeout = setTimeout(() => {
+          this.refreshPreview();
+        }, delay);
+      });
     },
     
-    destroyed() {
-      if (this.sortable) {
-        this.sortable.destroy();
+    refreshPreview() {
+      const iframe = document.querySelector('iframe[src*="/p/"]');
+      if (iframe) {
+        iframe.src = iframe.src.split('?')[0] + '?preview=true&t=' + Date.now();
       }
     }
   },
 
-  // Add TemplateUpload to your existing hooks
+  // Template selection hook
+  TemplateSelector: {
+    mounted() {
+      console.log("🎨 Template Selector mounted");
+      this.el.addEventListener('click', (e) => {
+        const templateCard = e.target.closest('.template-preview-card');
+        if (templateCard) {
+          // Add loading state
+          const loading = templateCard.querySelector('.template-loading');
+          if (loading) {
+            loading.classList.remove('hidden');
+            loading.classList.add('flex');
+          }
+          
+          // Update selection immediately for better UX
+          this.updateTemplateSelection(templateCard);
+        }
+      });
+    },
+    
+    updateTemplateSelection(selectedCard) {
+      // Remove selection from all cards
+      const allCards = document.querySelectorAll('.template-preview-card');
+      allCards.forEach(card => {
+        card.classList.remove('border-blue-500', 'shadow-lg', 'ring-2', 'ring-blue-200', 'bg-blue-50');
+        card.classList.add('border-gray-200', 'bg-white');
+        
+        // Hide selection indicator
+        const indicator = card.querySelector('.absolute.top-2.right-2');
+        if (indicator) {
+          indicator.style.display = 'none';
+        }
+      });
+      
+      // Add selection to clicked card
+      selectedCard.classList.remove('border-gray-200', 'bg-white');
+      selectedCard.classList.add('border-blue-500', 'shadow-lg', 'ring-2', 'ring-blue-200', 'bg-blue-50');
+      
+      // Show selection indicator
+      const indicator = selectedCard.querySelector('.absolute.top-2.right-2');
+      if (indicator) {
+        indicator.style.display = 'flex';
+      }
+    }
+  },
+
+  // Color picker enhancements
+  ColorPickerLive: {
+    mounted() {
+      console.log("🎨 Live Color Picker mounted");
+      this.setupColorPicker();
+    },
+    
+    setupColorPicker() {
+      const colorInputs = this.el.querySelectorAll('input[type="color"], input[type="text"]');
+      
+      colorInputs.forEach(input => {
+        // Sync color and text inputs
+        input.addEventListener('input', (e) => {
+          const value = e.target.value;
+          const name = e.target.name;
+          
+          // Update paired input
+          const pairedInput = this.el.querySelector(`input[name="${name}"]:not([type="${e.target.type}"])`);
+          if (pairedInput && pairedInput.value !== value) {
+            pairedInput.value = value;
+          }
+          
+          // Update preview immediately
+          this.updateColorPreview(name, value);
+        });
+        
+        // Validate hex input
+        if (input.type === 'text') {
+          input.addEventListener('blur', (e) => {
+            const value = e.target.value;
+            if (value && !this.isValidHex(value)) {
+              e.target.style.borderColor = '#ef4444';
+              setTimeout(() => {
+                e.target.style.borderColor = '';
+              }, 2000);
+            }
+          });
+        }
+      });
+    },
+    
+    updateColorPreview(colorField, value) {
+      if (this.isValidHex(value)) {
+        // Update CSS variable
+        const varName = `--portfolio-${colorField.replace('_', '-')}`;
+        document.documentElement.style.setProperty(varName, value);
+        
+        // Update swatches
+        const swatchClass = `.color-swatch-${colorField.replace('_color', '')}`;
+        const swatches = document.querySelectorAll(swatchClass);
+        swatches.forEach(swatch => {
+          swatch.style.backgroundColor = value;
+          // Add animation
+          swatch.style.transform = 'scale(1.05)';
+          setTimeout(() => {
+            swatch.style.transform = 'scale(1)';
+          }, 150);
+        });
+        
+        // Update template overlays
+        this.updateTemplateOverlays();
+      }
+    },
+    
+    updateTemplateOverlays() {
+      const primaryColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--portfolio-primary-color').trim();
+      const secondaryColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--portfolio-secondary-color').trim();
+      
+      if (primaryColor && secondaryColor) {
+        const overlays = document.querySelectorAll('.template-preview-card [style*="linear-gradient"]');
+        overlays.forEach(overlay => {
+          overlay.style.background = `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`;
+        });
+      }
+    },
+    
+    isValidHex(hex) {
+      return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(hex);
+    }
+  },
+
+  // Font preview hook
+  FontPreview: {
+    mounted() {
+      console.log("🎨 Font Preview mounted");
+      this.setupFontPreview();
+    },
+    
+    setupFontPreview() {
+      const fontButtons = this.el.querySelectorAll('button[phx-click="update_typography"]');
+      
+      fontButtons.forEach(button => {
+        button.addEventListener('mouseenter', (e) => {
+          const fontFamily = e.target.getAttribute('phx-value-font');
+          this.previewFont(fontFamily, true);
+        });
+        
+        button.addEventListener('mouseleave', (e) => {
+          this.resetFontPreview();
+        });
+        
+        button.addEventListener('click', (e) => {
+          const fontFamily = e.target.getAttribute('phx-value-font');
+          this.selectFont(fontFamily);
+        });
+      });
+    },
+    
+    previewFont(fontFamily, isHover = false) {
+      const fontCSS = this.getFontCSS(fontFamily);
+      const preview = document.querySelector('.portfolio-preview');
+      
+      if (preview) {
+        preview.style.fontFamily = fontCSS;
+        if (isHover) {
+          preview.style.opacity = '0.8';
+        }
+      }
+    },
+    
+    resetFontPreview() {
+      const preview = document.querySelector('.portfolio-preview');
+      if (preview) {
+        preview.style.opacity = '1';
+        // Reset to current font
+        const currentFont = document.documentElement.style.getPropertyValue('--portfolio-font-family');
+        if (currentFont) {
+          preview.style.fontFamily = currentFont;
+        }
+      }
+    },
+    
+    selectFont(fontFamily) {
+      // Update all buttons
+      const buttons = this.el.querySelectorAll('button[phx-click="update_typography"]');
+      buttons.forEach(btn => {
+        btn.classList.remove('border-blue-500', 'bg-blue-50');
+        btn.classList.add('border-gray-200');
+      });
+      
+      // Highlight selected
+      const selectedButton = this.el.querySelector(`button[phx-value-font="${fontFamily}"]`);
+      if (selectedButton) {
+        selectedButton.classList.remove('border-gray-200');
+        selectedButton.classList.add('border-blue-500', 'bg-blue-50');
+      }
+      
+      // Update CSS
+      const fontCSS = this.getFontCSS(fontFamily);
+      document.documentElement.style.setProperty('--portfolio-font-family', fontCSS);
+    },
+    
+    getFontCSS(fontFamily) {
+      const fontMap = {
+        'Inter': "'Inter', system-ui, sans-serif",
+        'Merriweather': "'Merriweather', Georgia, serif",
+        'JetBrains Mono': "'JetBrains Mono', 'Fira Code', monospace",
+        'Playfair Display': "'Playfair Display', Georgia, serif"
+      };
+      return fontMap[fontFamily] || "system-ui, sans-serif";
+    }
+  },
+
+  // Template Upload Hook
   TemplateUpload: {
     mounted() {
       console.log('🎨 TemplateUpload hook mounted');
@@ -605,7 +654,6 @@ let Hooks = {
     },
 
     setupEventListeners() {
-      // File input change
       if (this.fileInput) {
         this.fileInput.addEventListener('change', (e) => {
           if (e.target.files[0]) {
@@ -614,14 +662,12 @@ let Hooks = {
         });
       }
 
-      // Remove file button
       if (this.removeBtn) {
         this.removeBtn.addEventListener('click', () => {
           this.clearFile();
         });
       }
 
-      // Drag and drop events
       this.dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -649,42 +695,33 @@ let Hooks = {
     handleFileSelect(file) {
       console.log('📁 File selected:', file.name);
       
-      // Validate file type
       if (!file.name.toLowerCase().endsWith('.json')) {
         this.showError('Please select a JSON file');
         return;
       }
 
-      // Validate file size (max 1MB)
       if (file.size > 1024 * 1024) {
         this.showError('File too large. Maximum size is 1MB');
         return;
       }
 
-      // Read file content
       const reader = new FileReader();
       
       reader.onload = (e) => {
         try {
           const content = e.target.result;
-          
-          // Validate JSON
           const templateData = JSON.parse(content);
           
-          // Basic validation
           if (!templateData.template_name && !templateData.customization) {
             throw new Error('Invalid template format - missing required fields');
           }
 
-          // Show file preview
           this.showFilePreview(file.name);
           
-          // Set template data
           if (this.templateDataInput) {
             this.templateDataInput.value = content;
           }
           
-          // Enable import button
           if (this.importButton) {
             this.importButton.disabled = false;
           }
@@ -714,22 +751,18 @@ let Hooks = {
     },
 
     clearFile() {
-      // Clear file input
       if (this.fileInput) {
         this.fileInput.value = '';
       }
       
-      // Hide preview
       if (this.filePreview) {
         this.filePreview.classList.add('hidden');
       }
       
-      // Clear template data
       if (this.templateDataInput) {
         this.templateDataInput.value = '';
       }
       
-      // Disable import button
       if (this.importButton) {
         this.importButton.disabled = true;
       }
@@ -738,19 +771,16 @@ let Hooks = {
     },
 
     showError(message) {
-      // Remove existing error
       const existingError = this.el.querySelector('.upload-error');
       if (existingError) {
         existingError.remove();
       }
       
-      // Create new error message
       const errorDiv = document.createElement('div');
       errorDiv.className = 'upload-error mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600';
       errorDiv.textContent = message;
       this.dropZone.appendChild(errorDiv);
       
-      // Auto-hide after 5 seconds
       setTimeout(() => {
         if (errorDiv && errorDiv.parentNode) {
           errorDiv.remove();
@@ -763,7 +793,7 @@ let Hooks = {
     }
   },
 
-  // Also add this hook for template export downloads
+  // Template Export Hook
   TemplateExport: {
     mounted() {
       this.handleEvent("download_template", (data) => {
@@ -793,23 +823,19 @@ let Hooks = {
     }
   },
 
-  // FIXED: Copy to Clipboard Hook
+  // Copy to Clipboard Hook
   CopyToClipboard: {
     mounted() {
       this.handleEvent('copy_to_clipboard', (payload) => {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(payload.text).then(() => {
             console.log('✅ Text copied to clipboard:', payload.text);
-            
-            // Show success feedback
             this.pushEvent('clipboard_success', {});
-            
           }).catch(err => {
             console.error('❌ Failed to copy text:', err);
             this.fallbackCopyTextToClipboard(payload.text);
           });
         } else {
-          // Fallback for older browsers
           this.fallbackCopyTextToClipboard(payload.text);
         }
       });
@@ -818,8 +844,6 @@ let Hooks = {
     fallbackCopyTextToClipboard(text) {
       const textArea = document.createElement("textarea");
       textArea.value = text;
-      
-      // Avoid scrolling to bottom
       textArea.style.top = "0";
       textArea.style.left = "0";
       textArea.style.position = "fixed";
@@ -842,124 +866,7 @@ let Hooks = {
 
       document.body.removeChild(textArea);
     }
-  },
-
-  // Rest of your hooks remain the same...
-  SectionSortable: {
-    mounted() {
-      console.log('SectionSortable hook mounted', this.el);
-      this.initializeSortable();
-    },
-
-    updated() {
-      console.log('SectionSortable hook updated');
-      this.destroySortable();
-      this.initializeSortable();
-    },
-
-    destroyed() {
-      console.log('SectionSortable hook destroyed');
-      this.destroySortable();
-    },
-
-    initializeSortable() {
-      if (typeof Sortable === 'undefined') {
-        console.error('Sortable library not found. Please install SortableJS.');
-        return;
-      }
-
-      this.destroySortable();
-
-      this.sortable = new Sortable(this.el, {
-        animation: 200,
-        ghostClass: 'sortable-ghost',
-        chosenClass: 'sortable-chosen',
-        dragClass: 'sortable-drag',
-        handle: '.drag-handle',
-        forceFallback: true,
-        
-        onStart: (evt) => {
-          console.log('Drag started');
-          evt.item.classList.add('dragging');
-          document.body.classList.add('sections-reordering');
-        },
-
-        onEnd: (evt) => {
-          console.log('Drag ended');
-          evt.item.classList.remove('dragging');
-          document.body.classList.remove('sections-reordering');
-          
-          const sectionIds = Array.from(this.el.children)
-            .map(child => child.getAttribute('data-section-id'))
-            .filter(Boolean);
-
-          console.log('New section order:', sectionIds);
-          this.pushEvent('reorder_sections', { sections: sectionIds });
-        }
-      });
-
-      console.log('SectionSortable initialized successfully');
-    },
-
-    destroySortable() {
-      if (this.sortable) {
-        this.sortable.destroy();
-        this.sortable = null;
-      }
-    }
-  },
-
-  // Media Sortable Hook - for drag-and-drop media reordering
-  MediaSortable: {
-    mounted() {
-      console.log('MediaSortable hook mounted', this.el);
-      this.initializeSortable();
-    },
-
-    updated() {
-      this.destroySortable();
-      this.initializeSortable();
-    },
-
-    destroyed() {
-      this.destroySortable();
-    },
-
-    initializeSortable() {
-      if (typeof Sortable === 'undefined') return;
-
-      this.destroySortable();
-
-      this.sortable = new Sortable(this.el, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        chosenClass: 'sortable-chosen',
-        dragClass: 'sortable-drag',
-        
-        onEnd: (evt) => {
-          const sectionId = this.el.getAttribute('data-section-id');
-          const mediaIds = Array.from(this.el.children)
-            .map(child => child.getAttribute('data-media-id'))
-            .filter(Boolean);
-
-          console.log('Media reordered:', mediaIds);
-          this.pushEvent('reorder_media', { 
-            section_id: sectionId, 
-            media_order: mediaIds 
-          });
-        }
-      });
-    },
-
-    destroySortable() {
-      if (this.sortable) {
-        this.sortable.destroy();
-        this.sortable = null;
-      }
-    }
   }
-
-  // Add other hooks here if needed...
 };
 
 // Global hooks reference
@@ -998,7 +905,6 @@ let liveSocket = new LiveSocket("/live", Socket, {
 // Enhanced progress bar
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"});
 
-
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300));
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide());
 
@@ -1008,14 +914,39 @@ liveSocket.connect();
 // Expose for debugging
 window.liveSocket = liveSocket;
 
-console.log('✅ Frestyl Portfolio app.js loaded with FIXED PdfDownload hook');
+// Global template utilities
+window.PortfolioTemplates = {
+  // Refresh all previews
+  refreshPreviews() {
+    window.TemplateUtils?.updateAllColors();
+    window.TemplateUtils?.refreshPreview();
+  },
+  
+  // Apply template immediately (for testing)
+  applyTemplate(templateName) {
+    console.log(`🎨 Applying template: ${templateName}`);
+    // This would trigger the LiveView event
+    liveSocket.execJS(document.body, `
+      window.liveSocket.pushEvent('select_template', {template: '${templateName}'});
+    `);
+  },
+  
+  // Update colors immediately (for testing)
+  updateColors(colors) {
+    Object.entries(colors).forEach(([key, value]) => {
+      document.documentElement.style.setProperty(`--portfolio-${key.replace('_', '-')}`, value);
+    });
+    window.TemplateUtils?.updateAllColors();
+  }
+};
+
+console.log('✅ Frestyl Portfolio app.js loaded with FIXED drag & drop hooks');
 
 document.addEventListener('DOMContentLoaded', function() {
-  console.log("🚀 Portfolio app initialized");
+  console.log("🚀 Portfolio app initialized with SortableJS support");
   
   // Global click handlers for better responsiveness
   document.addEventListener('click', function(e) {
-    // Add visual feedback to buttons
     if (e.target.matches('button, .btn, [phx-click]')) {
       e.target.style.transform = 'scale(0.95)';
       setTimeout(() => {
@@ -1028,7 +959,6 @@ document.addEventListener('DOMContentLoaded', function() {
   let saveTimeout;
   document.addEventListener('input', function(e) {
     if (e.target.matches('[phx-change], [phx-blur]')) {
-      // Show saving indicator
       clearTimeout(saveTimeout);
       showSavingIndicator();
       

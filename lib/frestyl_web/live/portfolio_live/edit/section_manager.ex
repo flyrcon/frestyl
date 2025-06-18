@@ -1,8 +1,7 @@
-# lib/frestyl_web/live/portfolio_live/edit/section_manager.ex - PART 1 OF 3
+# lib/frestyl_web/live/portfolio_live/edit/section_manager.ex - CRITICAL FIXES
 defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
   @moduledoc """
-  Handles section-related operations for the portfolio editor.
-  COMPLETE VERSION - Part 1: Module setup and core section management
+  FIXED: Section management with proper content handling and no HTML markup issues
   """
 
   alias Frestyl.Portfolios
@@ -11,146 +10,582 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
   import Phoenix.LiveView, only: [put_flash: 3, push_event: 3]
 
   # ============================================================================
-  # FIXED SECTION REORDERING - Now handles drag-and-drop properly
+  # SECTION MOVEMENT HANDLERS - Move up/down arrows
   # ============================================================================
 
-  def handle_reorder_sections(socket, %{"sections" => section_ids}) when is_list(section_ids) do
+  def handle_move_section_up(socket, %{"id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
     sections = socket.assigns.sections
 
-    # Filter out any invalid section IDs and convert to integers
-    valid_section_ids = section_ids
-    |> Enum.map(&parse_section_id/1)
-    |> Enum.reject(&is_nil/1)
+    # Find current section and its index
+    current_index = Enum.find_index(sections, &(&1.id == section_id_int))
 
-    # Reorder sections based on the new order
-    reordered_sections = reorder_sections_by_ids(sections, valid_section_ids)
+    if current_index && current_index > 0 do
+      # Can move up
+      new_sections = move_section(sections, current_index, current_index - 1)
 
-    # Update positions in database
-    case update_section_positions_batch(reordered_sections) do
-      {:ok, updated_sections} ->
-        socket = socket
-        |> assign(:sections, updated_sections)
-        |> assign(:unsaved_changes, false)
-        |> put_flash(:info, "Sections reordered successfully")
-        |> push_event("sections-reordered", %{})
+      case update_section_positions_batch(new_sections) do
+        {:ok, updated_sections} ->
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> put_flash(:info, "Section moved up")
+          |> push_event("section-reordered", %{section_id: section_id_int, direction: "up"})
 
-        {:noreply, socket}
+          {:noreply, socket}
 
-      {:error, reason} ->
-        socket = socket
-        |> put_flash(:error, "Failed to reorder sections: #{reason}")
+        {:error, _reason} ->
+          socket = socket
+          |> put_flash(:error, "Failed to move section")
 
-        {:noreply, socket}
+          {:noreply, socket}
+      end
+    else
+      socket = socket
+      |> put_flash(:info, "Section is already at the top")
+
+      {:noreply, socket}
     end
   end
 
-  # Fallback for old format
-  def handle_reorder_sections(socket, %{"old" => old_index, "new" => new_index}) do
+  def handle_move_section_down(socket, %{"id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
     sections = socket.assigns.sections
 
-    # Convert string indices to integers
-    old_idx = String.to_integer(old_index)
-    new_idx = String.to_integer(new_index)
+    # Find current section and its index
+    current_index = Enum.find_index(sections, &(&1.id == section_id_int))
 
-    # Validate indices
-    if old_idx >= 0 and new_idx >= 0 and old_idx < length(sections) and new_idx < length(sections) do
-      # Reorder sections
-      reordered_sections = move_section(sections, old_idx, new_idx)
+    if current_index && current_index < length(sections) - 1 do
+      # Can move down
+      new_sections = move_section(sections, current_index, current_index + 1)
+
+      case update_section_positions_batch(new_sections) do
+        {:ok, updated_sections} ->
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> put_flash(:info, "Section moved down")
+          |> push_event("section-reordered", %{section_id: section_id_int, direction: "down"})
+
+          {:noreply, socket}
+
+        {:error, _reason} ->
+          socket = socket
+          |> put_flash(:error, "Failed to move section")
+
+          {:noreply, socket}
+      end
+    else
+      socket = socket
+      |> put_flash(:info, "Section is already at the bottom")
+
+      {:noreply, socket}
+    end
+  end
+
+  # ============================================================================
+  # ENHANCED DRAG & DROP REORDERING - Fixed for SortableJS
+  # ============================================================================
+
+  def handle_reorder_sections(socket, %{"sections" => section_ids}) when is_list(section_ids) do
+    IO.puts("🔄 Reordering sections with IDs: #{inspect(section_ids)}")
+
+    sections = socket.assigns.sections
+
+    # Parse section IDs to integers
+    parsed_ids = Enum.map(section_ids, fn id ->
+      case Integer.parse(to_string(id)) do
+        {int_id, ""} -> int_id
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+
+    IO.puts("🔄 Parsed section IDs: #{inspect(parsed_ids)}")
+
+    if length(parsed_ids) == length(sections) do
+      # Reorder sections based on the new order
+      reordered_sections = reorder_sections_by_ids(sections, parsed_ids)
+
+      IO.puts("🔄 Reordered sections: #{inspect(Enum.map(reordered_sections, & &1.id))}")
 
       # Update positions in database
       case update_section_positions_batch(reordered_sections) do
         {:ok, updated_sections} ->
           socket = socket
           |> assign(:sections, updated_sections)
-          |> assign(:unsaved_changes, false)
           |> put_flash(:info, "Sections reordered successfully")
-          |> push_event("sections-reordered", %{})
+          |> push_event("sections-reordered", %{count: length(updated_sections)})
 
           {:noreply, socket}
 
         {:error, reason} ->
+          IO.puts("❌ Failed to update section positions: #{inspect(reason)}")
+
           socket = socket
-          |> put_flash(:error, "Failed to reorder sections: #{reason}")
+          |> put_flash(:error, "Failed to save new section order")
 
           {:noreply, socket}
       end
     else
+      IO.puts("❌ Section count mismatch - expected: #{length(sections)}, got: #{length(parsed_ids)}")
+
       socket = socket
-      |> put_flash(:error, "Invalid section positions")
+      |> put_flash(:error, "Invalid section order received")
 
       {:noreply, socket}
     end
   end
+
+  def handle_reorder_sections(socket, params) do
+    IO.puts("❌ Invalid reorder_sections params: #{inspect(params)}")
+
+    socket = socket
+    |> put_flash(:error, "Invalid reorder request")
+
+    {:noreply, socket}
+  end
+
+  # ============================================================================
+  # BULK SECTION OPERATIONS
+  # ============================================================================
+
+  def handle_reorder_sections_alphabetically(socket, _params) do
+    sections = socket.assigns.sections
+
+    # Sort sections alphabetically by title
+    sorted_sections = Enum.sort_by(sections, & String.downcase(&1.title))
+
+    case update_section_positions_batch(sorted_sections) do
+      {:ok, updated_sections} ->
+        socket = socket
+        |> assign(:sections, updated_sections)
+        |> put_flash(:info, "Sections sorted alphabetically")
+
+        {:noreply, socket}
+
+      {:error, _reason} ->
+        socket = socket
+        |> put_flash(:error, "Failed to sort sections")
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_reset_section_positions(socket, _params) do
+    sections = socket.assigns.sections
+
+    # Reset to original creation order
+    reset_sections = Enum.sort_by(sections, & &1.inserted_at)
+
+    case update_section_positions_batch(reset_sections) do
+      {:ok, updated_sections} ->
+        socket = socket
+        |> assign(:sections, updated_sections)
+        |> put_flash(:info, "Section order reset to original")
+
+        {:noreply, socket}
+
+      {:error, _reason} ->
+        socket = socket
+        |> put_flash(:error, "Failed to reset section order")
+
+        {:noreply, socket}
+    end
+  end
+
+  # ============================================================================
+  # ENHANCED HELPER FUNCTIONS
+  # ============================================================================
+
+  defp reorder_sections_by_ids(sections, section_ids) do
+    # Create a map for quick lookup
+    sections_map = Map.new(sections, &{&1.id, &1})
+
+    # Reorder based on the provided IDs, then append any missing sections
+    ordered_sections = Enum.map(section_ids, &Map.get(sections_map, &1))
+                      |> Enum.reject(&is_nil/1)
+
+    missing_sections = sections -- ordered_sections
+    ordered_sections ++ missing_sections
+  end
+
+  defp move_section(sections, old_index, new_index) do
+    section = Enum.at(sections, old_index)
+    sections
+    |> List.delete_at(old_index)
+    |> List.insert_at(new_index, section)
+  end
+
+  defp update_section_positions_batch(sections) do
+    # Use a transaction to update all positions atomically
+    results = sections
+    |> Enum.with_index(1)
+    |> Enum.map(fn {section, index} ->
+      case Portfolios.update_section(section, %{position: index}) do
+        {:ok, updated_section} -> {:ok, updated_section}
+        {:error, changeset} -> {:error, changeset}
+      end
+    end)
+
+    # Check if all updates succeeded
+    {successes, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+
+    if length(errors) == 0 do
+      updated_sections = Enum.map(successes, fn {:ok, section} -> section end)
+      {:ok, updated_sections}
+    else
+      IO.puts("❌ Some section position updates failed: #{inspect(errors)}")
+      {:error, :batch_update_failed}
+    end
+  end
+
+  # ============================================================================
+  # MEDIA ATTACHMENT HANDLERS - Fixed for section media
+  # ============================================================================
+
+  def handle_attach_media_to_section(socket, %{"section_id" => section_id, "media_ids" => media_ids}) when is_list(media_ids) do
+    section_id_int = case Integer.parse(to_string(section_id)) do
+      {id, ""} -> id
+      _ -> nil
+    end
+
+    if section_id_int do
+      # Find the section
+      section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+      if section do
+        # Attach media files to section
+        results = Enum.map(media_ids, fn media_id ->
+          case Integer.parse(to_string(media_id)) do
+            {id, ""} ->
+              case Portfolios.attach_media_to_section(section_id_int, id) do
+                {:ok, _association} -> {:ok, id}
+                {:error, reason} -> {:error, {id, reason}}
+              end
+            _ ->
+              {:error, {media_id, :invalid_id}}
+          end
+        end)
+
+        {successes, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+
+        success_count = length(successes)
+        error_count = length(errors)
+
+        cond do
+          success_count > 0 && error_count == 0 ->
+            # Refresh section media
+            socket = refresh_section_media(socket, to_string(section_id_int))
+
+            socket = socket
+            |> put_flash(:info, "#{success_count} media file(s) attached to section")
+            |> push_event("media-attached", %{section_id: section_id_int, count: success_count})
+
+            {:noreply, socket}
+
+          success_count > 0 && error_count > 0 ->
+            socket = refresh_section_media(socket, to_string(section_id_int))
+
+            socket = socket
+            |> put_flash(:info, "#{success_count} media file(s) attached, #{error_count} failed")
+
+            {:noreply, socket}
+
+          true ->
+            socket = socket
+            |> put_flash(:error, "Failed to attach media files to section")
+
+            {:noreply, socket}
+        end
+      else
+        socket = socket
+        |> put_flash(:error, "Section not found")
+
+        {:noreply, socket}
+      end
+    else
+      socket = socket
+      |> put_flash(:error, "Invalid section ID")
+
+      {:noreply, socket}
+    end
+  end
+
+  # Helper function to refresh section media after changes
+  defp refresh_section_media(socket, section_id) do
+    section_id_int = String.to_integer(section_id)
+
+    try do
+      section_media = Portfolios.list_section_media(section_id_int)
+      assign(socket, :editing_section_media, section_media)
+    rescue
+      _ -> socket
+    end
+  end
+
 
   # ============================================================================
   # BASIC SECTION MANAGEMENT
   # ============================================================================
 
-  def handle_add_section(socket, %{"type" => type}) do
-    sections = socket.assigns.sections
-    portfolio = socket.assigns.portfolio
-    next_position = length(sections) + 1
-
-    # Create section with default content based on type
-    default_content = get_default_content_for_type(type)
-
-    section_attrs = %{
-      title: get_default_title_for_type(type),
-      section_type: String.to_existing_atom(type),
-      position: next_position,
-      visible: true,
-      content: default_content,
-      portfolio_id: portfolio.id
+  defp get_default_content_for_section_type("intro") do
+    %{
+      "headline" => "Hello, I'm [Your Name]",
+      "summary" => "A brief introduction about yourself and your professional journey.",
+      "location" => "",
+      "website" => "",
+      "social_links" => %{
+        "linkedin" => "",
+        "github" => "",
+        "twitter" => ""
+      }
     }
+  end
 
-    case Portfolios.create_section(section_attrs) do
-      {:ok, section} ->
-        updated_sections = sections ++ [section]
+  defp get_default_content_for_section_type("experience") do
+    %{
+      "jobs" => []
+    }
+  end
 
-        socket = socket
-        |> assign(:sections, updated_sections)
-        |> assign(:unsaved_changes, false)
-        |> assign(:show_add_section_dropdown, false)
-        |> put_flash(:info, "Section '#{section.title}' added successfully")
-        |> push_event("section-added", %{section_id: section.id, position: section.position})
+  defp get_default_content_for_section_type("education") do
+    %{
+      "education" => []
+    }
+  end
 
-        {:noreply, socket}
+  defp get_default_content_for_section_type("skills") do
+    %{
+      "skills" => [],
+      "skill_categories" => %{}
+    }
+  end
 
-      {:error, changeset} ->
-        socket = socket
-        |> put_flash(:error, "Failed to add section: #{format_errors(changeset)}")
+  defp get_default_content_for_section_type("projects") do
+    %{
+      "projects" => []
+    }
+  end
 
-        {:noreply, socket}
+  defp get_default_content_for_section_type("featured_project") do
+    %{
+      "title" => "",
+      "description" => "",
+      "technologies" => [],
+      "url" => "",
+      "github_url" => ""
+    }
+  end
+
+  defp get_default_content_for_section_type("case_study") do
+    %{
+      "title" => "",
+      "client" => "",
+      "timeline" => "",
+      "challenge" => "",
+      "solution" => "",
+      "results" => ""
+    }
+  end
+
+  defp get_default_content_for_section_type("contact") do
+    %{
+      "email" => "",
+      "phone" => "",
+      "location" => "",
+      "website" => "",
+      "social_links" => %{}
+    }
+  end
+
+  defp get_default_content_for_section_type(_), do: %{}
+
+  defp format_changeset_errors(changeset) do
+    changeset.errors
+    |> Enum.map(fn {field, {message, _}} -> "#{field}: #{message}" end)
+    |> Enum.join(", ")
+  end
+
+  @impl true
+  def handle_event("add_education_entry", params, socket) do
+    handle_add_education_entry(socket, params)
+  end
+
+  @impl true
+  def handle_event("remove_education_entry", params, socket) do
+    handle_remove_education_entry(socket, params)
+  end
+
+  @impl true
+  def handle_event("update_education_field", params, socket) do
+    handle_update_education_field(socket, params)
+  end
+
+  def handle_add_education_entry(socket, %{"section-id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
+    editing_section = socket.assigns.editing_section
+
+    if editing_section && editing_section.id == section_id_int do
+      current_content = editing_section.content || %{}
+      current_education = Map.get(current_content, "education", [])
+
+      new_education = %{
+        "degree" => "",
+        "field" => "",
+        "institution" => "",
+        "location" => "",
+        "start_date" => "",
+        "end_date" => "",
+        "status" => "Completed",
+        "gpa" => "",
+        "description" => "",
+        "relevant_coursework" => [],
+        "activities" => []
+      }
+
+      updated_education = current_education ++ [new_education]
+      updated_content = Map.put(current_content, "education", updated_education)
+
+      case Portfolios.update_section(editing_section, %{content: updated_content}) do
+        {:ok, updated_section} ->
+          updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:editing_section, updated_section)
+          |> put_flash(:info, "New education entry added")
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          socket = socket
+          |> put_flash(:error, "Failed to add education entry: #{format_errors(changeset)}")
+
+          {:noreply, socket}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
     end
   end
 
-  def handle_edit_section(socket, %{"id" => section_id}) do
+  def handle_remove_education_entry(socket, %{"section-id" => section_id, "index" => index}) do
     section_id_int = String.to_integer(section_id)
-    sections = socket.assigns.sections
-    section = Enum.find(sections, &(&1.id == section_id_int))
+    entry_index = String.to_integer(index)
+    editing_section = socket.assigns.editing_section
 
-    if section do
-      # Get section media if it exists
-      section_media = try do
-        Portfolios.list_section_media(section_id_int)
-      rescue
-        _ -> []
+    if editing_section && editing_section.id == section_id_int do
+      current_content = editing_section.content || %{}
+      current_education = Map.get(current_content, "education", [])
+
+      if entry_index >= 0 and entry_index < length(current_education) do
+        updated_education = List.delete_at(current_education, entry_index)
+        updated_content = Map.put(current_content, "education", updated_education)
+
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> put_flash(:info, "Education entry removed")
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            socket = socket
+            |> put_flash(:error, "Failed to remove education entry: #{format_errors(changeset)}")
+
+            {:noreply, socket}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Invalid entry index")}
       end
-
-      socket = socket
-      |> assign(:section_edit_id, to_string(section_id_int))
-      |> assign(:editing_section, section)
-      |> assign(:editing_section_media, section_media)
-      |> assign(:section_edit_tab, "content")
-      |> assign(:active_tab, :sections)
-      |> push_event("section-edit-started", %{section_id: section_id_int})
-
-      {:noreply, socket}
     else
-      socket = socket
-      |> put_flash(:error, "Section not found")
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
 
-      {:noreply, socket}
+  def handle_update_education_field(socket, %{"field" => field, "value" => value, "section-id" => section_id, "index" => index}) do
+    section_id_int = String.to_integer(section_id)
+    entry_index = String.to_integer(index)
+    editing_section = socket.assigns.editing_section
+
+    if editing_section && editing_section.id == section_id_int do
+      current_content = editing_section.content || %{}
+      current_education = Map.get(current_content, "education", [])
+
+      if entry_index >= 0 and entry_index < length(current_education) do
+        updated_education = List.update_at(current_education, entry_index, fn entry ->
+          Map.put(entry, field, value)
+        end)
+        updated_content = Map.put(current_content, "education", updated_education)
+
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> assign(:unsaved_changes, false)
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            socket = socket
+            |> put_flash(:error, "Failed to update education field: #{format_errors(changeset)}")
+
+            {:noreply, socket}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Invalid entry index")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  def handle_reorder_education_entries(socket, %{"section-id" => section_id, "old_index" => old_index, "new_index" => new_index}) do
+    section_id_int = String.to_integer(section_id)
+    old_idx = String.to_integer(old_index)
+    new_idx = String.to_integer(new_index)
+    editing_section = socket.assigns.editing_section
+
+    if editing_section && editing_section.id == section_id_int do
+      current_content = editing_section.content || %{}
+      current_education = Map.get(current_content, "education", [])
+
+      if old_idx >= 0 and new_idx >= 0 and old_idx < length(current_education) and new_idx < length(current_education) do
+        # Reorder the education array
+        edu_to_move = Enum.at(current_education, old_idx)
+        updated_education = current_education
+        |> List.delete_at(old_idx)
+        |> List.insert_at(new_idx, edu_to_move)
+
+        updated_content = Map.put(current_content, "education", updated_education)
+
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> put_flash(:info, "Education entries reordered")
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            socket = socket
+            |> put_flash(:error, "Failed to reorder education entries: #{format_errors(changeset)}")
+
+            {:noreply, socket}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Invalid indices for reordering")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
     end
   end
 
@@ -239,39 +674,62 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
     end
   end
 
-  def handle_save_section(socket, params) do
-    editing_section = socket.assigns.editing_section
+    def handle_edit_section(socket, %{"id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
+    sections = socket.assigns.sections
+    section = Enum.find(sections, &(&1.id == section_id_int))
 
-    if editing_section do
-      case Portfolios.update_section(editing_section, editing_section) do
-        {:ok, updated_section} ->
-          updated_sections = Enum.map(socket.assigns.sections, fn s ->
-            if s.id == editing_section.id, do: updated_section, else: s
-          end)
-
-          socket = socket
-          |> assign(:sections, updated_sections)
-          |> assign(:section_edit_id, nil)
-          |> assign(:editing_section, nil)
-          |> assign(:editing_section_media, [])
-          |> assign(:section_edit_tab, nil)
-          |> assign(:unsaved_changes, false)
-          |> put_flash(:info, "Section saved successfully")
-          |> push_event("section-saved", %{section_id: updated_section.id})
-
-          {:noreply, socket}
-
-        {:error, changeset} ->
-          socket = socket
-          |> put_flash(:error, "Failed to save section: #{format_errors(changeset)}")
-
-          {:noreply, socket}
+    if section do
+      # Get section media if it exists
+      section_media = try do
+        Portfolios.list_section_media(section_id_int)
+      rescue
+        _ -> []
       end
-    else
+
       socket = socket
-      |> put_flash(:error, "No section being edited")
+      |> assign(:section_edit_id, to_string(section_id_int))
+      |> assign(:editing_section, section)
+      |> assign(:editing_section_media, section_media)
+      |> assign(:section_edit_tab, "content")
+      |> assign(:active_tab, :sections)
+      |> push_event("section-edit-started", %{section_id: section_id_int})
 
       {:noreply, socket}
+    else
+      socket = socket
+      |> put_flash(:error, "Section not found")
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_save_section(socket, %{"id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
+
+    # Get the latest section data from database to ensure we have current data
+    case Portfolios.get_section!(section_id_int) do
+      nil ->
+        socket = socket
+        |> put_flash(:error, "Section not found")
+
+        {:noreply, socket}
+
+      current_section ->
+        # Update the sections list with the current data
+        updated_sections = Enum.map(socket.assigns.sections, fn s ->
+          if s.id == section_id_int, do: current_section, else: s
+        end)
+
+        socket = socket
+        |> assign(:sections, updated_sections)
+        |> assign(:editing_section, current_section)  # CRITICAL: Keep editing with latest data
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Section saved successfully!")
+        |> push_event("section-saved", %{section_id: section_id_int})
+
+        # DON'T close the edit mode - stay in the same tab
+        {:noreply, socket}
     end
   end
 
@@ -324,19 +782,62 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
     end
   end
 
-  # lib/frestyl_web/live/portfolio_live/edit/section_manager.ex - PART 2 OF 3
-# Continue from Part 1...
-
   def handle_update_section_content(socket, %{"field" => field, "value" => value, "section-id" => section_id}) do
     section_id_int = String.to_integer(section_id)
-    editing_section = socket.assigns.editing_section
     sections = socket.assigns.sections
 
-    if editing_section && editing_section.id == section_id_int do
-      current_content = editing_section.content || %{}
-      updated_content = Map.put(current_content, field, value)
+    # Find the section to update from the sections list
+    section_to_update = Enum.find(sections, &(&1.id == section_id_int))
 
-      case Portfolios.update_section(editing_section, %{content: updated_content}) do
+    if section_to_update do
+      current_content = section_to_update.content || %{}
+
+      # CRITICAL: Handle different field types and clean HTML
+      updated_content = case field do
+        "technologies_string" ->
+          # Convert comma-separated string to list
+          tech_list = value
+          |> strip_html()  # Remove any HTML tags
+          |> String.split(",")
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          Map.put(current_content, "technologies", tech_list)
+
+        "main_content" ->
+          # Clean HTML and map to content field
+          cleaned_value = strip_html(value)
+          Map.put(current_content, "content", cleaned_value)
+
+        "summary" ->
+          # Clean HTML from summary
+          cleaned_value = strip_html(value)
+          Map.put(current_content, "summary", cleaned_value)
+
+        "headline" ->
+          # Clean HTML from headline
+          cleaned_value = strip_html(value)
+          Map.put(current_content, "headline", cleaned_value)
+
+        "description" ->
+          # Clean HTML from descriptions
+          cleaned_value = strip_html(value)
+          Map.put(current_content, "description", cleaned_value)
+
+        # Handle experience job entries
+        "job_" <> job_field ->
+          update_job_field(current_content, job_field, strip_html(value))
+
+        # Handle education entries
+        "edu_" <> edu_field ->
+          update_education_field(current_content, edu_field, strip_html(value))
+
+        _ ->
+          # Regular field updates with HTML cleaning
+          cleaned_value = if is_binary(value), do: strip_html(value), else: value
+          Map.put(current_content, field, cleaned_value)
+      end
+
+      case Portfolios.update_section(section_to_update, %{content: updated_content}) do
         {:ok, db_updated_section} ->
           updated_sections = Enum.map(sections, fn s ->
             if s.id == section_id_int, do: db_updated_section, else: s
@@ -344,19 +845,19 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
 
           socket = socket
           |> assign(:sections, updated_sections)
-          |> assign(:editing_section, db_updated_section)
+          |> maybe_update_editing_section(updated_sections, section_id_int)
           |> assign(:unsaved_changes, false)
           |> push_event("section-content-updated", %{
             section_id: section_id_int,
             field: field,
-            value: value
+            value: cleaned_value_for_event(value)
           })
 
           {:noreply, socket}
 
         {:error, changeset} ->
           socket = socket
-          |> put_flash(:error, "Failed to add education entry: #{format_errors(changeset)}")
+          |> put_flash(:error, "Failed to update section content: #{format_errors(changeset)}")
 
           {:noreply, socket}
       end
@@ -479,22 +980,27 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
     end
   end
 
-  def handle_reorder_experience_entries(socket, %{"section-id" => section_id, "old_index" => old_index, "new_index" => new_index}) do
+  def handle_reorder_experience_entry(socket, %{"section-id" => section_id, "index" => index, "direction" => direction}) do
     section_id_int = String.to_integer(section_id)
-    old_idx = String.to_integer(old_index)
-    new_idx = String.to_integer(new_index)
+    index_int = String.to_integer(index)
     editing_section = socket.assigns.editing_section
 
     if editing_section && editing_section.id == section_id_int do
       current_content = editing_section.content || %{}
       current_jobs = Map.get(current_content, "jobs", [])
 
-      if old_idx >= 0 and new_idx >= 0 and old_idx < length(current_jobs) and new_idx < length(current_jobs) do
+      new_index = case direction do
+        "up" -> max(0, index_int - 1)
+        "down" -> min(length(current_jobs) - 1, index_int + 1)
+        _ -> index_int
+      end
+
+      if new_index != index_int and new_index >= 0 and new_index < length(current_jobs) do
         # Reorder the jobs array
-        job_to_move = Enum.at(current_jobs, old_idx)
+        job_to_move = Enum.at(current_jobs, index_int)
         updated_jobs = current_jobs
-        |> List.delete_at(old_idx)
-        |> List.insert_at(new_idx, job_to_move)
+        |> List.delete_at(index_int)
+        |> List.insert_at(new_index, job_to_move)
 
         updated_content = Map.put(current_content, "jobs", updated_jobs)
 
@@ -516,7 +1022,92 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
             {:noreply, socket}
         end
       else
-        {:noreply, put_flash(socket, :error, "Invalid indices for reordering")}
+        {:noreply, socket}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+    def handle_update_experience_field(socket, %{"field" => field, "section-id" => section_id, "index" => index} = params) do
+    section_id_int = String.to_integer(section_id)
+    index_int = String.to_integer(index)
+    editing_section = socket.assigns.editing_section
+
+    if editing_section && editing_section.id == section_id_int do
+      current_content = editing_section.content || %{}
+      current_jobs = Map.get(current_content, "jobs", [])
+
+      if index_int >= 0 and index_int < length(current_jobs) do
+        job = Enum.at(current_jobs, index_int)
+
+        # Get the value and handle special field types
+        updated_job = case field do
+          "current" ->
+            # Toggle current status
+            current_value = Map.get(job, "current", false)
+            new_job = Map.put(job, "current", !current_value)
+            # If marking as current, clear end_date
+            if !current_value do
+              Map.put(new_job, "end_date", "")
+            else
+              new_job
+            end
+
+          "responsibilities_text" ->
+            # Convert text to list
+            text = Map.get(params, "value", "")
+            responsibilities = text
+            |> String.split("\n")
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+            Map.put(job, "responsibilities", responsibilities)
+
+          "achievements_text" ->
+            # Convert text to list
+            text = Map.get(params, "value", "")
+            achievements = text
+            |> String.split("\n")
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+            Map.put(job, "achievements", achievements)
+
+          "skills_text" ->
+            # Convert comma-separated text to list
+            text = Map.get(params, "value", "")
+            skills = text
+            |> String.split(",")
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+            Map.put(job, "skills", skills)
+
+          _ ->
+            # Regular field update
+            value = Map.get(params, "value", "")
+            Map.put(job, field, value)
+        end
+
+        updated_jobs = List.replace_at(current_jobs, index_int, updated_job)
+        updated_content = Map.put(current_content, "jobs", updated_jobs)
+
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            socket = socket
+            |> put_flash(:error, "Failed to update experience field: #{format_errors(changeset)}")
+
+            {:noreply, socket}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Invalid experience entry index")}
       end
     else
       {:noreply, put_flash(socket, :error, "Section not found")}
@@ -598,7 +1189,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
   # ENHANCED CONTENT MANAGEMENT - Support for multiple entries
   # ============================================================================
 
-  def handle_add_experience_entry(socket, %{"section-id" => section_id}) do
+  def add_experience_entry(socket, %{"section-id" => section_id}) do
     section_id_int = String.to_integer(section_id)
     editing_section = socket.assigns.editing_section
 
@@ -630,13 +1221,13 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
           socket = socket
           |> assign(:sections, updated_sections)
           |> assign(:editing_section, updated_section)
-          |> put_flash(:info, "New job entry added")
+          |> put_flash(:info, "New work experience entry added")
 
           {:noreply, socket}
 
         {:error, changeset} ->
           socket = socket
-          |> put_flash(:error, "Failed to add job entry: #{format_errors(changeset)}")
+          |> put_flash(:error, "Failed to add experience entry: #{format_errors(changeset)}")
 
           {:noreply, socket}
       end
@@ -647,15 +1238,15 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
 
   def handle_remove_experience_entry(socket, %{"section-id" => section_id, "index" => index}) do
     section_id_int = String.to_integer(section_id)
-    entry_index = String.to_integer(index)
+    index_int = String.to_integer(index)
     editing_section = socket.assigns.editing_section
 
     if editing_section && editing_section.id == section_id_int do
       current_content = editing_section.content || %{}
       current_jobs = Map.get(current_content, "jobs", [])
 
-      if entry_index >= 0 and entry_index < length(current_jobs) do
-        updated_jobs = List.delete_at(current_jobs, entry_index)
+      if index_int >= 0 and index_int < length(current_jobs) do
+        updated_jobs = List.delete_at(current_jobs, index_int)
         updated_content = Map.put(current_content, "jobs", updated_jobs)
 
         case Portfolios.update_section(editing_section, %{content: updated_content}) do
@@ -665,18 +1256,18 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
             socket = socket
             |> assign(:sections, updated_sections)
             |> assign(:editing_section, updated_section)
-            |> put_flash(:info, "Job entry removed")
+            |> put_flash(:info, "Work experience entry removed")
 
             {:noreply, socket}
 
           {:error, changeset} ->
             socket = socket
-            |> put_flash(:error, "Failed to remove job entry: #{format_errors(changeset)}")
+            |> put_flash(:error, "Failed to remove experience entry: #{format_errors(changeset)}")
 
             {:noreply, socket}
         end
       else
-        {:noreply, put_flash(socket, :error, "Invalid entry index")}
+        {:noreply, put_flash(socket, :error, "Invalid experience entry index")}
       end
     else
       {:noreply, put_flash(socket, :error, "Section not found")}
@@ -932,66 +1523,6 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
     end
   end
 
-  # Add these missing functions to your section_manager.ex file
-  # Insert them with your other handle_* functions
-
-  # Section content updating
-  def handle_update_section_content(socket, %{"field" => field, "value" => value, "section-id" => section_id}) do
-    section_id_int = String.to_integer(section_id)
-    sections = socket.assigns.sections
-
-    # Find the section to update from the sections list
-    section_to_update = Enum.find(sections, &(&1.id == section_id_int))
-
-    if section_to_update do
-      current_content = section_to_update.content || %{}
-
-      # Handle different field types
-      updated_content = case field do
-        "technologies_string" ->
-          # Convert comma-separated string to list
-          tech_list = value
-          |> String.split(",")
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
-          Map.put(current_content, "technologies", tech_list)
-
-        "main_content" ->
-          Map.put(current_content, "content", value)
-
-        _ ->
-          Map.put(current_content, field, value)
-      end
-
-      case Portfolios.update_section(section_to_update, %{content: updated_content}) do
-        {:ok, db_updated_section} ->
-          updated_sections = Enum.map(sections, fn s ->
-            if s.id == section_id_int, do: db_updated_section, else: s
-          end)
-
-          socket = socket
-          |> assign(:sections, updated_sections)
-          |> maybe_update_editing_section(updated_sections, section_id_int)
-          |> assign(:unsaved_changes, false)
-          |> push_event("section-content-updated", %{
-            section_id: section_id_int,
-            field: field,
-            value: value
-          })
-
-          {:noreply, socket}
-
-        {:error, changeset} ->
-          socket = socket
-          |> put_flash(:error, "Failed to update section content: #{format_errors(changeset)}")
-
-          {:noreply, socket}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "Section not found")}
-    end
-  end
-
   # Helper function to update editing_section if it exists
   defp maybe_update_editing_section(socket, updated_sections, section_id) do
     case socket.assigns[:editing_section] do
@@ -1038,6 +1569,257 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
       end
     else
       {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+    @impl true
+  def handle_event("toggle_section_visibility", %{"id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    sections = socket.assigns.sections
+
+    case Enum.find(sections, &(&1.id == section_id_int)) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Section not found")}
+
+      section ->
+        case Portfolios.update_section(section, %{visible: !section.visible}) do
+          {:ok, updated_section} ->
+            updated_sections = Enum.map(sections, fn s ->
+              if s.id == section_id_int, do: updated_section, else: s
+            end)
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> put_flash(:info, "Section visibility updated")
+            |> push_event("section-visibility-toggled", %{
+              section_id: section_id_int,
+              visible: updated_section.visible
+            })
+
+            {:noreply, socket}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section visibility")}
+        end
+    end
+  end
+
+  def handle_show_media_library(socket, %{"section-id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
+    portfolio_id = socket.assigns.portfolio.id
+
+    # Get available media for this portfolio
+    available_media = Portfolios.list_unattached_portfolio_media(portfolio_id)
+
+    socket = socket
+    |> assign(:show_media_library, true)
+    |> assign(:media_library_section_id, section_id_int)
+    |> assign(:available_media, available_media)
+
+    {:noreply, socket}
+  end
+
+  def handle_hide_media_library(socket, _params) do
+    socket = socket
+    |> assign(:show_media_library, false)
+    |> assign(:media_library_section_id, nil)
+    |> assign(:available_media, [])
+
+    {:noreply, socket}
+  end
+
+  def handle_attach_media_to_section(socket, %{"section_id" => section_id, "media_id" => media_id}) do
+    section_id_int = String.to_integer(section_id)
+    media_id_int = String.to_integer(media_id)
+
+    case Portfolios.attach_media_to_section(section_id_int, media_id_int) do
+      {:ok, _updated_media} ->
+        # Refresh section media and available media
+        section_media = Portfolios.list_section_media(section_id_int)
+        available_media = Portfolios.list_unattached_portfolio_media(socket.assigns.portfolio.id)
+
+        socket = socket
+        |> assign(:editing_section_media, section_media)
+        |> assign(:available_media, available_media)
+        |> put_flash(:info, "Media attached to section successfully")
+        |> push_event("media-attached", %{section_id: section_id_int, media_id: media_id_int})
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        socket = socket
+        |> put_flash(:error, "Failed to attach media: #{inspect(reason)}")
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_detach_media_from_section(socket, %{"media_id" => media_id}) do
+    media_id_int = String.to_integer(media_id)
+
+    case Portfolios.detach_media_from_section(media_id_int) do
+      {:ok, _updated_media} ->
+        # Refresh section media if we're editing a section
+        section_media = if socket.assigns[:editing_section] do
+          Portfolios.list_section_media(socket.assigns.editing_section.id)
+        else
+          []
+        end
+
+        available_media = Portfolios.list_unattached_portfolio_media(socket.assigns.portfolio.id)
+
+        socket = socket
+        |> assign(:editing_section_media, section_media)
+        |> assign(:available_media, available_media)
+        |> put_flash(:info, "Media detached from section")
+        |> push_event("media-detached", %{media_id: media_id_int})
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        socket = socket
+        |> put_flash(:error, "Failed to detach media: #{inspect(reason)}")
+
+        {:noreply, socket}
+    end
+  end
+
+  # Add media upload handler for sections:
+  def handle_upload_media_to_section(socket, %{"section_id" => section_id}, uploaded_files) do
+    section_id_int = String.to_integer(section_id)
+    portfolio_id = socket.assigns.portfolio.id
+
+    # Process uploaded files
+    results = Enum.map(uploaded_files, fn file_info ->
+      media_attrs = %{
+        portfolio_id: portfolio_id,
+        section_id: section_id_int,
+        title: file_info.filename,
+        description: "",
+        media_type: determine_media_type(file_info.filename),
+        file_path: file_info.path,
+        file_size: file_info.size,
+        mime_type: file_info.content_type,
+        position: 0
+      }
+
+      case Portfolios.create_media(media_attrs) do
+        {:ok, media} -> {:ok, media}
+        {:error, changeset} -> {:error, changeset}
+      end
+    end)
+
+    {successes, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
+
+    if length(successes) > 0 do
+      # Refresh section media
+      section_media = Portfolios.list_section_media(section_id_int)
+
+      socket = socket
+      |> assign(:editing_section_media, section_media)
+      |> put_flash(:info, "#{length(successes)} file(s) uploaded successfully")
+      |> push_event("media-uploaded", %{section_id: section_id_int, count: length(successes)})
+
+      {:noreply, socket}
+    else
+      socket = socket
+      |> put_flash(:error, "Failed to upload files")
+
+      {:noreply, socket}
+    end
+  end
+
+  # Add helper to determine media type from filename:
+  defp determine_media_type(filename) do
+    extension = Path.extname(filename) |> String.downcase()
+
+    case extension do
+      ext when ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"] -> "image"
+      ext when ext in [".mp4", ".webm", ".mov", ".avi"] -> "video"
+      ext when ext in [".mp3", ".wav", ".ogg"] -> "audio"
+      ext when ext in [".pdf", ".doc", ".docx", ".txt"] -> "document"
+      _ -> "document"
+    end
+  end
+
+
+  def handle_show_media_library(socket, %{"section-id" => section_id}) do
+    section_id_int = String.to_integer(section_id)
+    portfolio_id = socket.assigns.portfolio.id
+
+    # Get available media for this portfolio
+    available_media = Portfolios.list_unattached_portfolio_media(portfolio_id)
+
+    socket = socket
+    |> assign(:show_media_library, true)
+    |> assign(:media_library_section_id, section_id_int)
+    |> assign(:available_media, available_media)
+
+    {:noreply, socket}
+  end
+
+  def handle_hide_media_library(socket, _params) do
+    socket = socket
+    |> assign(:show_media_library, false)
+    |> assign(:media_library_section_id, nil)
+    |> assign(:available_media, [])
+
+    {:noreply, socket}
+  end
+
+  def handle_attach_media_to_section(socket, %{"section_id" => section_id, "media_id" => media_id}) do
+    section_id_int = String.to_integer(section_id)
+    media_id_int = String.to_integer(media_id)
+
+    case Portfolios.attach_media_to_section(section_id_int, media_id_int) do
+      {:ok, _updated_media} ->
+        # Refresh section media and available media
+        section_media = Portfolios.list_section_media(section_id_int)
+        available_media = Portfolios.list_unattached_portfolio_media(socket.assigns.portfolio.id)
+
+        socket = socket
+        |> assign(:editing_section_media, section_media)
+        |> assign(:available_media, available_media)
+        |> put_flash(:info, "Media attached to section successfully")
+        |> push_event("media-attached", %{section_id: section_id_int, media_id: media_id_int})
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        socket = socket
+        |> put_flash(:error, "Failed to attach media: #{inspect(reason)}")
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_detach_media_from_section(socket, %{"media_id" => media_id}) do
+    media_id_int = String.to_integer(media_id)
+
+    case Portfolios.detach_media_from_section(media_id_int) do
+      {:ok, _updated_media} ->
+        # Refresh section media if we're editing a section
+        section_media = if socket.assigns[:editing_section] do
+          Portfolios.list_section_media(socket.assigns.editing_section.id)
+        else
+          []
+        end
+
+        available_media = Portfolios.list_unattached_portfolio_media(socket.assigns.portfolio.id)
+
+        socket = socket
+        |> assign(:editing_section_media, section_media)
+        |> assign(:available_media, available_media)
+        |> put_flash(:info, "Media detached from section")
+        |> push_event("media-detached", %{media_id: media_id_int})
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        socket = socket
+        |> put_flash(:error, "Failed to detach media: #{inspect(reason)}")
+
+        {:noreply, socket}
     end
   end
 
@@ -1416,6 +2198,44 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
 
   # Helper Functions
 
+    # Update specific job fields in experience content
+  defp update_job_field(content, job_field, value) do
+    [job_index_str, field_name] = String.split(job_field, "_", parts: 2)
+    job_index = String.to_integer(job_index_str)
+
+    jobs = Map.get(content, "jobs", [])
+
+    if job_index < length(jobs) do
+      updated_jobs = List.update_at(jobs, job_index, fn job ->
+        Map.put(job, field_name, value)
+      end)
+      Map.put(content, "jobs", updated_jobs)
+    else
+      content
+    end
+  rescue
+    _ -> content  # If parsing fails, return original content
+  end
+
+  # Update specific education fields
+  defp update_education_field(content, edu_field, value) do
+    [edu_index_str, field_name] = String.split(edu_field, "_", parts: 2)
+    edu_index = String.to_integer(edu_index_str)
+
+    education = Map.get(content, "education", [])
+
+    if edu_index < length(education) do
+      updated_education = List.update_at(education, edu_index, fn edu ->
+        Map.put(edu, field_name, value)
+      end)
+      Map.put(content, "education", updated_education)
+    else
+      content
+    end
+  rescue
+    _ -> content  # If parsing fails, return original content
+  end
+
   defp update_skill_property(socket, category, index, property, value) do
     section = socket.assigns.editing_section
     current_content = section.content || %{}
@@ -1455,6 +2275,31 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
         end
     end
   end
+
+  defp strip_html(content) when is_binary(content) do
+    content
+    |> String.replace(~r/<[^>]*>/, "")  # Remove HTML tags
+    |> String.replace(~r/&nbsp;/, " ")  # Replace &nbsp; with spaces
+    |> String.replace(~r/&amp;/, "&")   # Replace &amp; with &
+    |> String.replace(~r/&lt;/, "<")    # Replace &lt; with <
+    |> String.replace(~r/&gt;/, ">")    # Replace &gt; with >
+    |> String.replace(~r/&quot;/, "\"") # Replace &quot; with "
+    |> String.replace(~r/&#39;/, "'")   # Replace &#39; with '
+    |> String.trim()
+    |> String.replace(~r/\s+/, " ")     # Normalize whitespace
+  end
+  defp strip_html(content), do: content
+
+  # Clean value for JavaScript events (remove sensitive data)
+  defp cleaned_value_for_event(value) when is_binary(value) do
+    if String.length(value) > 100 do
+      String.slice(value, 0, 100) <> "..."
+    else
+      value
+    end
+  end
+  defp cleaned_value_for_event(value), do: value
+
 
   defp parse_bulk_skills_text(text) do
     text
@@ -1630,33 +2475,6 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
 
   defp apply_technical_template(content, _), do: content
 
-  # Basic section editing handlers
-  def handle_edit_section(socket, %{"id" => section_id}) do
-    section_id_int = String.to_integer(section_id)
-    sections = socket.assigns.sections
-
-    section_to_edit = Enum.find(sections, &(&1.id == section_id_int))
-
-    if section_to_edit do
-      socket = socket
-      |> assign(:editing_section, section_to_edit)
-      |> assign(:section_edit_id, section_id_int)
-      |> assign(:section_edit_tab, "content")
-
-      {:noreply, socket}
-    else
-      {:noreply, put_flash(socket, :error, "Section not found")}
-    end
-  end
-
-  def handle_cancel_edit_section(socket, _params) do
-    socket = socket
-    |> assign(:editing_section, nil)
-    |> assign(:section_edit_id, nil)
-
-    {:noreply, socket}
-  end
-
   # Helper function to format errors
   defp format_errors(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
@@ -1679,47 +2497,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
   defp parse_section_id(section_id) when is_integer(section_id), do: section_id
   defp parse_section_id(_), do: nil
 
-  defp reorder_sections_by_ids(sections, section_ids) do
-    # Create a map for quick lookup
-    sections_map = Map.new(sections, &{&1.id, &1})
 
-    # Reorder based on the provided IDs, then append any missing sections
-    ordered_sections = Enum.map(section_ids, &Map.get(sections_map, &1))
-                      |> Enum.reject(&is_nil/1)
-
-    missing_sections = sections -- ordered_sections
-    ordered_sections ++ missing_sections
-  end
-
-  defp move_section(sections, old_index, new_index) do
-    section = Enum.at(sections, old_index)
-    sections
-    |> List.delete_at(old_index)
-    |> List.insert_at(new_index, section)
-  end
-
-  defp update_section_positions_batch(sections) do
-    # Use a transaction to update all positions atomically
-    results = sections
-    |> Enum.with_index(1)
-    |> Enum.map(fn {section, index} ->
-      case Portfolios.update_section(section, %{position: index}) do
-        {:ok, updated_section} -> {:ok, updated_section}
-        {:error, changeset} -> {:error, changeset}
-      end
-    end)
-
-    # Check if all updates succeeded
-    {successes, errors} = Enum.split_with(results, &match?({:ok, _}, &1))
-
-    if length(errors) == 0 do
-      updated_sections = Enum.map(successes, fn {:ok, section} -> section end)
-      {:ok, updated_sections}
-    else
-      error_details = Enum.map(errors, fn {:error, changeset} -> format_errors(changeset) end)
-      {:error, "Failed to update positions: #{Enum.join(error_details, ", ")}"}
-    end
-  end
 
   defp reindex_sections(sections) do
     sections

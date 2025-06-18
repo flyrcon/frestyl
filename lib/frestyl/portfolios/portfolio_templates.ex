@@ -1,8 +1,9 @@
-# lib/frestyl/portfolios/portfolio_templates.ex - COMPLETELY FIXED VERSION
+# lib/frestyl/portfolios/portfolio_templates.ex - ENHANCED & FIXED
 
 defmodule Frestyl.Portfolios.PortfolioTemplates do
   @moduledoc """
-  Portfolio template configurations with professional dashboard-style layouts
+  Enhanced portfolio template system with professional dashboard-style layouts,
+  comprehensive styling options, and real-time customization support.
   """
 
   def available_templates do
@@ -11,49 +12,57 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         name: "Executive",
         description: "Professional corporate dashboard with metrics and KPIs",
         preview_color: "from-slate-600 to-slate-700",
-        features: ["Executive summary", "Key metrics", "Leadership roles", "Strategic initiatives"]
+        features: ["Executive summary", "Key metrics", "Leadership roles", "Strategic initiatives"],
+        icon: "👔"
       }},
       {"developer", %{
         name: "Developer",
         description: "Technical dashboard with code portfolio and project metrics",
         preview_color: "from-gray-700 to-gray-800",
-        features: ["Code repositories", "Technical stack", "Project demos", "Performance metrics"]
+        features: ["Code repositories", "Technical stack", "Project demos", "Performance metrics"],
+        icon: "💻"
       }},
       {"designer", %{
         name: "Designer",
         description: "Creative dashboard with visual portfolio and case studies",
         preview_color: "from-indigo-500 to-purple-600",
-        features: ["Visual portfolio", "Design process", "Case studies", "Client projects"]
+        features: ["Visual portfolio", "Design process", "Case studies", "Client projects"],
+        icon: "🎨"
       }},
       {"consultant", %{
         name: "Consultant",
         description: "Professional services dashboard with client results and expertise",
         preview_color: "from-blue-600 to-blue-700",
-        features: ["Client results", "Industry expertise", "Case studies", "Success metrics"]
+        features: ["Client results", "Industry expertise", "Case studies", "Success metrics"],
+        icon: "📊"
       }},
       {"academic", %{
         name: "Academic",
         description: "Research-focused dashboard with publications and academic achievements",
         preview_color: "from-emerald-600 to-teal-600",
-        features: ["Publications", "Research projects", "Academic roles", "Citations"]
+        features: ["Publications", "Research projects", "Academic roles", "Citations"],
+        icon: "🎓"
       }},
       {"corporate", %{
         name: "Corporate",
         description: "Traditional business dashboard with structured layout",
         preview_color: "from-gray-500 to-gray-600",
-        features: ["Professional timeline", "Company roles", "Industry expertise", "Achievements"]
+        features: ["Professional timeline", "Company roles", "Industry expertise", "Achievements"],
+        icon: "🏢"
       }},
       {"creative", %{
         name: "Creative",
         description: "Bold artistic dashboard with visual storytelling",
         preview_color: "from-purple-600 to-pink-600",
-        features: ["Visual portfolio", "Creative projects", "Artistic journey", "Inspiration"]
+        features: ["Visual portfolio", "Creative projects", "Artistic journey", "Inspiration"],
+        icon: "✨"
       }},
       {"minimalist", %{
         name: "Minimalist",
         description: "Clean, typography-focused dashboard with minimal distractions",
         preview_color: "from-gray-300 to-gray-400",
-        features: ["Clean layout", "Typography focus", "Essential content", "Distraction-free"]
+        features: ["Clean layout", "Typography focus", "Essential content", "Distraction-free"],
+        icon: "⚪"
       }}
     ]
   end
@@ -63,10 +72,10 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
       "executive" -> executive_config()
       "developer" -> developer_config()
       "designer" -> designer_config()
-      "consultant" -> consultant_config()  # FIXED: Now properly maps
+      "consultant" -> consultant_config()
       "academic" -> academic_config()
-      "corporate" -> corporate_config()   # NEW
-      "creative" -> creative_config()     # NEW
+      "corporate" -> corporate_config()
+      "creative" -> creative_config()
       "minimalist" -> minimalist_config()
       _ -> executive_config()
     end
@@ -94,6 +103,11 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         card_layout: "grid",
         metrics_display: true,
         chart_style: "professional"
+      },
+      css_overrides: %{
+        card_shadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+        border_radius: "12px",
+        header_bg: "rgba(248, 250, 252, 0.95)"
       }
     }
   end
@@ -120,6 +134,11 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         card_layout: "masonry",
         metrics_display: true,
         chart_style: "technical"
+      },
+      css_overrides: %{
+        card_shadow: "0 2px 4px rgba(0, 0, 0, 0.2)",
+        border_radius: "8px",
+        header_bg: "rgba(31, 41, 55, 0.95)"
       }
     }
   end
@@ -146,11 +165,16 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         card_layout: "featured",
         metrics_display: false,
         chart_style: "visual"
+      },
+      css_overrides: %{
+        card_shadow: "0 8px 25px rgba(0, 0, 0, 0.15)",
+        border_radius: "16px",
+        header_bg: "rgba(255, 255, 255, 0.1)"
       }
     }
   end
 
-  # CONSULTANT: Professional Services Dashboard (FIXED)
+  # CONSULTANT: Professional Services Dashboard
   defp consultant_config do
     %{
       layout: "dashboard",
@@ -172,6 +196,11 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         card_layout: "case-study",
         metrics_display: true,
         chart_style: "business"
+      },
+      css_overrides: %{
+        card_shadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+        border_radius: "10px",
+        header_bg: "rgba(227, 242, 253, 0.95)"
       }
     }
   end
@@ -198,11 +227,16 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         card_layout: "publication",
         metrics_display: true,
         chart_style: "academic"
+      },
+      css_overrides: %{
+        card_shadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+        border_radius: "8px",
+        header_bg: "rgba(240, 249, 255, 0.95)"
       }
     }
   end
 
-  # NEW: CORPORATE: Traditional Business Dashboard
+  # CORPORATE: Traditional Business Dashboard
   defp corporate_config do
     %{
       layout: "dashboard",
@@ -224,11 +258,16 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         card_layout: "structured",
         metrics_display: true,
         chart_style: "corporate"
+      },
+      css_overrides: %{
+        card_shadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+        border_radius: "6px",
+        header_bg: "rgba(249, 250, 251, 0.95)"
       }
     }
   end
 
-  # NEW: CREATIVE: Artistic Dashboard
+  # CREATIVE: Artistic Dashboard
   defp creative_config do
     %{
       layout: "dashboard",
@@ -250,6 +289,11 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         card_layout: "gallery",
         metrics_display: false,
         chart_style: "artistic"
+      },
+      css_overrides: %{
+        card_shadow: "0 10px 30px rgba(0, 0, 0, 0.2)",
+        border_radius: "20px",
+        header_bg: "rgba(255, 255, 255, 0.15)"
       }
     }
   end
@@ -276,11 +320,16 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         card_layout: "simple",
         metrics_display: false,
         chart_style: "minimal"
+      },
+      css_overrides: %{
+        card_shadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+        border_radius: "4px",
+        header_bg: "rgba(255, 255, 255, 0.95)"
       }
     }
   end
 
-  # Helper functions for styling
+  # ENHANCED: Helper functions for comprehensive styling
 
   def get_dashboard_layout_classes(config) do
     base = "grid gap-6 auto-rows-min"
@@ -300,6 +349,10 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
 
   def get_card_classes(config) do
     base = "bg-white rounded-xl shadow-lg border transition-all duration-300 hover:shadow-xl"
+    overrides = config[:css_overrides] || %{}
+
+    shadow = overrides[:card_shadow] || "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+    radius = overrides[:border_radius] || "12px"
 
     case config.card_style do
       "corporate" -> "#{base} border-slate-200 hover:border-slate-300"
@@ -316,6 +369,8 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
 
   def get_header_classes(config) do
     base = "border-b bg-white/95 backdrop-blur-sm sticky top-0 z-40"
+    overrides = config[:css_overrides] || %{}
+    header_bg = overrides[:header_bg] || "rgba(255, 255, 255, 0.95)"
 
     case config.dashboard_config.header_type do
       "executive" -> "#{base} border-slate-200 shadow-sm"
@@ -385,6 +440,82 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         chart_type: "none",
         layout: "simple"
       }
+    end
+  end
+
+  # ENHANCED: CSS Generation for real-time updates
+  def generate_template_css(template_config, user_overrides \\ %{}) do
+    # Merge template config with user customizations
+    primary_color = user_overrides["primary_color"] || template_config[:primary_color] || "#3b82f6"
+    secondary_color = user_overrides["secondary_color"] || template_config[:secondary_color] || "#64748b"
+    accent_color = user_overrides["accent_color"] || template_config[:accent_color] || "#f59e0b"
+
+    # Typography
+    typography = user_overrides["typography"] || template_config[:typography] || %{}
+    font_family = typography["font_family"] || typography[:font_family] || "Inter"
+
+    # Background
+    background = user_overrides["background"] || template_config[:background] || "default"
+
+    # CSS overrides from template
+    css_overrides = template_config[:css_overrides] || %{}
+
+    font_family_css = get_font_family_css(font_family)
+    background_css = get_background_css_for_template(background, template_config)
+
+    """
+    :root {
+      --portfolio-primary-color: #{primary_color};
+      --portfolio-secondary-color: #{secondary_color};
+      --portfolio-accent-color: #{accent_color};
+      --portfolio-font-family: #{font_family_css};
+      --portfolio-card-shadow: #{css_overrides[:card_shadow] || "0 4px 6px -1px rgba(0, 0, 0, 0.1)"};
+      --portfolio-border-radius: #{css_overrides[:border_radius] || "12px"};
+      --portfolio-header-bg: #{css_overrides[:header_bg] || "rgba(255, 255, 255, 0.95)"};
+    }
+
+    /* Apply template-specific styling */
+    .portfolio-card {
+      box-shadow: var(--portfolio-card-shadow) !important;
+      border-radius: var(--portfolio-border-radius) !important;
+    }
+
+    .portfolio-header {
+      background: var(--portfolio-header-bg) !important;
+      backdrop-filter: blur(8px) !important;
+    }
+
+    #{background_css}
+    """
+  end
+
+  defp get_font_family_css(font_family) do
+    case font_family do
+      "Inter" -> "'Inter', system-ui, sans-serif"
+      "Merriweather" -> "'Merriweather', Georgia, serif"
+      "JetBrains Mono" -> "'JetBrains Mono', 'Fira Code', monospace"
+      "Playfair Display" -> "'Playfair Display', Georgia, serif"
+      _ -> "system-ui, sans-serif"
+    end
+  end
+
+  defp get_background_css_for_template(background, template_config) do
+    case background do
+      "gradient-ocean" ->
+        ".portfolio-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }"
+      "gradient-sunset" ->
+        ".portfolio-bg { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important; }"
+      "dark-mode" ->
+        ".portfolio-bg { background: #1a1a1a !important; color: #ffffff !important; }"
+      _ ->
+        case template_config[:background] do
+          "corporate-clean" -> ".portfolio-bg { background: #f8fafc !important; }"
+          "tech-dark" -> ".portfolio-bg { background: #1f2937 !important; color: #f9fafb !important; }"
+          "creative-gradient" -> ".portfolio-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }"
+          "consulting-professional" -> ".portfolio-bg { background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%) !important; }"
+          "academic-clean" -> ".portfolio-bg { background: linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%) !important; }"
+          _ -> ".portfolio-bg { background: #ffffff !important; }"
+        end
     end
   end
 end

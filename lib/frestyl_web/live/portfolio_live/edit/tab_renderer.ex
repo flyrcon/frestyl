@@ -1,14 +1,8 @@
 defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
-  @moduledoc """
-  Phase 4: Enhanced UI rendering with integrated media management,
-  drag-and-drop interfaces, and seamless section-media workflows.
-  """
-
   use Phoenix.Component
   import FrestylWeb.CoreComponents
   alias FrestylWeb.PortfolioLive.Edit.HelperFunctions
   alias FrestylWeb.PortfolioLive.VideoIntroComponent
-  import Phoenix.LiveView, only: [assign: 2, assign: 3, put_flash: 3]
 
   # ============================================================================
   # MAIN LAYOUT RENDERER
@@ -149,6 +143,306 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     """
   end
 
+  def render_settings_tab(assigns) do
+    ~H"""
+    <div class="p-8">
+      <div class="max-w-4xl mx-auto">
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-gray-900">Portfolio Settings</h2>
+            <p class="text-gray-600 mt-1">Configure how your portfolio appears to visitors</p>
+          </div>
+        </div>
+
+        <!-- Display Options -->
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-8">
+          <div class="p-6 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Public Display Options</h3>
+            <p class="text-sm text-gray-600">Control what information is shown on your public portfolio</p>
+          </div>
+
+          <div class="p-6 space-y-6">
+            <!-- Header Stats Section -->
+            <div>
+              <h4 class="text-md font-medium text-gray-900 mb-4">Header Statistics</h4>
+              <div class="space-y-4">
+
+                <!-- Show Sections Count -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h5 class="font-medium text-gray-900">Sections Count</h5>
+                    <p class="text-sm text-gray-600">Display the number of portfolio sections</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                          checked={get_display_setting(@portfolio, "show_sections_count", true)}
+                          phx-click="update_display_setting"
+                          phx-value-setting="show_sections_count"
+                          class="sr-only peer" />
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                <!-- Show Projects Count -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h5 class="font-medium text-gray-900">Projects Count</h5>
+                    <p class="text-sm text-gray-600">Display the total number of projects</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                          checked={get_display_setting(@portfolio, "show_projects_count", true)}
+                          phx-click="update_display_setting"
+                          phx-value-setting="show_projects_count"
+                          class="sr-only peer" />
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                <!-- Show Skills Count -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h5 class="font-medium text-gray-900">Skills Count</h5>
+                    <p class="text-sm text-gray-600">Display the total number of skills</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                          checked={get_display_setting(@portfolio, "show_skills_count", true)}
+                          phx-click="update_display_setting"
+                          phx-value-setting="show_skills_count"
+                          class="sr-only peer" />
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                <!-- Show Experience Years -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h5 class="font-medium text-gray-900">Years of Experience</h5>
+                    <p class="text-sm text-gray-600">Display calculated years of experience</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                          checked={get_display_setting(@portfolio, "show_experience_years", true)}
+                          phx-click="update_display_setting"
+                          phx-value-setting="show_experience_years"
+                          class="sr-only peer" />
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                <!-- Show Portfolio Status -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h5 class="font-medium text-gray-900">Portfolio Status</h5>
+                    <p class="text-sm text-gray-600">Display active/available status</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                          checked={get_display_setting(@portfolio, "show_status", true)}
+                          phx-click="update_display_setting"
+                          phx-value-setting="show_status"
+                          class="sr-only peer" />
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Additional Display Options -->
+            <div class="pt-6 border-t border-gray-200">
+              <h4 class="text-md font-medium text-gray-900 mb-4">Additional Options</h4>
+              <div class="space-y-4">
+
+                <!-- Show Last Updated -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h5 class="font-medium text-gray-900">Last Updated Date</h5>
+                    <p class="text-sm text-gray-600">Show when the portfolio was last modified</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                          checked={get_display_setting(@portfolio, "show_last_updated", false)}
+                          phx-click="update_display_setting"
+                          phx-value-setting="show_last_updated"
+                          class="sr-only peer" />
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                <!-- Show Contact CTA -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h5 class="font-medium text-gray-900">Contact Call-to-Action</h5>
+                    <p class="text-sm text-gray-600">Display a "Get in Touch" button in header</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                          checked={get_display_setting(@portfolio, "show_contact_cta", true)}
+                          phx-click="update_display_setting"
+                          phx-value-setting="show_contact_cta"
+                          class="sr-only peer" />
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                <!-- Show Social Links -->
+                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div>
+                    <h5 class="font-medium text-gray-900">Social Media Links</h5>
+                    <p class="text-sm text-gray-600">Display social media icons in header</p>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                          checked={get_display_setting(@portfolio, "show_social_links", true)}
+                          phx-click="update_display_setting"
+                          phx-value-setting="show_social_links"
+                          class="sr-only peer" />
+                    <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Custom Metrics -->
+            <div class="pt-6 border-t border-gray-200">
+              <h4 class="text-md font-medium text-gray-900 mb-4">Custom Metrics</h4>
+              <p class="text-sm text-gray-600 mb-4">Add custom statistics to display in your portfolio header</p>
+
+              <div class="space-y-4">
+                <%= for {metric, index} <- Enum.with_index(get_custom_metrics(@portfolio)) do %>
+                  <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex-1 grid grid-cols-3 gap-4">
+                      <input type="text"
+                            placeholder="Metric label (e.g., 'Clients')"
+                            value={Map.get(metric, "label", "")}
+                            phx-blur="update_custom_metric"
+                            phx-value-index={index}
+                            phx-value-field="label"
+                            class="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <input type="text"
+                            placeholder="Value (e.g., '50+')"
+                            value={Map.get(metric, "value", "")}
+                            phx-blur="update_custom_metric"
+                            phx-value-index={index}
+                            phx-value-field="value"
+                            class="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <input type="text"
+                            placeholder="Description (e.g., 'Happy Clients')"
+                            value={Map.get(metric, "description", "")}
+                            phx-blur="update_custom_metric"
+                            phx-value-index={index}
+                            phx-value-field="description"
+                            class="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    </div>
+                    <button phx-click="remove_custom_metric" phx-value-index={index}
+                            class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </button>
+                  </div>
+                <% end %>
+
+                <button phx-click="add_custom_metric"
+                        class="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors">
+                  <svg class="w-5 h-5 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                  </svg>
+                  Add Custom Metric
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview Section -->
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div class="p-6 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Header Preview</h3>
+            <p class="text-sm text-gray-600">Preview how your portfolio header will appear to visitors</p>
+          </div>
+
+          <div class="p-6">
+            <!-- Mock portfolio header preview -->
+            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
+              <div class="grid lg:grid-cols-3 gap-8 items-center">
+                <div class="lg:col-span-2">
+                  <h1 class="text-3xl font-bold text-gray-900 mb-2">
+                    <%= @portfolio.title %>
+                  </h1>
+                  <p class="text-lg text-gray-600 mb-4">
+                    <%= @portfolio.description || "Portfolio description" %>
+                  </p>
+
+                  <!-- Preview Metrics -->
+                  <div class="grid grid-cols-3 gap-4">
+                    <%= if get_display_setting(@portfolio, "show_sections_count", true) do %>
+                      <div class="text-center">
+                        <div class="text-2xl font-bold text-blue-600">5</div>
+                        <div class="text-xs text-gray-600">Sections</div>
+                      </div>
+                    <% end %>
+
+                    <%= if get_display_setting(@portfolio, "show_projects_count", true) do %>
+                      <div class="text-center">
+                        <div class="text-2xl font-bold text-purple-600">12</div>
+                        <div class="text-xs text-gray-600">Projects</div>
+                      </div>
+                    <% end %>
+
+                    <%= if get_display_setting(@portfolio, "show_experience_years", true) do %>
+                      <div class="text-center">
+                        <div class="text-2xl font-bold text-green-600">3+</div>
+                        <div class="text-xs text-gray-600">Years Exp</div>
+                      </div>
+                    <% end %>
+
+                    <!-- Custom metrics preview -->
+                    <%= for metric <- get_custom_metrics(@portfolio) do %>
+                      <%= if Map.get(metric, "label", "") != "" and Map.get(metric, "value", "") != "" do %>
+                        <div class="text-center">
+                          <div class="text-2xl font-bold text-indigo-600"><%= Map.get(metric, "value") %></div>
+                          <div class="text-xs text-gray-600"><%= Map.get(metric, "description", Map.get(metric, "label")) %></div>
+                        </div>
+                      <% end %>
+                    <% end %>
+                  </div>
+                </div>
+
+                <div class="lg:justify-self-end">
+                  <div class="text-center">
+                    <div class="w-32 h-32 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span class="text-3xl font-bold text-white">
+                        <%= String.first(@portfolio.title) %>
+                      </span>
+                    </div>
+
+                    <%= if get_display_setting(@portfolio, "show_contact_cta", true) do %>
+                      <button class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">
+                        Get in Touch
+                      </button>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp get_display_setting(portfolio, setting, default \\ false) do
+    display_settings = get_in(portfolio.customization, ["display_settings"]) || %{}
+    Map.get(display_settings, setting, default)
+  end
+
+  defp get_custom_metrics(portfolio) do
+    get_in(portfolio.customization, ["display_settings", "custom_metrics"]) || []
+  end
+
   # ============================================================================
   # SECTION EDITOR WITH INTEGRATED MEDIA MANAGEMENT
   # ============================================================================
@@ -234,6 +528,23 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     """
   end
 
+  defp get_section_emoji(section_type) do
+    case section_type do
+      :intro -> "👋"
+      :experience -> "💼"
+      :education -> "🎓"
+      :skills -> "⚡"
+      :projects -> "🛠️"
+      :featured_project -> "🚀"
+      :case_study -> "📊"
+      :achievements -> "🏆"
+      :media_showcase -> "🖼️"
+      :testimonial -> "💬"
+      :contact -> "📧"
+      _ -> "📄"
+    end
+  end
+
   # ============================================================================
   # SECTION CONTENT EDITOR
   # ============================================================================
@@ -245,17 +556,17 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
       <div>
         <label class="block text-sm font-semibold text-gray-800 mb-3">Section Title</label>
         <input type="text"
-               value={@editing_section.title}
-               phx-blur="update_section_field"
-               phx-value-field="title"
-               phx-value-section-id={@editing_section.id}
-               class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-semibold" />
+              value={@editing_section.title}
+              phx-blur="update_section_field"
+              phx-value-field="title"
+              phx-value-section-id={@editing_section.id}
+              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-semibold" />
       </div>
 
       <!-- Dynamic Content Fields Based on Section Type -->
       <%= render_section_type_fields(assigns) %>
 
-      <!-- Section Description/Content -->
+      <!-- FIXED: Main Content Area with HTML stripping -->
       <div>
         <label class="block text-sm font-semibold text-gray-800 mb-3">Content</label>
         <textarea phx-blur="update_section_content"
@@ -263,7 +574,10 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
                   phx-value-section-id={@editing_section.id}
                   rows="8"
                   placeholder="Add content for this section..."
-                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= HelperFunctions.get_section_main_content(@editing_section) %></textarea>
+                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= get_clean_section_main_content(@editing_section) %></textarea>
+        <p class="text-xs text-gray-500 mt-2">
+          Content will be automatically cleaned of HTML formatting to ensure clean display.
+        </p>
       </div>
 
       <!-- Quick Actions -->
@@ -291,6 +605,12 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     """
   end
 
+  defp get_clean_section_main_content(section) do
+    # Use the helper function but ensure it's clean
+    content = HelperFunctions.get_section_main_content(section)
+    HelperFunctions.strip_html_from_content(content)
+  end
+
   # ============================================================================
   # DYNAMIC SECTION TYPE FIELDS
   # ============================================================================
@@ -310,6 +630,10 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
         <%= render_experience_fields(assigns) %>
       <% "experience" -> %>
         <%= render_experience_fields(assigns) %>
+      <% :education -> %>
+        <%= render_education_fields(assigns) %>
+      <% "education" -> %>
+        <%= render_education_fields(assigns) %>
       <% :skills -> %>
         <%= render_skills_fields(assigns) %>
       <% "skills" -> %>
@@ -659,6 +983,473 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     """
   end
 
+  defp render_section_item(assigns, section) do
+    assigns = assign(assigns, :section, section)
+
+    ~H"""
+    <div data-section-id={@section.id}
+        class="section-item group bg-white rounded-2xl border-2 border-gray-200 hover:border-blue-300 transition-all duration-300 p-6 shadow-sm hover:shadow-md">
+
+      <!-- Section Header -->
+      <div class="flex items-start justify-between mb-4">
+        <div class="flex items-start space-x-4 flex-1">
+          <!-- FIXED: Drag Handle with proper classes for sorting -->
+          <div class="section-drag-handle drag-handle mt-1 p-2 text-gray-400 hover:text-gray-600 cursor-move opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-gray-100 rounded-lg"
+              title="Drag to reorder">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+            </svg>
+          </div>
+
+          <!-- Section Info -->
+          <div class="flex-1">
+            <div class="flex items-center space-x-3 mb-2">
+              <h3 class="text-lg font-bold text-gray-900"><%= @section.title %></h3>
+              <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                <%= format_section_type_name(@section.section_type) %>
+              </span>
+            </div>
+
+            <!-- Section Preview -->
+            <div class="text-sm text-gray-600">
+              <p><%= get_section_preview_text(@section) %></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIXED: Section Actions with consistent icons -->
+        <div class="flex items-center space-x-2">
+          <!-- Move Up/Down Arrows -->
+          <div class="flex flex-col space-y-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button type="button"
+                    phx-click="move_section_up"
+                    phx-value-id={@section.id}
+                    title="Move up"
+                    class="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all duration-200">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+              </svg>
+            </button>
+            <button type="button"
+                    phx-click="move_section_down"
+                    phx-value-id={@section.id}
+                    title="Move down"
+                    class="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all duration-200">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Secondary Actions -->
+          <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <!-- Visibility Toggle -->
+            <button type="button"
+                    phx-click="toggle_section_visibility"
+                    phx-value-id={@section.id}
+                    title={if @section.visible, do: "Hide section", else: "Show section"}
+                    class={[
+                      "p-2 rounded-lg transition-all duration-200",
+                      if(@section.visible,
+                        do: "text-green-600 hover:bg-green-50",
+                        else: "text-gray-400 hover:bg-gray-50")
+                    ]}>
+              <%= if @section.visible do %>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+              <% else %>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
+                </svg>
+              <% end %>
+            </button>
+
+            <!-- Duplicate -->
+            <button type="button"
+                    phx-click="duplicate_section"
+                    phx-value-id={@section.id}
+                    title="Duplicate section"
+                    class="p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-700 rounded-lg transition-all duration-200">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- FIXED: Primary Actions with proper edit/delete icons -->
+          <div class="flex items-center space-x-3">
+            <button type="button"
+                    phx-click="edit_section"
+                    phx-value-id={section.id}
+                    class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 shadow-sm hover:shadow-md">
+              <!-- Edit Icon -->
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+              Edit
+            </button>
+
+            <button type="button"
+                    phx-click="delete_section"
+                    phx-value-id={section.id}
+                    data-confirm="Are you sure you want to delete this section? This action cannot be undone."
+                    class="inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200 shadow-sm hover:shadow-md">
+              <!-- Delete Icon -->
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section Status Indicators -->
+      <div class="flex items-center justify-between text-xs text-gray-500 pt-3 border-t border-gray-100">
+        <div class="flex items-center space-x-4">
+          <span class="flex items-center space-x-1">
+            <div class={[
+              "w-2 h-2 rounded-full",
+              if(@section.visible, do: "bg-green-500", else: "bg-gray-400")
+            ]}></div>
+            <span><%= if @section.visible, do: "Visible", else: "Hidden" %></span>
+          </span>
+          <span>Position: <%= @section.position || 0 %></span>
+          <span>Updated: <%= format_relative_time(@section.updated_at) %></span>
+        </div>
+
+        <div class="text-gray-400">
+          <span>Drag the handle to reorder</span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # FIXED: Replace the sections list renderer to use the new section item renderer
+  defp render_sections_list(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h2 class="text-2xl font-bold text-gray-900">Portfolio Sections</h2>
+        <p class="text-gray-600 mt-1">Organize and manage your portfolio content</p>
+      </div>
+
+      <!-- FIXED: Add Section Dropdown -->
+      <div class="relative" phx-click-away="close_add_section_dropdown">
+        <button type="button"
+                phx-click="toggle_add_section_dropdown"
+                class="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 flex items-center space-x-2 shadow-md hover:shadow-lg">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          <span>Add Section</span>
+          <svg class={[
+            "w-4 h-4 transition-transform duration-200",
+            if(assigns[:show_add_section_dropdown], do: "rotate-180", else: "rotate-0")
+          ]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+
+        <!-- FIXED: All section types dropdown -->
+        <%= if assigns[:show_add_section_dropdown] do %>
+          <div class="absolute right-0 mt-3 w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
+            <div class="p-6">
+              <h3 class="font-bold text-gray-900 mb-4 text-lg">Choose Section Type</h3>
+              <div class="grid grid-cols-2 gap-3">
+                <%= for {section_type, config} <- [
+                  {"intro", %{name: "Introduction", icon: "👋", desc: "Personal intro & contact"}},
+                  {"experience", %{name: "Experience", icon: "💼", desc: "Work history & roles"}},
+                  {"education", %{name: "Education", icon: "🎓", desc: "Schools & certifications"}},
+                  {"skills", %{name: "Skills", icon: "⚡", desc: "Technical & soft skills"}},
+                  {"featured_project", %{name: "Featured Project", icon: "🚀", desc: "Highlight key project"}},
+                  {"case_study", %{name: "Case Study", icon: "📊", desc: "Detailed project analysis"}},
+                  {"media_showcase", %{name: "Media Gallery", icon: "🖼️", desc: "Images & videos"}},
+                  {"projects", %{name: "Projects", icon: "🛠️", desc: "Project portfolio"}},
+                  {"achievements", %{name: "Achievements", icon: "🏆", desc: "Awards & recognition"}},
+                  {"testimonial", %{name: "Testimonials", icon: "💬", desc: "Client feedback"}},
+                  {"code_showcase", %{name: "Code Showcase", icon: "💻", desc: "Code samples"}},
+                  {"contact", %{name: "Contact", icon: "📧", desc: "Contact information"}},
+                  {"custom", %{name: "Custom", icon: "🎨", desc: "Flexible content"}}
+                ] do %>
+                  <button type="button"
+                          phx-click="add_section"
+                          phx-value-type={section_type}
+                          class="text-left p-4 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
+                    <div class="flex items-start space-x-3">
+                      <span class="text-2xl flex-shrink-0"><%= config.icon %></span>
+                      <div class="min-w-0 flex-1">
+                        <h4 class="font-semibold text-gray-900 text-sm group-hover:text-blue-700 transition-colors"><%= config.name %></h4>
+                        <p class="text-xs text-gray-500 mt-1 leading-tight"><%= config.desc %></p>
+                      </div>
+                    </div>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <%= if length(@sections || []) > 0 do %>
+      <!-- FIXED: Sections Grid with drag and drop -->
+      <div id="sections-list"
+           phx-hook="SortableSections"
+           class="space-y-6">
+        <%= for section <- Enum.sort_by(@sections, & &1.position) do %>
+          <div data-section-id={section.id}
+               class="section-item group bg-white rounded-2xl border-2 border-gray-200 hover:border-blue-300 transition-all duration-300 p-6 shadow-sm hover:shadow-md">
+
+            <!-- Section Header -->
+            <div class="flex items-start justify-between mb-4">
+              <div class="flex items-start space-x-4 flex-1">
+                <!-- FIXED: Drag Handle -->
+                <div class="section-drag-handle mt-2 p-2 text-gray-400 hover:text-gray-600 cursor-move opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-gray-100 rounded-lg"
+                     title="Drag to reorder">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+                  </svg>
+                </div>
+
+                <!-- Section Info -->
+                <div class="flex items-start space-x-4 flex-1">
+                  <div class="w-14 h-14 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:from-blue-200 group-hover:to-purple-200 transition-all duration-200">
+                    <span class="text-2xl"><%= HelperFunctions.get_section_emoji(section.section_type) %></span>
+                  </div>
+
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center space-x-3 mb-2">
+                      <h3 class="text-xl font-bold text-gray-900 truncate group-hover:text-blue-700 transition-colors"><%= section.title %></h3>
+
+                      <!-- Enhanced badges -->
+                      <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                        <%= HelperFunctions.format_section_type(section.section_type) %>
+                      </span>
+
+                      <!-- Visibility Badge -->
+                      <%= if not section.visible do %>
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-200">
+                          <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
+                          </svg>
+                          Hidden
+                        </span>
+                      <% end %>
+
+                      <!-- Media Count Badge -->
+                      <%= if section_allows_media?(section) do %>
+                        <% media_count = get_safe_media_count(section.id) %>
+                        <%= if media_count > 0 do %>
+                          <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            <%= media_count %> files
+                          </span>
+                        <% end %>
+                      <% end %>
+                    </div>
+
+                    <p class="text-gray-600 line-clamp-2 mb-3">
+                      <%= HelperFunctions.get_section_content_summary(section) %>
+                    </p>
+
+                    <!-- Section Stats -->
+                    <div class="flex items-center space-x-4 text-sm text-gray-500">
+                      <span class="flex items-center">
+                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+                        </svg>
+                        Position <%= section.position %>
+                      </span>
+                      <span>•</span>
+                      <span class="flex items-center">
+                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <%= HelperFunctions.format_relative_time(section.updated_at) %>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- FIXED: Icon-based Section Actions -->
+              <div class="flex items-center space-x-2">
+                <!-- FIXED: Icon Action Buttons with Tooltips -->
+                <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <!-- Visibility Toggle -->
+                  <button type="button"
+                          phx-click="toggle_section_visibility"
+                          phx-value-id={section.id}
+                          title={if section.visible, do: "Hide section", else: "Show section"}
+                          class={[
+                            "p-2 rounded-lg transition-all duration-200 hover:scale-110",
+                            if(section.visible,
+                               do: "text-green-600 hover:bg-green-50 hover:text-green-700",
+                               else: "text-gray-400 hover:bg-gray-50 hover:text-gray-600")
+                          ]}>
+                    <%= if section.visible do %>
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                      </svg>
+                    <% else %>
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
+                      </svg>
+                    <% end %>
+                  </button>
+
+                  <!-- Media Library (if supported) -->
+                  <%= if section_allows_media?(section) do %>
+                    <button type="button"
+                            phx-click="show_section_media_library"
+                            phx-value-section-id={section.id}
+                            title="Manage media"
+                            class="p-2 text-purple-600 hover:bg-purple-50 hover:text-purple-700 rounded-lg transition-all duration-200 hover:scale-110">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                      </svg>
+                    </button>
+                  <% end %>
+
+                  <!-- Duplicate -->
+                  <button type="button"
+                          phx-click="duplicate_section"
+                          phx-value-id={section.id}
+                          title="Duplicate section"
+                          class="p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-700 rounded-lg transition-all duration-200 hover:scale-110">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- FIXED: Primary Actions (Edit/Delete) with icons only -->
+                <div class="flex items-center space-x-2">
+                  <!-- Edit Icon -->
+                  <button type="button"
+                          phx-click="edit_section"
+                          phx-value-id={section.id}
+                          title="Edit section"
+                          class="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                  </button>
+
+                  <!-- Delete Icon -->
+                  <button type="button"
+                          phx-click="delete_section"
+                          phx-value-id={section.id}
+                          data-confirm="Are you sure you want to delete this section? This action cannot be undone."
+                          title="Delete section"
+                          class="p-2.5 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-xl transition-all duration-200 hover:scale-110">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Media Preview (if section has media) -->
+            <%= if section_allows_media?(section) do %>
+              <% section_media = get_safe_media_preview(section.id, 4) %>
+              <%= if length(section_media) > 0 do %>
+                <div class="border-t border-gray-100 pt-4 mt-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-sm font-semibold text-gray-700 flex items-center">
+                      <svg class="w-4 h-4 mr-1.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                      </svg>
+                      Media Files
+                    </h4>
+                    <button type="button"
+                            phx-click="show_section_media_library"
+                            phx-value-section-id={section.id}
+                            class="text-sm text-blue-600 hover:text-blue-700 font-semibold hover:underline transition-colors">
+                      View All (<%= get_safe_media_count(section.id) %>)
+                    </button>
+                  </div>
+
+                  <div class="grid grid-cols-4 gap-2">
+                    <%= for media <- section_media do %>
+                      <div class="aspect-square bg-gray-100 rounded-lg overflow-hidden group/media hover:shadow-md transition-all duration-200">
+                        <%= if media.media_type == "image" do %>
+                          <img src={media.thumbnail_path || media.file_path}
+                               alt={media.title}
+                               class="w-full h-full object-cover group-hover/media:scale-105 transition-transform duration-200" />
+                        <% else %>
+                          <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                            <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <%= case media.media_type do %>
+                                <% "video" -> %>
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                <% "audio" -> %>
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                                <% _ -> %>
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                              <% end %>
+                            </svg>
+                          </div>
+                        <% end %>
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+              <% end %>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Management Tips -->
+      <div class="mt-8 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-200">
+        <div class="flex items-start space-x-4">
+          <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <div>
+            <h4 class="font-semibold text-gray-900 mb-2">Section Management Tips</h4>
+            <ul class="text-sm text-gray-700 space-y-1">
+              <li>• Drag sections by the handle (⋮⋮) to reorder them</li>
+              <li>• Use the eye icon to hide/show sections</li>
+              <li>• Add media files to make sections more engaging</li>
+              <li>• Duplicate sections to save time on similar content</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    <% else %>
+      <!-- Empty state -->
+      <div class="text-center py-20">
+        <div class="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <svg class="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+          </svg>
+        </div>
+        <h3 class="text-2xl font-bold text-gray-900 mb-3">Ready to Build Your Portfolio?</h3>
+        <p class="text-gray-600 mb-8 max-w-md mx-auto">
+          Start by adding your first section. Choose from professional templates like Experience, Skills, Projects, and more.
+        </p>
+        <button type="button"
+                phx-click="toggle_add_section_dropdown"
+                class="bg-blue-600 text-white px-8 py-4 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105">
+          Add Your First Section
+        </button>
+      </div>
+    <% end %>
+    """
+  end
+
   # Individual skill editor card
   defp render_skill_editor_card(skill, category, index, assigns) do
     {skill_name, proficiency, years} = case skill do
@@ -801,7 +1592,6 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
   end
 
   defp render_featured_project_fields(assigns) do
-    # FIXED: Assign content to assigns instead of using it as a variable
     content = assigns.editing_section.content || %{}
     assigns = assign(assigns, :content, content)
 
@@ -810,7 +1600,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
       <div>
         <label class="block text-sm font-semibold text-gray-800 mb-2">Project URL</label>
         <input type="url"
-              value={Map.get(@content, "url", "")}
+              value={Map.get(@content, "url", "") |> strip_html_input()}
               phx-blur="update_section_content"
               phx-value-field="url"
               phx-value-section-id={@editing_section.id}
@@ -821,7 +1611,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
       <div>
         <label class="block text-sm font-semibold text-gray-800 mb-2">GitHub URL</label>
         <input type="url"
-              value={Map.get(@content, "github_url", "")}
+              value={Map.get(@content, "github_url", "") |> strip_html_input()}
               phx-blur="update_section_content"
               phx-value-field="github_url"
               phx-value-section-id={@editing_section.id}
@@ -834,8 +1624,10 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
       <label class="block text-sm font-semibold text-gray-800 mb-2">Technologies Used</label>
       <input type="text"
             value={case Map.get(@content, "technologies") do
-              list when is_list(list) -> Enum.join(list, ", ")
-              string when is_binary(string) -> string
+              list when is_list(list) ->
+                Enum.map(list, &strip_html_input/1) |> Enum.join(", ")
+              string when is_binary(string) ->
+                strip_html_input(string)
               _ -> ""
             end}
             phx-blur="update_section_content"
@@ -848,8 +1640,8 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     """
   end
 
+
   defp render_case_study_fields(assigns) do
-    # FIXED: Assign content to assigns instead of using it as a variable
     content = assigns.editing_section.content || %{}
     assigns = assign(assigns, :content, content)
 
@@ -859,7 +1651,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
         <div>
           <label class="block text-sm font-semibold text-gray-800 mb-2">Client/Company</label>
           <input type="text"
-                value={Map.get(@content, "client", "")}
+                value={Map.get(@content, "client", "") |> strip_html_input()}
                 phx-blur="update_section_content"
                 phx-value-field="client"
                 phx-value-section-id={@editing_section.id}
@@ -870,7 +1662,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
         <div>
           <label class="block text-sm font-semibold text-gray-800 mb-2">Timeline</label>
           <input type="text"
-                value={Map.get(@content, "timeline", "")}
+                value={Map.get(@content, "timeline", "") |> strip_html_input()}
                 phx-blur="update_section_content"
                 phx-value-field="timeline"
                 phx-value-section-id={@editing_section.id}
@@ -886,7 +1678,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
                   phx-value-section-id={@editing_section.id}
                   rows="3"
                   placeholder="What problem needed to be solved?"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= Map.get(@content, "challenge", "") %></textarea>
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= Map.get(@content, "challenge", "") |> strip_html_input() %></textarea>
       </div>
 
       <div>
@@ -896,7 +1688,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
                   phx-value-section-id={@editing_section.id}
                   rows="3"
                   placeholder="How did you solve it?"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= Map.get(@content, "solution", "") %></textarea>
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= Map.get(@content, "solution", "") |> strip_html_input() %></textarea>
       </div>
 
       <div>
@@ -906,29 +1698,463 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
                   phx-value-section-id={@editing_section.id}
                   rows="3"
                   placeholder="What was the impact/outcome?"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= Map.get(@content, "results", "") %></textarea>
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= Map.get(@content, "results", "") |> strip_html_input() %></textarea>
       </div>
     </div>
     """
   end
 
   defp render_experience_fields(assigns) do
+    content = assigns.editing_section.content || %{}
+    experience_entries = get_in(content, ["jobs"]) || []
+    assigns = assign(assigns, :experience_entries, experience_entries)
+
     ~H"""
-    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
-      <div class="flex items-start">
-        <svg class="w-5 h-5 text-amber-600 mt-0.5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
+    <div class="space-y-6">
+      <!-- Experience Section Header -->
+      <div class="flex items-center justify-between">
         <div>
-          <h4 class="font-medium text-amber-900 mb-1">Experience Section</h4>
-          <p class="text-sm text-amber-800">
-            Use the main content area to add your work experience. You can also import experience data from your resume using the Import Resume feature.
-          </p>
+          <h4 class="text-lg font-semibold text-gray-900 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2h8a2 2 0 012-2z"/>
+            </svg>
+            Work Experience
+          </h4>
+          <p class="text-sm text-gray-600 mt-1">Add your professional work history and career highlights</p>
         </div>
+
+        <button type="button"
+                phx-click="add_experience_entry"
+                phx-value-section-id={@editing_section.id}
+                class="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 transition-colors font-medium flex items-center space-x-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          <span>Add Position</span>
+        </button>
       </div>
+
+      <!-- Experience Entries -->
+      <%= if length(@experience_entries) > 0 do %>
+        <div class="space-y-6">
+          <%= for {job, index} <- Enum.with_index(@experience_entries) do %>
+            <div class="experience-entry bg-amber-50 border border-amber-200 rounded-xl p-6" data-entry-index={index}>
+              <div class="flex items-center justify-between mb-4">
+                <h5 class="text-md font-semibold text-amber-900">Position #<%= index + 1 %></h5>
+                <div class="flex items-center space-x-2">
+                  <button type="button"
+                          phx-click="reorder_experience_entry"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          phx-value-direction="up"
+                          title="Move up"
+                          class={["p-1 text-amber-600 hover:bg-amber-100 rounded transition-colors", if(index == 0, do: "opacity-50 cursor-not-allowed", else: "")]}>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                    </svg>
+                  </button>
+                  <button type="button"
+                          phx-click="reorder_experience_entry"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          phx-value-direction="down"
+                          title="Move down"
+                          class={["p-1 text-amber-600 hover:bg-amber-100 rounded transition-colors", if(index == length(@experience_entries) - 1, do: "opacity-50 cursor-not-allowed", else: "")]}>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </button>
+                  <button type="button"
+                          phx-click="remove_experience_entry"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          data-confirm="Remove this work experience entry?"
+                          class="text-red-600 hover:text-red-700 text-sm font-medium">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Job Title -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Job Title</label>
+                  <input type="text"
+                        value={Map.get(job, "title", "")}
+                        phx-blur="update_experience_field"
+                        phx-value-field="title"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="Software Developer"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+                </div>
+
+                <!-- Company -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Company</label>
+                  <input type="text"
+                        value={Map.get(job, "company", "")}
+                        phx-blur="update_experience_field"
+                        phx-value-field="company"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="Company Name"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+                </div>
+
+                <!-- Location -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Location</label>
+                  <input type="text"
+                        value={Map.get(job, "location", "")}
+                        phx-blur="update_experience_field"
+                        phx-value-field="location"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="City, State"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+                </div>
+
+                <!-- Employment Type -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Employment Type</label>
+                  <select phx-change="update_experience_field"
+                          phx-value-field="employment_type"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                    <option value="Full-time" selected={Map.get(job, "employment_type", "Full-time") == "Full-time"}>Full-time</option>
+                    <option value="Part-time" selected={Map.get(job, "employment_type") == "Part-time"}>Part-time</option>
+                    <option value="Contract" selected={Map.get(job, "employment_type") == "Contract"}>Contract</option>
+                    <option value="Freelance" selected={Map.get(job, "employment_type") == "Freelance"}>Freelance</option>
+                    <option value="Internship" selected={Map.get(job, "employment_type") == "Internship"}>Internship</option>
+                  </select>
+                </div>
+
+                <!-- Start Date -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                  <input type="text"
+                        value={Map.get(job, "start_date", "")}
+                        phx-blur="update_experience_field"
+                        phx-value-field="start_date"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="January 2022"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+                </div>
+
+                <!-- End Date -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                  <div class="flex items-center space-x-2">
+                    <input type="text"
+                          value={Map.get(job, "end_date", "")}
+                          phx-blur="update_experience_field"
+                          phx-value-field="end_date"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          placeholder="Present"
+                          disabled={Map.get(job, "current", false)}
+                          class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-100" />
+                    <label class="flex items-center space-x-2">
+                      <input type="checkbox"
+                            checked={Map.get(job, "current", false)}
+                            phx-click="update_experience_field"
+                            phx-value-field="current"
+                            phx-value-section-id={@editing_section.id}
+                            phx-value-index={index}
+                            class="rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
+                      <span class="text-sm text-gray-700">Current</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Description -->
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea phx-blur="update_experience_field"
+                          phx-value-field="description"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          rows="4"
+                          placeholder="Describe your role, responsibilities, and key achievements..."
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"><%= Map.get(job, "description", "") %></textarea>
+              </div>
+
+              <!-- Key Responsibilities -->
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Key Responsibilities (one per line)</label>
+                <textarea phx-blur="update_experience_field"
+                          phx-value-field="responsibilities_text"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          rows="3"
+                          placeholder="Led development team of 5 engineers
+                            Implemented new CI/CD pipeline
+                            Reduced deployment time by 50%"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"><%=
+                            case Map.get(job, "responsibilities") do
+                              list when is_list(list) -> Enum.join(list, "\n")
+                              text when is_binary(text) -> text
+                              _ -> ""
+                            end %></textarea>
+              </div>
+
+              <!-- Key Achievements -->
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Key Achievements (one per line)</label>
+                <textarea phx-blur="update_experience_field"
+                          phx-value-field="achievements_text"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          rows="3"
+                          placeholder="Increased team productivity by 25%
+                            Successfully launched 3 major features
+                            Mentored 2 junior developers"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"><%=
+                            case Map.get(job, "achievements") do
+                              list when is_list(list) -> Enum.join(list, "\n")
+                              text when is_binary(text) -> text
+                              _ -> ""
+                            end %></textarea>
+              </div>
+
+              <!-- Skills Used -->
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Skills Used (comma-separated)</label>
+                <input type="text"
+                      value={
+                        case Map.get(job, "skills") do
+                          list when is_list(list) -> Enum.join(list, ", ")
+                          text when is_binary(text) -> text
+                          _ -> ""
+                        end
+                      }
+                      phx-blur="update_experience_field"
+                      phx-value-field="skills_text"
+                      phx-value-section-id={@editing_section.id}
+                      phx-value-index={index}
+                      placeholder="JavaScript, React, Node.js, PostgreSQL"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500" />
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <!-- Empty State -->
+        <div class="text-center py-12 bg-amber-50 rounded-xl border-2 border-dashed border-amber-300">
+          <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2h8a2 2 0 012-2z"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-gray-900 mb-2">No work experience added yet</h3>
+          <p class="text-gray-600 mb-6">Add your professional work history to showcase your career progression</p>
+          <button type="button"
+                  phx-click="add_experience_entry"
+                  phx-value-section-id={@editing_section.id}
+                  class="bg-amber-600 text-white px-6 py-3 rounded-lg hover:bg-amber-700 transition-colors font-medium">
+            Add Your First Position
+          </button>
+        </div>
+      <% end %>
     </div>
     """
   end
+
+  defp render_education_fields(assigns) do
+  content = assigns.editing_section.content || %{}
+  education_entries = get_in(content, ["education"]) || []
+  assigns = assign(assigns, :education_entries, education_entries)
+
+  ~H"""
+  <div class="space-y-6">
+    <!-- Education Section Header -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h4 class="text-lg font-semibold text-gray-900 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0v5m0-5h-.01M12 14l-9 5m9-5l9 5"/>
+          </svg>
+          Education Entries
+        </h4>
+        <p class="text-sm text-gray-600 mt-1">Add your educational background including degrees, certifications, and coursework</p>
+      </div>
+
+      <button type="button"
+              phx-click="add_education_entry"
+              phx-value-section-id={@editing_section.id}
+              class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center space-x-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+        </svg>
+        <span>Add Education</span>
+      </button>
+    </div>
+
+    <!-- Education Entries -->
+    <%= if length(@education_entries) > 0 do %>
+      <div class="space-y-6">
+        <%= for {education, index} <- Enum.with_index(@education_entries) do %>
+          <div class="education-entry bg-purple-50 border border-purple-200 rounded-xl p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h5 class="text-md font-semibold text-purple-900">Education Entry #<%= index + 1 %></h5>
+              <button type="button"
+                      phx-click="remove_education_entry"
+                      phx-value-section-id={@editing_section.id}
+                      phx-value-index={index}
+                      data-confirm="Remove this education entry?"
+                      class="text-red-600 hover:text-red-700 text-sm font-medium">
+                Remove
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Institution -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Institution</label>
+                <input type="text"
+                      value={Map.get(education, "institution", "")}
+                      phx-blur="update_education_field"
+                      phx-value-field="institution"
+                      phx-value-section-id={@editing_section.id}
+                      phx-value-index={index}
+                      placeholder="University Name"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+              </div>
+
+              <!-- Degree -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Degree</label>
+                <input type="text"
+                      value={Map.get(education, "degree", "")}
+                      phx-blur="update_education_field"
+                      phx-value-field="degree"
+                      phx-value-section-id={@editing_section.id}
+                      phx-value-index={index}
+                      placeholder="Bachelor of Science"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+              </div>
+
+              <!-- Field of Study -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Field of Study</label>
+                <input type="text"
+                      value={Map.get(education, "field", "")}
+                      phx-blur="update_education_field"
+                      phx-value-field="field"
+                      phx-value-section-id={@editing_section.id}
+                      phx-value-index={index}
+                      placeholder="Computer Science"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+              </div>
+
+              <!-- Location -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Location</label>
+                <input type="text"
+                      value={Map.get(education, "location", "")}
+                      phx-blur="update_education_field"
+                      phx-value-field="location"
+                      phx-value-section-id={@editing_section.id}
+                      phx-value-index={index}
+                      placeholder="City, State"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+              </div>
+
+              <!-- Start Date -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                <input type="text"
+                      value={Map.get(education, "start_date", "")}
+                      phx-blur="update_education_field"
+                      phx-value-field="start_date"
+                      phx-value-section-id={@editing_section.id}
+                      phx-value-index={index}
+                      placeholder="August 2020"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+              </div>
+
+              <!-- End Date -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                <input type="text"
+                      value={Map.get(education, "end_date", "")}
+                      phx-blur="update_education_field"
+                      phx-value-field="end_date"
+                      phx-value-section-id={@editing_section.id}
+                      phx-value-index={index}
+                      placeholder="May 2024"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+              </div>
+
+              <!-- Status -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <select phx-change="update_education_field"
+                        phx-value-field="status"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                  <option value="Completed" selected={Map.get(education, "status", "Completed") == "Completed"}>Completed</option>
+                  <option value="In Progress" selected={Map.get(education, "status") == "In Progress"}>In Progress</option>
+                  <option value="Deferred" selected={Map.get(education, "status") == "Deferred"}>Deferred</option>
+                </select>
+              </div>
+
+              <!-- GPA -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">GPA (Optional)</label>
+                <input type="text"
+                      value={Map.get(education, "gpa", "")}
+                      phx-blur="update_education_field"
+                      phx-value-field="gpa"
+                      phx-value-section-id={@editing_section.id}
+                      phx-value-index={index}
+                      placeholder="3.8"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div class="mt-4">
+              <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+              <textarea phx-blur="update_education_field"
+                        phx-value-field="description"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        rows="3"
+                        placeholder="Honors, awards, relevant details..."
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"><%= Map.get(education, "description", "") %></textarea>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% else %>
+      <!-- Empty State -->
+      <div class="text-center py-12 bg-purple-50 rounded-xl border-2 border-dashed border-purple-300">
+        <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0v5m0-5h-.01M12 14l-9 5m9-5l9 5"/>
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">No education entries yet</h3>
+        <p class="text-gray-600 mb-6">Add your educational background to showcase your qualifications</p>
+        <button type="button"
+                phx-click="add_education_entry"
+                phx-value-section-id={@editing_section.id}
+                class="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors font-medium">
+          Add Your First Education Entry
+        </button>
+      </div>
+    <% end %>
+  </div>
+  """
+end
 
   defp render_skills_fields(assigns) do
     ~H"""
@@ -1261,6 +2487,8 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     """
   end
 
+  # FIXED: Enhanced section rendering with proper drag handles and move arrows
+
   defp render_sections_tab(assigns) do
     ~H"""
     <div class="p-8">
@@ -1272,7 +2500,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
 
       <!-- Media Modal Integration -->
       <%= if assigns[:show_media_modal] || assigns[:show_media_library] do %>
-        <%= render_media_modal(assigns) %>
+        <%= render_media_library_modal(assigns) %>
       <% end %>
 
       <!-- Media Preview Modal -->
@@ -1282,6 +2510,106 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     </div>
     """
   end
+
+  defp truncate_content(nil, _), do: ""
+  defp truncate_content(content, max_length) when is_binary(content) do
+    if String.length(content) > max_length do
+      String.slice(content, 0, max_length) <> "..."
+    else
+      content
+    end
+  end
+
+  defp section_allows_media?(section) do
+    section_type = case section.section_type do
+      type when is_atom(type) -> Atom.to_string(type)
+      type when is_binary(type) -> type
+    end
+
+    section_type in [
+      "media_showcase",
+      "featured_project",
+      "case_study",
+      "projects",
+      "about",
+      "custom"
+    ]
+  end
+
+  defp format_relative_time(datetime) do
+    now = DateTime.utc_now()
+
+    # Convert NaiveDateTime to DateTime if needed
+    datetime_utc = case datetime do
+      %DateTime{} = dt -> dt
+      %NaiveDateTime{} = ndt -> DateTime.from_naive!(ndt, "Etc/UTC")
+      _ -> now  # fallback for invalid datetime
+    end
+
+    diff = DateTime.diff(now, datetime_utc, :second)
+
+    cond do
+      diff < 60 -> "just now"
+      diff < 3600 -> "#{div(diff, 60)}m ago"
+      diff < 86400 -> "#{div(diff, 3600)}h ago"
+      diff < 604800 -> "#{div(diff, 86400)}d ago"
+      true -> "#{div(diff, 604800)}w ago"
+    end
+  end
+
+defp format_section_type_name(section_type) when is_atom(section_type) do
+  section_type
+  |> Atom.to_string()
+  |> format_section_type_name()
+end
+
+defp format_section_type_name(section_type) when is_binary(section_type) do
+  section_type
+  |> String.replace("_", " ")
+  |> String.split()
+  |> Enum.map(&String.capitalize/1)
+  |> Enum.join(" ")
+end
+
+defp format_section_type_name(nil), do: "Unknown"
+defp format_section_type_name(_), do: "Custom"
+
+# FIXED: Section preview logic with atom/string handling
+defp get_section_preview_text(section) do
+  content = section.content || %{}
+
+  case section.section_type do
+    type when type in [:about, "about"] ->
+      truncate_content(get_in(content, ["bio"]) || "Add your personal introduction", 100)
+
+    type when type in [:intro, "intro"] ->
+      truncate_content(get_in(content, ["summary"]) || "Add your professional summary", 100)
+
+    type when type in [:experience, "experience"] ->
+      job_count = length(get_in(content, ["jobs"]) || [])
+      "#{job_count} work experience(s)"
+
+    type when type in [:education, "education"] ->
+      edu_count = length(get_in(content, ["education"]) || [])
+      "#{edu_count} education entry/entries"
+
+    type when type in [:skills, "skills"] ->
+      skill_count = length(get_in(content, ["skills"]) || [])
+      "#{skill_count} skills listed"
+
+    type when type in [:projects, "projects"] ->
+      project_count = length(get_in(content, ["projects"]) || [])
+      "#{project_count} project(s)"
+
+    type when type in [:contact, "contact"] ->
+      email = get_in(content, ["email"])
+      if email && email != "", do: "Contact info available", else: "Click edit to add contact info"
+
+    _ ->
+      "Click edit to add content"
+  end
+end
+
 
   # ============================================================================
   # SECTIONS LIST RENDERER
@@ -1813,12 +3141,10 @@ defp render_overview_tab(assigns) do
 
   def render_design_tab(assigns) do
     ~H"""
-    <div class="p-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
-      <!-- Real-time CSS injection -->
-      <%= if assigns[:preview_css] do %>
-        <%= Phoenix.HTML.raw(assigns.preview_css) %>
-      <% end %>
+    <!-- Inject current customization CSS -->
+    <%= Phoenix.HTML.raw(@customization_css || "") %>
 
+    <div class="p-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
       <div class="flex items-center justify-between mb-8">
         <div>
           <h2 class="text-2xl font-bold text-gray-900">Design & Templates</h2>
@@ -1826,21 +3152,21 @@ defp render_overview_tab(assigns) do
         </div>
       </div>
 
-      <!-- Template Selection with WORKING previews -->
+      <!-- FIXED: Template Selection with Visual Feedback -->
       <div class="mb-8">
         <h3 class="text-lg font-semibold text-gray-900 mb-4">Choose Template</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <%= for {template_key, template_config} <- Frestyl.Portfolios.PortfolioTemplates.available_templates() do %>
             <div class={[
-              "relative group cursor-pointer rounded-xl overflow-hidden border-2 transition-all duration-200 template-preview-card",
+              "relative group cursor-pointer rounded-xl overflow-hidden border-2 transition-all duration-300 template-preview-card",
               if((@portfolio.theme || "executive") == template_key,
-                 do: "border-blue-500 shadow-lg ring-2 ring-blue-200",
-                 else: "border-gray-200 hover:border-gray-300 hover:shadow-md")
+                 do: "border-blue-500 shadow-lg ring-2 ring-blue-200 bg-blue-50",
+                 else: "border-gray-200 hover:border-gray-300 hover:shadow-md bg-white")
             ]}
             phx-click="select_template"
             phx-value-template={template_key}>
 
-              <!-- Template Preview -->
+              <!-- FIXED: Template Preview with Dynamic Colors -->
               <div class={[
                 "h-32 bg-gradient-to-br relative overflow-hidden",
                 template_config.preview_color
@@ -1854,20 +3180,20 @@ defp render_overview_tab(assigns) do
                   </div>
                 </div>
 
-                <!-- Preview overlay with current colors if selected -->
+                <!-- FIXED: Current colors overlay if selected -->
                 <%= if (@portfolio.theme || "executive") == template_key do %>
-                  <div class="absolute inset-0 bg-gradient-to-br opacity-20"
-                       style={"background: linear-gradient(135deg, #{Map.get(@customization, "primary_color", "#6366f1")}, #{Map.get(@customization, "secondary_color", "#8b5cf6")})"}>
+                  <div class="absolute inset-0 bg-gradient-to-br opacity-30"
+                       style={"background: linear-gradient(135deg, #{get_color_safe(@customization, "primary_color", "#6366f1")}, #{get_color_safe(@customization, "secondary_color", "#8b5cf6")})"}>
                   </div>
                 <% end %>
               </div>
 
               <!-- Template Info -->
-              <div class="p-4 bg-white">
+              <div class="p-4">
                 <h4 class="font-semibold text-gray-900 mb-1 portfolio-primary"><%= template_config.name %></h4>
                 <p class="text-sm text-gray-600 mb-3"><%= template_config.description %></p>
 
-                <!-- Features with smaller icons -->
+                <!-- Features -->
                 <div class="space-y-1">
                   <%= for feature <- Enum.take(template_config.features, 2) do %>
                     <div class="text-xs text-gray-500 flex items-center">
@@ -1880,20 +3206,25 @@ defp render_overview_tab(assigns) do
                 </div>
               </div>
 
-              <!-- Selected Indicator -->
+              <!-- FIXED: Selected Indicator -->
               <%= if (@portfolio.theme || "executive") == template_key do %>
-                <div class="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center">
+                <div class="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                   </svg>
                 </div>
               <% end %>
+
+              <!-- FIXED: Loading indicator for template switching -->
+              <div class="absolute inset-0 bg-white bg-opacity-75 hidden items-center justify-center template-loading">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              </div>
             </div>
           <% end %>
         </div>
       </div>
 
-      <!-- Customization Tabs -->
+      <!-- FIXED: Customization Tabs with Real-time Updates -->
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <!-- Tab Navigation -->
         <div class="border-b border-gray-200">
@@ -1923,17 +3254,79 @@ defp render_overview_tab(assigns) do
         <div class="p-6">
           <%= case @active_customization_tab do %>
             <% "colors" -> %>
-              <%= render_colors_customization_fixed(assigns) %>
+              <%= render_colors_customization(assigns) %>
             <% "typography" -> %>
-              <%= render_typography_customization_fixed(assigns) %>
+              <%= render_typography_customization(assigns) %>
             <% "backgrounds" -> %>
-              <%= render_backgrounds_customization_fixed(assigns) %>
+              <%= render_backgrounds_customization(assigns) %>
             <% _ -> %>
-              <%= render_colors_customization_fixed(assigns) %>
+              <%= render_colors_customization(assigns) %>
           <% end %>
         </div>
       </div>
     </div>
+
+    <!-- FIXED: Real-time Update JavaScript -->
+    <script>
+      // Handle real-time template and customization updates
+      window.addEventListener('phx:template-changed', (e) => {
+        console.log('🎨 Template changed:', e.detail.template);
+
+        // Update CSS
+        const existingStyle = document.getElementById('portfolio-customization-css');
+        if (existingStyle) {
+          existingStyle.remove();
+        }
+
+        const head = document.getElementsByTagName('head')[0];
+        const style = document.createElement('style');
+        style.id = 'portfolio-customization-css';
+        style.innerHTML = e.detail.css;
+        head.appendChild(style);
+
+        // Show loading state briefly
+        const templateCards = document.querySelectorAll('.template-preview-card');
+        templateCards.forEach(card => {
+          const loading = card.querySelector('.template-loading');
+          if (loading) {
+            loading.classList.add('flex');
+            loading.classList.remove('hidden');
+            setTimeout(() => {
+              loading.classList.remove('flex');
+              loading.classList.add('hidden');
+            }, 500);
+          }
+        });
+      });
+
+      window.addEventListener('phx:color-updated', (e) => {
+        console.log('🎨 Color updated:', e.detail.field, e.detail.value);
+        updateCSS(e.detail.css);
+      });
+
+      window.addEventListener('phx:typography-updated', (e) => {
+        console.log('🎨 Typography updated:', e.detail.font_family);
+        updateCSS(e.detail.css);
+      });
+
+      window.addEventListener('phx:background-updated', (e) => {
+        console.log('🎨 Background updated:', e.detail.background);
+        updateCSS(e.detail.css);
+      });
+
+      function updateCSS(css) {
+        const existingStyle = document.getElementById('portfolio-customization-css');
+        if (existingStyle) {
+          existingStyle.remove();
+        }
+
+        const head = document.getElementsByTagName('head')[0];
+        const style = document.createElement('style');
+        style.id = 'portfolio-customization-css';
+        style.innerHTML = css;
+        head.appendChild(style);
+      }
+    </script>
     """
   end
 
@@ -1941,48 +3334,24 @@ defp render_overview_tab(assigns) do
   # FIXED COLORS CUSTOMIZATION WITH REAL-TIME PREVIEW
   # ============================================================================
 
-  defp render_colors_customization_fixed(assigns) do
+  defp render_colors_customization(assigns) do
     ~H"""
     <div class="space-y-6">
-      <!-- Predefined Color Schemes with WORKING buttons -->
-      <div>
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Color Schemes</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <%= for {scheme_name, colors} <- [
-            {"professional", %{primary: "#1e40af", secondary: "#64748b", accent: "#3b82f6"}},
-            {"creative", %{primary: "#7c3aed", secondary: "#ec4899", accent: "#f59e0b"}},
-            {"warm", %{primary: "#dc2626", secondary: "#ea580c", accent: "#f59e0b"}},
-            {"cool", %{primary: "#0891b2", secondary: "#0284c7", accent: "#6366f1"}},
-            {"minimal", %{primary: "#374151", secondary: "#6b7280", accent: "#059669"}}
-          ] do %>
-            <button phx-click="update_color_scheme"
-                    phx-value-scheme={scheme_name}
-                    class="group p-3 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-all hover:shadow-md">
-              <div class="flex space-x-1 mb-2">
-                <div class="w-6 h-6 rounded" style={"background-color: #{colors.primary}"}></div>
-                <div class="w-6 h-6 rounded" style={"background-color: #{colors.secondary}"}></div>
-                <div class="w-6 h-6 rounded" style={"background-color: #{colors.accent}"}></div>
-              </div>
-              <p class="text-sm font-medium text-gray-900 capitalize"><%= scheme_name %></p>
-            </button>
-          <% end %>
-        </div>
-      </div>
-
-      <!-- Individual Color Pickers with WORKING updates -->
+      <!-- Individual Color Pickers with WORKING real-time updates -->
       <div>
         <h4 class="text-md font-semibold text-gray-900 mb-3">Custom Colors</h4>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <!-- Primary Color -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
             <div class="flex items-center space-x-3">
               <input type="color"
-                    value={Map.get(@customization, "primary_color", "#6366f1")}
+                    value={get_color_safe(@customization, "primary_color", "#6366f1")}
                     phx-change="update_primary_color"
                     name="primary_color"
                     class="w-12 h-10 border border-gray-300 rounded cursor-pointer">
               <input type="text"
-                    value={Map.get(@customization, "primary_color", "#6366f1")}
+                    value={get_color_safe(@customization, "primary_color", "#6366f1")}
                     phx-change="update_primary_color"
                     name="primary_color"
                     placeholder="#6366f1"
@@ -1990,16 +3359,17 @@ defp render_overview_tab(assigns) do
             </div>
           </div>
 
+          <!-- Secondary Color -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
             <div class="flex items-center space-x-3">
               <input type="color"
-                    value={Map.get(@customization, "secondary_color", "#8b5cf6")}
+                    value={get_color_safe(@customization, "secondary_color", "#8b5cf6")}
                     phx-change="update_secondary_color"
                     name="secondary_color"
                     class="w-12 h-10 border border-gray-300 rounded cursor-pointer">
               <input type="text"
-                    value={Map.get(@customization, "secondary_color", "#8b5cf6")}
+                    value={get_color_safe(@customization, "secondary_color", "#8b5cf6")}
                     phx-change="update_secondary_color"
                     name="secondary_color"
                     placeholder="#8b5cf6"
@@ -2007,16 +3377,17 @@ defp render_overview_tab(assigns) do
             </div>
           </div>
 
+          <!-- Accent Color -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
             <div class="flex items-center space-x-3">
               <input type="color"
-                    value={Map.get(@customization, "accent_color", "#f59e0b")}
+                    value={get_color_safe(@customization, "accent_color", "#f59e0b")}
                     phx-change="update_accent_color"
                     name="accent_color"
                     class="w-12 h-10 border border-gray-300 rounded cursor-pointer">
               <input type="text"
-                    value={Map.get(@customization, "accent_color", "#f59e0b")}
+                    value={get_color_safe(@customization, "accent_color", "#f59e0b")}
                     phx-change="update_accent_color"
                     name="accent_color"
                     placeholder="#f59e0b"
@@ -2026,44 +3397,44 @@ defp render_overview_tab(assigns) do
         </div>
       </div>
 
-      <!-- Live Color Preview -->
+      <!-- FIXED: Live Color Preview -->
       <div class="bg-gray-50 rounded-lg p-4">
         <h4 class="text-md font-semibold text-gray-900 mb-3">Live Preview</h4>
         <div class="bg-white rounded-lg p-4 border border-gray-200 portfolio-preview">
           <div class="space-y-3">
             <h1 class="text-2xl font-bold portfolio-primary">
-              Portfolio Title
+              Portfolio Title Preview
             </h1>
             <p class="text-base portfolio-secondary">
               This is how your portfolio text will look with the selected colors.
             </p>
             <button class="px-4 py-2 rounded-lg text-white font-medium portfolio-bg-accent">
-              Call to Action
+              Call to Action Button
             </button>
             <div class="flex space-x-2 mt-4">
-              <div class="w-8 h-8 rounded color-swatch-primary"></div>
-              <div class="w-8 h-8 rounded color-swatch-secondary"></div>
-              <div class="w-8 h-8 rounded color-swatch-accent"></div>
+              <div class="w-8 h-8 rounded color-swatch-primary border border-gray-200"></div>
+              <div class="w-8 h-8 rounded color-swatch-secondary border border-gray-200"></div>
+              <div class="w-8 h-8 rounded color-swatch-accent border border-gray-200"></div>
             </div>
           </div>
         </div>
       </div>
-      <div class="mt-6 pt-6 border-t border-gray-200">
-        <button phx-click="save_template_changes"
-                class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-          Save Color Changes
-        </button>
-      </div>
     </div>
-
     """
+  end
+
+  defp get_color_safe(customization, key, default) do
+    case customization do
+      %{^key => value} when is_binary(value) -> value
+      _ -> default
+    end
   end
 
   # ============================================================================
   # TYPOGRAPHY CUSTOMIZATION
   # ============================================================================
 
-  defp render_typography_customization_fixed(assigns) do
+  defp render_typography_customization(assigns) do
     ~H"""
     <div class="space-y-6">
       <div>
@@ -2096,7 +3467,7 @@ defp render_overview_tab(assigns) do
             </div>
           </div>
 
-          <!-- Typography Preview -->
+          <!-- FIXED: Typography Preview -->
           <div class="bg-gray-50 rounded-lg p-4">
             <h4 class="text-md font-semibold text-gray-900 mb-3">Typography Preview</h4>
             <div class="bg-white rounded-lg p-6 border border-gray-200 space-y-4 portfolio-preview">
@@ -2121,7 +3492,7 @@ defp render_overview_tab(assigns) do
   # BACKGROUNDS CUSTOMIZATION
   # ============================================================================
 
-  defp render_backgrounds_customization_fixed(assigns) do
+  defp render_backgrounds_customization(assigns) do
     ~H"""
     <div class="space-y-6">
       <div>
@@ -2146,6 +3517,14 @@ defp render_overview_tab(assigns) do
               <div class="w-full h-12 rounded mb-3 border border-gray-200"
                    style={"background: #{bg_config.preview}"}></div>
               <p class="text-sm font-medium text-gray-900"><%= bg_config.name %></p>
+
+              <%= if get_current_background(@customization) == bg_key do %>
+                <div class="absolute top-2 right-2 w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                </div>
+              <% end %>
             </button>
           <% end %>
         </div>
@@ -2566,142 +3945,7 @@ defp render_overview_tab(assigns) do
     """
   end
 
-defp render_settings_tab(assigns) do
-    ~H"""
-    <div class="p-8">
-      <h2 class="text-xl font-bold text-gray-900 mb-6">Portfolio Settings</h2>
 
-      <div class="space-y-8">
-        <!-- Visibility Settings -->
-        <div>
-          <h3 class="text-lg font-semibold text-gray-900 mb-4">Visibility & Privacy</h3>
-          <div class="bg-gray-50 rounded-lg p-6">
-            <div class="space-y-4">
-              <%= for {visibility_key, title, description} <- [
-                {:public, "Public", "Anyone can find and view your portfolio"},
-                {:link_only, "Link Only", "Only people with the link can view"},
-                {:private, "Private", "Only you can view (portfolio is hidden)"}
-              ] do %>
-                <label class="flex items-start space-x-3 cursor-pointer">
-                  <input type="radio"
-                         name="visibility"
-                         value={visibility_key}
-                         checked={@portfolio.visibility == visibility_key}
-                         phx-click="update_visibility"
-                         phx-value-visibility={visibility_key}
-                         class="mt-1 text-blue-600" />
-                  <div class="flex-1">
-                    <span class="font-medium text-gray-900"><%= title %></span>
-                    <p class="text-sm text-gray-600 mt-1"><%= description %></p>
-                  </div>
-                </label>
-              <% end %>
-            </div>
-          </div>
-        </div>
-
-        <!-- Advanced Settings -->
-        <div>
-          <h3 class="text-lg font-semibold text-gray-900 mb-4">Advanced Settings</h3>
-          <div class="space-y-4">
-            <!-- Approval Required -->
-            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div>
-                <h4 class="font-medium text-gray-900">Require Approval</h4>
-                <p class="text-sm text-gray-600">Require approval before portfolio changes go live</p>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox"
-                       checked={@portfolio.approval_required}
-                       phx-click="toggle_approval_required"
-                       class="sr-only peer" />
-                <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            <!-- Resume Export -->
-            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div>
-                <h4 class="font-medium text-gray-900">Allow Resume Export</h4>
-                <p class="text-sm text-gray-600">Allow visitors to download your resume as PDF</p>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox"
-                       checked={@portfolio.allow_resume_export}
-                       phx-click="toggle_resume_export"
-                       class="sr-only peer" />
-                <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- Portfolio Actions -->
-        <div>
-          <h3 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Actions</h3>
-          <div class="space-y-4">
-            <!-- Export Portfolio -->
-            <div class="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div>
-                <h4 class="font-medium text-gray-900">Export Portfolio</h4>
-                <p class="text-sm text-gray-600">Download your portfolio as a PDF file</p>
-              </div>
-              <button id="export-pdf-settings"
-                      phx-click="export-portfolio"
-                      phx-hook="PdfDownload"
-                      class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                Export PDF
-              </button>
-            </div>
-
-            <!-- Duplicate Portfolio -->
-            <%= if @can_duplicate do %>
-              <div class="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
-                <div>
-                  <h4 class="font-medium text-gray-900">Duplicate Portfolio</h4>
-                  <p class="text-sm text-gray-600">Create a copy of this portfolio</p>
-                </div>
-                <button phx-click="duplicate_portfolio"
-                        class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
-                  Duplicate
-                </button>
-              </div>
-            <% else %>
-              <div class="flex items-center justify-between p-4 bg-gray-100 rounded-lg border border-gray-300">
-                <div>
-                  <h4 class="font-medium text-gray-500">Duplicate Portfolio</h4>
-                  <p class="text-sm text-gray-500"><%= @duplicate_disabled_reason %></p>
-                </div>
-                <button disabled
-                        class="bg-gray-400 text-white px-4 py-2 rounded-lg cursor-not-allowed">
-                  Duplicate
-                </button>
-              </div>
-            <% end %>
-          </div>
-        </div>
-
-        <!-- Danger Zone -->
-        <div>
-          <h3 class="text-lg font-semibold text-red-900 mb-4">Danger Zone</h3>
-          <div class="bg-red-50 border border-red-200 rounded-lg p-6">
-            <div>
-              <h4 class="font-medium text-red-900 mb-2">Delete Portfolio</h4>
-              <p class="text-sm text-red-700 mb-4">
-                Once you delete a portfolio, there is no going back. Please be certain.
-              </p>
-              <button phx-click="delete_portfolio"
-                      data-confirm="Are you absolutely sure? This action cannot be undone."
-                      class="bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 transition-colors">
-                Delete This Portfolio
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-  end
 
   # ============================================================================
   # PREVIEW SECTION RENDERER
@@ -2852,6 +4096,124 @@ defp render_settings_tab(assigns) do
     """
   end
 
+  defp render_media_library_modal(assigns) do
+    ~H"""
+    <%= if assigns[:show_media_library] do %>
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+          phx-click="hide_media_library">
+        <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden"
+            phx-click="prevent_close">
+
+          <!-- Header -->
+          <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xl font-bold text-white">Media Library</h3>
+              <button phx-click="hide_media_library"
+                      class="text-white hover:text-gray-200 transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Content -->
+          <div class="p-6 overflow-y-auto max-h-[60vh]">
+            <%= if length(assigns[:available_media] || []) > 0 do %>
+              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <%= for media <- assigns[:available_media] || [] do %>
+                  <div class="group relative bg-gray-50 rounded-lg overflow-hidden hover:bg-gray-100 transition-colors cursor-pointer"
+                      phx-click="attach_media_to_section"
+                      phx-value-section_id={assigns[:media_library_section_id]}
+                      phx-value-media_id={media.id}>
+
+                    <!-- Media Preview -->
+                    <div class="aspect-square bg-gray-200 flex items-center justify-center">
+                      <%= if media.media_type == "image" do %>
+                        <img src={get_media_url_safe(media)}
+                            alt={media.title}
+                            class="w-full h-full object-cover">
+                      <% else %>
+                        <div class="text-4xl text-gray-400">
+                          <%= get_media_icon(media.media_type) %>
+                        </div>
+                      <% end %>
+                    </div>
+
+                    <!-- Overlay -->
+                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
+                      <div class="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div class="bg-white rounded-full p-2">
+                          <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Info -->
+                    <div class="p-3">
+                      <h4 class="text-sm font-medium text-gray-900 truncate">
+                        <%= media.title %>
+                      </h4>
+                      <p class="text-xs text-gray-500 mt-1">
+                        <%= String.upcase(media.media_type) %>
+                      </p>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            <% else %>
+              <div class="text-center py-12">
+                <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">No available media</h3>
+                <p class="text-gray-600">Upload media files to your portfolio to attach them to sections.</p>
+              </div>
+            <% end %>
+          </div>
+
+          <!-- Footer -->
+          <div class="bg-gray-50 px-6 py-4 border-t border-gray-200">
+            <div class="flex justify-between items-center">
+              <p class="text-sm text-gray-600">
+                Click on any media file to attach it to this section
+              </p>
+              <button phx-click="hide_media_library"
+                      class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  # Also add these helper functions to tab_renderer.ex:
+  defp get_media_icon(media_type) do
+    case media_type do
+      "image" -> "🖼️"
+      "video" -> "🎥"
+      "audio" -> "🎵"
+      "document" -> "📄"
+      _ -> "📁"
+    end
+  end
+
+  defp get_media_url_safe(media) do
+    try do
+      # Use the Portfolios context function
+      Frestyl.Portfolios.get_media_url_safe(media)
+    rescue
+      _ -> "/images/placeholder.jpg"
+    end
+  end
+
   # ============================================================================
   # MODALS RENDERER
   # ============================================================================
@@ -2872,6 +4234,7 @@ defp render_settings_tab(assigns) do
             id={@video_intro_component_id}
             portfolio={@portfolio}
             current_user={@current_user}
+            phx-target={@video_intro_component_id}
           />
         </div>
       </div>
@@ -2962,61 +4325,76 @@ defp render_settings_tab(assigns) do
 # If this simple version works, then the issue is with the ResumeImportModal component itself.
 # If this doesn't work, then there's an issue with the render_modals being called.
 
-  def render_enhanced_javascript(assigns) do
+def render_enhanced_javascript(assigns) do
     ~H"""
     <script>
       // Enhanced section management JavaScript
       document.addEventListener('DOMContentLoaded', function() {
+        console.log('🚀 Enhanced section management initialized');
+
+        // Prevent form submissions that cause page refresh
+        document.addEventListener('submit', function(e) {
+          const form = e.target;
+          if (form && form.hasAttribute('phx-submit')) {
+            // Let LiveView handle the form submission
+            return;
+          }
+          // Prevent default for non-LiveView forms
+          e.preventDefault();
+        });
 
         // Auto-close add section dropdown when clicking outside
         document.addEventListener('click', function(e) {
           const dropdown = document.querySelector('[phx-click="toggle_add_section_dropdown"]');
           const dropdownMenu = dropdown?.nextElementSibling;
 
-          if (dropdown && dropdownMenu && !dropdown.contains(e.target) && !dropdownMenu.contains(e.target)) {
+          if (dropdown && dropdownMenu &&
+              !dropdown.contains(e.target) &&
+              !dropdownMenu.contains(e.target) &&
+              dropdownMenu.style.display !== 'none') {
+
             // Send close event to LiveView
-            const liveSocket = window.liveSocket;
-            if (liveSocket) {
-              liveSocket.execJS(dropdown, "phx:hide-dropdown");
-            }
+            const event = new CustomEvent('phx:close-dropdown');
+            dropdown.dispatchEvent(event);
           }
         });
 
-        // Enhanced drag and drop feedback
+        // Enhanced section feedback
         window.addEventListener('phx:section-added', (e) => {
+          console.log('📝 Section added:', e.detail);
           const newSection = document.querySelector(`[data-section-id="${e.detail.section_id}"]`);
           if (newSection) {
             newSection.classList.add('bg-green-50', 'border-green-300');
             newSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
+            // Flash effect
             setTimeout(() => {
               newSection.classList.remove('bg-green-50', 'border-green-300');
             }, 3000);
           }
         });
 
-        // Section edit started feedback
         window.addEventListener('phx:section-edit-started', (e) => {
+          console.log('✏️ Section edit started:', e.detail);
           const section = document.querySelector(`[data-section-id="${e.detail.section_id}"]`);
           if (section) {
             section.classList.add('ring-2', 'ring-blue-300', 'bg-blue-50');
           }
         });
 
-        // Section edit cancelled feedback
         window.addEventListener('phx:section-edit-cancelled', (e) => {
+          console.log('❌ Section edit cancelled');
           document.querySelectorAll('.section-item').forEach(section => {
             section.classList.remove('ring-2', 'ring-blue-300', 'bg-blue-50');
           });
         });
 
-        // Section saved feedback
         window.addEventListener('phx:section-saved', (e) => {
+          console.log('💾 Section saved:', e.detail);
           document.querySelectorAll('.section-item').forEach(section => {
             section.classList.remove('ring-2', 'ring-blue-300', 'bg-blue-50');
           });
 
-          // Show success animation
           const section = document.querySelector(`[data-section-id="${e.detail.section_id}"]`);
           if (section) {
             section.classList.add('bg-green-50', 'border-green-300');
@@ -3026,8 +4404,8 @@ defp render_settings_tab(assigns) do
           }
         });
 
-        // Enhanced section deletion feedback
         window.addEventListener('phx:section-deleted', (e) => {
+          console.log('🗑️ Section deleted:', e.detail);
           const section = document.querySelector(`[data-section-id="${e.detail.section_id}"]`);
           if (section) {
             section.style.transform = 'translateX(-100%)';
@@ -3036,8 +4414,8 @@ defp render_settings_tab(assigns) do
           }
         });
 
-        // Section visibility toggle feedback
         window.addEventListener('phx:section-visibility-toggled', (e) => {
+          console.log('👁️ Section visibility toggled:', e.detail);
           const section = document.querySelector(`[data-section-id="${e.detail.section_id}"]`);
           if (section) {
             if (e.detail.visible) {
@@ -3048,8 +4426,8 @@ defp render_settings_tab(assigns) do
           }
         });
 
-        // Section duplication feedback
         window.addEventListener('phx:section-duplicated', (e) => {
+          console.log('📋 Section duplicated:', e.detail);
           const newSection = document.querySelector(`[data-section-id="${e.detail.new_id}"]`);
           if (newSection) {
             newSection.classList.add('bg-blue-50', 'border-blue-300');
@@ -3061,24 +4439,108 @@ defp render_settings_tab(assigns) do
           }
         });
 
-        // Better form field updates
-        window.addEventListener('phx:section-field-updated', (e) => {
-          console.log(`Section ${e.detail.section_id} field ${e.detail.field} updated to:`, e.detail.value);
+        window.addEventListener('phx:sections-reordered', (e) => {
+          console.log('🔄 Sections reordered');
+          // Add visual feedback for successful reorder
+          const sectionsContainer = document.getElementById('sections-list');
+          if (sectionsContainer) {
+            sectionsContainer.classList.add('bg-green-50');
+            setTimeout(() => {
+              sectionsContainer.classList.remove('bg-green-50');
+            }, 1000);
+          }
+        });
+
+        // Enhanced tooltip functionality
+        function showTooltip(element, text) {
+          const tooltip = document.createElement('div');
+          tooltip.className = 'tooltip-popup absolute bg-gray-900 text-white text-xs rounded py-1 px-2 z-50';
+          tooltip.textContent = text;
+          tooltip.style.bottom = '100%';
+          tooltip.style.left = '50%';
+          tooltip.style.transform = 'translateX(-50%)';
+          tooltip.style.marginBottom = '5px';
+
+          element.style.position = 'relative';
+          element.appendChild(tooltip);
+
+          setTimeout(() => {
+            if (tooltip.parentNode) {
+              tooltip.parentNode.removeChild(tooltip);
+            }
+          }, 2000);
+        }
+
+        // Add click feedback for buttons
+        document.addEventListener('click', function(e) {
+          const button = e.target.closest('button');
+          if (button && !button.disabled) {
+            button.style.transform = 'scale(0.95)';
+            setTimeout(() => {
+              button.style.transform = '';
+            }, 100);
+          }
+        });
+
+        // Smooth form validation feedback
+        document.addEventListener('input', function(e) {
+          const input = e.target;
+          if (input.type === 'text' || input.type === 'email' || input.tagName === 'TEXTAREA') {
+            input.classList.remove('border-red-300', 'border-green-300');
+
+            if (input.value.length > 0) {
+              input.classList.add('border-green-300');
+            }
+          }
         });
 
         // Enhanced loading states
-        const originalFetch = window.fetch;
-        window.fetch = function(...args) {
-          document.body.classList.add('loading');
-          return originalFetch.apply(this, args).finally(() => {
-            setTimeout(() => document.body.classList.remove('loading'), 100);
-          });
-        };
+        let loadingTimeout;
+        window.addEventListener('phx:page-loading-start', () => {
+          clearTimeout(loadingTimeout);
+          loadingTimeout = setTimeout(() => {
+            document.body.classList.add('loading');
+          }, 100);
+        });
+
+        window.addEventListener('phx:page-loading-stop', () => {
+          clearTimeout(loadingTimeout);
+          document.body.classList.remove('loading');
+        });
+
+        console.log('✅ Section management JavaScript loaded successfully');
       });
+
+      // Utility functions for section management
+      window.SectionManager = {
+        highlightSection: function(sectionId) {
+          const section = document.querySelector(`[data-section-id="${sectionId}"]`);
+          if (section) {
+            section.classList.add('ring-2', 'ring-yellow-400');
+            section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            setTimeout(() => {
+              section.classList.remove('ring-2', 'ring-yellow-400');
+            }, 2000);
+          }
+        },
+
+        scrollToSection: function(sectionId) {
+          const section = document.querySelector(`[data-section-id="${sectionId}"]`);
+          if (section) {
+            section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        },
+
+        getVisibleSections: function() {
+          return Array.from(document.querySelectorAll('.section-item:not(.opacity-60)'))
+            .map(el => el.getAttribute('data-section-id'));
+        }
+      };
     </script>
 
     <style>
-      /* Enhanced CSS for better section management */
+      /* Enhanced section management styles */
       .section-item {
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       }
@@ -3089,17 +4551,11 @@ defp render_settings_tab(assigns) do
 
       .section-drag-handle:hover {
         cursor: grab;
+        transform: scale(1.1);
       }
 
       .section-drag-handle:active {
         cursor: grabbing;
-      }
-
-      .line-clamp-2 {
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
       }
 
       /* Loading state */
@@ -3111,45 +4567,76 @@ defp render_settings_tab(assigns) do
         pointer-events: none;
       }
 
-      /* Enhanced button animations */
-      .hover\\:scale-105:hover {
-        transform: scale(1.05);
+      body.loading .section-drag-handle {
+        pointer-events: auto;
       }
 
-      .hover\\:scale-110:hover {
-        transform: scale(1.1);
+      /* Smooth button animations */
+      button {
+        transition: all 0.2s ease;
       }
 
-      /* Better focus states */
+      button:hover {
+        filter: brightness(1.05);
+      }
+
+      button:active {
+        transform: scale(0.95);
+      }
+
+      /* Enhanced focus states */
       button:focus-visible {
         outline: 2px solid #3b82f6;
         outline-offset: 2px;
       }
 
-      /* Smooth transitions for state changes */
-      .transition-all {
-        transition-property: all;
-        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+      /* Tooltip styling */
+      .tooltip-popup {
+        pointer-events: none;
+        animation: fadeIn 0.2s ease;
       }
 
-      /* Enhanced dropdown animations */
-      .animate-dropdown-in {
-        animation: dropdownIn 0.2s ease-out;
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(5px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
       }
 
-      @keyframes dropdownIn {
-        from {
-          opacity: 0;
-          transform: translateY(-10px) scale(0.95);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0) scale(1);
-        }
+      /* Form validation styling */
+      .border-green-300 {
+        border-color: #86efac !important;
+      }
+
+      .border-red-300 {
+        border-color: #fca5a5 !important;
+      }
+
+      /* Section ghost styles for sorting */
+      .sortable-ghost {
+        opacity: 0.5;
+        background: #f3f4f6;
+        transform: rotate(2deg);
+      }
+
+      .sortable-chosen {
+        transform: scale(1.02);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
       }
     </style>
     """
   end
+
+  defp strip_html_input(content) when is_binary(content) do
+    content
+    |> String.replace(~r/<[^>]*>/, "")
+    |> String.replace(~r/&nbsp;/, " ")
+    |> String.replace(~r/&amp;/, "&")
+    |> String.replace(~r/&lt;/, "<")
+    |> String.replace(~r/&gt;/, ">")
+    |> String.replace(~r/&quot;/, "\"")
+    |> String.replace(~r/&#39;/, "'")
+    |> String.trim()
+  end
+  defp strip_html_input(content), do: content
 
   defp get_font_class(font_family) do
     case font_family do
@@ -3166,6 +4653,6 @@ defp render_settings_tab(assigns) do
   end
 
   defp get_current_background(customization) do
-    Map.get(customization, "background", "gradient-vibrant")
+    Map.get(customization, "background", "default")
   end
 end

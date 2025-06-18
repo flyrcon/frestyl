@@ -100,17 +100,16 @@ defmodule FrestylWeb.PortfolioLive.Edit.ResumeImporter do
     end
   end
 
-  def initialize_section_selections(parsed_data) do
-    %{
-      "personal_info" => true,  # Always try to import contact info
-      "professional_summary" => has_content?(get_parsed_field(parsed_data, "professional_summary")),
-      "work_experience" => has_list_content?(get_parsed_field(parsed_data, "work_experience")),
-      "education" => has_list_content?(get_parsed_field(parsed_data, "education")),
-      "skills" => has_list_content?(get_parsed_field(parsed_data, "skills")),
-      "projects" => has_list_content?(get_parsed_field(parsed_data, "projects")),
-      "certifications" => has_list_content?(get_parsed_field(parsed_data, "certifications"))
-    }
-  end
+defp initialize_section_selections(parsed_data) do
+  available_sections = get_available_sections(parsed_data)
+
+  # Convert to selection format with default true for available sections
+  available_sections
+  |> Enum.map(fn {section, has_content} ->
+    {section, if(has_content, do: "true", else: "false")}
+  end)
+  |> Enum.into(%{})
+end
 
   # ============================================================================
   # PRIVATE FUNCTIONS
@@ -135,6 +134,41 @@ defmodule FrestylWeb.PortfolioLive.Edit.ResumeImporter do
       content_quality: assess_content_quality(raw_data)
     }
   end
+
+  defp format_skills_for_portfolio(raw_data) do
+    case extract_safe(raw_data, "skills", []) do
+      list when is_list(list) ->
+        Enum.map(list, &format_skill_entry/1)
+      text when is_binary(text) ->
+        parse_skills_text_to_list(text)
+      _ -> []
+    end
+  end
+
+  defp format_skill_entry(item) when is_map(item) do
+    case Map.get(item, "name") || Map.get(item, :name) do
+      nil -> to_string(item)
+      name -> name
+    end
+  end
+
+  defp format_skill_entry(text) when is_binary(text), do: text
+  defp format_skill_entry(item), do: to_string(item)
+
+  defp parse_skills_text_to_list(text) do
+    text
+    |> String.split([",", ";", "\n", "•"])
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp extract_safe(data, key, default) when is_map(data) do
+    case Map.get(data, key) || Map.get(data, String.to_atom(key)) do
+      nil -> default
+      value -> value
+    end
+  end
+  defp extract_safe(_data, _key, default), do: default
 
   defp extract_safe_utf8(data, key, default) do
     value = case data do
@@ -168,47 +202,54 @@ defmodule FrestylWeb.PortfolioLive.Edit.ResumeImporter do
   defp sanitize_utf8_for_database(value), do: value
 
   defp format_work_experience_for_portfolio(raw_data) do
-    work_experience = extract_safe_utf8(raw_data, "work_experience", [])
-
-    case work_experience do
+    case extract_safe(raw_data, "work_experience", []) do
       list when is_list(list) ->
-        formatted_jobs = Enum.map(list, &format_job_entry/1)
-        Logger.info("🔍 WORK_EXP: Formatted #{length(formatted_jobs)} jobs")
-        formatted_jobs
-      _ ->
-        Logger.info("🔍 WORK_EXP: No work experience data found")
-        []
+        Enum.map(list, &format_job_entry/1)
+      text when is_binary(text) ->
+        parse_experience_text_to_jobs(text)
+      _ -> []
     end
   end
 
-  defp format_job_entry(job) when is_map(job) do
+  defp format_job_entry(item) when is_map(item) do
     %{
-      "company" => sanitize_utf8_for_database(Map.get(job, "company", "Unknown Company")),
-      "title" => sanitize_utf8_for_database(Map.get(job, "title", "Position")),
-      "start_date" => sanitize_utf8_for_database(Map.get(job, "start_date", "")),
-      "end_date" => sanitize_utf8_for_database(Map.get(job, "end_date", "")),
-      "current" => Map.get(job, "current", false),
-      "description" => sanitize_utf8_for_database(Map.get(job, "description", "")),
-      "responsibilities" => format_responsibilities(job),
-      "achievements" => get_job_list_field_safe(job, "achievements"),
-      "technologies" => get_job_list_field_safe(job, "technologies"),
-      "skills" => get_job_list_field_safe(job, "skills")
+      "company" => Map.get(item, "company", Map.get(item, :company, "")),
+      "title" => Map.get(item, "title", Map.get(item, :title, Map.get(item, "position", ""))),
+      "start_date" => Map.get(item, "start_date", Map.get(item, :start_date, "")),
+      "end_date" => Map.get(item, "end_date", Map.get(item, :end_date, "")),
+      "current" => Map.get(item, "current", Map.get(item, :current, false)),
+      "description" => Map.get(item, "description", Map.get(item, :description, "")),
+      "location" => Map.get(item, "location", Map.get(item, :location, "")),
+      "employment_type" => Map.get(item, "employment_type", Map.get(item, :employment_type, "Full-time")),
+      "responsibilities" => Map.get(item, "responsibilities", Map.get(item, :responsibilities, [])),
+      "achievements" => Map.get(item, "achievements", Map.get(item, :achievements, [])),
+      "skills" => Map.get(item, "skills", Map.get(item, :skills, []))
     }
   end
 
-  defp format_job_entry(job_text) when is_binary(job_text) do
+  defp format_job_entry(text) when is_binary(text) do
     %{
-      "company" => "Previous Experience",
-      "title" => "Professional Role",
+      "company" => "",
+      "title" => "",
       "start_date" => "",
       "end_date" => "",
       "current" => false,
-      "description" => sanitize_utf8_for_database(job_text),
+      "description" => text,
+      "location" => "",
+      "employment_type" => "Full-time",
       "responsibilities" => [],
       "achievements" => [],
-      "technologies" => [],
       "skills" => []
     }
+  end
+
+  defp parse_experience_text_to_jobs(text) do
+    # Split experience text by lines or common delimiters
+    text
+    |> String.split(["\n", ";", "•"])
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(&format_job_entry/1)
   end
 
   defp format_responsibilities(job) do
@@ -246,117 +287,180 @@ defmodule FrestylWeb.PortfolioLive.Edit.ResumeImporter do
   end
 
   defp format_education_for_portfolio(raw_data) do
-    education_data = extract_safe_utf8(raw_data, "education", [])
-
-    case education_data do
+    case extract_safe(raw_data, "education", []) do
       list when is_list(list) ->
         Enum.map(list, &format_education_entry/1)
+      text when is_binary(text) ->
+        parse_education_text_to_entries(text)
       _ -> []
     end
   end
 
-  defp format_education_entry(edu) when is_map(edu) do
+  defp format_education_entry(item) when is_map(item) do
     %{
-      "institution" => sanitize_utf8_for_database(Map.get(edu, "institution", "")),
-      "degree" => sanitize_utf8_for_database(Map.get(edu, "degree", "")),
-      "field" => sanitize_utf8_for_database(Map.get(edu, "field", "")),
-      "start_date" => sanitize_utf8_for_database(Map.get(edu, "start_date", "")),
-      "end_date" => sanitize_utf8_for_database(Map.get(edu, "end_date", "")),
-      "gpa" => sanitize_utf8_for_database(Map.get(edu, "gpa", "")),
-      "description" => sanitize_utf8_for_database(Map.get(edu, "description", ""))
+      "degree" => Map.get(item, "degree", Map.get(item, :degree, "")),
+      "field" => Map.get(item, "field", Map.get(item, :field, Map.get(item, "major", ""))),
+      "institution" => Map.get(item, "institution", Map.get(item, :institution, Map.get(item, "school", ""))),
+      "location" => Map.get(item, "location", Map.get(item, :location, "")),
+      "start_date" => Map.get(item, "start_date", Map.get(item, :start_date, "")),
+      "end_date" => Map.get(item, "end_date", Map.get(item, :end_date, Map.get(item, "year", ""))),
+      "status" => Map.get(item, "status", Map.get(item, :status, "Completed")),
+      "gpa" => Map.get(item, "gpa", Map.get(item, :gpa, "")),
+      "description" => Map.get(item, "description", Map.get(item, :description, "")),
+      "relevant_coursework" => Map.get(item, "coursework", Map.get(item, :coursework, [])),
+      "activities" => Map.get(item, "activities", Map.get(item, :activities, []))
     }
   end
 
-  defp format_education_entry(edu_text) when is_binary(edu_text) do
+  defp format_education_entry(text) when is_binary(text) do
+    # Parse basic education text into structured format
     %{
-      "institution" => "",
       "degree" => "",
       "field" => "",
+      "institution" => text,
+      "location" => "",
       "start_date" => "",
       "end_date" => "",
+      "status" => "Completed",
       "gpa" => "",
-      "description" => sanitize_utf8_for_database(edu_text)
+      "description" => "",
+      "relevant_coursework" => [],
+      "activities" => []
     }
   end
 
-  defp format_skills_for_portfolio(raw_data) do
-    skills_data = extract_safe_utf8(raw_data, "skills", [])
-
-    case skills_data do
+  defp has_education_content?(parsed_data) do
+    education_data = extract_safe(parsed_data, "education", [])
+    case education_data do
       list when is_list(list) ->
-        # Handle enhanced skills format from your original parser
-        simple_skills = Enum.map(list, fn skill ->
-          case skill do
-            %{"name" => name} -> name
-            name when is_binary(name) -> name
-            _ -> to_string(skill)
-          end
+        length(list) > 0 && Enum.any?(list, fn edu ->
+          # Check if education entry has meaningful content
+          institution = Map.get(edu, "institution", "")
+          degree = Map.get(edu, "degree", "")
+          (is_binary(institution) && String.trim(institution) != "") ||
+          (is_binary(degree) && String.trim(degree) != "")
         end)
-        |> Enum.reject(&(&1 == ""))
-
-        Logger.info("🔍 SKILLS: Converted #{length(simple_skills)} skills for portfolio")
-        simple_skills
-      _ ->
-        []
+      text when is_binary(text) -> String.trim(text) != ""
+      _ -> false
     end
+  end
+
+  defp parse_education_text_to_entries(text) do
+    # Split education text by lines or common delimiters
+    text
+    |> String.split(["\n", ";", "•"])
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(&format_education_entry/1)
+  end
+
+  defp has_education_content?(parsed_data) do
+    education_data = extract_safe(parsed_data, "education", [])
+    case education_data do
+      list when is_list(list) -> length(list) > 0
+      text when is_binary(text) -> String.trim(text) != ""
+      _ -> false
+    end
+  end
+
+  # Update the section availability check:
+  defp get_available_sections(parsed_data) do
+    %{
+      "personal_info" => has_content?(extract_safe_utf8(parsed_data, "personal_info", %{})),
+      "professional_summary" => has_content?(extract_safe_utf8(parsed_data, "professional_summary", "")),
+      "work_experience" => has_list_content?(extract_safe_utf8(parsed_data, "work_experience", [])),
+      "education" => has_education_content?(parsed_data),  # Use the enhanced check
+      "skills" => has_list_content?(extract_safe_utf8(parsed_data, "skills", [])),
+      "projects" => has_list_content?(extract_safe_utf8(parsed_data, "projects", [])),
+      "certifications" => has_list_content?(extract_safe_utf8(parsed_data, "certifications", []))
+    }
   end
 
   defp format_projects_for_portfolio(raw_data) do
-    projects_data = extract_safe_utf8(raw_data, "projects", [])
-
-    case projects_data do
+    case extract_safe(raw_data, "projects", []) do
       list when is_list(list) ->
         Enum.map(list, &format_project_entry/1)
+      text when is_binary(text) ->
+        parse_projects_text_to_list(text)
       _ -> []
     end
   end
 
-  defp format_project_entry(project) when is_map(project) do
+  defp format_project_entry(item) when is_map(item) do
     %{
-      "title" => sanitize_utf8_for_database(Map.get(project, "title", "")),
-      "description" => sanitize_utf8_for_database(Map.get(project, "description", "")),
-      "technologies" => get_job_list_field_safe(project, "technologies"),
-      "url" => sanitize_utf8_for_database(Map.get(project, "url", "")),
-      "github_url" => sanitize_utf8_for_database(Map.get(project, "github_url", ""))
+      "title" => Map.get(item, "title", Map.get(item, :title, "")),
+      "description" => Map.get(item, "description", Map.get(item, :description, "")),
+      "technologies" => Map.get(item, "technologies", Map.get(item, :technologies, [])),
+      "role" => Map.get(item, "role", Map.get(item, :role, "")),
+      "start_date" => Map.get(item, "start_date", Map.get(item, :start_date, "")),
+      "end_date" => Map.get(item, "end_date", Map.get(item, :end_date, "")),
+      "status" => Map.get(item, "status", Map.get(item, :status, "Completed")),
+      "demo_url" => Map.get(item, "demo_url", Map.get(item, :demo_url, "")),
+      "github_url" => Map.get(item, "github_url", Map.get(item, :github_url, ""))
     }
   end
 
-  defp format_project_entry(project_text) when is_binary(project_text) do
+  defp format_project_entry(text) when is_binary(text) do
     %{
-      "title" => "Project",
-      "description" => sanitize_utf8_for_database(project_text),
+      "title" => text,
+      "description" => "",
       "technologies" => [],
-      "url" => "",
+      "role" => "",
+      "start_date" => "",
+      "end_date" => "",
+      "status" => "Completed",
+      "demo_url" => "",
       "github_url" => ""
     }
   end
 
-  defp format_certifications_for_portfolio(raw_data) do
-    certs_data = extract_safe_utf8(raw_data, "certifications", [])
+  defp parse_projects_text_to_list(text) do
+    text
+    |> String.split(["\n", ";", "•"])
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(&format_project_entry/1)
+  end
 
-    case certs_data do
+
+  defp format_certifications_for_portfolio(raw_data) do
+    case extract_safe(raw_data, "certifications", []) do
       list when is_list(list) ->
         Enum.map(list, &format_certification_entry/1)
+      text when is_binary(text) ->
+        parse_certifications_text_to_list(text)
       _ -> []
     end
   end
 
-  defp format_certification_entry(cert) when is_map(cert) do
+  defp format_certification_entry(item) when is_map(item) do
     %{
-      "title" => sanitize_utf8_for_database(Map.get(cert, "name", Map.get(cert, "title", ""))),
-      "provider" => sanitize_utf8_for_database(Map.get(cert, "provider", "")),
-      "date" => sanitize_utf8_for_database(Map.get(cert, "date", "")),
-      "description" => sanitize_utf8_for_database(Map.get(cert, "description", ""))
+      "title" => Map.get(item, "title", Map.get(item, :title, Map.get(item, "name", ""))),
+      "organization" => Map.get(item, "organization", Map.get(item, :organization, Map.get(item, "issuer", ""))),
+      "date" => Map.get(item, "date", Map.get(item, :date, Map.get(item, "year", ""))),
+      "description" => Map.get(item, "description", Map.get(item, :description, "")),
+      "credential_id" => Map.get(item, "credential_id", Map.get(item, :credential_id, "")),
+      "url" => Map.get(item, "url", Map.get(item, :url, ""))
     }
   end
 
-  defp format_certification_entry(cert_text) when is_binary(cert_text) do
+  defp format_certification_entry(text) when is_binary(text) do
     %{
-      "title" => sanitize_utf8_for_database(cert_text),
-      "provider" => "",
+      "title" => text,
+      "organization" => "",
       "date" => "",
-      "description" => ""
+      "description" => "",
+      "credential_id" => "",
+      "url" => ""
     }
+  end
+
+  defp parse_certifications_text_to_list(text) do
+    text
+    |> String.split(["\n", ";", "•"])
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(&format_certification_entry/1)
   end
 
   defp create_sections_from_resume_data(portfolio, parsed_data, section_selections) do
@@ -466,9 +570,34 @@ defmodule FrestylWeb.PortfolioLive.Edit.ResumeImporter do
         }}
 
       "education" ->
-        education = Map.get(parsed_data, :education, [])
+        # FIXED: Proper education section mapping with all required fields
+        education_data = Map.get(parsed_data, :education, [])
+        Logger.info("🔍 EDUCATION MAPPING: Education data: #{inspect(education_data)}")
+
+        # Ensure education data is properly formatted
+        formatted_education = Enum.map(education_data, fn edu ->
+          %{
+            "degree" => sanitize_utf8_for_database(Map.get(edu, "degree", "")),
+            "field" => sanitize_utf8_for_database(Map.get(edu, "field", "")),
+            "institution" => sanitize_utf8_for_database(Map.get(edu, "institution", "")),
+            "location" => sanitize_utf8_for_database(Map.get(edu, "location", "")),
+            "start_date" => sanitize_utf8_for_database(Map.get(edu, "start_date", "")),
+            "end_date" => sanitize_utf8_for_database(Map.get(edu, "end_date", "")),
+            "status" => sanitize_utf8_for_database(Map.get(edu, "status", "Completed")),
+            "gpa" => sanitize_utf8_for_database(Map.get(edu, "gpa", "")),
+            "description" => sanitize_utf8_for_database(Map.get(edu, "description", "")),
+            "relevant_coursework" => sanitize_utf8_for_database(Map.get(edu, "relevant_coursework", [])),
+            "activities" => sanitize_utf8_for_database(Map.get(edu, "activities", []))
+          }
+        end)
+
+        Logger.info("🔍 EDUCATION MAPPING: Formatted education: #{inspect(formatted_education)}")
+
         {:education, "Education", %{
-          "education" => education
+          "education" => formatted_education,
+          "show_gpa" => true,
+          "show_coursework" => true,
+          "show_activities" => true
         }}
 
       "projects" ->
@@ -586,12 +715,24 @@ defmodule FrestylWeb.PortfolioLive.Edit.ResumeImporter do
   end
   defp assess_skills_quality(_), do: 0
 
+  defp has_content?(content) when is_map(content) do
+    content
+    |> Map.values()
+    |> Enum.any?(fn value ->
+      case value do
+        str when is_binary(str) -> String.trim(str) != ""
+        _ -> false
+      end
+    end)
+  end
+
   defp has_content?(content) when is_binary(content), do: String.trim(content) != ""
-  defp has_content?(content) when is_map(content), do: map_size(content) > 0
   defp has_content?(_), do: false
 
+  # Helper to check if list content exists
   defp has_list_content?(list) when is_list(list), do: length(list) > 0
   defp has_list_content?(_), do: false
+
 
   defp format_section_title(section_type) do
     section_type

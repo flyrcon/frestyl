@@ -163,6 +163,60 @@ defmodule FrestylWeb.PortfolioLive.Index do
     end
   end
 
+  @impl true
+  def handle_event("countdown_update", params, socket) do
+    IO.puts("=== COUNTDOWN UPDATE IN PARENT LIVEVIEW ===")
+    IO.inspect(params, label: "Countdown params")
+
+    # Forward the countdown update to the video intro component
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
+
+      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+        id: component_id,
+        countdown_update_params: params
+      )
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("recording_progress", params, socket) do
+    IO.puts("=== RECORDING PROGRESS IN PARENT LIVEVIEW ===")
+    IO.inspect(params, label: "Recording progress params")
+
+    # Forward the recording progress to the video intro component
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
+
+      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+        id: component_id,
+        recording_progress_params: params
+      )
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("recording_error", params, socket) do
+    IO.puts("=== RECORDING ERROR IN PARENT LIVEVIEW ===")
+    IO.inspect(params, label: "Recording error params")
+
+    # Forward the recording error to the video intro component
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
+
+      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+        id: component_id,
+        recording_error_params: params
+      )
+    end
+
+    {:noreply, socket}
+  end
+
   # Collaboration handlers
   @impl true
   def handle_event("show_collaboration_modal", %{"portfolio_id" => portfolio_id}, socket) do
@@ -426,27 +480,36 @@ defmodule FrestylWeb.PortfolioLive.Index do
   # Forward camera events to the component
   @impl true
   def handle_event("camera_ready", params, socket) do
-    if socket.assigns.show_video_intro_modal && socket.assigns.current_portfolio_for_video do
-      # Use send_update to properly update the component
+    IO.puts("=== CAMERA READY IN PARENT LIVEVIEW ===")
+    IO.inspect(params, label: "Camera ready params")
+
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
+
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
-        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
-        camera_ready: true,
-        camera_status: "ready"
+        id: component_id,
+        camera_ready_params: params
       )
     end
+
     {:noreply, socket}
   end
 
+
   @impl true
   def handle_event("camera_error", params, socket) do
-    if socket.assigns.show_video_intro_modal && socket.assigns.current_portfolio_for_video do
+    IO.puts("=== CAMERA ERROR IN PARENT LIVEVIEW ===")
+    IO.inspect(params, label: "Camera error params")
+
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
+
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
-        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
-        camera_ready: false,
-        camera_status: "error",
-        error_message: Map.get(params, "message", "Camera error")
+        id: component_id,
+        camera_error_params: params
       )
     end
+
     {:noreply, socket}
   end
 
@@ -458,12 +521,18 @@ defmodule FrestylWeb.PortfolioLive.Index do
 
   @impl true
   def handle_event("video_blob_ready", params, socket) do
-    if socket.assigns.show_video_intro_modal && socket.assigns.current_portfolio_for_video do
+    IO.puts("=== VIDEO BLOB READY IN PARENT LIVEVIEW ===")
+    IO.inspect(Map.keys(params), label: "Video blob params keys")
+
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
+
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
-        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
+        id: component_id,
         video_blob_params: params
       )
     end
+
     {:noreply, socket}
   end
 
