@@ -5,6 +5,9 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
 
   @impl true
   def mount(socket) do
+    IO.puts("=== VIDEO INTRO COMPONENT MOUNTING ===")
+    IO.puts("Component ID: #{socket.assigns[:id] || "NO ID"}")
+
     socket =
       socket
       |> assign(:recording_state, :setup)
@@ -17,43 +20,11 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
       |> assign(:countdown_timer, 3)
       |> assign(:countdown_value, 3)
 
+    IO.puts("=== COMPONENT MOUNTED WITH ASSIGNS ===")
     {:ok, socket}
   end
 
-  # CRITICAL FIX: Handle the 'countdown_update' event from the JavaScript hook
-  @impl true
-  def handle_event("countdown_update", %{"count" => count}, socket) do
-    IO.puts("=== COUNTDOWN UPDATE IN COMPONENT: #{count} ===")
 
-    socket = assign(socket, :countdown_value, count)
-
-    # When countdown reaches 0, start recording
-    if count == 0 do
-      IO.puts("COUNTDOWN FINISHED - STARTING RECORDING")
-
-      socket =
-        socket
-        |> assign(:recording_state, :recording)
-        |> assign(:elapsed_time, 0)
-        |> assign(:countdown_value, 0)
-
-      # Start recording timer
-      Process.send_after(self(), {:recording_tick, socket.assigns.id}, 1000)
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # CRITICAL FIX: Handle recording progress from JavaScript
-  @impl true
-  def handle_event("recording_progress", %{"elapsed" => elapsed}, socket) do
-    IO.puts("=== RECORDING PROGRESS: #{elapsed}s ===")
-
-    socket = assign(socket, :elapsed_time, elapsed)
-    {:noreply, socket}
-  end
 
   # CRITICAL FIX: Handle recording errors from JavaScript
   @impl true
@@ -100,11 +71,40 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
           |> assign(:countdown_value, 3)
           |> assign(:error_message, nil)
 
-        # CRITICAL FIX: Force the JavaScript hook to start countdown after state change
-        socket = push_event(socket, "force_countdown_start", %{})
+        # CRITICAL: Push event to JavaScript hook to start countdown
+        socket = push_event(socket, "start_countdown", %{})
 
         {:noreply, socket}
     end
+  end
+
+  @impl true
+  def update(%{countdown_update_params: params}, socket) do
+    IO.puts("=== COUNTDOWN UPDATE FORWARDED TO COMPONENT ===")
+    IO.inspect(params, label: "Countdown params")
+
+    count = Map.get(params, "count", 3)
+
+    socket =
+      if count == 0 do
+        socket
+        |> assign(:recording_state, :recording)
+        |> assign(:countdown_value, 0)
+        |> assign(:elapsed_time, 0)
+      else
+        assign(socket, :countdown_value, count)
+      end
+
+    {:ok, socket}
+  end
+
+  @impl true
+  def update(%{recording_progress_params: params}, socket) do
+    IO.puts("=== RECORDING PROGRESS FORWARDED TO COMPONENT ===")
+    elapsed = Map.get(params, "elapsed", 0)
+
+    socket = assign(socket, :elapsed_time, elapsed)
+    {:ok, socket}
   end
 
   # Camera ready event
@@ -188,17 +188,139 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
       |> assign(:recording_state, :saving)
       |> assign(:upload_progress, 0)
 
+    # Tell JavaScript to send the video blob
+    socket = push_event(socket, "save_video", %{})
+
     {:noreply, socket}
   end
 
-  # Cancel recording
-  @impl true
-  def handle_event("cancel_recording", _params, socket) do
-    IO.puts("=== CANCEL RECORDING IN COMPONENT ===")
+  defp save_video_file(filename, video_data, portfolio, duration) do
+    # This is a placeholder - you'll need to implement based on your file storage system
+    # For now, let's create a basic implementation
 
-    # Send close event to parent
-    send(self(), {:close_video_modal, %{}})
-    {:noreply, socket}
+    try do
+      # Create a temporary file path (adjust based on your storage setup)
+      upload_dir = Path.join(["priv", "static", "uploads", "videos"])
+      File.mkdir_p!(upload_dir)
+
+      file_path = Path.join(upload_dir, filename)
+
+      # Write the video data
+      case File.write(file_path, video_data) do
+        :ok ->
+          # Return success with file info
+          {:ok, %{
+            id: :crypto.strong_rand_bytes(16) |> Base.encode16(),
+            file_path: file_path,
+            filename: filename,
+            file_size: byte_size(video_data),
+            duration: duration
+          }}
+
+        {:error, reason} ->
+          {:error, "Failed to write file: #{reason}"}
+      end
+    rescue
+      error ->
+        {:error, "File save error: #{Exception.message(error)}"}
+    end
+  end
+
+  # Create or update video intro section in portfolio
+  defp create_portfolio_video_section(portfolio, video_path, filename, duration) do
+    try do
+      # Get existing sections to determine position
+      existing_sections = Frestyl.Portfolios.list_portfolio_sections(portfolio.id)
+
+      # Check for existing video intro section
+      video_section = Enum.find(existing_sections, fn section ->
+        section.title == "Video Introduction" or
+        (section.content && Map.get(section.content, "video_type") == "introduction")
+      end)
+
+      # Convert absolute path to web-accessible path
+      web_path = convert_to_web_path(video_path)
+
+      section_attrs = %{
+        portfolio_id: portfolio.id,
+        title: "Video Introduction",
+        section_type: "media_showcase",
+        content: %{
+          "title" => "Personal Introduction",
+          "description" => "A personal video introduction showcasing my background and expertise.",
+          "video_url" => web_path,
+          "video_filename" => filename,
+          "video_type" => "introduction",
+          "duration" => duration,
+          "auto_play" => false,
+          "show_controls" => true,
+          "created_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+        },
+        visible: true
+      }
+
+      case video_section do
+        nil ->
+          # Create new section at the top
+          increment_existing_positions(portfolio.id)
+          section_attrs = Map.put(section_attrs, :position, 1)
+
+          case Frestyl.Portfolios.create_section(section_attrs) do
+            {:ok, section} ->
+              {:ok, %{
+                id: section.id,
+                portfolio_id: portfolio.id,
+                file_path: video_path,
+                filename: filename,
+                duration: duration
+              }}
+            {:error, changeset} ->
+              {:error, "Section creation failed: #{inspect(changeset.errors)}"}
+          end
+
+        existing_section ->
+          # Update existing section
+          updated_content = Map.merge(existing_section.content || %{}, section_attrs.content)
+
+          case Frestyl.Portfolios.update_section(existing_section, %{content: updated_content}) do
+            {:ok, section} ->
+              {:ok, %{
+                id: section.id,
+                portfolio_id: portfolio.id,
+                file_path: video_path,
+                filename: filename,
+                duration: duration
+              }}
+            {:error, changeset} ->
+              {:error, "Section update failed: #{inspect(changeset.errors)}"}
+          end
+      end
+    rescue
+      error ->
+        {:error, "Database operation failed: #{Exception.message(error)}"}
+    end
+  end
+
+  # Helper to convert file path to web-accessible path
+  defp convert_to_web_path(file_path) do
+    # Convert from "priv/static/uploads/videos/filename.webm"
+    # to "/uploads/videos/filename.webm"
+    case String.split(file_path, "static", parts: 2) do
+      [_prefix, suffix] -> suffix
+      _ ->
+        # Fallback: extract just the filename and assume uploads/videos structure
+        filename = Path.basename(file_path)
+        "/uploads/videos/#{filename}"
+    end
+  end
+
+  # Helper to increment positions of existing sections
+  defp increment_existing_positions(portfolio_id) do
+    sections = Frestyl.Portfolios.list_portfolio_sections(portfolio_id)
+
+    Enum.each(sections, fn section ->
+      Frestyl.Portfolios.update_section(section, %{position: section.position + 1})
+    end)
   end
 
   # Video blob ready
@@ -388,10 +510,11 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
 
       <!-- Main Content with proper hook integration -->
       <div class="p-6"
-           phx-hook="VideoCapture"
-           id={"video-capture-#{@id}"}
-           data-component-id={@id}
-           data-recording-state={@recording_state}>
+          phx-hook="VideoCapture"
+          id={"video-capture-#{@id}"}
+          data-component-id={@id}
+          data-recording-state={@recording_state}
+          phx-target={@myself}>
 
         <%= case @recording_state do %>
           <% :setup -> %>
@@ -753,13 +876,116 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
 
   # Video upload handling
   defp handle_video_upload(socket, blob_data, mime_type, file_size, duration) do
-    # Add your video upload logic here
-    # This is a placeholder - implement according to your needs
-    socket = socket
-    |> assign(:recording_state, :setup)
-    |> assign(:upload_progress, 0)
-    |> put_flash(:info, "Video saved successfully!")
+    IO.puts("=== STARTING VIDEO UPLOAD ===")
+    IO.puts("Blob data length: #{String.length(blob_data)}")
+    IO.puts("MIME type: #{mime_type}")
+    IO.puts("File size: #{file_size}")
+    IO.puts("Duration: #{duration}")
 
-    {:noreply, socket}
+    # Update progress
+    socket = assign(socket, upload_progress: 25)
+
+    case Base.decode64(blob_data) do
+      {:ok, video_data} ->
+        IO.puts("✅ Base64 decode successful, video data size: #{byte_size(video_data)}")
+        socket = assign(socket, upload_progress: 50)
+
+        # Validate file size (max 50MB)
+        max_size = 50 * 1024 * 1024
+
+        if file_size > max_size do
+          IO.puts("❌ File too large: #{file_size} > #{max_size}")
+          socket =
+            socket
+            |> assign(recording_state: :preview, upload_progress: 0)
+            |> put_flash(:error, "Video file too large. Maximum size is 50MB.")
+
+          {:noreply, socket}
+        else
+          # Generate filename with timestamp and proper extension
+          timestamp = DateTime.utc_now() |> DateTime.to_unix()
+          extension = get_file_extension(mime_type)
+          filename = "portfolio_intro_#{socket.assigns.portfolio.id}_#{timestamp}#{extension}"
+
+          IO.puts("📁 Saving as: #{filename}")
+          socket = assign(socket, upload_progress: 75)
+
+          case save_video_file(filename, video_data, socket.assigns.portfolio, duration) do
+            {:ok, saved_file_info} ->
+              IO.puts("✅ Video saved successfully!")
+              socket = assign(socket, upload_progress: 100)
+
+              # Create or update video intro section
+              case create_portfolio_video_section(socket.assigns.portfolio, saved_file_info.file_path, saved_file_info.filename, duration) do
+                {:ok, section_info} ->
+                  # Success! Reset component and notify parent
+                  socket =
+                    socket
+                    |> assign(
+                      recording_state: :setup,
+                      elapsed_time: 0,
+                      countdown_timer: 3,
+                      upload_progress: 0
+                    )
+                    |> put_flash(:info, "Video introduction saved successfully!")
+
+                  # Send completion event to parent LiveView
+                  send(self(), {:video_intro_complete, %{
+                    "section_id" => section_info.id,
+                    "video_path" => saved_file_info.file_path,
+                    "filename" => saved_file_info.filename,
+                    "duration" => duration,
+                    "portfolio_id" => socket.assigns.portfolio.id
+                  }})
+
+                  {:noreply, socket}
+
+                {:error, section_error} ->
+                  IO.puts("❌ Section creation failed: #{section_error}")
+                  socket =
+                    socket
+                    |> assign(recording_state: :preview, upload_progress: 0)
+                    |> put_flash(:error, "Failed to save video to portfolio: #{section_error}")
+
+                  {:noreply, socket}
+              end
+
+            {:error, save_error} ->
+              IO.puts("❌ Save failed: #{save_error}")
+              socket =
+                socket
+                |> assign(recording_state: :preview, upload_progress: 0)
+                |> put_flash(:error, "Failed to save video: #{save_error}")
+
+              {:noreply, socket}
+          end
+        end
+
+      {:error, decode_error} ->
+        IO.puts("❌ Base64 decode failed: #{inspect(decode_error)}")
+        socket =
+          socket
+          |> assign(recording_state: :preview, upload_progress: 0)
+          |> put_flash(:error, "Invalid video data. Please try recording again.")
+
+        {:noreply, socket}
+    end
+  end
+
+  # Helper to get proper file extension
+  defp get_file_extension(mime_type) do
+    case mime_type do
+      "video/webm" -> ".webm"
+      "video/mp4" -> ".mp4"
+      "video/quicktime" -> ".mov"
+      _ -> ".webm"  # Default fallback
+    end
+  end
+
+  # Helper function to format recording time
+  defp format_time(seconds) do
+    minutes = div(seconds, 60)
+    secs = rem(seconds, 60)
+    "#{minutes}:#{String.pad_leading(Integer.to_string(secs), 2, "0")}"
   end
 end

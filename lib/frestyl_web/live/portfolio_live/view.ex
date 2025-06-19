@@ -11,13 +11,51 @@ defmodule FrestylWeb.PortfolioLive.View do
   # 🔥 FIXED: Handle both public portfolio view and share token view
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
-    # Check if this is a share token (longer, alphanumeric) or portfolio slug
-    if String.length(slug) > 20 do
-      # This looks like a share token
-      mount_share_view(slug, socket)
-    else
-      # This is a portfolio slug
-      mount_public_view(slug, socket)
+    case Portfolios.get_portfolio_by_slug_with_sections_simple(slug) do
+      {:error, :not_found} ->
+        {:ok, socket
+        |> put_flash(:error, "Portfolio not found")
+        |> redirect(to: "/")}
+
+      {:ok, portfolio} ->
+        portfolio = if Ecto.assoc_loaded?(portfolio.user) do
+          portfolio
+        else
+          Repo.preload(portfolio, :user, force: true)
+        end
+
+        if portfolio_accessible?(portfolio) do
+          track_portfolio_visit(portfolio, socket)
+
+          # 🔥 NEW: Extract intro video and filter sections
+          {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(portfolio.sections || [])
+
+          {template_config, customization_css, template_layout} = process_portfolio_customization_fixed(portfolio)
+
+          socket =
+            socket
+            |> assign(:page_title, portfolio.title)
+            |> assign(:portfolio, portfolio)
+            |> assign(:owner, portfolio.user)
+            |> assign(:sections, filtered_sections)  # 🔥 UPDATED: Use filtered sections
+            |> assign(:template_config, template_config)
+            |> assign(:template_theme, normalize_theme(portfolio.theme))
+            |> assign(:template_layout, template_layout)
+            |> assign(:customization_css, customization_css)
+            |> assign(:intro_video, intro_video)  # 🔥 UPDATED: Use extracted video
+            |> assign(:share, nil)
+            |> assign(:is_shared_view, false)
+            |> assign(:show_stats, false)
+            |> assign(:portfolio_stats, %{})
+            |> assign(:collaboration_enabled, false)
+            |> assign(:feedback_panel_open, false)
+
+          {:ok, socket}
+        else
+          {:ok, socket
+          |> put_flash(:error, "This portfolio is private")
+          |> redirect(to: "/")}
+        end
     end
   end
 
@@ -29,42 +67,49 @@ defmodule FrestylWeb.PortfolioLive.View do
 
   # 🔥 FIXED: Mount public portfolio view with proper section loading
   defp mount_public_view(slug, socket) do
-    case get_portfolio_with_complete_sections(slug) do
+    case Portfolios.get_portfolio_by_slug_with_sections_simple(slug) do
       {:error, :not_found} ->
         {:ok, socket
-         |> put_flash(:error, "Portfolio not found")
-         |> redirect(to: "/")}
+        |> put_flash(:error, "Portfolio not found")
+        |> redirect(to: "/")}
 
       {:ok, portfolio} ->
         IO.puts("🔥 MOUNTING PORTFOLIO VIEW")
-        IO.puts("🔥 Portfolio found: #{portfolio.title}")
-        IO.puts("🔥 Sections count: #{length(portfolio.sections)}")
+        IO.puts("🔥 Portfolio theme: #{portfolio.theme}")
+        IO.puts("🔥 Portfolio customization: #{inspect(portfolio.customization)}")
+
+        # Force preload user if not loaded
+        portfolio = if Ecto.assoc_loaded?(portfolio.user) do
+          portfolio
+        else
+          Repo.preload(portfolio, :user, force: true)
+        end
 
         # Check if portfolio is publicly accessible
         if portfolio_accessible?(portfolio) do
-          # Track visit
-          track_portfolio_visit(portfolio, socket)
+          # 🔥 FIX: Track visit only if we have user info, or track anonymously
+          track_portfolio_visit_safe(portfolio, socket)
 
-          # 🔥 FIXED: Process customization with proper section data
-          {template_config, customization_css, template_layout} =
-            process_portfolio_customization_fixed(portfolio)
+          # 🔥 NEW: Extract intro video and filter sections
+          {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(Map.get(portfolio, :portfolio_sections, []))
 
-          # 🔥 FIXED: Ensure sections are properly structured
-          normalized_sections = normalize_sections_for_display(portfolio.sections)
+          # Process customization data
+          {template_config, customization_css, template_layout} = process_portfolio_customization_fixed(portfolio)
 
-          IO.puts("🔥 Normalized sections count: #{length(normalized_sections)}")
+          IO.puts("🔥 Generated CSS length: #{String.length(customization_css)}")
+          IO.puts("🔥 Template layout: #{template_layout}")
 
           socket =
             socket
             |> assign(:page_title, portfolio.title)
             |> assign(:portfolio, portfolio)
             |> assign(:owner, portfolio.user)
-            |> assign(:sections, normalized_sections)  # 🔥 FIXED
+            |> assign(:sections, filtered_sections)  # 🔥 CHANGED: Use filtered sections
             |> assign(:template_config, template_config)
             |> assign(:template_theme, normalize_theme(portfolio.theme))
             |> assign(:template_layout, template_layout)
             |> assign(:customization_css, customization_css)
-            |> assign(:intro_video, get_intro_video(portfolio))
+            |> assign(:intro_video, intro_video)  # 🔥 CHANGED: Use extracted video
             |> assign(:share, nil)
             |> assign(:is_shared_view, false)
             |> assign(:show_stats, false)
@@ -75,19 +120,51 @@ defmodule FrestylWeb.PortfolioLive.View do
           {:ok, socket}
         else
           {:ok, socket
-           |> put_flash(:error, "This portfolio is private")
-           |> redirect(to: "/")}
+          |> put_flash(:error, "This portfolio is private")
+          |> redirect(to: "/")}
         end
+    end
+  end
+
+  # 🔥 NEW: Safe version of track_portfolio_visit that handles nil current_user
+  defp track_portfolio_visit_safe(portfolio, socket) do
+    try do
+      # Get current user safely
+      current_user = Map.get(socket.assigns, :current_user, nil)
+
+      ip_address = get_connect_info(socket, :peer_data)
+                  |> Map.get(:address, {127, 0, 0, 1})
+                  |> :inet.ntoa()
+                  |> to_string()
+      user_agent = get_connect_info(socket, :user_agent) || ""
+
+      visit_attrs = %{
+        portfolio_id: portfolio.id,
+        ip_address: ip_address,
+        user_agent: user_agent,
+        referrer: get_connect_params(socket)["ref"]
+      }
+
+      # Add user_id only if user is logged in
+      visit_attrs = if current_user do
+        Map.put(visit_attrs, :user_id, current_user.id)
+      else
+        visit_attrs
+      end
+
+      Portfolios.create_visit(visit_attrs)
+    rescue
+      _ -> :ok
     end
   end
 
   # 🔥 FIXED: Mount share token view with proper section loading
   defp mount_share_view(token, socket) do
-    case get_portfolio_by_share_token_with_complete_sections(token) do
+    case Portfolios.get_portfolio_by_share_token_simple(token) do
       {:error, :not_found} ->
         {:ok, socket
-         |> put_flash(:error, "Portfolio link not found or expired")
-         |> redirect(to: "/")}
+        |> put_flash(:error, "Portfolio link not found or expired")
+        |> redirect(to: "/")}
 
       {:ok, portfolio, share} ->
         # Track share visit
@@ -97,33 +174,70 @@ defmodule FrestylWeb.PortfolioLive.View do
         # Check if this is a collaboration request
         collaboration_mode = get_connect_params(socket)["collaboration"] == "true"
 
-        # 🔥 FIXED: Process customization data
-        {template_config, customization_css, template_layout} =
-          process_portfolio_customization_fixed(portfolio)
+        # 🔥 NEW: Extract intro video and filter sections for share view
+        {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(portfolio.sections || [])
 
-        # 🔥 FIXED: Ensure sections are properly structured
-        normalized_sections = normalize_sections_for_display(portfolio.sections)
+        # Process customization data
+        {template_config, customization_css, template_layout} = process_portfolio_customization_fixed(portfolio)
 
         socket =
           socket
           |> assign(:page_title, "#{portfolio.title} - Shared")
           |> assign(:portfolio, portfolio)
           |> assign(:owner, portfolio.user)
-          |> assign(:sections, normalized_sections)  # 🔥 FIXED
+          |> assign(:sections, filtered_sections)  # 🔥 CHANGED: Use filtered sections
           |> assign(:template_config, template_config)
           |> assign(:template_theme, normalize_theme(portfolio.theme))
           |> assign(:template_layout, template_layout)
           |> assign(:customization_css, customization_css)
-          |> assign(:intro_video, get_intro_video(portfolio))
-          |> assign(:share, %{"name" => share.name || "shared user", "token" => token, "id" => share.id})
+          |> assign(:intro_video, intro_video)  # 🔥 CHANGED: Use extracted video
+          |> assign(:share, share)
           |> assign(:is_shared_view, true)
-          |> assign(:collaboration_enabled, collaboration_mode)
-          |> assign(:feedback_panel_open, collaboration_mode)
-          |> assign(:show_stats, false)
+          |> assign(:show_stats, true)
           |> assign(:portfolio_stats, %{})
+          |> assign(:collaboration_enabled, collaboration_mode)
+          |> assign(:feedback_panel_open, false)
 
         {:ok, socket}
     end
+  end
+
+  defp extract_intro_video_and_filter_sections(sections) do
+    {video_sections, other_sections} = Enum.split_with(sections, fn section ->
+      section.title == "Video Introduction" ||
+      (section.content && Map.get(section.content, "video_type") == "introduction")
+    end)
+
+    intro_video = case video_sections do
+      [video_section | _] ->
+        content = video_section.content || %{}
+        %{
+          id: video_section.id,
+          title: Map.get(content, "title", "Personal Introduction"),
+          description: Map.get(content, "description", ""),
+          video_url: Map.get(content, "video_url"),
+          filename: Map.get(content, "video_filename"),
+          duration: Map.get(content, "duration", 0),
+          created_at: Map.get(content, "created_at"),
+          section_id: video_section.id
+        }
+      [] ->
+        nil
+    end
+
+    {intro_video, other_sections}
+  end
+
+  defp format_video_duration(duration) when is_number(duration) do
+    minutes = div(duration, 60)
+    seconds = rem(duration, 60)
+    "#{minutes}:#{String.pad_leading(Integer.to_string(seconds), 2, "0")}"
+  end
+  defp format_video_duration(_), do: "0:00"
+
+  defp get_video_thumbnail_url(intro_video) do
+    # For now, return a placeholder - you can implement video thumbnail generation later
+    "/images/video-placeholder.jpg"
   end
 
   # 🔥 NEW: Get portfolio with complete section data
@@ -277,6 +391,21 @@ defmodule FrestylWeb.PortfolioLive.View do
     IO.puts("🔥 CSS variables generated: #{String.length(css_variables)} characters")
 
     {merged_config, css_variables, template_layout}
+  end
+
+  defp generate_custom_css(customization) do
+    # Basic CSS generation - you can expand this
+    primary_color = Map.get(customization, "primary_color", "#3b82f6")
+
+    """
+    <style>
+      :root {
+        --portfolio-primary: #{primary_color};
+      }
+      .custom-primary { color: var(--portfolio-primary); }
+      .custom-primary-bg { background-color: var(--portfolio-primary); }
+    </style>
+    """
   end
 
   # 🔥 SAFE: Get template config with fallback
@@ -2843,14 +2972,23 @@ defmodule FrestylWeb.PortfolioLive.View do
   end
 
   defp get_intro_video(portfolio) do
-    case Map.get(portfolio, :intro_video_id) do
-      nil -> nil
-      video_id ->
-        try do
-          Portfolios.get_media!(video_id)
-        rescue
-          _ -> nil
-        end
+    # Find video intro section
+    intro_video_section = Enum.find(portfolio.sections || [], fn section ->
+      section.title == "Video Introduction" ||
+      (section.content && Map.get(section.content, "video_type") == "introduction")
+    end)
+
+    if intro_video_section do
+      content = intro_video_section.content || %{}
+      %{
+        url: Map.get(content, "video_url"),
+        duration: Map.get(content, "duration"),
+        title: Map.get(content, "title", "Personal Introduction"),
+        description: Map.get(content, "description"),
+        filename: Map.get(content, "video_filename")
+      }
+    else
+      nil
     end
   end
 

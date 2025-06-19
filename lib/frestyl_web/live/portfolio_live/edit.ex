@@ -131,98 +131,70 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     {:noreply, socket}
   end
 
+  # CRITICAL: Simplified video event forwarding
   @impl true
   def handle_event("camera_ready", params, socket) do
-    IO.puts("=== CAMERA READY IN EDIT LIVEVIEW ===")
-    IO.inspect(params, label: "Camera params")
-
-    # Forward to the video intro component if it exists
     if socket.assigns[:show_video_intro] do
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
         id: socket.assigns.video_intro_component_id,
         camera_ready_params: params
       )
-
-      IO.puts("Camera ready event forwarded to component: #{socket.assigns.video_intro_component_id}")
     end
-
     {:noreply, socket}
   end
 
-  # Handle camera_error events from VideoCapture hook
   @impl true
   def handle_event("camera_error", params, socket) do
-    IO.puts("=== CAMERA ERROR IN EDIT LIVEVIEW ===")
-    IO.inspect(params, label: "Error params")
-
     if socket.assigns[:show_video_intro] do
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
         id: socket.assigns.video_intro_component_id,
         camera_error_params: params
       )
     end
-
     {:noreply, socket}
   end
 
-  # Handle countdown_update events from VideoCapture hook
   @impl true
   def handle_event("countdown_update", params, socket) do
-    IO.puts("=== COUNTDOWN UPDATE IN EDIT LIVEVIEW ===")
-    IO.inspect(params, label: "Countdown params")
-
     if socket.assigns[:show_video_intro] do
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
         id: socket.assigns.video_intro_component_id,
         countdown_update_params: params
       )
     end
-
     {:noreply, socket}
   end
 
-  # Handle recording_progress events from VideoCapture hook
   @impl true
   def handle_event("recording_progress", params, socket) do
-    IO.puts("=== RECORDING PROGRESS IN EDIT LIVEVIEW ===")
-
     if socket.assigns[:show_video_intro] do
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
         id: socket.assigns.video_intro_component_id,
         recording_progress_params: params
       )
     end
-
     {:noreply, socket}
   end
 
-  # Handle recording_error events from VideoCapture hook
   @impl true
   def handle_event("recording_error", params, socket) do
-    IO.puts("=== RECORDING ERROR IN EDIT LIVEVIEW ===")
-
     if socket.assigns[:show_video_intro] do
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
         id: socket.assigns.video_intro_component_id,
         recording_error_params: params
       )
     end
-
     {:noreply, socket}
   end
 
-  # Handle video_blob_ready events from VideoCapture hook
   @impl true
   def handle_event("video_blob_ready", params, socket) do
-    IO.puts("=== VIDEO BLOB READY IN EDIT LIVEVIEW ===")
-
     if socket.assigns[:show_video_intro] do
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
         id: socket.assigns.video_intro_component_id,
         video_blob_params: params
       )
     end
-
     {:noreply, socket}
   end
 
@@ -998,6 +970,36 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to update typography.")}
     end
+  end
+
+  @impl true
+  def handle_info({:video_intro_complete, params}, socket) do
+    IO.puts("=== VIDEO INTRO COMPLETED IN PARENT ===")
+    IO.inspect(params, label: "Completion params")
+
+    # Refresh the sections list to include the new video section
+    updated_sections = Portfolios.list_portfolio_sections(socket.assigns.portfolio.id)
+
+    socket =
+      socket
+      |> assign(:sections, updated_sections)
+      |> assign(:show_video_intro, false)
+      |> put_flash(:info, "Video introduction saved successfully! It will appear prominently in your portfolio.")
+
+    {:noreply, socket}
+  end
+
+  # 🔥 NEW: Handle cancel recording event
+  @impl true
+  def handle_event("cancel_recording", _params, socket) do
+    IO.puts("=== CANCEL RECORDING IN PARENT ===")
+
+    socket =
+      socket
+      |> assign(:show_video_intro, false)
+      |> put_flash(:info, "Video recording cancelled")
+
+    {:noreply, socket}
   end
 
   @impl true

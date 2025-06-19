@@ -134,7 +134,7 @@
     </div>
   <% end %>
 
-  <!-- 🔥 CORPORATE TEMPLATE HERO -->
+  <!-- 🔥 CORPORATE TEMPLATE HERO WITH VIDEO INTEGRATION -->
   <%= if @template_theme == :corporate do %>
     <div class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-20">
@@ -186,6 +186,39 @@
                 </div>
               </div>
 
+              <!-- 🔥 NEW: Video Introduction Section -->
+              <%= if assigns[:intro_video] && @intro_video do %>
+                <div class="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-100">
+                  <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 class="text-lg font-bold text-gray-900">Personal Introduction</h3>
+                        <p class="text-sm text-gray-600">
+                          <%= if @intro_video.duration do %>
+                            Duration: <%= format_video_duration(@intro_video.duration) %>
+                          <% end %>
+                        </p>
+                      </div>
+                    </div>
+                    <button onclick="openVideoModal('<%= @intro_video.video_url %>', '<%= @intro_video.title %>')"
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 shadow-lg">
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                      </svg>
+                      <span>Watch Introduction</span>
+                    </button>
+                  </div>
+                  <p class="text-gray-700 leading-relaxed">
+                    <%= @intro_video.description || "Get to know me through this personal introduction video where I share my background, experience, and what drives my professional passion." %>
+                  </p>
+                </div>
+              <% end %>
+
               <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
                 <div class="text-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
                   <div class="text-3xl font-bold text-blue-600"><%= length(@sections) %></div>
@@ -219,21 +252,42 @@
             </div>
           </div>
 
+          <!-- 🔥 UPDATED: Right side with video preview -->
           <div class="lg:col-span-4">
             <div class="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
               <div class="h-2 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
               <div class="p-8">
-                <div class="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-700 h-80 flex items-center justify-center">
-                  <div class="text-center text-white p-8">
-                    <div class="w-20 h-20 mx-auto mb-6 bg-white/20 rounded-full flex items-center justify-center">
-                      <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                      </svg>
+                <%= if assigns[:intro_video] && @intro_video do %>
+                  <!-- Video Preview -->
+                  <div class="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-700 h-80 group cursor-pointer"
+                      onclick="openVideoModal('<%= @intro_video.video_url %>', '<%= @intro_video.title %>')">
+                    <div class="absolute inset-0 bg-black bg-opacity-40 group-hover:bg-opacity-20 transition-all duration-300"></div>
+                    <div class="absolute inset-0 flex items-center justify-center">
+                      <div class="w-20 h-20 bg-white bg-opacity-90 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-2xl">
+                        <svg class="w-8 h-8 text-blue-600 ml-1" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                        </svg>
+                      </div>
                     </div>
-                    <h4 class="text-2xl font-bold mb-3">Professional Profile</h4>
-                    <p class="text-blue-100 leading-relaxed">Comprehensive professional portfolio showcasing experience and expertise.</p>
+                    <div class="absolute bottom-4 left-4 right-4 text-center">
+                      <h4 class="text-white text-lg font-bold mb-2">Watch My Introduction</h4>
+                      <p class="text-blue-100 text-sm">Click to play video</p>
+                    </div>
                   </div>
-                </div>
+                <% else %>
+                  <!-- Default placeholder when no video -->
+                  <div class="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-700 h-80 flex items-center justify-center">
+                    <div class="text-center text-white p-8">
+                      <div class="w-20 h-20 mx-auto mb-6 bg-white/20 rounded-full flex items-center justify-center">
+                        <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                        </svg>
+                      </div>
+                      <h4 class="text-2xl font-bold mb-3">Professional Profile</h4>
+                      <p class="text-blue-100 leading-relaxed">Comprehensive professional portfolio showcasing experience and expertise.</p>
+                    </div>
+                  </div>
+                <% end %>
               </div>
             </div>
           </div>
@@ -242,7 +296,7 @@
     </div>
   <% end %>
 
-  <!-- 🔥 MINIMALIST TEMPLATE HERO -->
+  <!-- 🔥 MINIMALIST TEMPLATE HERO WITH VIDEO INTEGRATION -->
   <%= if @template_theme == :minimalist do %>
     <div class="w-full px-6 lg:px-8 py-16 lg:py-24 min-h-screen bg-white">
       
@@ -267,6 +321,35 @@
             <p class="text-2xl lg:text-3xl text-gray-600 leading-relaxed font-light">
               <%= @portfolio.description %>
             </p>
+          </div>
+        <% end %>
+        
+        <!-- 🔥 NEW: Video Introduction for Minimalist -->
+        <%= if assigns[:intro_video] && @intro_video do %>
+          <div class="max-w-2xl mx-auto mb-16">
+            <div class="bg-gray-50 rounded-3xl p-8 border border-gray-100">
+              <div class="flex items-center justify-center space-x-4 mb-6">
+                <div class="w-12 h-12 bg-gray-900 rounded-full flex items-center justify-center">
+                  <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                  </svg>
+                </div>
+                <h3 class="text-xl font-medium text-gray-900">Personal Introduction</h3>
+              </div>
+              <p class="text-gray-600 mb-6 leading-relaxed">
+                <%= @intro_video.description || "Watch my personal introduction to learn more about my background and professional journey." %>
+              </p>
+              <button onclick="openVideoModal('<%= @intro_video.video_url %>', '<%= @intro_video.title %>')"
+                      class="inline-flex items-center px-6 py-3 bg-gray-900 text-white font-medium rounded-2xl hover:bg-gray-800 transition-all duration-300 shadow-lg">
+                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                </svg>
+                <span>Watch Video</span>
+                <%= if @intro_video.duration do %>
+                  <span class="ml-2 text-gray-300">(<%= format_video_duration(@intro_video.duration) %>)</span>
+                <% end %>
+              </button>
+            </div>
           </div>
         <% end %>
         
@@ -312,6 +395,26 @@
       </div>
     </div>
   <% end %>
+
+  <!-- 🔥 ADD: Video Modal at the bottom of the page -->
+  <div id="video-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div class="flex items-center justify-between p-6 border-b border-gray-200">
+        <h3 id="video-modal-title" class="text-xl font-bold text-gray-900">Video Introduction</h3>
+        <button onclick="closeVideoModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="relative" style="aspect-ratio: 16/9;">
+        <video id="modal-video" class="w-full h-full object-cover" controls>
+          <source id="modal-video-source" src="" type="video/webm">
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    </div>
+  </div>
 
   <!-- 🔥 FIXED: PORTFOLIO SECTIONS with proper data rendering -->
   <div id="portfolio-sections" class="relative w-full">
@@ -498,4 +601,46 @@
     // Initialize any portfolio-specific interactions
     console.log('Portfolio view loaded with', <%= length(@sections) %>, 'sections');
   });
+</script>
+<script>
+function openVideoModal(videoUrl, title) {
+  const modal = document.getElementById('video-modal');
+  const video = document.getElementById('modal-video');
+  const source = document.getElementById('modal-video-source');
+  const titleElement = document.getElementById('video-modal-title');
+  
+  source.src = videoUrl;
+  video.load();
+  titleElement.textContent = title || 'Video Introduction';
+  modal.classList.remove('hidden');
+  
+  // Prevent body scroll
+  document.body.style.overflow = 'hidden';
+}
+
+function closeVideoModal() {
+  const modal = document.getElementById('video-modal');
+  const video = document.getElementById('modal-video');
+  
+  video.pause();
+  video.currentTime = 0;
+  modal.classList.add('hidden');
+  
+  // Restore body scroll
+  document.body.style.overflow = '';
+}
+
+// Close modal on escape key
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeVideoModal();
+  }
+});
+
+// Close modal on background click
+document.getElementById('video-modal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    closeVideoModal();
+  }
+});
 </script>

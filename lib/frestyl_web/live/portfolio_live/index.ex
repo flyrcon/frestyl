@@ -102,82 +102,80 @@ defmodule FrestylWeb.PortfolioLive.Index do
 
   # Template selection handler
   @impl true
-  def handle_event("select_template", %{"template" => template}, socket) do
-    available_template_keys = Map.keys(socket.assigns.available_templates)
+    def handle_event("select_template", %{"template" => template}, socket) do
+      available_template_keys = Map.keys(socket.assigns.available_templates)
 
-    if template in available_template_keys do
-      {:noreply, assign(socket, selected_template: template)}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def update(%{camera_ready_params: params}, socket) do
-    socket =
-      socket
-      |> assign(camera_ready: true, error_message: nil, camera_status: "ready")
-      |> put_flash(:info, "Camera ready!")
-
-    {:ok, socket}
-  end
-
-  @impl true
-  def update(%{camera_error_params: params}, socket) do
-    error_name = Map.get(params, "error", "UnknownError")
-    message = Map.get(params, "message", "Camera error occurred")
-
-    camera_status = case error_name do
-      "NotAllowedError" -> "permission_denied"
-      "NotFoundError" -> "no_camera"
-      "NotReadableError" -> "camera_busy"
-      _ -> "error"
+      if template in available_template_keys do
+        {:noreply, assign(socket, selected_template: template)}
+      else
+        {:noreply, socket}
+      end
     end
 
-    socket =
-      socket
-      |> assign(
-        recording_state: :setup,
-        camera_ready: false,
-        error_message: message,
-        camera_status: camera_status
+    # CRITICAL: Add missing video event handlers
+  @impl true
+  def handle_event("camera_ready", params, socket) do
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
+        camera_ready_params: params
       )
-      |> put_flash(:error, "Camera Error: #{message}")
-
-    {:ok, socket}
+    end
+    {:noreply, socket}
   end
 
   @impl true
-  def update(%{start_countdown: true}, socket) do
-    if socket.assigns.camera_ready do
-      socket =
-        socket
-        |> assign(recording_state: :countdown, countdown_timer: 3, error_message: nil)
-
-      # Start countdown timer
-      Process.send_after(self(), {:countdown_tick, socket.assigns.id}, 1000)
-      {:ok, socket}
-    else
-      socket = put_flash(socket, :error, "Camera not ready. Please allow camera access.")
-      {:ok, socket}
+  def handle_event("camera_error", params, socket) do
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
+        camera_error_params: params
+      )
     end
+    {:noreply, socket}
   end
 
   @impl true
   def handle_event("countdown_update", params, socket) do
-    IO.puts("=== COUNTDOWN UPDATE IN PARENT LIVEVIEW ===")
-    IO.inspect(params, label: "Countdown params")
-
-    # Forward the countdown update to the video intro component
     if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
-      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
-
       send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
-        id: component_id,
+        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
         countdown_update_params: params
       )
     end
+    {:noreply, socket}
+  end
 
+  @impl true
+  def handle_event("recording_progress", params, socket) do
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
+        recording_progress_params: params
+      )
+    end
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("recording_error", params, socket) do
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
+        recording_error_params: params
+      )
+    end
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("video_blob_ready", params, socket) do
+    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
+      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
+        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
+        video_blob_params: params
+      )
+    end
     {:noreply, socket}
   end
 
@@ -477,73 +475,12 @@ defmodule FrestylWeb.PortfolioLive.Index do
     {:noreply, socket}
   end
 
-  # Forward camera events to the component
-  @impl true
-  def handle_event("camera_ready", params, socket) do
-    IO.puts("=== CAMERA READY IN PARENT LIVEVIEW ===")
-    IO.inspect(params, label: "Camera ready params")
 
-    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
-      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
-
-      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
-        id: component_id,
-        camera_ready_params: params
-      )
-    end
-
-    {:noreply, socket}
-  end
-
-
-  @impl true
-  def handle_event("camera_error", params, socket) do
-    IO.puts("=== CAMERA ERROR IN PARENT LIVEVIEW ===")
-    IO.inspect(params, label: "Camera error params")
-
-    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
-      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
-
-      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
-        id: component_id,
-        camera_error_params: params
-      )
-    end
-
-    {:noreply, socket}
-  end
 
   # ADD THESE MISSING HANDLERS
   @impl true
   def handle_event("hide_video_intro", _params, socket) do
     {:noreply, assign(socket, show_video_intro_modal: false, current_portfolio_for_video: nil)}
-  end
-
-  @impl true
-  def handle_event("video_blob_ready", params, socket) do
-    IO.puts("=== VIDEO BLOB READY IN PARENT LIVEVIEW ===")
-    IO.inspect(Map.keys(params), label: "Video blob params keys")
-
-    if socket.assigns[:show_video_intro_modal] && socket.assigns[:current_portfolio_for_video] do
-      component_id = "video-intro-#{socket.assigns.current_portfolio_for_video.id}"
-
-      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
-        id: component_id,
-        video_blob_params: params
-      )
-    end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("camera_error", params, socket) do
-    if socket.assigns.show_video_intro_modal && socket.assigns.current_portfolio_for_video do
-      send_update(FrestylWeb.PortfolioLive.VideoIntroComponent,
-        id: "video-intro-#{socket.assigns.current_portfolio_for_video.id}",
-        camera_error_params: params)
-    end
-    {:noreply, socket}
   end
 
   @impl true
@@ -577,7 +514,13 @@ defmodule FrestylWeb.PortfolioLive.Index do
   end
 
   defp has_intro_video?(portfolio) do
-    Map.get(portfolio, :intro_video_id) != nil
+    # Check if portfolio has a video intro section
+    sections = Frestyl.Portfolios.list_portfolio_sections(portfolio.id)
+
+    Enum.any?(sections, fn section ->
+      section.title == "Video Introduction" ||
+      (section.content && Map.get(section.content, "video_type") == "introduction")
+    end)
   end
 
   defp format_date(datetime) when is_nil(datetime), do: "Never"

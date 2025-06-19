@@ -3,6 +3,9 @@
 const VideoCapture = {
   mounted() {
     console.log("🎥 VideoCapture hook mounted - BULLETPROOF VERSION");
+    console.log("🎥 Hook element:", this.el);
+    console.log("🎥 Hook element ID:", this.el.id);
+    console.log("🎥 Parent elements:", this.el.parentElement);
     
     // Initialize state
     this.initializeState();
@@ -216,7 +219,7 @@ const VideoCapture = {
       settings
     });
     
-    this.pushEvent("camera_ready", {
+    this.pushEventTo(this.el.closest('[phx-target]'), "camera_ready", {
       videoTracks,
       audioTracks,
       success: true,
@@ -259,6 +262,7 @@ const VideoCapture = {
   // BULLETPROOF: Countdown with solid interval management
   startCountdown() {
     console.log("🎥 Starting countdown...");
+    console.log("🎥 Stream available:", !!this.stream);
     
     if (!this.stream) {
       console.error("🎥 No camera stream for countdown");
