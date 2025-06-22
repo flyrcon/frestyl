@@ -1,8 +1,18 @@
 defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
+  @moduledoc """
+  Phase 4: Enhanced UI rendering with integrated media management,
+  drag-and-drop interfaces, and seamless section-media workflows.
+  """
+
   use Phoenix.Component
   import FrestylWeb.CoreComponents
+
+  # 🔥 ADD THESE MISSING IMPORTS
+  use FrestylWeb, :verified_routes  # This adds the ~p sigil
+  import Phoenix.LiveView.Helpers   # For live_component, etc.
   alias FrestylWeb.PortfolioLive.Edit.HelperFunctions
   alias FrestylWeb.PortfolioLive.VideoIntroComponent
+  import Phoenix.LiveView, only: [assign: 2, assign: 3, put_flash: 3]
 
   # ============================================================================
   # MAIN LAYOUT RENDERER
@@ -46,6 +56,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
 
       <!-- Modals -->
       <%= render_modals(assigns) %>
+      <%= render_video_intro_modal(assigns) %>
     </div>
     """
   end
@@ -55,24 +66,44 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
   # ============================================================================
 
   defp render_header(assigns) do
+    # Get current theme and customization
+    theme = assigns.portfolio.theme || "executive"
+    customization = assigns.customization || %{}
+
+    # Generate theme-specific header classes
+    header_classes = get_header_theme_classes(theme, customization)
+    text_classes = get_header_text_classes(theme, customization)
+
+    assigns = assigns
+    |> assign(:header_classes, header_classes)
+    |> assign(:text_classes, text_classes)
+    |> assign(:theme, theme)
+
     ~H"""
-    <header class="bg-white shadow-sm border-b border-gray-200">
+    <header class={@header_classes}>
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center py-4">
           <div class="flex items-center space-x-4">
-            <.link navigate="/portfolios" class="text-gray-500 hover:text-gray-700 transition-colors">
+            <.link navigate="/portfolios" class={["transition-colors", @text_classes.nav_link]}>
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
               </svg>
             </.link>
 
             <div>
-              <h1 class="text-2xl font-bold text-gray-900">Edit Portfolio</h1>
-              <p class="text-sm text-gray-600 mt-1">
+              <h1 class={["text-2xl font-bold", @text_classes.title]}>
+                <%= case @theme do %>
+                  <% "developer" -> %><span class="font-mono">~/</span>Edit Portfolio
+                  <% "designer" -> %>✨ Edit Portfolio
+                  <% "academic" -> %>📚 Edit Portfolio
+                  <% _ -> %>Edit Portfolio
+                <% end %>
+              </h1>
+              <p class={["text-sm mt-1", @text_classes.subtitle]}>
                 <span class="font-medium"><%= @portfolio.title %></span>
                 <%= if assigns[:unsaved_changes] do %>
-                  <span class="ml-2 inline-flex items-center px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
-                    <div class="w-2 h-2 bg-yellow-400 rounded-full mr-1 animate-pulse"></div>
+                  <span class={["ml-2 inline-flex items-center px-2 py-1 text-xs font-medium rounded-full", get_unsaved_badge_classes(@theme)]}>
+                    <div class="w-2 h-2 rounded-full mr-1 animate-pulse" style={"background-color: #{get_accent_color(customization)}"}></div>
                     Unsaved changes
                   </span>
                 <% end %>
@@ -80,68 +111,47 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
             </div>
           </div>
 
-          <div class="flex items-center space-x-4">
-            <!-- Preview Toggle -->
-            <button phx-click="toggle_preview"
-                    class={[
-                      "inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium transition-all duration-200",
-                      if(@show_preview,
-                         do: "bg-blue-600 text-white border-blue-600 shadow-md",
-                         else: "bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400")
-                    ]}>
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-              </svg>
-              <%= if @show_preview, do: "Hide Preview", else: "Show Preview" %>
-            </button>
+          <!-- Tabs Navigation - Theme Aware -->
+          <nav class="flex space-x-1">
+            <%= for {tab_key, tab_name} <- [
+              {:overview, "Overview"},
+              {:sections, "Sections"},
+              {:design, "Design"},
+              {:settings, "Settings"}
+            ] do %>
+              <button phx-click="change_tab"
+                      phx-value-tab={tab_key}
+                      class={get_tab_classes(@active_tab == tab_key, @theme, customization)}>
+                <%= tab_name %>
+              </button>
+            <% end %>
+          </nav>
 
-            <!-- View Live Portfolio -->
-            <.link href={"/p/#{@portfolio.slug}"} target="_blank"
-                   class="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-all duration-200 shadow-md hover:shadow-lg">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-              </svg>
+          <!-- Actions - Theme Aware -->
+          <div class="flex items-center space-x-3">
+            <%= if @show_preview do %>
+              <button phx-click="toggle_preview"
+                      class={["px-4 py-2 rounded-lg font-medium transition-all", get_secondary_button_classes(@theme, customization)]}>
+                Hide Preview
+              </button>
+            <% else %>
+              <button phx-click="toggle_preview"
+                      class={["px-4 py-2 rounded-lg font-medium transition-all", get_secondary_button_classes(@theme, customization)]}>
+                Preview
+              </button>
+            <% end %>
+
+            <.link navigate={"/p/#{@portfolio.slug}"} target="_blank"
+                  class={["px-4 py-2 rounded-lg font-medium transition-all", get_primary_button_classes(@theme, customization)]}>
               View Live
             </.link>
           </div>
         </div>
-
-        <!-- Enhanced Navigation Tabs -->
-        <nav class="flex space-x-8 border-t border-gray-200 pt-4">
-          <%= for {tab_key, tab_label, tab_icon, tab_description} <- [
-            {:overview, "Overview", "M9 5H7a2 2 0 00-2 2v6a2 2 0 002 2h6a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2", "Basic portfolio information"},
-            {:sections, "Sections", "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10", "Content and media management"},
-            {:design, "Design", "M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01", "Templates and customization"},
-            {:settings, "Settings", "M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4", "Privacy and advanced options"}
-          ] do %>
-            <button phx-click="change_tab" phx-value-tab={tab_key}
-                    class={[
-                      "group flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm transition-all duration-200",
-                      if(@active_tab == tab_key,
-                         do: "border-blue-500 text-blue-600",
-                         else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
-                    ]}
-                    title={tab_description}>
-              <svg class="w-4 h-4 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={tab_icon}/>
-              </svg>
-              <span><%= tab_label %></span>
-              <%= if tab_key == :sections and assigns[:unsaved_changes] do %>
-                <div class="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-              <% end %>
-              <%= if tab_key == :sections and length(@sections || []) > 0 do %>
-                <span class="ml-1 px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded-full">
-                  <%= length(@sections) %>
-                </span>
-              <% end %>
-            </button>
-          <% end %>
-        </nav>
       </div>
     </header>
     """
   end
+
 
   def render_settings_tab(assigns) do
     ~H"""
@@ -1141,6 +1151,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
       <div class="relative" phx-click-away="close_add_section_dropdown">
         <button type="button"
                 phx-click="toggle_add_section_dropdown"
+                phx-value-action="toggle"
                 class="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-200 flex items-center space-x-2 shadow-md hover:shadow-lg">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
@@ -1537,6 +1548,19 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
       </div>
     </div>
     """
+  end
+
+  defp get_default_primary_color(theme) do
+    case theme do
+      "executive" -> "#1e40af"
+      "developer" -> "#059669"
+      "designer" -> "#7c3aed"
+      "consultant" -> "#0891b2"
+      "academic" -> "#059669"
+      "creative" -> "#8b5cf6"
+      "minimalist" -> "#374151"
+      _ -> "#3b82f6"
+    end
   end
 
   # Helper functions for the editor
@@ -3139,195 +3163,692 @@ defp render_overview_tab(assigns) do
     """
   end
 
-  def render_design_tab(assigns) do
-    ~H"""
-    <!-- Inject current customization CSS -->
-    <%= Phoenix.HTML.raw(@customization_css || "") %>
+  # Add this to your existing tab_renderer.ex - Complete Design Tab Implementation
 
+  defp render_design_tab(assigns) do
+    ~H"""
     <div class="p-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
+      <!-- Real-time CSS injection -->
+      <%= if assigns[:preview_css] do %>
+        <%= Phoenix.HTML.raw(assigns.preview_css) %>
+      <% end %>
+
       <div class="flex items-center justify-between mb-8">
         <div>
           <h2 class="text-2xl font-bold text-gray-900">Design & Templates</h2>
           <p class="text-gray-600 mt-1">Customize your portfolio's appearance with real-time preview</p>
         </div>
+
+        <div class="flex space-x-3">
+          <button phx-click="toggle_preview"
+                  class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <%= if assigns[:show_preview], do: "Hide Preview", else: "Show Preview" %>
+          </button>
+
+          <.link href={~p"/p/#{@portfolio.slug}"} target="_blank"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            View Live
+          </.link>
+        </div>
       </div>
 
-      <!-- FIXED: Template Selection with Visual Feedback -->
+      <!-- Customization Navigation -->
       <div class="mb-8">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Choose Template</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <%= for {template_key, template_config} <- Frestyl.Portfolios.PortfolioTemplates.available_templates() do %>
-            <div class={[
-              "relative group cursor-pointer rounded-xl overflow-hidden border-2 transition-all duration-300 template-preview-card",
-              if((@portfolio.theme || "executive") == template_key,
-                 do: "border-blue-500 shadow-lg ring-2 ring-blue-200 bg-blue-50",
-                 else: "border-gray-200 hover:border-gray-300 hover:shadow-md bg-white")
-            ]}
-            phx-click="select_template"
-            phx-value-template={template_key}>
+        <nav class="flex space-x-1 bg-white rounded-lg p-1 shadow-sm">
+          <%= for {tab_key, tab_name} <- [
+            {"templates", "Templates"},
+            {"colors", "Colors"},
+            {"typography", "Typography"},
+            {"layout", "Layout"},
+            {"advanced", "Advanced"}
+          ] do %>
+            <button phx-click="set_customization_tab"
+                    phx-value-tab={tab_key}
+                    class={[
+                      "px-4 py-2 rounded-md text-sm font-medium transition-colors",
+                      if(@active_customization_tab == tab_key,
+                        do: "bg-blue-100 text-blue-700",
+                        else: "text-gray-500 hover:text-gray-700")
+                    ]}>
+              <%= tab_name %>
+            </button>
+          <% end %>
+        </nav>
+      </div>
 
-              <!-- FIXED: Template Preview with Dynamic Colors -->
-              <div class={[
-                "h-32 bg-gradient-to-br relative overflow-hidden",
-                template_config.preview_color
-              ]}>
-                <div class="p-4 text-white relative z-10">
-                  <div class="w-16 h-2 bg-white/30 rounded mb-2"></div>
-                  <div class="w-12 h-2 bg-white/20 rounded mb-3"></div>
-                  <div class="grid grid-cols-2 gap-1">
-                    <div class="h-6 bg-white/20 rounded"></div>
-                    <div class="h-6 bg-white/20 rounded"></div>
-                  </div>
-                </div>
+      <!-- Tab Content -->
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <!-- Customization Panel -->
+        <div class="xl:col-span-2 space-y-6">
+          <%= case @active_customization_tab do %>
+            <% "templates" -> %>
+              <%= render_templates_section(assigns) %>
+            <% "colors" -> %>
+              <%= render_colors_section(assigns) %>
+            <% "typography" -> %>
+              <%= render_typography_section(assigns) %>
+            <% "layout" -> %>
+              <%= render_layout_section(assigns) %>
+            <% "advanced" -> %>
+              <%= render_advanced_section(assigns) %>
+          <% end %>
+        </div>
 
-                <!-- FIXED: Current colors overlay if selected -->
-                <%= if (@portfolio.theme || "executive") == template_key do %>
-                  <div class="absolute inset-0 bg-gradient-to-br opacity-30"
-                       style={"background: linear-gradient(135deg, #{get_color_safe(@customization, "primary_color", "#6366f1")}, #{get_color_safe(@customization, "secondary_color", "#8b5cf6")})"}>
-                  </div>
-                <% end %>
+        <!-- Live Preview -->
+        <div class="xl:col-span-1">
+          <div class="sticky top-8">
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+              <h3 class="text-lg font-semibold text-gray-900 mb-4">Live Preview</h3>
+
+              <div class="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden">
+                <iframe
+                  id="design-preview"
+                  src={~p"/p/#{@portfolio.slug}?preview=true&template=#{@selected_template}&t=#{:os.system_time(:millisecond)}"}
+                  class="w-full h-full border-0 scale-75 origin-top-left"
+                  style="width: 133.33%; height: 133.33%;"
+                  frameborder="0">
+                </iframe>
               </div>
 
-              <!-- Template Info -->
-              <div class="p-4">
-                <h4 class="font-semibold text-gray-900 mb-1 portfolio-primary"><%= template_config.name %></h4>
-                <p class="text-sm text-gray-600 mb-3"><%= template_config.description %></p>
-
-                <!-- Features -->
-                <div class="space-y-1">
-                  <%= for feature <- Enum.take(template_config.features, 2) do %>
-                    <div class="text-xs text-gray-500 flex items-center">
-                      <svg class="w-3 h-3 mr-1 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                      </svg>
-                      <%= feature %>
-                    </div>
-                  <% end %>
-                </div>
-              </div>
-
-              <!-- FIXED: Selected Indicator -->
-              <%= if (@portfolio.theme || "executive") == template_key do %>
-                <div class="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                  </svg>
-                </div>
-              <% end %>
-
-              <!-- FIXED: Loading indicator for template switching -->
-              <div class="absolute inset-0 bg-white bg-opacity-75 hidden items-center justify-center template-loading">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <div class="mt-4 flex space-x-2">
+                <.link href={~p"/p/#{@portfolio.slug}"} target="_blank"
+                      class="flex-1 text-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
+                  Full Preview
+                </.link>
+                <button phx-click="refresh_preview"
+                        class="px-3 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors">
+                  Refresh
+                </button>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- JavaScript for Live Updates -->
+      <script>
+        // Refresh preview when template changes
+        window.addEventListener("phx:template-changed", (e) => {
+          const iframe = document.getElementById("design-preview");
+          if (iframe) {
+            iframe.src = iframe.src.split('?')[0] +
+              "?preview=true&template=" + e.detail.template +
+              "&t=" + Date.now();
+          }
+        });
+
+        // Refresh preview when customization changes
+        window.addEventListener("phx:customization-changed", (e) => {
+          const iframe = document.getElementById("design-preview");
+          if (iframe) {
+            iframe.src = iframe.src.split('?')[0] +
+              "?preview=true&t=" + Date.now();
+          }
+        });
+      </script>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # TEMPLATES SECTION
+  # ============================================================================
+
+  defp render_templates_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl shadow-sm border p-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-6">Choose Template</h3>
+
+      <!-- Template Selection Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+        <%= for {template_key, template_config} <- [
+          {"executive", %{name: "Executive", description: "Professional corporate", category: "business", color_preview: ["#1e40af", "#64748b", "#3b82f6"]}},
+          {"developer", %{name: "Developer", description: "Technical terminal style", category: "technical", color_preview: ["#059669", "#374151", "#10b981"]}},
+          {"designer", %{name: "Designer", description: "Creative visual portfolio", category: "creative", color_preview: ["#7c3aed", "#ec4899", "#f59e0b"]}},
+          {"minimalist", %{name: "Minimalist", description: "Ultra-clean design", category: "minimal", color_preview: ["#000000", "#666666", "#333333"]}},
+          {"consultant", %{name: "Consultant", description: "Business presentation", category: "business", color_preview: ["#0891b2", "#0284c7", "#6366f1"]}},
+          {"academic", %{name: "Academic", description: "Research focused", category: "academic", color_preview: ["#059669", "#047857", "#10b981"]}}
+        ] do %>
+          <button phx-click="select_template"
+                  phx-value-template={template_key}
+                  class={[
+                    "relative p-4 rounded-xl border-2 transition-all duration-300 hover:shadow-lg group",
+                    if(@portfolio.theme == template_key,
+                      do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
+                      else: "border-gray-200 hover:border-gray-400")
+                  ]}>
+
+            <!-- Template Preview -->
+            <div class="h-24 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-3 flex items-center justify-center">
+              <%= render_template_mini_preview(template_key) %>
+            </div>
+
+            <!-- Template Info -->
+            <h4 class="font-bold text-gray-900 mb-1"><%= template_config.name %></h4>
+            <p class="text-xs text-gray-600 mb-3"><%= template_config.description %></p>
+
+            <!-- Color Preview -->
+            <div class="flex space-x-1">
+              <%= for color <- template_config.color_preview do %>
+                <div class="w-3 h-3 rounded-full" style={"background-color: #{color}"}></div>
+              <% end %>
+            </div>
+
+            <!-- Selection Indicator -->
+            <%= if @portfolio.theme == template_key do %>
+              <div class="absolute top-2 right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+              </div>
+            <% end %>
+          </button>
+        <% end %>
+      </div>
+
+      <!-- Apply Template Button -->
+      <%= if @selected_template && @selected_template != @portfolio.theme do %>
+        <div class="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="font-medium text-blue-900">
+                Apply <%= get_template_name(@selected_template) %>?
+              </h4>
+              <p class="text-blue-700 text-sm">
+                This will change your portfolio's layout and default styling.
+              </p>
+            </div>
+            <button phx-click="apply_template"
+                    phx-value-template={@selected_template}
+                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              Apply Template
+            </button>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp render_template_mini_preview(template_key) do
+    case template_key do
+      "executive" ->
+        Phoenix.HTML.raw("""
+        <div class="space-y-1">
+          <div class="h-2 bg-blue-600 rounded w-16"></div>
+          <div class="grid grid-cols-3 gap-1">
+            <div class="h-3 bg-blue-200 rounded"></div>
+            <div class="h-3 bg-blue-300 rounded"></div>
+            <div class="h-3 bg-blue-200 rounded"></div>
+          </div>
+        </div>
+        """)
+
+      "developer" ->
+        Phoenix.HTML.raw("""
+        <div class="bg-gray-900 p-2 rounded text-green-400 text-xs font-mono">
+          <div>$ portfolio</div>
+          <div class="text-green-300">ready</div>
+        </div>
+        """)
+
+      "designer" ->
+        Phoenix.HTML.raw("""
+        <div class="grid grid-cols-2 gap-1 h-full">
+          <div class="bg-purple-400 rounded"></div>
+          <div class="space-y-1">
+            <div class="bg-pink-400 rounded h-2"></div>
+            <div class="bg-orange-400 rounded h-1"></div>
+          </div>
+        </div>
+        """)
+
+      "minimalist" ->
+        Phoenix.HTML.raw("""
+        <div class="space-y-2 text-center">
+          <div class="h-1 bg-black rounded w-12 mx-auto"></div>
+          <div class="h-1 bg-gray-600 rounded w-8 mx-auto"></div>
+          <div class="h-1 bg-gray-400 rounded w-10 mx-auto"></div>
+        </div>
+        """)
+
+      "consultant" ->
+        Phoenix.HTML.raw("""
+        <div class="space-y-1">
+          <div class="h-1 bg-blue-500 rounded w-full"></div>
+          <div class="grid grid-cols-2 gap-1">
+            <div class="h-4 bg-blue-100 rounded"></div>
+            <div class="h-4 bg-blue-100 rounded"></div>
+          </div>
+        </div>
+        """)
+
+      "academic" ->
+        Phoenix.HTML.raw("""
+        <div class="space-y-2 text-center">
+          <div class="h-1 bg-emerald-600 rounded w-14 mx-auto"></div>
+          <div class="h-1 bg-emerald-400 rounded w-10 mx-auto"></div>
+          <div class="h-1 bg-emerald-300 rounded w-12 mx-auto"></div>
+        </div>
+        """)
+
+      _ ->
+        Phoenix.HTML.raw("""
+        <div class="w-6 h-6 bg-gray-400 rounded mx-auto"></div>
+        """)
+    end
+  end
+
+  # ============================================================================
+  # COLORS SECTION
+  # ============================================================================
+
+  defp render_colors_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Color Schemes -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Color Schemes</h3>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+          <%= for {scheme_name, scheme_colors} <- color_schemes() do %>
+            <button phx-click="update_color_scheme"
+                    phx-value-scheme={scheme_name}
+                    class="p-4 border rounded-lg hover:shadow-md transition-all group">
+              <div class="flex space-x-2 mb-2">
+                <%= for color <- scheme_colors do %>
+                  <div class="w-6 h-6 rounded-full" style={"background-color: #{color}"}></div>
+                <% end %>
+              </div>
+              <div class="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                <%= String.capitalize(scheme_name) %>
+              </div>
+            </button>
           <% end %>
         </div>
       </div>
 
-      <!-- FIXED: Customization Tabs with Real-time Updates -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <!-- Tab Navigation -->
-        <div class="border-b border-gray-200">
-          <nav class="flex space-x-8 px-6" aria-label="Customization tabs">
-            <%= for {tab_key, tab_label, tab_icon} <- [
-              {"colors", "Colors & Theme", "M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"},
-              {"typography", "Typography", "M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"},
-              {"backgrounds", "Backgrounds", "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"}
-            ] do %>
-              <button phx-click="set_customization_tab" phx-value-tab={tab_key}
-                      class={[
-                        "py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-colors",
-                        if(@active_customization_tab == tab_key,
-                           do: "border-blue-500 text-blue-600",
-                           else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
-                      ]}>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={tab_icon}/>
-                </svg>
-                <span><%= tab_label %></span>
-              </button>
-            <% end %>
-          </nav>
-        </div>
+      <!-- Individual Colors -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Custom Colors</h3>
 
-        <!-- Tab Content -->
-        <div class="p-6">
-          <%= case @active_customization_tab do %>
-            <% "colors" -> %>
-              <%= render_colors_customization(assigns) %>
-            <% "typography" -> %>
-              <%= render_typography_customization(assigns) %>
-            <% "backgrounds" -> %>
-              <%= render_backgrounds_customization(assigns) %>
-            <% _ -> %>
-              <%= render_colors_customization(assigns) %>
+        <div class="space-y-4">
+          <!-- Primary Color -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
+            <div class="flex items-center space-x-3">
+              <input type="color"
+                    value={get_customization_value(@customization, "primary_color", "#3b82f6")}
+                    phx-change="update_color"
+                    phx-value-field="primary_color"
+                    class="w-12 h-10 border border-gray-300 rounded-md cursor-pointer" />
+              <input type="text"
+                    value={get_customization_value(@customization, "primary_color", "#3b82f6")}
+                    phx-change="update_color"
+                    phx-value-field="primary_color"
+                    class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono" />
+              <div class="w-12 h-10 rounded-md border portfolio-bg-primary"></div>
+            </div>
+          </div>
+
+          <!-- Secondary Color -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
+            <div class="flex items-center space-x-3">
+              <input type="color"
+                    value={get_customization_value(@customization, "secondary_color", "#64748b")}
+                    phx-change="update_color"
+                    phx-value-field="secondary_color"
+                    class="w-12 h-10 border border-gray-300 rounded-md cursor-pointer" />
+              <input type="text"
+                    value={get_customization_value(@customization, "secondary_color", "#64748b")}
+                    phx-change="update_color"
+                    phx-value-field="secondary_color"
+                    class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono" />
+              <div class="w-12 h-10 rounded-md border portfolio-bg-secondary"></div>
+            </div>
+          </div>
+
+          <!-- Accent Color -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
+            <div class="flex items-center space-x-3">
+              <input type="color"
+                    value={get_customization_value(@customization, "accent_color", "#f59e0b")}
+                    phx-change="update_color"
+                    phx-value-field="accent_color"
+                    class="w-12 h-10 border border-gray-300 rounded-md cursor-pointer" />
+              <input type="text"
+                    value={get_customization_value(@customization, "accent_color", "#f59e0b")}
+                    phx-change="update_color"
+                    phx-value-field="accent_color"
+                    class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono" />
+              <div class="w-12 h-10 rounded-md border portfolio-bg-accent"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # TYPOGRAPHY SECTION
+  # ============================================================================
+
+  defp render_typography_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Font Family -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Typography</h3>
+
+        <div class="space-y-6">
+          <!-- Font Family Selection -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-3">Font Family</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <%= for font <- available_fonts() do %>
+                <button phx-click="update_typography"
+                        phx-value-field="font_family"
+                        phx-value-value={font.value}
+                        class={[
+                          "p-4 border rounded-lg text-left transition-all hover:shadow-md",
+                          if(get_typography_value(@customization, "font_family", "Inter") == font.value,
+                            do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
+                            else: "border-gray-200 hover:border-gray-300")
+                        ]}>
+                  <div class="font-medium text-gray-900 mb-1" style={"font-family: #{font.css}"}>
+                    <%= font.name %>
+                  </div>
+                  <div class="text-sm text-gray-600" style={"font-family: #{font.css}"}>
+                    <%= font.description %>
+                  </div>
+                  <div class="text-xs text-gray-500 mt-2" style={"font-family: #{font.css}"}>
+                    The quick brown fox jumps over the lazy dog
+                  </div>
+                </button>
+              <% end %>
+            </div>
+          </div>
+
+          <!-- Font Preview -->
+          <div class="portfolio-preview p-6 bg-gray-50 rounded-lg">
+            <h4 class="text-2xl font-bold mb-2">Preview Text</h4>
+            <h5 class="text-lg font-semibold mb-2">Professional Portfolio Heading</h5>
+            <p class="text-gray-700 mb-4">
+              This is how your portfolio content will look with the selected typography.
+              The font choice significantly impacts the overall feel and readability of your portfolio.
+            </p>
+            <div class="flex space-x-4 text-sm">
+              <span class="font-medium">Bold Text</span>
+              <span class="italic">Italic Text</span>
+              <span class="underline">Underlined Text</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # LAYOUT SECTION
+  # ============================================================================
+
+  defp render_layout_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Layout Templates -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Layout Options</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <%= for layout <- available_layouts() do %>
+            <button phx-click="update_layout"
+                    phx-value-layout={layout.key}
+                    class={[
+                      "p-4 border rounded-lg transition-all hover:shadow-md",
+                      if(@template_layout == layout.key,
+                        do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
+                        else: "border-gray-200 hover:border-gray-300")
+                    ]}>
+              <!-- Layout Preview -->
+              <div class="h-20 bg-gray-100 rounded mb-3 p-3">
+                <%= layout.preview_html %>
+              </div>
+
+              <div class="text-sm font-medium text-gray-900 mb-1">
+                <%= layout.name %>
+              </div>
+              <div class="text-xs text-gray-600">
+                <%= layout.description %>
+              </div>
+            </button>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Background Options -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Background Style</h3>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <%= for background <- available_backgrounds() do %>
+            <button phx-click="update_background"
+                    phx-value-background={background.key}
+                    class={[
+                      "p-4 border rounded-lg transition-all hover:shadow-md",
+                      if(get_customization_value(@customization, "background", "default") == background.key,
+                        do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
+                        else: "border-gray-200 hover:border-gray-300")
+                    ]}>
+              <div class={["w-full h-12 rounded mb-2", background.preview_class]}></div>
+              <div class="text-sm font-medium text-gray-900">
+                <%= background.name %>
+              </div>
+            </button>
           <% end %>
         </div>
       </div>
     </div>
-
-    <!-- FIXED: Real-time Update JavaScript -->
-    <script>
-      // Handle real-time template and customization updates
-      window.addEventListener('phx:template-changed', (e) => {
-        console.log('🎨 Template changed:', e.detail.template);
-
-        // Update CSS
-        const existingStyle = document.getElementById('portfolio-customization-css');
-        if (existingStyle) {
-          existingStyle.remove();
-        }
-
-        const head = document.getElementsByTagName('head')[0];
-        const style = document.createElement('style');
-        style.id = 'portfolio-customization-css';
-        style.innerHTML = e.detail.css;
-        head.appendChild(style);
-
-        // Show loading state briefly
-        const templateCards = document.querySelectorAll('.template-preview-card');
-        templateCards.forEach(card => {
-          const loading = card.querySelector('.template-loading');
-          if (loading) {
-            loading.classList.add('flex');
-            loading.classList.remove('hidden');
-            setTimeout(() => {
-              loading.classList.remove('flex');
-              loading.classList.add('hidden');
-            }, 500);
-          }
-        });
-      });
-
-      window.addEventListener('phx:color-updated', (e) => {
-        console.log('🎨 Color updated:', e.detail.field, e.detail.value);
-        updateCSS(e.detail.css);
-      });
-
-      window.addEventListener('phx:typography-updated', (e) => {
-        console.log('🎨 Typography updated:', e.detail.font_family);
-        updateCSS(e.detail.css);
-      });
-
-      window.addEventListener('phx:background-updated', (e) => {
-        console.log('🎨 Background updated:', e.detail.background);
-        updateCSS(e.detail.css);
-      });
-
-      function updateCSS(css) {
-        const existingStyle = document.getElementById('portfolio-customization-css');
-        if (existingStyle) {
-          existingStyle.remove();
-        }
-
-        const head = document.getElementsByTagName('head')[0];
-        const style = document.createElement('style');
-        style.id = 'portfolio-customization-css';
-        style.innerHTML = css;
-        head.appendChild(style);
-      }
-    </script>
     """
+  end
+
+  # ============================================================================
+  # ADVANCED SECTION
+  # ============================================================================
+
+  defp render_advanced_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Custom CSS -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Advanced Customization</h3>
+
+        <div class="space-y-6">
+          <!-- Custom CSS Editor -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-3">Custom CSS</label>
+            <textarea phx-blur="update_custom_css"
+                      rows="10"
+                      placeholder="/* Add your custom CSS here */
+                      .portfolio-card {
+                        border-radius: 16px;
+                      }
+
+                      .portfolio-primary {
+                        color: #your-color;
+                      }"
+                      class="w-full border border-gray-300 rounded-md px-3 py-3 text-sm font-mono"
+            ><%= get_customization_value(@customization, "custom_css", "") %></textarea>
+            <p class="text-xs text-gray-500 mt-2">
+              Add custom CSS to further personalize your portfolio. Changes apply immediately.
+            </p>
+          </div>
+
+          <!-- Animation Settings -->
+          <div>
+            <h4 class="text-md font-medium text-gray-900 mb-3">Animation Settings</h4>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <label class="text-sm text-gray-700">Enable scroll animations</label>
+                <input type="checkbox"
+                      phx-click="toggle_animations"
+                      checked={get_customization_value(@customization, "enable_animations", true)}
+                      class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+              </div>
+
+              <div class="flex items-center justify-between">
+                <label class="text-sm text-gray-700">Smooth transitions</label>
+                <input type="checkbox"
+                      phx-click="toggle_transitions"
+                      checked={get_customization_value(@customization, "smooth_transitions", true)}
+                      class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Reset Options -->
+          <div class="pt-6 border-t border-gray-200">
+            <h4 class="text-md font-medium text-gray-900 mb-3">Reset Options</h4>
+            <div class="flex space-x-3">
+              <button phx-click="reset_to_template_defaults"
+                      class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                Reset to Template Defaults
+              </button>
+
+              <button phx-click="reset_all_customization"
+                      onclick="return confirm('Are you sure? This will remove all customizations.')"
+                      class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors">
+                Reset All Customization
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS
+  # ============================================================================
+
+  defp group_templates_by_category do
+    Frestyl.Portfolios.PortfolioTemplates.available_templates()
+    |> Enum.group_by(fn {_key, config} -> config[:category] || "Professional" end)
+    |> Enum.map(fn {category, templates} ->
+      {String.capitalize(category), templates}
+    end)
+    |> Enum.sort_by(fn {category, _} ->
+      case category do
+        "Professional" -> 1
+        "Creative" -> 2
+        "Technical" -> 3
+        "Minimalist" -> 4
+        _ -> 5
+      end
+    end)
+  end
+
+  defp get_template_name(template_key) do
+    case Frestyl.Portfolios.PortfolioTemplates.available_templates()
+        |> Enum.find(fn {key, _} -> key == template_key end) do
+      {_, config} -> config[:name] || String.capitalize(template_key)
+      _ -> String.capitalize(template_key)
+    end
+  end
+
+  defp color_schemes do
+    %{
+      "professional" => ["#1e40af", "#64748b", "#3b82f6"],
+      "creative" => ["#7c3aed", "#ec4899", "#f59e0b"],
+      "warm" => ["#dc2626", "#ea580c", "#f59e0b"],
+      "cool" => ["#0891b2", "#0284c7", "#6366f1"],
+      "minimal" => ["#374151", "#6b7280", "#059669"],
+      "sunset" => ["#f59e0b", "#ec4899", "#8b5cf6"]
+    }
+  end
+
+  defp available_fonts do
+    [
+      %{name: "Inter", value: "Inter", css: "'Inter', system-ui, sans-serif", description: "Modern and clean"},
+      %{name: "Merriweather", value: "Merriweather", css: "'Merriweather', Georgia, serif", description: "Elegant serif"},
+      %{name: "JetBrains Mono", value: "JetBrains Mono", css: "'JetBrains Mono', 'Fira Code', monospace", description: "Developer friendly"},
+      %{name: "Playfair Display", value: "Playfair Display", css: "'Playfair Display', Georgia, serif", description: "Creative and artistic"}
+    ]
+  end
+
+  defp available_layouts do
+    [
+      %{
+        key: "dashboard",
+        name: "Dashboard",
+        description: "Card-based layout",
+        preview_html: Phoenix.HTML.raw("""
+          <div class="grid grid-cols-3 gap-1">
+            <div class="bg-blue-200 h-3 rounded"></div>
+            <div class="bg-blue-200 h-3 rounded"></div>
+            <div class="bg-blue-200 h-3 rounded"></div>
+          </div>
+        """)
+      },
+      %{
+        key: "gallery",
+        name: "Gallery",
+        description: "Visual showcase",
+        preview_html: Phoenix.HTML.raw("""
+          <div class="grid grid-cols-2 gap-1">
+            <div class="bg-purple-200 h-6 rounded"></div>
+            <div class="bg-purple-200 h-3 rounded"></div>
+            <div class="bg-purple-200 h-3 rounded"></div>
+            <div class="bg-purple-200 h-6 rounded"></div>
+          </div>
+        """)
+      },
+      %{
+        key: "terminal",
+        name: "Terminal",
+        description: "Developer style",
+        preview_html: Phoenix.HTML.raw("""
+          <div class="bg-gray-800 p-2 rounded text-xs">
+            <div class="text-green-400">$ portfolio</div>
+            <div class="text-white h-2 bg-gray-700 rounded mt-1"></div>
+          </div>
+        """)
+      },
+      %{
+        key: "minimal",
+        name: "Minimal",
+        description: "Clean and simple",
+        preview_html: Phoenix.HTML.raw("""
+          <div class="space-y-1">
+            <div class="h-2 bg-gray-300 rounded w-full"></div>
+            <div class="h-2 bg-gray-300 rounded w-3/4"></div>
+            <div class="h-2 bg-gray-300 rounded w-1/2"></div>
+          </div>
+        """)
+      }
+    ]
+  end
+
+  defp available_backgrounds do
+    [
+      %{key: "default", name: "Default", preview_class: "bg-white border border-gray-200"},
+      %{key: "gradient-ocean", name: "Ocean", preview_class: "bg-gradient-to-r from-blue-500 to-purple-600"},
+      %{key: "gradient-sunset", name: "Sunset", preview_class: "bg-gradient-to-r from-pink-500 to-orange-500"},
+      %{key: "dark-mode", name: "Dark", preview_class: "bg-gray-900"}
+    ]
+  end
+
+  defp get_customization_value(customization, key, default) do
+    customization[key] || customization[String.to_atom(key)] || default
+  end
+
+  defp get_typography_value(customization, key, default) do
+    typography = customization["typography"] || customization[:typography] || %{}
+    typography[key] || typography[String.to_atom(key)] || default
   end
 
   # ============================================================================
@@ -3340,60 +3861,59 @@ defp render_overview_tab(assigns) do
       <!-- Individual Color Pickers with WORKING real-time updates -->
       <div>
         <h4 class="text-md font-semibold text-gray-900 mb-3">Custom Colors</h4>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <!-- Primary Color -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
-            <div class="flex items-center space-x-3">
-              <input type="color"
-                    value={get_color_safe(@customization, "primary_color", "#6366f1")}
-                    phx-change="update_primary_color"
-                    name="primary_color"
-                    class="w-12 h-10 border border-gray-300 rounded cursor-pointer">
-              <input type="text"
-                    value={get_color_safe(@customization, "primary_color", "#6366f1")}
-                    phx-change="update_primary_color"
-                    name="primary_color"
-                    placeholder="#6366f1"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono">
-            </div>
-          </div>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          <%= for {scheme_name, scheme_config} <- get_color_schemes() do %>
+            <button phx-click="update_color_scheme"
+                    phx-value-scheme={scheme_name}
+                    class={[
+                      "group p-4 bg-white border-2 rounded-xl transition-all duration-300 hover:shadow-lg transform hover:scale-105",
+                      if(get_current_scheme(@customization) == scheme_name,
+                         do: "border-blue-500 ring-2 ring-blue-200 shadow-md",
+                         else: "border-gray-200 hover:border-gray-300")
+                    ]}>
 
-          <!-- Secondary Color -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
-            <div class="flex items-center space-x-3">
-              <input type="color"
-                    value={get_color_safe(@customization, "secondary_color", "#8b5cf6")}
-                    phx-change="update_secondary_color"
-                    name="secondary_color"
-                    class="w-12 h-10 border border-gray-300 rounded cursor-pointer">
-              <input type="text"
-                    value={get_color_safe(@customization, "secondary_color", "#8b5cf6")}
-                    phx-change="update_secondary_color"
-                    name="secondary_color"
-                    placeholder="#8b5cf6"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono">
-            </div>
-          </div>
+              <!-- Color Preview Circles -->
+              <div class="flex justify-center space-x-1 mb-3">
+                <div class="w-8 h-8 rounded-full border-2 border-white shadow-sm transition-transform group-hover:scale-110"
+                     style={"background: linear-gradient(135deg, #{scheme_config.primary}, #{scheme_config.secondary})"}></div>
+                <div class="w-6 h-6 rounded-full border-2 border-white shadow-sm self-end transition-transform group-hover:scale-110"
+                     style={"background-color: #{scheme_config.accent}"}></div>
+              </div>
 
-          <!-- Accent Color -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
-            <div class="flex items-center space-x-3">
-              <input type="color"
-                    value={get_color_safe(@customization, "accent_color", "#f59e0b")}
-                    phx-change="update_accent_color"
-                    name="accent_color"
-                    class="w-12 h-10 border border-gray-300 rounded cursor-pointer">
-              <input type="text"
-                    value={get_color_safe(@customization, "accent_color", "#f59e0b")}
-                    phx-change="update_accent_color"
-                    name="accent_color"
-                    placeholder="#f59e0b"
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono">
-            </div>
-          </div>
+              <!-- Scheme Name -->
+              <div class="text-center">
+                <p class="text-sm font-semibold text-gray-900 capitalize mb-1"><%= scheme_config.name %></p>
+                <p class="text-xs text-gray-500"><%= scheme_config.description %></p>
+              </div>
+
+              <!-- Color Values Display -->
+              <div class="mt-3 space-y-1">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-gray-500">Primary</span>
+                  <div class="flex items-center space-x-1">
+                    <div class="w-3 h-3 rounded border" style={"background-color: #{scheme_config.primary}"}></div>
+                    <code class="text-gray-600 font-mono text-xs"><%= scheme_config.primary %></code>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-gray-500">Accent</span>
+                  <div class="flex items-center space-x-1">
+                    <div class="w-3 h-3 rounded border" style={"background-color: #{scheme_config.accent}"}></div>
+                    <code class="text-gray-600 font-mono text-xs"><%= scheme_config.accent %></code>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Selection Indicator -->
+              <%= if get_current_scheme(@customization) == scheme_name do %>
+                <div class="absolute top-2 right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                  <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                  </svg>
+                </div>
+              <% end %>
+            </button>
+          <% end %>
         </div>
       </div>
 
@@ -3429,6 +3949,74 @@ defp render_overview_tab(assigns) do
       _ -> default
     end
   end
+
+  defp get_color_schemes do
+    [
+      {"professional", %{
+        name: "Professional",
+        description: "Corporate & trustworthy",
+        primary: "#1e40af",
+        secondary: "#64748b",
+        accent: "#3b82f6"
+      }},
+      {"creative", %{
+        name: "Creative",
+        description: "Bold & artistic",
+        primary: "#7c3aed",
+        secondary: "#ec4899",
+        accent: "#f59e0b"
+      }},
+      {"warm", %{
+        name: "Warm",
+        description: "Energetic & friendly",
+        primary: "#dc2626",
+        secondary: "#ea580c",
+        accent: "#f59e0b"
+      }},
+      {"cool", %{
+        name: "Cool",
+        description: "Calm & modern",
+        primary: "#0891b2",
+        secondary: "#0284c7",
+        accent: "#6366f1"
+      }},
+      {"minimal", %{
+        name: "Minimal",
+        description: "Clean & focused",
+        primary: "#374151",
+        secondary: "#6b7280",
+        accent: "#059669"
+      }},
+      {"elegant", %{
+        name: "Elegant",
+        description: "Sophisticated & refined",
+        primary: "#4c1d95",
+        secondary: "#7c3aed",
+        accent: "#c084fc"
+      }}
+    ]
+  end
+
+
+  defp get_current_scheme(customization) do
+    # Try to match current colors to a scheme
+    current_primary = Map.get(customization, "primary_color", "")
+    current_secondary = Map.get(customization, "secondary_color", "")
+    current_accent = Map.get(customization, "accent_color", "")
+
+    get_color_schemes()
+    |> Enum.find_value("professional", fn {scheme_name, scheme_config} ->
+      if scheme_config.primary == current_primary and
+        scheme_config.secondary == current_secondary and
+        scheme_config.accent == current_accent do
+        scheme_name
+      else
+        nil
+      end
+    end)
+  end
+
+
 
   # ============================================================================
   # TYPOGRAPHY CUSTOMIZATION
@@ -3686,28 +4274,36 @@ defp render_overview_tab(assigns) do
 
       <!-- Layout Options -->
       <div>
-        <h4 class="text-md font-semibold text-gray-900 mb-3">Layout Options</h4>
-        <div class="space-y-3">
-          <%= for {option_key, option_config} <- [
-            {"fixed_navigation", %{name: "Fixed Navigation", description: "Keep navigation visible while scrolling"}},
-            {"full_width", %{name: "Full Width Layout", description: "Use full browser width"}},
-            {"center_content", %{name: "Center Content", description: "Center content with max width"}},
-            {"dark_mode_support", %{name: "Dark Mode Support", description: "Enable dark/light mode toggle"}}
-          ] do %>
-            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <h5 class="font-medium text-gray-900"><%= option_config.name %></h5>
-                <p class="text-sm text-gray-600"><%= option_config.description %></p>
+        <h4 class="text-md font-semibold text-gray-900 mb-3">Layout Style</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <%= for {layout_key, layout_config} <- get_layout_options() do %>
+            <button phx-click="update_layout"
+                    phx-value-layout={layout_key}
+                    class={[
+                      "w-full p-4 text-left border-2 rounded-lg transition-all group hover:shadow-md",
+                      if(get_current_layout(@customization, @portfolio.theme) == layout_key,
+                         do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
+                         else: "border-gray-200 hover:border-gray-300")
+                    ]}>
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <div class="font-semibold text-gray-900"><%= layout_config.name %></div>
+                  <div class="text-sm text-gray-600"><%= layout_config.description %></div>
+                </div>
+                <!-- Visual Preview -->
+                <div class="flex-shrink-0">
+                  <%= render_layout_preview(layout_key) %>
+                </div>
               </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox"
-                       checked={get_in(@customization, [option_key]) || false}
-                       phx-click="toggle_layout_option"
-                       phx-value-option={option_key}
-                       class="sr-only peer" />
-                <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
+              <!-- Layout Features -->
+              <div class="flex flex-wrap gap-1">
+                <%= for feature <- layout_config.features do %>
+                  <span class="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded">
+                    <%= feature %>
+                  </span>
+                <% end %>
+              </div>
+            </button>
           <% end %>
         </div>
       </div>
@@ -4218,30 +4814,6 @@ defp render_overview_tab(assigns) do
   # MODALS RENDERER
   # ============================================================================
 
-  def render_video_intro_modal(assigns) do
-    ~H"""
-    <%= if @show_video_intro do %>
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 backdrop-blur-sm"
-          phx-click="hide_video_intro"
-          phx-window-keydown="hide_video_intro"
-          phx-key="escape">
-
-        <div class="relative max-w-6xl w-full mx-4"
-            phx-click-away="hide_video_intro">
-
-          <.live_component
-            module={FrestylWeb.PortfolioLive.VideoIntroComponent}
-            id={@video_intro_component_id}
-            portfolio={@portfolio}
-            current_user={@current_user}
-            phx-target={@video_intro_component_id}
-          />
-        </div>
-      </div>
-    <% end %>
-    """
-  end
-
   defp render_resume_import_modal(assigns) do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
@@ -4309,6 +4881,41 @@ defp render_overview_tab(assigns) do
         import_progress={@import_progress}
         error_message={@resume_error_message}
       />
+    <% end %>
+    """
+  end
+
+  def render_video_intro_modal(assigns) do
+    ~H"""
+    <%= if @show_video_intro do %>
+      <div class="fixed inset-0 z-50 overflow-y-auto"
+          aria-labelledby="modal-title"
+          role="dialog"
+          aria-modal="true">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+          <!-- Background overlay -->
+          <div class="fixed inset-0 bg-black bg-opacity-75 transition-opacity"
+              phx-click="hide_video_intro">
+          </div>
+
+          <!-- Center modal -->
+          <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+          <!-- Modal content -->
+          <div class="inline-block align-bottom text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-6xl sm:w-full"
+              phx-click-away="hide_video_intro"
+              phx-window-keydown="hide_video_intro"
+              phx-key="escape">
+
+            <.live_component
+              module={FrestylWeb.PortfolioLive.VideoIntroComponent}
+              id={@video_intro_component_id}
+              portfolio={@portfolio}
+              current_user={@current_user}
+            />
+          </div>
+        </div>
+      </div>
     <% end %>
     """
   end
@@ -4654,5 +5261,349 @@ def render_enhanced_javascript(assigns) do
 
   defp get_current_background(customization) do
     Map.get(customization, "background", "default")
+  end
+
+  defp get_header_theme_classes(theme, customization) do
+    case theme do
+      "executive" -> "bg-white shadow-sm border-b border-gray-200"
+      "developer" -> "bg-gray-900 shadow-lg border-b border-gray-700"
+      "designer" -> get_designer_header_bg(customization)
+      "consultant" -> "bg-gradient-to-r from-blue-50 to-indigo-50 shadow-sm border-b border-blue-200"
+      "academic" -> "bg-gradient-to-r from-emerald-50 to-green-50 shadow-sm border-b border-emerald-200"
+      "creative" -> get_creative_header_bg(customization)
+      "minimalist" -> "bg-white border-b border-gray-100"
+      _ -> "bg-white shadow-sm border-b border-gray-200"
+    end
+  end
+
+  defp get_header_text_classes(theme, _customization) do
+    case theme do
+      "executive" -> %{
+        title: "text-gray-900",
+        subtitle: "text-gray-600",
+        nav_link: "text-gray-500 hover:text-gray-700"
+      }
+      "developer" -> %{
+        title: "text-green-400",
+        subtitle: "text-gray-300",
+        nav_link: "text-gray-400 hover:text-green-400"
+      }
+      "designer" -> %{
+        title: "text-white",
+        subtitle: "text-purple-100",
+        nav_link: "text-purple-200 hover:text-white"
+      }
+      "consultant" -> %{
+        title: "text-blue-900",
+        subtitle: "text-blue-700",
+        nav_link: "text-blue-600 hover:text-blue-800"
+      }
+      "academic" -> %{
+        title: "text-emerald-900",
+        subtitle: "text-emerald-700",
+        nav_link: "text-emerald-600 hover:text-emerald-800"
+      }
+      "creative" -> %{
+        title: "text-white",
+        subtitle: "text-pink-100",
+        nav_link: "text-pink-200 hover:text-white"
+      }
+      "minimalist" -> %{
+        title: "text-gray-900",
+        subtitle: "text-gray-600",
+        nav_link: "text-gray-500 hover:text-gray-700"
+      }
+      _ -> %{
+        title: "text-gray-900",
+        subtitle: "text-gray-600",
+        nav_link: "text-gray-500 hover:text-gray-700"
+      }
+    end
+  end
+
+  defp get_designer_header_bg(customization) do
+    primary = Map.get(customization, "primary_color", "#7c3aed")
+    secondary = Map.get(customization, "secondary_color", "#ec4899")
+    "bg-gradient-to-r shadow-lg border-b-4 border-white border-opacity-20" <>
+    " style=\"background: linear-gradient(135deg, #{primary}, #{secondary})\""
+  end
+
+  defp get_creative_header_bg(customization) do
+    primary = Map.get(customization, "primary_color", "#8b5cf6")
+    accent = Map.get(customization, "accent_color", "#f59e0b")
+    "bg-gradient-to-r shadow-lg border-b-4 border-white border-opacity-20" <>
+    " style=\"background: linear-gradient(135deg, #{primary}, #{accent})\""
+  end
+
+  defp get_tab_classes(is_active, theme, customization) do
+    base = "px-4 py-2 rounded-lg font-medium transition-all"
+
+    if is_active do
+      case theme do
+        "developer" -> "#{base} bg-green-600 text-white"
+        "designer" -> "#{base} bg-white bg-opacity-20 text-white backdrop-blur-sm"
+        "consultant" -> "#{base} bg-blue-600 text-white"
+        "academic" -> "#{base} bg-emerald-600 text-white"
+        "creative" -> "#{base} bg-white bg-opacity-20 text-white backdrop-blur-sm"
+        "minimalist" -> "#{base} bg-gray-900 text-white"
+        _ -> "#{base} bg-blue-600 text-white"
+      end
+    else
+      case theme do
+        "developer" -> "#{base} text-gray-300 hover:text-green-400 hover:bg-gray-800"
+        "designer" -> "#{base} text-purple-100 hover:text-white hover:bg-white hover:bg-opacity-10"
+        "consultant" -> "#{base} text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+        "academic" -> "#{base} text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100"
+        "creative" -> "#{base} text-pink-100 hover:text-white hover:bg-white hover:bg-opacity-10"
+        "minimalist" -> "#{base} text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+        _ -> "#{base} text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+      end
+    end
+  end
+
+  defp get_primary_button_classes(theme, customization) do
+    case theme do
+      "developer" -> "bg-green-600 text-white hover:bg-green-700 shadow-lg"
+      "designer" -> "bg-white bg-opacity-20 text-white hover:bg-opacity-30 backdrop-blur-sm"
+      "consultant" -> "bg-blue-600 text-white hover:bg-blue-700"
+      "academic" -> "bg-emerald-600 text-white hover:bg-emerald-700"
+      "creative" -> "bg-white bg-opacity-20 text-white hover:bg-opacity-30 backdrop-blur-sm"
+      "minimalist" -> "bg-gray-900 text-white hover:bg-gray-800"
+      _ -> "bg-blue-600 text-white hover:bg-blue-700"
+    end
+  end
+
+  defp get_secondary_button_classes(theme, _customization) do
+    case theme do
+      "developer" -> "bg-gray-800 text-gray-300 hover:text-green-400 border border-gray-700"
+      "designer" -> "bg-white bg-opacity-10 text-white hover:bg-opacity-20 border border-white border-opacity-20"
+      "consultant" -> "bg-white text-blue-600 hover:bg-blue-50 border border-blue-200"
+      "academic" -> "bg-white text-emerald-600 hover:bg-emerald-50 border border-emerald-200"
+      "creative" -> "bg-white bg-opacity-10 text-white hover:bg-opacity-20 border border-white border-opacity-20"
+      "minimalist" -> "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+      _ -> "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200"
+    end
+  end
+
+  defp get_unsaved_badge_classes(theme) do
+    case theme do
+      "developer" -> "bg-yellow-500 bg-opacity-20 text-yellow-200"
+      "designer" -> "bg-white bg-opacity-20 text-white"
+      "consultant" -> "bg-yellow-100 text-yellow-800"
+      "academic" -> "bg-yellow-100 text-yellow-800"
+      "creative" -> "bg-white bg-opacity-20 text-white"
+      "minimalist" -> "bg-yellow-100 text-yellow-800"
+      _ -> "bg-yellow-100 text-yellow-800"
+    end
+  end
+
+  defp get_accent_color(customization) do
+    Map.get(customization, "accent_color", "#f59e0b")
+  end
+
+  defp get_layout_options do
+    [
+      {"dashboard", %{
+        name: "Dashboard",
+        description: "Professional card-based layout",
+        features: ["Grid Layout", "Card Sections", "Responsive"]
+      }},
+      {"gallery", %{
+        name: "Gallery",
+        description: "Visual masonry-style layout",
+        features: ["Masonry", "Image Focus", "Creative"]
+      }},
+      {"timeline", %{
+        name: "Timeline",
+        description: "Chronological vertical layout",
+        features: ["Timeline", "Chronological", "Story"]
+      }},
+      {"minimal", %{
+        name: "Minimal",
+        description: "Clean single-column layout",
+        features: ["Single Column", "Clean", "Focus"]
+      }},
+      {"corporate", %{
+        name: "Corporate",
+        description: "Structured business layout",
+        features: ["Structured", "Professional", "Formal"]
+      }},
+      {"creative", %{
+        name: "Creative",
+        description: "Dynamic asymmetric layout",
+        features: ["Asymmetric", "Dynamic", "Bold"]
+      }}
+    ]
+  end
+
+  def render_layout_options(assigns) do
+    current_layout = get_in(assigns.customization, ["layout"]) || "dashboard"
+    available_layouts = FrestylWeb.PortfolioLive.Edit.TemplateManager.get_available_layouts()
+
+    assigns = assigns
+    |> assign(:current_layout, current_layout)
+    |> assign(:available_layouts, available_layouts)
+
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Layout</h3>
+        <p class="text-sm text-gray-600 mb-6">Choose how your portfolio sections are arranged and displayed.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <%= for {layout_key, layout_config} <- @available_layouts do %>
+          <div class={"relative cursor-pointer rounded-xl border-2 p-4 transition-all duration-200 hover:scale-105 #{if @current_layout == layout_key, do: "border-blue-500 bg-blue-50", else: "border-gray-200 hover:border-gray-300"}"}
+               phx-click="update_layout"
+               phx-value-layout={layout_key}>
+
+            <!-- Layout Preview -->
+            <div class="aspect-video bg-gray-100 rounded-lg mb-3 overflow-hidden">
+              <%= render_layout_preview(layout_key) %>
+            </div>
+
+            <!-- Layout Info -->
+            <div class="text-center">
+              <h4 class={"font-semibold mb-1 #{if @current_layout == layout_key, do: "text-blue-700", else: "text-gray-900"}"}>
+                <%= layout_config.name %>
+              </h4>
+              <p class="text-xs text-gray-600 leading-relaxed">
+                <%= layout_config.description %>
+              </p>
+            </div>
+
+            <!-- Selected Indicator -->
+            <%= if @current_layout == layout_key do %>
+              <div class="absolute top-2 right-2">
+                <div class="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                  <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Layout Features -->
+      <%= if @current_layout do %>
+        <% layout_features = FrestylWeb.PortfolioLive.Edit.TemplateManager.get_layout_features(@current_layout) %>
+        <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+          <h4 class="font-medium text-gray-900 mb-2">Current Layout Features:</h4>
+          <ul class="text-sm text-gray-600 space-y-1">
+            <%= for feature <- layout_features do %>
+              <li class="flex items-center space-x-2">
+                <svg class="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span><%= feature %></span>
+              </li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp render_layout_preview(layout_key) do
+    case layout_key do
+      "dashboard" ->
+        Phoenix.HTML.raw("""
+        <div class="grid grid-cols-3 gap-1 p-2">
+          <div class="bg-blue-200 h-3 rounded"></div>
+          <div class="bg-blue-200 h-3 rounded"></div>
+          <div class="bg-blue-200 h-3 rounded"></div>
+          <div class="bg-blue-300 h-4 rounded col-span-2"></div>
+          <div class="bg-blue-200 h-3 rounded"></div>
+        </div>
+        """)
+
+      "gallery" ->
+        Phoenix.HTML.raw("""
+        <div class="grid grid-cols-2 gap-1 p-2">
+          <div class="bg-purple-200 h-6 rounded"></div>
+          <div class="bg-purple-200 h-3 rounded"></div>
+          <div class="bg-purple-200 h-3 rounded"></div>
+          <div class="bg-purple-200 h-6 rounded"></div>
+        </div>
+        """)
+
+      "timeline" ->
+        Phoenix.HTML.raw("""
+        <div class="p-2 space-y-1">
+          <div class="flex items-center space-x-1">
+            <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+            <div class="bg-green-200 h-1 rounded flex-1"></div>
+          </div>
+          <div class="flex items-center space-x-1">
+            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+            <div class="bg-green-200 h-1 rounded flex-1"></div>
+          </div>
+          <div class="flex items-center space-x-1">
+            <div class="w-2 h-2 bg-green-300 rounded-full"></div>
+            <div class="bg-green-200 h-1 rounded flex-1"></div>
+          </div>
+        </div>
+        """)
+
+      "minimal" ->
+        Phoenix.HTML.raw("""
+        <div class="p-2 space-y-1 text-center">
+          <div class="h-1 bg-gray-800 rounded w-full"></div>
+          <div class="h-1 bg-gray-600 rounded w-3/4 mx-auto"></div>
+          <div class="h-1 bg-gray-400 rounded w-1/2 mx-auto"></div>
+        </div>
+        """)
+
+      "corporate" ->
+        Phoenix.HTML.raw("""
+        <div class="p-2">
+          <div class="bg-blue-500 h-2 rounded mb-1"></div>
+          <div class="grid grid-cols-2 gap-1">
+            <div class="bg-blue-100 h-4 rounded"></div>
+            <div class="bg-blue-100 h-4 rounded"></div>
+          </div>
+        </div>
+        """)
+
+      "creative" ->
+        Phoenix.HTML.raw("""
+        <div class="p-2">
+          <div class="grid grid-cols-3 gap-1">
+            <div class="bg-pink-400 h-6 rounded transform rotate-2"></div>
+            <div class="bg-yellow-400 h-4 rounded"></div>
+            <div class="bg-purple-400 h-5 rounded transform -rotate-1"></div>
+          </div>
+        </div>
+        """)
+
+      _ ->
+        Phoenix.HTML.raw("""
+        <div class="p-2 flex items-center justify-center">
+          <div class="w-6 h-6 bg-gray-400 rounded"></div>
+        </div>
+        """)
+    end
+  end
+
+  defp get_current_layout(customization, theme) do
+    # Check customization first, then fall back to theme default
+    case customization do
+      %{"layout" => layout} when is_binary(layout) -> layout
+      %{:layout => layout} when is_binary(layout) -> layout
+      _ ->
+        case theme do
+          "executive" -> "dashboard"
+          "developer" -> "timeline"
+          "designer" -> "gallery"
+          "consultant" -> "corporate"
+          "academic" -> "minimal"
+          "creative" -> "creative"
+          "minimalist" -> "minimal"
+          _ -> "dashboard"
+        end
+    end
   end
 end

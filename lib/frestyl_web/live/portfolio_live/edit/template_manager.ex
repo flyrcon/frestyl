@@ -1,7 +1,13 @@
+# lib/frestyl_web/live/portfolio_live/edit/template_manager.ex
+
 defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
   @moduledoc """
   Handles template-related operations for the portfolio editor.
   """
+
+  use Phoenix.Component
+  import Phoenix.LiveView.Helpers
+  import Phoenix.HTML
 
   # Import the necessary LiveView components and functions
   import Phoenix.Component, only: [assign: 2, assign: 3]
@@ -10,77 +16,101 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
   alias Frestyl.Portfolios
   alias Frestyl.Portfolios.Portfolio
 
+  # 🔥 FIX: Add template name normalization to map complex names to valid enum values
+  @template_name_mapping %{
+    # Map complex template names to valid database enum values
+    "creative_artistic" => "creative",
+    "creative_designer" => "designer",
+    "professional_executive" => "executive",
+    "professional_corporate" => "corporate",
+    "minimalist_clean" => "minimalist",
+    "minimalist_elegant" => "minimalist",
+    "technical_developer" => "developer",
+    "technical_engineer" => "developer"
+  }
 
-  def handle_template_selection(socket, %{"template" => template_name}) do
-    require Logger
-    Logger.info("🔥 Template selection: #{template_name}")
+  def handle_template_selection(socket, %{"template" => template_key}) do
+    IO.puts("🎨 Selecting template: #{template_key}")
+    IO.puts("🔥 TemplateManager.handle_template_selection called")
+    IO.puts("🔥 Trying to select template: #{template_key}")
+    IO.puts("🔥 Current portfolio theme: #{socket.assigns.portfolio.theme}")
 
-    try do
-      # Get template config from PortfolioTemplates module
-      template_config = Frestyl.Portfolios.PortfolioTemplates.get_template_config(template_name)
+    # Get enhanced template configuration using existing function
+    template_config = get_enhanced_template_config(template_key)
 
-      # Convert to string keys for database storage
-      template_config_strings = convert_atoms_to_strings(template_config)
+    # Update socket assignments
+    socket = socket
+    |> assign(:selected_template, template_key)
+    |> assign(:current_template, template_key)
+    |> assign(:template_config, template_config)
+    |> assign(:customization, template_config)
+    |> assign(:unsaved_changes, true)
 
-      # Update portfolio in database immediately
-      portfolio = socket.assigns.portfolio
-      update_attrs = %{
-        theme: template_name,
-        customization: template_config_strings
-      }
+    # Generate updated CSS using existing function
+    css = generate_preview_css(template_config, template_key)
+    socket = assign(socket, :preview_css, css)
 
-      case Portfolios.update_portfolio(portfolio, update_attrs) do
-        {:ok, updated_portfolio} ->
-          Logger.info("✅ Template saved to database successfully")
-
-          # Generate new CSS for the template
-          preview_css = generate_preview_css_from_config(template_config_strings)
-
-          socket
-          |> assign(:portfolio, updated_portfolio)
-          |> assign(:customization, template_config_strings)
-          |> assign(:selected_template, template_name)
-          |> assign(:template_layout, get_template_layout(template_config_strings, template_name))
-          |> assign(:preview_css, preview_css)
-          |> assign(:unsaved_changes, false)
-          |> put_flash(:info, "Template changed to #{String.capitalize(template_name)}")
-          |> push_event("template-changed", %{
-            template: template_name,
-            layout: get_template_layout(template_config_strings, template_name)
-          })
-
-        {:error, changeset} ->
-          Logger.error("❌ Failed to save template: #{inspect(changeset.errors)}")
-          socket
-          |> put_flash(:error, "Failed to save template changes")
-      end
-
-    rescue
-      error ->
-        Logger.error("Error in template selection: #{inspect(error)}")
+    # Update portfolio in database
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{
+      theme: template_key,
+      customization: template_config
+    }) do
+      {:ok, portfolio} ->
+        IO.puts("✅ Portfolio updated successfully! New theme: #{portfolio.theme}")
         socket
-        |> put_flash(:error, "Failed to load template")
+        |> assign(:portfolio, portfolio)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Template '#{get_theme_name(template_key)}' applied successfully!")
+
+      {:error, changeset} ->
+        IO.puts("❌ Portfolio update failed!")
+        IO.inspect(changeset.errors, label: "❌ Errors")
+        socket
+        |> put_flash(:error, "Failed to save template changes")
     end
   end
 
-  defp get_template_layout(config, template_name) do
-    case config do
-      %{"layout" => layout} when is_binary(layout) -> layout
-      %{:layout => layout} when is_binary(layout) -> layout
-      _ ->
-        # Fallback based on template name
-        case template_name do
-          "executive" -> "dashboard"
-          "developer" -> "terminal"
-          "designer" -> "gallery"
-          "consultant" -> "case_study"
-          "academic" -> "academic"
-          "creative" -> "gallery"
-          "minimalist" -> "minimal"
-          _ -> "dashboard"
+  defp get_theme_name(template_key) do
+    get_theme_variations()
+    |> Enum.find_value(fn {key, config} ->
+      if key == template_key, do: config.name, else: nil
+    end) || String.capitalize(template_key)
+  end
+
+  # 🔥 FIX: Add normalization function
+  defp normalize_template_name(template_name) do
+    # Check if we have a mapping for this template name
+    case Map.get(@template_name_mapping, template_name) do
+      nil ->
+        # If no mapping found, try to extract a valid name
+        cond do
+          String.contains?(template_name, "creative") -> "creative"
+          String.contains?(template_name, "professional") -> "executive"
+          String.contains?(template_name, "executive") -> "executive"
+          String.contains?(template_name, "minimalist") -> "minimalist"
+          String.contains?(template_name, "technical") -> "developer"
+          String.contains?(template_name, "developer") -> "developer"
+          String.contains?(template_name, "designer") -> "designer"
+          String.contains?(template_name, "corporate") -> "corporate"
+          true -> "executive"  # Default fallback
         end
+
+      mapped_name ->
+        mapped_name
     end
   end
+
+  defp normalize_template_config(config) when is_map(config) do
+    # Convert atom keys to string keys for consistency
+    Enum.reduce(config, %{}, fn {key, value}, acc ->
+      string_key = if is_atom(key), do: Atom.to_string(key), else: key
+      normalized_value = if is_map(value), do: normalize_template_config(value), else: value
+      Map.put(acc, string_key, normalized_value)
+    end)
+  end
+
+  defp normalize_template_config(config), do: config || %{}
+
 
   # Add this helper function
   defp convert_atoms_to_strings(map) when is_map(map) do
@@ -93,583 +123,22 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
 
   defp convert_atoms_to_strings(value), do: value
 
-  def handle_template_selection(socket, %{"template" => template_name}) do
-    # Simple template selection without complex operations
-    require Logger
-    Logger.info("Template selection by name: #{template_name}")
-    Logger.info("Current assigns: #{inspect(Map.keys(socket.assigns))}")
-
-    # Check what the current customization looks like
-    current_customization = socket.assigns[:customization]
-    Logger.info("Current customization: #{inspect(current_customization)}")
-
-    try do
-      template_config = get_template_config_by_name(template_name)
-      Logger.info("Template config generated successfully")
-      Logger.info("New template config: #{inspect(template_config)}")
-
-      updated_socket = socket
-      |> assign(:customization, template_config)
-      |> assign(:selected_template, template_name)
-      |> assign(:current_template, template_name)
-      |> assign(:unsaved_changes, true)
-
-      # Log the updated assigns
-      Logger.info("Updated customization: #{inspect(updated_socket.assigns.customization)}")
-      Logger.info("Selected template: #{inspect(updated_socket.assigns.selected_template)}")
-
-      Logger.info("Socket updated successfully")
-      updated_socket
-
-    rescue
-      error ->
-        Logger.error("Error in template selection: #{inspect(error)}")
-        Logger.error("Stacktrace: #{inspect(__STACKTRACE__)}")
-        socket
-    end
-  end
-
-  def handle_template_selection(socket, %{"value" => %{"template" => template_name}}) do
-    require Logger
-    Logger.info("Template selection nested: #{template_name}")
-
-    try do
-      template_config = get_template_config_by_name(template_name)
-
-      socket
-      |> assign(:customization, template_config)
-      |> assign(:unsaved_changes, true)
-
-    rescue
-      error ->
-        Logger.error("Error in nested template selection: #{inspect(error)}")
-        socket
-    end
-  end
-
-  def handle_template_selection(socket, params) do
-    require Logger
-    Logger.warning("Template selection with unhandled params: #{inspect(params)}")
-    socket
-  end
-
-  def handle_template_event(socket, "set_customization_tab", %{"tab" => tab}) do
-    {:noreply, assign(socket, :active_customization_tab, tab)}
-  end
-
-  def handle_template_event(socket, event_name, params) do
-    updated_socket = case event_name do
-      "select_template" ->
-        handle_template_selection(socket, params)
-
-      "set_customization_tab" ->
-        tab = params["tab"] || params["value"]
-        assign(socket, :active_customization_tab, tab)
-
-      "update_color_scheme" ->
-        handle_scheme_update(socket, params)
-
-      "update_primary_color" ->
-        handle_color_update(socket, %{"field" => "primary", "value" => params["color"]})
-
-      "update_secondary_color" ->
-        handle_color_update(socket, %{"field" => "secondary", "value" => params["color"]})
-
-      "update_accent_color" ->
-        handle_color_update(socket, %{"field" => "accent", "value" => params["color"]})
-
-      "update_background" ->
-        # Extract background value from different possible parameter formats
-        background = params["background"] || params["value"] || params["bg"]
-        handle_background_update(socket, %{"background" => background})
-
-      "update_color" ->
-        handle_color_update(socket, params)
-
-      "update_layout" ->
-        handle_layout_update(socket, params)
-
-      "update_typography" ->
-        handle_typography_update(socket, params)
-
-      "update_spacing" ->
-        handle_spacing_update(socket, params)
-
-      "update_scheme" ->
-        handle_scheme_update(socket, params)
-
-      "update_background" ->
-        handle_background_update(socket, params)
-
-      "update_card_style" ->
-        handle_card_style_update(socket, params)
-
-      "save_template_changes" ->
-        handle_save_template_changes(socket)
-
-      "reset_customization" ->
-        handle_reset_customization(socket)
-
-      _ ->
-        # Generic handler for any customization update
-        handle_generic_customization_update(socket, event_name, params)
-    end
-
-    {:noreply, updated_socket}
-  end
-
-  def handle_save_template_changes(socket) do
-    portfolio = socket.assigns.portfolio
-    customization = socket.assigns.customization
-
-    # Debug what we're trying to save
-    IO.puts("🔥 Saving customization to database:")
-    IO.inspect(customization, label: "Customization to save")
-
-    # Also update the theme if it changed
-    theme = socket.assigns[:selected_template] || portfolio.theme
-
-    update_attrs = %{
-      customization: customization,
-      theme: theme
-    }
-
-    # Update the portfolio in database
-    case Portfolios.update_portfolio(portfolio, update_attrs) do
-      {:ok, updated_portfolio} ->
-        IO.puts("🔥 Successfully saved to database")
-        socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_portfolio.customization)
-        |> assign(:unsaved_changes, false)
-        |> put_flash(:info, "Template changes saved successfully")
-
-      {:error, changeset} ->
-        IO.puts("🔥 Failed to save to database")
-        IO.inspect(changeset.errors, label: "Database errors")
-        socket
-        |> put_flash(:error, "Failed to save changes")
-    end
-  end
-
-  def handle_reset_customization(socket) do
-    # Reset to default config
-    default_config = get_default_customization()
-
-    socket
-    |> assign(:customization, default_config)
-    |> assign(:unsaved_changes, false)
-    |> put_flash(:info, "Customization reset to defaults")
-  end
-
-  def update_customization_with_preview(socket, field, value) do
-    customization = socket.assigns.customization
-    updated_customization = put_in(customization, field, value)
-
-    socket
-    |> assign(:customization, updated_customization)
-    |> assign(:unsaved_changes, true)
-  end
-
-  @impl true
-  def handle_event("update_primary_color", %{"value" => color}, socket) do
-    # Direct database update
-    portfolio = socket.assigns.portfolio
-    current_customization = portfolio.customization || %{}
-    updated_customization = Map.put(current_customization, "primary_color", color)
-
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        IO.puts("🎨 Primary color updated to: #{color}")
-        socket =
-          socket
-          |> assign(:portfolio, updated_portfolio)
-          |> assign(:customization, updated_customization)
-          |> put_flash(:info, "Primary color updated")
-
-        {:noreply, socket}
-
-      {:error, changeset} ->
-        IO.puts("❌ Failed to update primary color")
-        IO.inspect(changeset.errors)
-        {:noreply, put_flash(socket, :error, "Failed to update color")}
-    end
-  end
-
-  @impl true
-  def handle_event("update_secondary_color", %{"value" => color}, socket) do
-    portfolio = socket.assigns.portfolio
-    current_customization = portfolio.customization || %{}
-    updated_customization = Map.put(current_customization, "secondary_color", color)
-
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        IO.puts("🎨 Secondary color updated to: #{color}")
-        socket =
-          socket
-          |> assign(:portfolio, updated_portfolio)
-          |> assign(:customization, updated_customization)
-          |> put_flash(:info, "Secondary color updated")
-
-        {:noreply, socket}
-
-      {:error, changeset} ->
-        IO.puts("❌ Failed to update secondary color")
-        {:noreply, put_flash(socket, :error, "Failed to update color")}
-    end
-  end
-
-  @impl true
-  def handle_event("update_accent_color", %{"value" => color}, socket) do
-    portfolio = socket.assigns.portfolio
-    current_customization = portfolio.customization || %{}
-    updated_customization = Map.put(current_customization, "accent_color", color)
-
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        IO.puts("🎨 Accent color updated to: #{color}")
-        socket =
-          socket
-          |> assign(:portfolio, updated_portfolio)
-          |> assign(:customization, updated_customization)
-          |> put_flash(:info, "Accent color updated")
-
-        {:noreply, socket}
-
-      {:error, changeset} ->
-        IO.puts("❌ Failed to update accent color")
-        {:noreply, put_flash(socket, :error, "Failed to update color")}
-    end
-  end
-
-  # Private helper functions
-
-  defp get_template_config_by_name(template_name) do
-    # Use your existing PortfolioTemplates module
-    Frestyl.Portfolios.PortfolioTemplates.get_template_config(template_name)
-  end
-
-  defp handle_color_update(socket, %{"field" => field, "value" => value}) do
-    update_customization_field(socket, ["colors", field], value)
-  end
-
-  defp handle_color_update(socket, %{"color" => field, "value" => value}) do
-    update_customization_field(socket, ["colors", field], value)
-  end
-
-  defp handle_color_update(socket, %{"value" => color} = params) do
-    # Determine which color field to update
-    color_field = cond do
-      params["name"] && String.contains?(params["name"], "primary") -> "primary_color"
-      params["name"] && String.contains?(params["name"], "secondary") -> "secondary_color"
-      params["name"] && String.contains?(params["name"], "accent") -> "accent_color"
-      params["phx-value-type"] == "primary" -> "primary_color"
-      params["phx-value-type"] == "secondary" -> "secondary_color"
-      params["phx-value-type"] == "accent" -> "accent_color"
-      params["field"] -> params["field"] <> "_color"
-      true -> "primary_color" # default fallback
-    end
-
-    # Update the customization
-    current_customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(current_customization, color_field, color)
-
-    # Save to database immediately
-    portfolio = socket.assigns.portfolio
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:unsaved_changes, false)
-        |> maybe_update_preview_css()
-        |> put_flash(:info, "Color updated and saved")
-
-      {:error, changeset} ->
-        IO.inspect(changeset.errors, label: "❌ Color save failed")
-        socket
-        |> assign(:customization, updated_customization)
-        |> assign(:unsaved_changes, true)
-        |> maybe_update_preview_css()
-        |> put_flash(:error, "Color updated but failed to save")
-    end
-  end
-
-  # Add specific handlers for each color type
-  defp handle_color_update(socket, %{"primary_color" => color}) do
-    handle_single_color_update(socket, "primary_color", color)
-  end
-
-  defp handle_color_update(socket, %{"secondary_color" => color}) do
-    handle_single_color_update(socket, "secondary_color", color)
-  end
-
-  defp handle_color_update(socket, %{"accent_color" => color}) do
-    handle_single_color_update(socket, "accent_color", color)
-  end
-
-  defp handle_single_color_update(socket, color_field, color) do
-    current_customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(current_customization, color_field, color)
-
-    # Save immediately
-    portfolio = socket.assigns.portfolio
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:unsaved_changes, false)
-        |> maybe_update_preview_css()
-
-      {:error, _} ->
-        socket
-        |> assign(:customization, updated_customization)
-        |> assign(:unsaved_changes, true)
-        |> maybe_update_preview_css()
-    end
-  end
-
-  defp handle_layout_update(socket, %{"value" => layout}) do
-    update_customization_field(socket, ["layout"], layout)
-  end
-
-  defp handle_typography_update(socket, %{"font" => font_name}) do
-    # Update and save immediately
-    socket_with_update = update_customization_field(socket, ["typography", "font_family"], font_name)
-
-    # Save to database
-    portfolio = socket_with_update.assigns.portfolio
-    customization = socket_with_update.assigns.customization
-
-    case Portfolios.update_portfolio(portfolio, %{customization: customization}) do
-      {:ok, updated_portfolio} ->
-        socket_with_update
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:unsaved_changes, false)
-        |> put_flash(:info, "Typography updated")
-
-      {:error, _} ->
-        socket_with_update
-        |> put_flash(:error, "Failed to save typography changes")
-    end
-  end
-
-  defp handle_typography_update(socket, %{"field" => field, "value" => value}) do
-    update_customization_field(socket, [:typography, String.to_atom(field)], value)
-  end
-
-  defp handle_typography_update(socket, %{"font_family" => font_family}) do
-    update_customization_field(socket, [:typography, :font_family], font_family)
-  end
-
-  defp handle_typography_update(socket, %{"font_size" => font_size}) do
-    update_customization_field(socket, [:typography, :font_size], font_size)
-  end
-
-  defp handle_typography_update(socket, %{"value" => value} = params) do
-    # Handle generic typography updates
-    field = params["field"] || "font_family"
-    update_customization_field(socket, [:typography, String.to_atom(field)], value)
-  end
-
-  defp handle_typography_update(socket, params) do
-    # Log the actual params to debug
-    require Logger
-    Logger.warning("Unhandled typography update with params: #{inspect(params)}")
-
-    # Try to extract any typography-related values
-    cond do
-      params["font"] ->
-        update_customization_field(socket, [:typography, :font_family], params["font"])
-      params["typography"] ->
-        # Handle nested typography object
-        typography_params = params["typography"]
-        if is_map(typography_params) do
-          current_typography = get_in(socket.assigns.customization, [:typography]) || %{}
-          updated_typography = Map.merge(current_typography, typography_params)
-          update_customization_field(socket, [:typography], updated_typography)
-        else
-          socket
-        end
-      true ->
-        socket
-    end
-  end
-
-  defp handle_spacing_update(socket, %{"value" => spacing}) do
-    update_customization_field(socket, ["spacing"], spacing)
-  end
-
-  defp handle_scheme_update(socket, %{"scheme" => scheme_name}) do
-    scheme_colors = case scheme_name do
-      "professional" -> %{
-        "primary_color" => "#1e40af",
-        "secondary_color" => "#64748b",
-        "accent_color" => "#3b82f6"
-      }
-      "creative" -> %{
-        "primary_color" => "#7c3aed",
-        "secondary_color" => "#ec4899",
-        "accent_color" => "#f59e0b"
-      }
-      "warm" -> %{
-        "primary_color" => "#dc2626",
-        "secondary_color" => "#ea580c",
-        "accent_color" => "#f59e0b"
-      }
-      "cool" -> %{
-        "primary_color" => "#0891b2",
-        "secondary_color" => "#0284c7",
-        "accent_color" => "#6366f1"
-      }
-      "minimal" -> %{
-        "primary_color" => "#374151",
-        "secondary_color" => "#6b7280",
-        "accent_color" => "#059669"
-      }
-      _ -> %{}
-    end
-
-    updated_customization = Map.merge(socket.assigns.customization || %{}, scheme_colors)
-
-    socket
-    |> assign(:customization, updated_customization)
-    |> assign(:unsaved_changes, true)
-    |> maybe_update_preview_css()
-  end
-
-  defp handle_background_update(socket, %{"background" => background}) do
-    IO.puts("🔥 BACKGROUND UPDATE CALLED")
-    IO.puts("🔥 New background: #{background}")
-
-    current_customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(current_customization, "background", background)
-
-    # Save to database immediately
-    portfolio = socket.assigns.portfolio
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        IO.puts("🔥 ✅ Background saved to database successfully")
-
-        # Generate new CSS
-        preview_css = generate_preview_css_from_config(updated_customization)
-
-        socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:preview_css, preview_css)
-        |> assign(:unsaved_changes, false)
-        |> put_flash(:info, "Background updated to #{String.capitalize(background)}")
-        |> push_event("background-changed", %{background: background})
-
-      {:error, changeset} ->
-        IO.puts("🔥 ❌ Failed to save background to database")
-        IO.inspect(changeset.errors)
-        socket
-        |> assign(:customization, updated_customization)
-        |> assign(:unsaved_changes, true)
-        |> maybe_update_preview_css()
-        |> put_flash(:error, "Background updated but failed to save")
-    end
-  end
-
-  # Also handle the "value" parameter version:
-  defp handle_background_update(socket, %{"value" => background}) do
-    handle_background_update(socket, %{"background" => background})
-  end
-
-  defp handle_card_style_update(socket, %{"value" => card_style}) do
-    update_customization_field(socket, ["card_style"], card_style)
-  end
-
-  defp handle_generic_customization_update(socket, field_name, %{"value" => value}) do
-    # Convert event name to field path
-    field_path = event_name_to_field_path(field_name)
-    update_customization_field(socket, field_path, value)
-  end
-
-  defp handle_generic_customization_update(socket, field_name, params) do
-    # Handle complex parameter structures
-    case params do
-      %{"field" => field, "value" => value} ->
-        field_path = [field_name, field]
-        update_customization_field(socket, field_path, value)
-
-      %{"scheme" => _scheme} ->
-        # Already handled by handle_scheme_update, but fallback
-        socket
-
-      %{"color" => color_field, "value" => value} ->
-        update_customization_field(socket, ["colors", color_field], value)
-
-      %{"tab" => tab} ->
-        assign(socket, :active_customization_tab, tab)
-
-      # Handle direct color assignments
-      %{"primary_color" => value} ->
-        update_customization_field(socket, ["colors", "primary"], value)
-      %{"secondary_color" => value} ->
-        update_customization_field(socket, ["colors", "secondary"], value)
-      %{"accent_color" => value} ->
-        update_customization_field(socket, ["colors", "accent"], value)
-
-      _ ->
-        # Log unhandled event for debugging
-        require Logger
-        Logger.warning("Unhandled template event: #{field_name} with params: #{inspect(params)}")
-        socket
-    end
-  end
-
-  defp update_customization_field(socket, field_path, value) do
-    customization = socket.assigns.customization || %{}
-
-    # Convert field path to handle both string and atom keys
-    normalized_path = Enum.map(field_path, fn
-      key when is_atom(key) -> Atom.to_string(key)
-      key when is_binary(key) -> key
-      key -> to_string(key)
-    end)
-
-    # Ensure nested maps exist before trying to put_in
-    updated_customization = ensure_nested_path_exists(customization, normalized_path, value)
-
-    socket
-    |> assign(:customization, updated_customization)
-    |> assign(:unsaved_changes, true)
-    |> maybe_update_preview_css()
-  end
-
-  # Add this helper function to safely create nested paths
-  defp ensure_nested_path_exists(map, path, value) do
-    case path do
-      [] ->
-        value
-      [key] ->
-        Map.put(map, key, value)
-      [key | rest] ->
-        nested_map = Map.get(map, key, %{})
-        Map.put(map, key, ensure_nested_path_exists(nested_map, rest, value))
-    end
-  end
-
+  # Update the preview CSS generation if needed
   defp maybe_update_preview_css(socket) do
-    customization = socket.assigns.customization
-    preview_css = generate_preview_css_from_config(customization)
-    assign(socket, :preview_css, preview_css)
+    # Generate CSS from current customization
+    css = generate_preview_css(socket.assigns.customization, socket.assigns.selected_template)
+    assign(socket, :preview_css, css)
   end
 
-  defp generate_preview_css_from_config(config) do
-    # Handle both atom and string keys from your new template structure
-    primary_color = config[:primary_color] || config["primary_color"] || "#3b82f6"
-    secondary_color = config[:secondary_color] || config["secondary_color"] || "#64748b"
-    accent_color = config[:accent_color] || config["accent_color"] || "#f59e0b"
+  defp generate_preview_css(customization, template) do
+    # Extract colors with safe defaults
+    primary_color = get_in(customization, ["primary_color"]) || "#3b82f6"
+    secondary_color = get_in(customization, ["secondary_color"]) || "#64748b"
+    accent_color = get_in(customization, ["accent_color"]) || "#f59e0b"
 
-    # Extract typography - handle nested structure
-    typography = config[:typography] || config["typography"] || %{}
-    font_family = typography[:font_family] || typography["font_family"] || "Inter"
-    font_size = typography[:font_size] || typography["font_size"] || "base"
+    # Extract typography
+    typography = customization["typography"] || %{}
+    font_family = typography["font_family"] || "Inter"
 
     font_family_css = case font_family do
       "Inter" -> "'Inter', system-ui, sans-serif"
@@ -688,22 +157,6 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
       --portfolio-font-family: #{font_family_css};
     }
 
-    /* ONLY apply to preview areas and color swatches - NOT the entire interface */
-    .portfolio-preview,
-    .template-preview-card,
-    .color-swatch-primary,
-    .color-swatch-secondary,
-    .color-swatch-accent,
-    .portfolio-primary,
-    .portfolio-secondary,
-    .portfolio-accent,
-    .portfolio-bg-primary,
-    .portfolio-bg-secondary,
-    .portfolio-bg-accent {
-      color: inherit;
-    }
-
-    /* Color previews */
     .portfolio-primary { color: var(--portfolio-primary-color) !important; }
     .portfolio-secondary { color: var(--portfolio-secondary-color) !important; }
     .portfolio-accent { color: var(--portfolio-accent-color) !important; }
@@ -729,273 +182,838 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
     """
   end
 
-  defp event_name_to_field_path(event_name) do
-    case event_name do
-      "update_primary_color" -> ["colors", "primary"]
-      "update_secondary_color" -> ["colors", "secondary"]
-      "update_accent_color" -> ["colors", "accent"]
-      "update_font_family" -> ["typography", "font_family"]
-      "update_font_size" -> ["typography", "font_size"]
-      _ -> [event_name]
-    end
-  end
+  # Handle template events with proper routing
+  def handle_template_event(socket, event_name, params) do
+    updated_socket = case event_name do
+      "set_customization_tab" ->
+        tab = params["tab"] || params["value"]
+        assign(socket, :active_customization_tab, tab)
 
-  defp get_template_config_by_id(template_id) do
-    # Convert template ID to name for now
-    case template_id do
-      "1" -> get_template_config_by_name("consultant")
-      "2" -> get_template_config_by_name("academic")
-      "3" -> get_template_config_by_name("creative")
-      "4" -> get_template_config_by_name("designer")
-      _ -> get_default_customization()
-    end
-  end
+      "update_color_scheme" ->
+        handle_scheme_update(socket, params)
 
-defp get_template_config_by_name(template_name) do
-  # Get config from your PortfolioTemplates module
-  config = Frestyl.Portfolios.PortfolioTemplates.get_template_config(template_name)
+      "update_primary_color" ->
+        handle_color_update(socket, %{"field" => "primary_color", "value" => params["color"] || params["value"]})
 
-  # Convert to string keys for consistency
-  convert_keys_to_strings(config)
-end
+      "update_secondary_color" ->
+        handle_color_update(socket, %{"field" => "secondary_color", "value" => params["color"] || params["value"]})
 
-defp convert_keys_to_strings(map) when is_map(map) do
-  map
-  |> Enum.map(fn {k, v} ->
-    {to_string(k), convert_keys_to_strings(v)}
-  end)
-  |> Enum.into(%{})
-end
+      "update_accent_color" ->
+        handle_color_update(socket, %{"field" => "accent_color", "value" => params["color"] || params["value"]})
 
-defp convert_keys_to_strings(value), do: value
+      "update_background" ->
+        background = params["background"] || params["value"] || params["bg"]
+        handle_background_update(socket, %{"background" => background})
 
-  defp get_default_customization do
-    %{
-      "colors" => %{
-        "primary" => "#3B82F6",
-        "secondary" => "#64748B",
-        "accent" => "#F59E0B",
-        "text" => "#1F2937",
-        "background" => "#FFFFFF"
-      },
-      "typography" => %{
-        "font_family" => "Inter",
-        "font_size" => "base",
-        "body_weight" => "normal",
-        "heading_weight" => "normal"
-      },
-      "layout" => "default",
-      "spacing" => "comfortable",
-      "card_style" => "default"
-    }
-  end
+      "update_color" ->
+        handle_color_update(socket, params)
 
-  defp get_template_by_name(template_name) do
-    # Map template names to template data
-    # In a real app, this would query the database
-    # For now, we'll create a mock template based on the name
-    case template_name do
-      "consultant" ->
-        %{
-          id: 1,
-          name: "Consultant",
-          description: "Professional consulting portfolio template",
-          default_config: %{
-            "colors" => %{
-              "primary" => "#1E40AF",
-              "secondary" => "#64748B",
-              "accent" => "#3B82F6",
-              "text" => "#0F172A",
-              "background" => "#F8FAFC"
-            },
-            "typography" => %{
-              "font_family" => "Inter",
-              "font_size" => "base",
-              "body_weight" => "normal",
-              "heading_weight" => "semibold"
-            },
-            "layout" => "professional",
-            "spacing" => "comfortable",
-            "card_style" => "professional"
-          },
-          base_css: """
-          .portfolio-container {
-            font-family: var(--font-family);
-            color: var(--text-color);
-            background-color: var(--background-color);
-          }
-          .primary-button {
-            background-color: var(--primary-color);
-            color: white;
-          }
-          """
-        }
+      "update_layout" ->
+        handle_layout_update(socket, params)
 
-      "academic" ->
-        %{
-          id: 2,
-          name: "Academic",
-          description: "Academic and research portfolio template",
-          default_config: %{
-            "colors" => %{
-              "primary" => "#7C2D12",
-              "secondary" => "#78716C",
-              "accent" => "#DC2626",
-              "text" => "#292524",
-              "background" => "#FAFAF9"
-            },
-            "typography" => %{
-              "font_family" => "Merriweather",
-              "font_size" => "base",
-              "body_weight" => "normal",
-              "heading_weight" => "bold"
-            },
-            "layout" => "academic",
-            "spacing" => "comfortable",
-            "card_style" => "academic"
-          },
-          base_css: """
-          .portfolio-container {
-            font-family: var(--font-family);
-            color: var(--text-color);
-            background-color: var(--background-color);
-          }
-          """
-        }
+      "update_typography" ->
+        handle_typography_update(socket, params)
 
-      "creative" ->
-        %{
-          id: 3,
-          name: "Creative",
-          description: "Creative and artistic portfolio template",
-          default_config: %{
-            "colors" => %{
-              "primary" => "#8B5CF6",
-              "secondary" => "#06B6D4",
-              "accent" => "#F59E0B",
-              "text" => "#1F2937",
-              "background" => "#FFFFFF"
-            },
-            "typography" => %{
-              "font_family" => "Poppins",
-              "font_size" => "base",
-              "body_weight" => "normal",
-              "heading_weight" => "bold"
-            },
-            "layout" => "creative",
-            "spacing" => "comfortable",
-            "card_style" => "creative"
-          },
-          base_css: """
-          .portfolio-container {
-            font-family: var(--font-family);
-            color: var(--text-color);
-            background-color: var(--background-color);
-          }
-          """
-        }
+      "update_spacing" ->
+        handle_spacing_update(socket, params)
+
+      "refresh_preview" ->
+        maybe_update_preview_css(socket)
 
       _ ->
-        # Try to get from database as fallback
-        Portfolios.get_template_by_name(template_name)
+        socket
+    end
+
+    {:noreply, updated_socket}
+  end
+
+  # Handle color updates
+  defp handle_color_update(socket, %{"field" => field, "value" => value}) do
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(current_customization, field, value)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> maybe_update_preview_css()
+        |> put_flash(:info, "Colors updated!")
+
+      {:error, _changeset} ->
+        socket
+        |> put_flash(:error, "Failed to update colors")
     end
   end
 
+  # Handle scheme updates
+  defp handle_scheme_update(socket, %{"scheme" => scheme}) do
+    colors = get_scheme_colors(scheme)
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.merge(current_customization, colors)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> maybe_update_preview_css()
+        |> put_flash(:info, "Color scheme applied!")
+
+      {:error, _changeset} ->
+        socket
+        |> put_flash(:error, "Failed to update color scheme")
+    end
+  end
+
+  # Handle typography updates
+  defp handle_typography_update(socket, params) do
+    current_customization = socket.assigns.customization || %{}
+    current_typography = current_customization["typography"] || %{}
+
+    updated_typography = case params do
+      %{"font" => font} -> Map.put(current_typography, "font_family", font)
+      %{"field" => field, "value" => value} -> Map.put(current_typography, field, value)
+      _ -> current_typography
+    end
+
+    updated_customization = Map.put(current_customization, "typography", updated_typography)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> maybe_update_preview_css()
+        |> put_flash(:info, "Typography updated!")
+
+      {:error, _changeset} ->
+        socket
+        |> put_flash(:error, "Failed to update typography")
+    end
+  end
+
+  # Handle background updates
+  defp handle_background_update(socket, %{"background" => background}) do
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(current_customization, "background", background)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> maybe_update_preview_css()
+        |> put_flash(:info, "Background updated!")
+
+      {:error, _changeset} ->
+        socket
+        |> put_flash(:error, "Failed to update background")
+    end
+  end
+
+  def handle_layout_selection(socket, %{"layout" => layout_name}) do
+    IO.puts("🔥 LAYOUT SELECTION: #{layout_name}")
+
+    # Get current customization
+    current_customization = socket.assigns.customization || %{}
+
+    # Update layout in customization
+    updated_customization = Map.put(current_customization, "layout", layout_name)
+
+    # Generate updated CSS
+    css = generate_layout_specific_css(updated_customization, layout_name, socket.assigns.portfolio.theme)
+
+    # Update portfolio in database
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{
+      customization: updated_customization
+    }) do
+      {:ok, portfolio} ->
+        IO.puts("✅ Layout updated successfully! New layout: #{layout_name}")
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(:preview_css, css)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Layout changed to #{format_layout_name(layout_name)}")
+
+      {:error, changeset} ->
+        IO.puts("❌ Layout update failed!")
+        IO.inspect(changeset.errors, label: "❌ Errors")
+        socket
+        |> assign(:customization, updated_customization)
+        |> assign(:preview_css, css)
+        |> assign(:unsaved_changes, true)
+        |> put_flash(:error, "Failed to save layout changes - will retry")
+    end
+  end
+
+    defp format_layout_name(layout) do
+    case layout do
+      "dashboard" -> "Dashboard"
+      "gallery" -> "Gallery"
+      "timeline" -> "Timeline"
+      "minimal" -> "Minimal"
+      "corporate" -> "Corporate"
+      "academic" -> "Academic"
+      _ -> String.capitalize(layout)
+    end
+  end
+
+  # Generate layout-specific CSS
+  defp generate_layout_specific_css(customization, layout, theme) do
+    base_css = generate_preview_css(customization, theme)
+    layout_css = get_layout_specific_styles(layout)
+
+    """
+    #{base_css}
+    #{layout_css}
+    """
+  end
+
+  defp get_layout_specific_styles(layout) do
+    case layout do
+      "dashboard" ->
+        """
+        <style>
+        .portfolio-layout-dashboard .portfolio-sections {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+          gap: 2rem;
+          padding: 2rem;
+        }
+        .portfolio-layout-dashboard .portfolio-card {
+          background: white;
+          border-radius: 12px;
+          padding: 1.5rem;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+          border: 1px solid #e5e7eb;
+          transition: all 0.3s ease;
+        }
+        .portfolio-layout-dashboard .portfolio-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+        }
+        </style>
+        """
+
+      "gallery" ->
+        """
+        <style>
+        .portfolio-layout-gallery .portfolio-sections {
+          columns: 1;
+          column-gap: 2rem;
+          padding: 2rem;
+        }
+        @media (min-width: 768px) {
+          .portfolio-layout-gallery .portfolio-sections {
+            columns: 2;
+          }
+        }
+        @media (min-width: 1024px) {
+          .portfolio-layout-gallery .portfolio-sections {
+            columns: 3;
+          }
+        }
+        .portfolio-layout-gallery .portfolio-card {
+          break-inside: avoid;
+          margin-bottom: 2rem;
+          background: white;
+          border-radius: 16px;
+          padding: 2rem;
+          box-shadow: 0 8px 25px -3px rgba(0, 0, 0, 0.1);
+          border: 1px solid #f3f4f6;
+        }
+        </style>
+        """
+
+      "timeline" ->
+        """
+        <style>
+        .portfolio-layout-timeline .portfolio-sections {
+          max-width: 4xl;
+          margin: 0 auto;
+          padding: 2rem;
+          position: relative;
+        }
+        .portfolio-layout-timeline .portfolio-sections::before {
+          content: '';
+          position: absolute;
+          left: 2rem;
+          top: 0;
+          bottom: 0;
+          width: 2px;
+          background: linear-gradient(to bottom, #3b82f6, #8b5cf6);
+        }
+        .portfolio-layout-timeline .portfolio-card {
+          margin-left: 4rem;
+          margin-bottom: 3rem;
+          position: relative;
+          background: white;
+          border-radius: 12px;
+          padding: 2rem;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .portfolio-layout-timeline .portfolio-card::before {
+          content: '';
+          position: absolute;
+          left: -3rem;
+          top: 1.5rem;
+          width: 1rem;
+          height: 1rem;
+          border-radius: 50%;
+          background: #3b82f6;
+          border: 3px solid white;
+          box-shadow: 0 0 0 3px #3b82f6;
+        }
+        </style>
+        """
+
+      "minimal" ->
+        """
+        <style>
+        .portfolio-layout-minimal .portfolio-sections {
+          max-width: 3xl;
+          margin: 0 auto;
+          padding: 4rem 2rem;
+        }
+        .portfolio-layout-minimal .portfolio-card {
+          margin-bottom: 4rem;
+          background: transparent;
+          border: none;
+          box-shadow: none;
+          padding: 2rem 0;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .portfolio-layout-minimal .portfolio-card:last-child {
+          border-bottom: none;
+        }
+        </style>
+        """
+
+      "corporate" ->
+        """
+        <style>
+        .portfolio-layout-corporate .portfolio-sections {
+          display: grid;
+          grid-template-columns: 1fr 2fr;
+          gap: 3rem;
+          padding: 2rem;
+          max-width: 7xl;
+          margin: 0 auto;
+        }
+        @media (max-width: 1024px) {
+          .portfolio-layout-corporate .portfolio-sections {
+            grid-template-columns: 1fr;
+          }
+        }
+        .portfolio-layout-corporate .portfolio-card {
+          background: white;
+          border-radius: 8px;
+          padding: 2rem;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+          border-left: 4px solid var(--portfolio-primary-color, #3b82f6);
+        }
+        </style>
+        """
+
+      _ ->
+        """
+        <style>
+        .portfolio-sections {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 1.5rem;
+          padding: 1.5rem;
+        }
+        </style>
+        """
+    end
+  end
+
+  defp get_available_layouts do
+    [
+      {"dashboard", %{
+        name: "Dashboard",
+        description: "Grid-based layout perfect for showcasing multiple sections"
+      }},
+      {"gallery", %{
+        name: "Gallery",
+        description: "Masonry-style layout ideal for creative portfolios"
+      }},
+      {"timeline", %{
+        name: "Timeline",
+        description: "Chronological layout great for career progression"
+      }},
+      {"minimal", %{
+        name: "Minimal",
+        description: "Clean, focused layout with minimal visual elements"
+      }},
+      {"corporate", %{
+        name: "Corporate",
+        description: "Professional two-column layout for business portfolios"
+      }}
+    ]
+  end
+
+  defp render_layout_preview(layout_key) do
+    case layout_key do
+      "dashboard" ->
+        Phoenix.HTML.raw("""
+        <div class="p-2 h-full">
+          <div class="grid grid-cols-2 gap-1 h-full">
+            <div class="bg-blue-200 rounded"></div>
+            <div class="bg-blue-300 rounded"></div>
+            <div class="bg-blue-300 rounded"></div>
+            <div class="bg-blue-200 rounded"></div>
+          </div>
+        </div>
+        """)
+
+      "gallery" ->
+        Phoenix.HTML.raw("""
+        <div class="p-2 h-full flex space-x-1">
+          <div class="flex-1 space-y-1">
+            <div class="bg-purple-200 rounded h-6"></div>
+            <div class="bg-purple-300 rounded h-4"></div>
+          </div>
+          <div class="flex-1 space-y-1">
+            <div class="bg-purple-300 rounded h-4"></div>
+            <div class="bg-purple-200 rounded h-6"></div>
+          </div>
+        </div>
+        """)
+
+      "timeline" ->
+        Phoenix.HTML.raw("""
+        <div class="p-2 h-full relative">
+          <div class="absolute left-4 top-2 bottom-2 w-0.5 bg-green-400"></div>
+          <div class="space-y-1 ml-6">
+            <div class="bg-green-200 rounded h-2"></div>
+            <div class="bg-green-300 rounded h-2"></div>
+            <div class="bg-green-200 rounded h-2"></div>
+          </div>
+        </div>
+        """)
+
+      "minimal" ->
+        Phoenix.HTML.raw("""
+        <div class="p-3 h-full space-y-2">
+          <div class="bg-gray-300 rounded h-1"></div>
+          <div class="bg-gray-200 rounded h-1"></div>
+          <div class="bg-gray-300 rounded h-1"></div>
+          <div class="bg-gray-200 rounded h-1"></div>
+        </div>
+        """)
+
+      "corporate" ->
+        Phoenix.HTML.raw("""
+        <div class="p-2 h-full grid grid-cols-3 gap-1">
+          <div class="bg-blue-200 rounded"></div>
+          <div class="bg-blue-300 rounded col-span-2"></div>
+        </div>
+        """)
+
+      _ ->
+        Phoenix.HTML.raw("""
+        <div class="p-2 h-full bg-gray-200 rounded flex items-center justify-center">
+          <div class="text-xs text-gray-500">Preview</div>
+        </div>
+        """)
+    end
+  end
+
+  defp get_layout_features(layout) do
+    case layout do
+      "dashboard" -> [
+        "Responsive grid system",
+        "Card-based sections",
+        "Hover animations",
+        "Mobile optimized"
+      ]
+      "gallery" -> [
+        "Masonry column layout",
+        "Creative visual flow",
+        "Image-friendly",
+        "Dynamic spacing"
+      ]
+      "timeline" -> [
+        "Chronological progression",
+        "Visual timeline indicator",
+        "Story-telling format",
+        "Career-focused"
+      ]
+      "minimal" -> [
+        "Clean typography focus",
+        "Reduced visual noise",
+        "Maximum readability",
+        "Elegant simplicity"
+      ]
+      "corporate" -> [
+        "Professional appearance",
+        "Structured information",
+        "Business-oriented",
+        "Two-column design"
+      ]
+      _ -> ["Custom layout options"]
+    end
+  end
+
+
+
+  # Handle layout updates
+  defp handle_layout_update(socket, %{"layout" => layout}) do
+    IO.puts("🔥 LAYOUT UPDATE: #{layout}")
+
+    # Update customization directly (since update_customization_field exists)
+    customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(customization, "layout", layout)
+
+    # Save immediately to database so it appears in live view
+    portfolio = socket.assigns.portfolio
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        IO.puts("🔥 LAYOUT SAVED TO DB: #{layout}")
+
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Layout updated to #{layout}")
+
+      {:error, changeset} ->
+        IO.puts("🔥 LAYOUT SAVE FAILED: #{inspect(changeset.errors)}")
+
+        socket
+        |> assign(:customization, updated_customization)
+        |> assign(:unsaved_changes, true)
+        |> put_flash(:error, "Failed to save layout changes")
+    end
+  end
+
+  defp handle_layout_update(socket, %{"value" => layout}) do
+    handle_layout_update(socket, %{"layout" => layout})
+  end
+
+  defp handle_layout_update(socket, params) do
+    # Log unhandled layout params for debugging
+    require Logger
+    Logger.warning("Unhandled layout update params: #{inspect(params)}")
+    socket
+  end
+
+  # Handle spacing updates
+  defp handle_spacing_update(socket, %{"spacing" => spacing}) do
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(current_customization, "spacing", spacing)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> maybe_update_preview_css()
+        |> put_flash(:info, "Spacing updated!")
+
+      {:error, _changeset} ->
+        socket
+        |> put_flash(:error, "Failed to update spacing")
+    end
+  end
+
+  # Get scheme colors
   defp get_scheme_colors(scheme) do
     case scheme do
       "creative" ->
         %{
-          "primary" => "#8B5CF6",
-          "secondary" => "#06B6D4",
-          "accent" => "#F59E0B",
-          "text" => "#1F2937",
-          "background" => "#FFFFFF"
+          "primary_color" => "#8B5CF6",
+          "secondary_color" => "#06B6D4",
+          "accent_color" => "#F59E0B"
         }
 
       "professional" ->
         %{
-          "primary" => "#1E40AF",
-          "secondary" => "#64748B",
-          "accent" => "#3B82F6",
-          "text" => "#0F172A",
-          "background" => "#F8FAFC"
+          "primary_color" => "#1E40AF",
+          "secondary_color" => "#64748B",
+          "accent_color" => "#3B82F6"
         }
 
       "academic" ->
         %{
-          "primary" => "#7C2D12",
-          "secondary" => "#78716C",
-          "accent" => "#DC2626",
-          "text" => "#292524",
-          "background" => "#FAFAF9"
+          "primary_color" => "#7C2D12",
+          "secondary_color" => "#78716C",
+          "accent_color" => "#DC2626"
         }
 
       "minimal" ->
         %{
-          "primary" => "#000000",
-          "secondary" => "#6B7280",
-          "accent" => "#374151",
-          "text" => "#111827",
-          "background" => "#FFFFFF"
+          "primary_color" => "#000000",
+          "secondary_color" => "#6B7280",
+          "accent_color" => "#374151"
         }
 
       _ ->
         # Default scheme
         %{
-          "primary" => "#3B82F6",
-          "secondary" => "#64748B",
-          "accent" => "#F59E0B",
-          "text" => "#1F2937",
-          "background" => "#FFFFFF"
+          "primary_color" => "#3B82F6",
+          "secondary_color" => "#64748B",
+          "accent_color" => "#F59E0B"
         }
     end
   end
 
-  defp generate_simple_css(config) do
-    # Return empty string instead of actual CSS to avoid showing in HTML
-    ""
-  end
+  def get_enhanced_template_config(theme) do
+    # Try to use the PortfolioTemplates module if it exists, otherwise use fallback
+    base_config = case Code.ensure_loaded(Frestyl.Portfolios.PortfolioTemplates) do
+      {:module, _} ->
+        # Module exists, try to call the function
+        try do
+          apply(Frestyl.Portfolios.PortfolioTemplates, :get_template_config, [theme])
+        rescue
+          UndefinedFunctionError ->
+            get_fallback_template_config(theme)
+          _ ->
+            get_fallback_template_config(theme)
+        end
 
-  defp generate_css_variables(config) do
-    """
-    <style>
-    :root {
-      --primary-color: #{get_config_value(config, ["colors", "primary"], "#3B82F6")};
-      --secondary-color: #{get_config_value(config, ["colors", "secondary"], "#64748B")};
-      --accent-color: #{get_config_value(config, ["colors", "accent"], "#F59E0B")};
-      --text-color: #{get_config_value(config, ["colors", "text"], "#1F2937")};
-      --background-color: #{get_config_value(config, ["colors", "background"], "#FFFFFF")};
-      --font-family: #{get_config_value(config, ["typography", "font_family"], "Inter, sans-serif")};
-    }
-    </style>
-    """
-  end
-
-  defp replace_css_variables(css, config) do
-    # Replace common CSS variables with config values
-    css
-    |> String.replace("var(--primary-color)", get_config_value(config, ["colors", "primary"], "#3B82F6"))
-    |> String.replace("var(--secondary-color)", get_config_value(config, ["colors", "secondary"], "#10B981"))
-    |> String.replace("var(--accent-color)", get_config_value(config, ["colors", "accent"], "#F59E0B"))
-    |> String.replace("var(--text-color)", get_config_value(config, ["colors", "text"], "#1F2937"))
-    |> String.replace("var(--background-color)", get_config_value(config, ["colors", "background"], "#FFFFFF"))
-    |> String.replace("var(--font-family)", get_config_value(config, ["fonts", "primary"], "Inter, sans-serif"))
-    |> String.replace("var(--font-size-base)", get_config_value(config, ["fonts", "size", "base"], "16px"))
-    |> String.replace("var(--font-size-lg)", get_config_value(config, ["fonts", "size", "lg"], "18px"))
-    |> String.replace("var(--font-size-xl)", get_config_value(config, ["fonts", "size", "xl"], "20px"))
-    |> String.replace("var(--spacing-sm)", get_config_value(config, ["spacing", "sm"], "0.5rem"))
-    |> String.replace("var(--spacing-md)", get_config_value(config, ["spacing", "md"], "1rem"))
-    |> String.replace("var(--spacing-lg)", get_config_value(config, ["spacing", "lg"], "2rem"))
-    |> String.replace("var(--border-radius)", get_config_value(config, ["layout", "borderRadius"], "0.5rem"))
-  end
-
-  defp get_config_value(config, path, default) do
-    case get_in(config, path) do
-      nil -> default
-      value -> value
+      {:error, _} ->
+        # Module doesn't exist, use fallback
+        get_fallback_template_config(theme)
     end
+
+    enhanced_configs = %{
+      "minimalist" => %{
+        "layout" => "minimal",
+        "primary_color" => "#000000",
+        "secondary_color" => "#666666",
+        "accent_color" => "#333333",
+        "typography" => %{
+          "font_family" => "Inter",
+          "font_size" => "base",
+          "line_height" => "relaxed"
+        },
+        "spacing" => "comfortable",
+        "card_style" => "flat",
+        "background" => "white",
+        "border_style" => "minimal",
+        "shadow_style" => "none"
+      },
+      "clean" => %{
+        "layout" => "dashboard",
+        "primary_color" => "#2563eb",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6",
+        "typography" => %{
+          "font_family" => "Inter",
+          "font_size" => "base",
+          "line_height" => "normal"
+        },
+        "spacing" => "normal",
+        "card_style" => "minimal",
+        "background" => "light_gray",
+        "border_style" => "subtle",
+        "shadow_style" => "soft"
+      },
+      "elegant" => %{
+        "layout" => "gallery",
+        "primary_color" => "#4c1d95",
+        "secondary_color" => "#7c3aed",
+        "accent_color" => "#c084fc",
+        "typography" => %{
+          "font_family" => "Playfair Display",
+          "font_size" => "large",
+          "line_height" => "loose"
+        },
+        "spacing" => "spacious",
+        "card_style" => "elevated",
+        "background" => "gradient_subtle",
+        "border_style" => "elegant",
+        "shadow_style" => "dramatic"
+      }
+    }
+
+    # Deep merge base config with enhancements
+    deep_merge_configs(base_config, Map.get(enhanced_configs, theme, %{}))
   end
 
-  defp normalize_template_config(config) when is_map(config), do: config
-  defp normalize_template_config(_), do: %{}
+  defp get_fallback_template_config(theme) do
+    base_template = %{
+      "typography" => %{
+        "font_family" => "Inter",
+        "font_size" => "base",
+        "line_height" => "normal"
+      },
+      "spacing" => "normal",
+      "card_style" => "default",
+      "background" => "white"
+    }
+
+    theme_specific = case theme do
+      "executive" -> %{
+        "primary_color" => "#1e40af",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6",
+        "layout" => "dashboard"
+      }
+      "developer" -> %{
+        "primary_color" => "#059669",
+        "secondary_color" => "#374151",
+        "accent_color" => "#10b981",
+        "layout" => "timeline",
+        "typography" => %{
+          "font_family" => "JetBrains Mono",
+          "font_size" => "base",
+          "line_height" => "normal"
+        }
+      }
+      "designer" -> %{
+        "primary_color" => "#7c3aed",
+        "secondary_color" => "#ec4899",
+        "accent_color" => "#f59e0b",
+        "layout" => "gallery",
+        "typography" => %{
+          "font_family" => "Playfair Display",
+          "font_size" => "large",
+          "line_height" => "loose"
+        }
+      }
+      "consultant" -> %{
+        "primary_color" => "#0891b2",
+        "secondary_color" => "#0284c7",
+        "accent_color" => "#6366f1",
+        "layout" => "corporate"
+      }
+      "academic" -> %{
+        "primary_color" => "#059669",
+        "secondary_color" => "#047857",
+        "accent_color" => "#10b981",
+        "layout" => "minimal",
+        "typography" => %{
+          "font_family" => "Merriweather",
+          "font_size" => "base",
+          "line_height" => "relaxed"
+        }
+      }
+      "minimalist" -> %{
+        "primary_color" => "#000000",
+        "secondary_color" => "#666666",
+        "accent_color" => "#333333",
+        "layout" => "minimal",
+        "typography" => %{
+          "font_family" => "Inter",
+          "font_size" => "base",
+          "line_height" => "relaxed"
+        }
+      }
+      "clean" -> %{
+        "primary_color" => "#2563eb",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6",
+        "layout" => "dashboard"
+      }
+      "elegant" -> %{
+        "primary_color" => "#4c1d95",
+        "secondary_color" => "#7c3aed",
+        "accent_color" => "#c084fc",
+        "layout" => "gallery",
+        "typography" => %{
+          "font_family" => "Playfair Display",
+          "font_size" => "large",
+          "line_height" => "loose"
+        }
+      }
+      _ -> %{
+        "primary_color" => "#3b82f6",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#f59e0b",
+        "layout" => "dashboard"
+      }
+    end
+
+    # Merge base template with theme-specific config
+    deep_merge_configs(base_template, theme_specific)
+  end
+
+  defp deep_merge_configs(left, right) when is_map(left) and is_map(right) do
+    Map.merge(left, right, fn _k, v1, v2 ->
+      if is_map(v1) and is_map(v2) do
+        deep_merge_configs(v1, v2)
+      else
+        v2  # Right side takes precedence
+      end
+    end)
+  end
+  defp deep_merge_configs(_left, right), do: right
+
+
+  # ADD this function to get available theme variations:
+  def get_theme_variations do
+    [
+      {"executive", %{
+        name: "Executive",
+        description: "Professional corporate style",
+        category: "business",
+        preview_layout: "dashboard",
+        color_preview: ["#1e40af", "#64748b", "#3b82f6"],
+        features: ["Dashboard Layout", "Corporate Colors", "Professional Typography"]
+      }},
+      {"developer", %{
+        name: "Developer",
+        description: "Technical terminal-inspired design",
+        category: "technical",
+        preview_layout: "timeline",
+        color_preview: ["#059669", "#374151", "#10b981"],
+        features: ["Terminal Style", "Code Friendly", "Dark Mode Ready"]
+      }},
+      {"designer", %{
+        name: "Designer",
+        description: "Creative visual portfolio",
+        category: "creative",
+        preview_layout: "gallery",
+        color_preview: ["#7c3aed", "#ec4899", "#f59e0b"],
+        features: ["Gallery Layout", "Visual Focus", "Creative Colors"]
+      }},
+      {"minimalist", %{
+        name: "Minimalist",
+        description: "Pure simplicity and focus",
+        category: "minimal",
+        preview_layout: "minimal",
+        color_preview: ["#000000", "#666666", "#333333"],
+        features: ["Ultra Clean", "No Distractions", "Typography Focus"]
+      }},
+      {"clean", %{
+        name: "Clean",
+        description: "Modern and organized",
+        category: "minimal",
+        preview_layout: "dashboard",
+        color_preview: ["#2563eb", "#64748b", "#3b82f6"],
+        features: ["Organized Layout", "Subtle Shadows", "Modern Design"]
+      }},
+      {"elegant", %{
+        name: "Elegant",
+        description: "Sophisticated and refined",
+        category: "premium",
+        preview_layout: "gallery",
+        color_preview: ["#4c1d95", "#7c3aed", "#c084fc"],
+        features: ["Luxury Feel", "Premium Typography", "Elegant Spacing"]
+      }},
+      {"consultant", %{
+        name: "Consultant",
+        description: "Strategic business presentation",
+        category: "business",
+        preview_layout: "corporate",
+        color_preview: ["#0891b2", "#0284c7", "#6366f1"],
+        features: ["Case Study Focus", "Business Layout", "Professional"]
+      }},
+      {"academic", %{
+        name: "Academic",
+        description: "Research and education focused",
+        category: "academic",
+        preview_layout: "minimal",
+        color_preview: ["#059669", "#047857", "#10b981"],
+        features: ["Publication Ready", "Research Focus", "Clean Typography"]
+      }}
+    ]
+  end
 end

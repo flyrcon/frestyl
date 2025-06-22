@@ -428,26 +428,77 @@
                     <% end %>
                   </div>
 
-                  <div class="relative group cursor-pointer" phx-click="select_theme" phx-value-theme="minimalist">
-                    <div class={[
-                      "border-2 rounded-xl p-4 bg-white shadow-lg transition-all duration-300",
-                      if(@portfolio.theme == "minimalist", do: "border-gray-600 ring-4 ring-gray-200", else: "border-gray-200 hover:border-gray-400")
-                    ]}>
-                      <div class="h-32 bg-gradient-to-br from-green-100 to-teal-100 rounded-lg mb-3 flex items-center justify-center">
-                        <div class="text-center space-y-2">
-                          <div class="w-12 h-1 bg-green-400 rounded mx-auto"></div>
-                          <div class="w-16 h-1 bg-green-300 rounded mx-auto"></div>
-                          <div class="w-10 h-1 bg-green-200 rounded mx-auto"></div>
+                  <!-- Enhanced Template Grid -->
+                  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <%= for {template_key, template_config} <- get_available_templates_with_config() do %>
+                      <div class="relative group cursor-pointer" 
+                          phx-click="select_template" 
+                          phx-value-template={template_key}>
+                        <div class={[
+                          "border-3 rounded-2xl p-5 bg-white shadow-lg transition-all duration-500 transform hover:scale-105",
+                          if(@portfolio.theme == template_key, 
+                            do: "border-blue-600 ring-4 ring-blue-200 shadow-2xl", 
+                            else: "border-gray-200 hover:border-gray-400 hover:shadow-xl")
+                        ]}>
+                          
+                          <!-- Template Preview -->
+                          <div class="h-36 rounded-xl mb-4 overflow-hidden relative"
+                              style={"background: #{get_template_preview_bg(template_config)}"}> 
+                            <%= render_template_preview_content(template_key, template_config) %>
+                            
+                            <!-- Template Category Badge -->
+                            <div class="absolute top-2 left-2">
+                              <span class="px-2 py-1 bg-white bg-opacity-90 text-xs font-semibold rounded-full text-gray-700">
+                                <%= String.capitalize(template_config.category) %>
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <!-- Template Info -->
+                          <div class="space-y-2">
+                            <h4 class="font-bold text-gray-900 text-lg"><%= template_config.name %></h4>
+                            <p class="text-sm text-gray-600 leading-relaxed"><%= template_config.description %></p>
+                            
+                            <!-- Color Preview -->
+                            <div class="flex items-center space-x-2 mt-3">
+                              <span class="text-xs text-gray-500 font-medium">Colors:</span>
+                              <%= for color <- template_config.color_preview do %>
+                                <div class="w-5 h-5 rounded-full border-2 border-white shadow-sm"
+                                    style={"background-color: #{color}"}></div>
+                              <% end %>
+                            </div>
+                            
+                            <!-- Features -->
+                            <div class="flex flex-wrap gap-1 mt-3">
+                              <%= for feature <- Enum.take(template_config.features, 2) do %>
+                                <span class="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded">
+                                  <%= feature %>
+                                </span>
+                              <% end %>
+                              <%= if length(template_config.features) > 2 do %>
+                                <span class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-600 text-xs font-medium rounded">
+                                  +<%= length(template_config.features) - 2 %> more
+                                </span>
+                              <% end %>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <h4 class="font-bold text-gray-900">Minimalist</h4>
-                      <p class="text-sm text-gray-600">Clean grid layout</p>
-                    </div>
-                    <%= if @portfolio.theme == "minimalist" do %>
-                      <div class="absolute top-2 right-2 w-6 h-6 bg-gray-600 rounded-full flex items-center justify-center">
-                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-                        </svg>
+                        
+                        <!-- Selection Indicator -->
+                        <%= if @portfolio.theme == template_key do %>
+                          <div class="absolute -top-2 -right-2 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg ring-4 ring-white">
+                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                          </div>
+                        <% end %>
+                        
+                        <!-- Hover Preview Button -->
+                        <div class="absolute inset-0 bg-blue-600 bg-opacity-0 group-hover:bg-opacity-10 rounded-2xl transition-all duration-300 flex items-center justify-center">
+                          <button class="bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold shadow-lg opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300">
+                            <%= if @portfolio.theme == template_key, do: "Selected", else: "Select Template" %>
+                          </button>
+                        </div>
                       </div>
                     <% end %>
                   </div>

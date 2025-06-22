@@ -1,4 +1,4 @@
-# lib/frestyl_web/live/portfolio_live/video_intro_component.ex - CRITICAL FIXES
+# lib/frestyl_web/live/portfolio_live/video_intro_component.ex - CRITICAL FIXES FOR VIDEO INTRO
 
 defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
   use FrestylWeb, :live_component
@@ -24,26 +24,25 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     {:ok, socket}
   end
 
+  # ============================================================================
+  # FIXED: Proper Event Handlers with Parent Communication
+  # ============================================================================
 
-
-  # CRITICAL FIX: Handle recording errors from JavaScript
+  # FIXED: Cancel recording - properly notify parent
   @impl true
-  def handle_event("recording_error", params, socket) do
-    IO.puts("=== RECORDING ERROR IN COMPONENT ===")
-    IO.inspect(params, label: "Error params")
+  def handle_event("cancel_recording", _params, socket) do
+    IO.puts("=== CANCEL RECORDING IN COMPONENT ===")
 
-    error_message = Map.get(params, "message", "Recording failed")
+    # Clean up any active recording
+    cleanup_recording_state(socket)
 
-    socket =
-      socket
-      |> assign(:recording_state, :setup)
-      |> assign(:error_message, error_message)
-      |> assign(:elapsed_time, 0)
+    # Notify parent to close modal
+    send(self(), {:close_video_intro_modal, %{}})
 
     {:noreply, socket}
   end
 
-  # CRITICAL FIX: Start countdown event - this is the key trigger
+  # FIXED: Start countdown event
   @impl true
   def handle_event("start_countdown", _params, socket) do
     IO.puts("=== START COUNTDOWN EVENT IN COMPONENT ===")
@@ -71,40 +70,11 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
           |> assign(:countdown_value, 3)
           |> assign(:error_message, nil)
 
-        # CRITICAL: Push event to JavaScript hook to start countdown
+        # Push event to JavaScript hook to start countdown
         socket = push_event(socket, "start_countdown", %{})
 
         {:noreply, socket}
     end
-  end
-
-  @impl true
-  def update(%{countdown_update_params: params}, socket) do
-    IO.puts("=== COUNTDOWN UPDATE FORWARDED TO COMPONENT ===")
-    IO.inspect(params, label: "Countdown params")
-
-    count = Map.get(params, "count", 3)
-
-    socket =
-      if count == 0 do
-        socket
-        |> assign(:recording_state, :recording)
-        |> assign(:countdown_value, 0)
-        |> assign(:elapsed_time, 0)
-      else
-        assign(socket, :countdown_value, count)
-      end
-
-    {:ok, socket}
-  end
-
-  @impl true
-  def update(%{recording_progress_params: params}, socket) do
-    IO.puts("=== RECORDING PROGRESS FORWARDED TO COMPONENT ===")
-    elapsed = Map.get(params, "elapsed", 0)
-
-    socket = assign(socket, :elapsed_time, elapsed)
-    {:ok, socket}
   end
 
   # Camera ready event
@@ -151,11 +121,52 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     {:noreply, socket}
   end
 
+  # Recording progress from JavaScript
+  @impl true
+  def handle_event("recording_progress", %{"elapsed" => elapsed}, socket) do
+    IO.puts("=== RECORDING PROGRESS: #{elapsed}s ===")
+    socket = assign(socket, :elapsed_time, elapsed)
+    {:noreply, socket}
+  end
+
+  # Countdown updates from JavaScript
+  @impl true
+  def handle_event("countdown_update", %{"count" => count}, socket) do
+    IO.puts("=== COUNTDOWN UPDATE: #{count} ===")
+
+    socket = if count == 0 do
+      socket
+      |> assign(:recording_state, :recording)
+      |> assign(:countdown_value, 0)
+      |> assign(:elapsed_time, 0)
+    else
+      assign(socket, :countdown_value, count)
+    end
+
+    {:noreply, socket}
+  end
+
+  # Recording errors from JavaScript
+  @impl true
+  def handle_event("recording_error", params, socket) do
+    IO.puts("=== RECORDING ERROR IN COMPONENT ===")
+    IO.inspect(params, label: "Error params")
+
+    error_message = Map.get(params, "message", "Recording failed")
+
+    socket =
+      socket
+      |> assign(:recording_state, :setup)
+      |> assign(:error_message, error_message)
+      |> assign(:elapsed_time, 0)
+
+    {:noreply, socket}
+  end
+
   # Stop recording
   @impl true
   def handle_event("stop_recording", _params, socket) do
     IO.puts("=== STOP RECORDING IN COMPONENT ===")
-
     socket = assign(socket, :recording_state, :preview)
     {:noreply, socket}
   end
@@ -194,12 +205,151 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     {:noreply, socket}
   end
 
-  defp save_video_file(filename, video_data, portfolio, duration) do
-    # This is a placeholder - you'll need to implement based on your file storage system
-    # For now, let's create a basic implementation
+  # CRITICAL: Video blob ready - main upload handler
+  @impl true
+  def handle_event("video_blob_ready", params, socket) do
+    IO.puts("=== VIDEO BLOB READY IN COMPONENT ===")
+    IO.inspect(Map.keys(params), label: "Blob params keys")
 
+    case params do
+      %{
+        "blob_data" => blob_data,
+        "mime_type" => mime_type,
+        "file_size" => file_size,
+        "duration" => duration
+      } when is_binary(blob_data) ->
+        handle_video_upload(socket, blob_data, mime_type, file_size, duration)
+
+      %{"success" => false, "error" => error} ->
+        socket =
+          socket
+          |> assign(:recording_state, :preview)
+          |> assign(:upload_progress, 0)
+          |> put_flash(:error, "Upload failed: #{error}")
+
+        {:noreply, socket}
+
+      _ ->
+        socket =
+          socket
+          |> assign(:recording_state, :preview)
+          |> assign(:upload_progress, 0)
+          |> put_flash(:error, "Invalid video data received")
+
+        {:noreply, socket}
+    end
+  end
+
+  # ============================================================================
+  # FIXED: Video Upload Processing
+  # ============================================================================
+
+  defp handle_video_upload(socket, blob_data, mime_type, file_size, duration) do
+    IO.puts("=== STARTING VIDEO UPLOAD ===")
+    IO.puts("Blob data length: #{String.length(blob_data)}")
+    IO.puts("MIME type: #{mime_type}")
+    IO.puts("File size: #{file_size}")
+    IO.puts("Duration: #{duration}")
+
+    # Update progress
+    socket = assign(socket, upload_progress: 25)
+
+    case Base.decode64(blob_data) do
+      {:ok, video_data} ->
+        IO.puts("✅ Base64 decode successful, video data size: #{byte_size(video_data)}")
+        socket = assign(socket, upload_progress: 50)
+
+        # Validate file size (max 50MB)
+        max_size = 50 * 1024 * 1024
+
+        if file_size > max_size do
+          IO.puts("❌ File too large: #{file_size} > #{max_size}")
+          socket =
+            socket
+            |> assign(recording_state: :preview, upload_progress: 0)
+            |> put_flash(:error, "Video file too large. Maximum size is 50MB.")
+
+          {:noreply, socket}
+        else
+          # Generate filename with timestamp and proper extension
+          timestamp = DateTime.utc_now() |> DateTime.to_unix()
+          extension = get_file_extension(mime_type)
+          filename = "portfolio_intro_#{socket.assigns.portfolio.id}_#{timestamp}#{extension}"
+
+          IO.puts("📁 Saving as: #{filename}")
+          socket = assign(socket, upload_progress: 75)
+
+          case save_video_file(filename, video_data, socket.assigns.portfolio, duration) do
+            {:ok, saved_file_info} ->
+              IO.puts("✅ Video saved successfully!")
+              socket = assign(socket, upload_progress: 100)
+
+              # Create video intro section in portfolio
+              case create_portfolio_video_section(socket.assigns.portfolio, saved_file_info.file_path, saved_file_info.filename, duration) do
+                {:ok, section_info} ->
+                  IO.puts("✅ Video section created successfully!")
+
+                  # Reset component state
+                  socket =
+                    socket
+                    |> assign(
+                      recording_state: :setup,
+                      elapsed_time: 0,
+                      countdown_timer: 3,
+                      upload_progress: 0
+                    )
+                    |> put_flash(:info, "Video introduction saved successfully!")
+
+                  # CRITICAL: Notify parent LiveView about completion
+                  send(self(), {:video_intro_complete, %{
+                    "section_id" => section_info.id,
+                    "video_path" => saved_file_info.file_path,
+                    "filename" => saved_file_info.filename,
+                    "duration" => duration,
+                    "portfolio_id" => socket.assigns.portfolio.id
+                  }})
+
+                  {:noreply, socket}
+
+                {:error, section_error} ->
+                  IO.puts("❌ Section creation failed: #{section_error}")
+                  socket =
+                    socket
+                    |> assign(recording_state: :preview, upload_progress: 0)
+                    |> put_flash(:error, "Failed to save video to portfolio: #{section_error}")
+
+                  {:noreply, socket}
+              end
+
+            {:error, save_error} ->
+              IO.puts("❌ Save failed: #{save_error}")
+              socket =
+                socket
+                |> assign(recording_state: :preview, upload_progress: 0)
+                |> put_flash(:error, "Failed to save video: #{save_error}")
+
+              {:noreply, socket}
+          end
+        end
+
+      {:error, decode_error} ->
+        IO.puts("❌ Base64 decode failed: #{inspect(decode_error)}")
+        socket =
+          socket
+          |> assign(recording_state: :preview, upload_progress: 0)
+          |> put_flash(:error, "Invalid video data. Please try recording again.")
+
+        {:noreply, socket}
+    end
+  end
+
+  # ============================================================================
+  # FIXED: File Saving and Portfolio Section Creation
+  # ============================================================================
+
+  defp save_video_file(filename, video_data, portfolio, duration) do
     try do
-      # Create a temporary file path (adjust based on your storage setup)
+      # Create upload directory if it doesn't exist
       upload_dir = Path.join(["priv", "static", "uploads", "videos"])
       File.mkdir_p!(upload_dir)
 
@@ -323,42 +473,98 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     end)
   end
 
-  # Video blob ready
-  @impl true
-  def handle_event("video_blob_ready", params, socket) do
-    IO.puts("=== VIDEO BLOB READY IN COMPONENT ===")
-    IO.inspect(Map.keys(params), label: "Blob params keys")
-
-    case params do
-      %{
-        "blob_data" => blob_data,
-        "mime_type" => mime_type,
-        "file_size" => file_size,
-        "duration" => duration
-      } when is_binary(blob_data) ->
-        handle_video_upload(socket, blob_data, mime_type, file_size, duration)
-
-      %{"success" => false, "error" => error} ->
-        socket =
-          socket
-          |> assign(:recording_state, :preview)
-          |> assign(:upload_progress, 0)
-          |> put_flash(:error, "Upload failed: #{error}")
-
-        {:noreply, socket}
-
-      _ ->
-        socket =
-          socket
-          |> assign(:recording_state, :preview)
-          |> assign(:upload_progress, 0)
-          |> put_flash(:error, "Invalid video data received")
-
-        {:noreply, socket}
+  # Helper to get proper file extension
+  defp get_file_extension(mime_type) do
+    case mime_type do
+      "video/webm" -> ".webm"
+      "video/mp4" -> ".mp4"
+      "video/quicktime" -> ".mov"
+      _ -> ".webm"  # Default fallback
     end
   end
 
-  # Handle recording timer
+  # Helper function to format recording time
+  defp format_time(seconds) do
+    minutes = div(seconds, 60)
+    secs = rem(seconds, 60)
+    "#{minutes}:#{String.pad_leading(Integer.to_string(secs), 2, "0")}"
+  end
+
+  # Helper to clean up recording state
+  defp cleanup_recording_state(socket) do
+    socket
+    |> assign(:recording_state, :setup)
+    |> assign(:elapsed_time, 0)
+    |> assign(:countdown_timer, 3)
+    |> assign(:countdown_value, 3)
+    |> assign(:recorded_blob, nil)
+    |> assign(:error_message, nil)
+    |> assign(:upload_progress, 0)
+  end
+
+  # ============================================================================
+  # UPDATE HANDLERS - Handle events forwarded from parent
+  # ============================================================================
+
+  @impl true
+  def update(%{countdown_update_params: params}, socket) do
+    case handle_event("countdown_update", params, socket) do
+      {:noreply, updated_socket} -> {:ok, updated_socket}
+      other -> other
+    end
+  end
+
+  @impl true
+  def update(%{recording_progress_params: params}, socket) do
+    case handle_event("recording_progress", params, socket) do
+      {:noreply, updated_socket} -> {:ok, updated_socket}
+      other -> other
+    end
+  end
+
+  @impl true
+  def update(%{recording_error_params: params}, socket) do
+    case handle_event("recording_error", params, socket) do
+      {:noreply, updated_socket} -> {:ok, updated_socket}
+      other -> other
+    end
+  end
+
+  @impl true
+  def update(%{camera_ready_params: params}, socket) do
+    case handle_event("camera_ready", params, socket) do
+      {:noreply, updated_socket} -> {:ok, updated_socket}
+      other -> other
+    end
+  end
+
+  @impl true
+  def update(%{camera_error_params: params}, socket) do
+    case handle_event("camera_error", params, socket) do
+      {:noreply, updated_socket} -> {:ok, updated_socket}
+      other -> other
+    end
+  end
+
+  @impl true
+  def update(%{video_blob_params: params}, socket) do
+    case handle_event("video_blob_ready", params, socket) do
+      {:noreply, updated_socket} -> {:ok, updated_socket}
+      other -> other
+    end
+  end
+
+  # Standard update function
+  @impl true
+  def update(assigns, socket) do
+    IO.puts("=== COMPONENT UPDATE ===")
+    IO.inspect(Map.keys(assigns), label: "Update keys")
+
+    socket = assign(socket, assigns)
+    {:ok, socket}
+  end
+
+  # Timer messages - should be handled by component
   @impl true
   def handle_info({:recording_tick, component_id}, socket) do
     if socket.assigns.id == component_id and socket.assigns.recording_state == :recording do
@@ -383,100 +589,13 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     end
   end
 
-  @impl true
-  def update(%{video_blob_params: params}, socket) do
-    IO.puts("=== UPDATE VIDEO BLOB FROM PARENT ===")
-
-    case handle_event("video_blob_ready", params, socket) do
-      {:noreply, updated_socket} -> {:ok, updated_socket}
-      other -> other
-    end
-  end
-
-  # Standard update function
-  @impl true
-  def update(assigns, socket) do
-    IO.puts("=== COMPONENT UPDATE ===")
-    IO.inspect(Map.keys(assigns), label: "Update keys")
-
-    socket = assign(socket, assigns)
-    {:ok, socket}
-  end
-
-  @impl true
-  def update(%{countdown_update_params: params}, socket) do
-    IO.puts("=== COUNTDOWN UPDATE FORWARDED TO COMPONENT ===")
-    IO.inspect(params, label: "Countdown params")
-
-    case handle_event("countdown_update", params, socket) do
-      {:noreply, updated_socket} -> {:ok, updated_socket}
-      other -> other
-    end
-  end
-
-  # CRITICAL FIX: Handle recording progress forwarded from parent
-  @impl true
-  def update(%{recording_progress_params: params}, socket) do
-    IO.puts("=== RECORDING PROGRESS FORWARDED TO COMPONENT ===")
-    IO.inspect(params, label: "Recording progress params")
-
-    case handle_event("recording_progress", params, socket) do
-      {:noreply, updated_socket} -> {:ok, updated_socket}
-      other -> other
-    end
-  end
-
-  # CRITICAL FIX: Handle recording errors forwarded from parent
-  @impl true
-  def update(%{recording_error_params: params}, socket) do
-    IO.puts("=== RECORDING ERROR FORWARDED TO COMPONENT ===")
-    IO.inspect(params, label: "Recording error params")
-
-    case handle_event("recording_error", params, socket) do
-      {:noreply, updated_socket} -> {:ok, updated_socket}
-      other -> other
-    end
-  end
-
-  # CRITICAL FIX: Handle camera ready events forwarded from parent
-  @impl true
-  def update(%{camera_ready_params: params}, socket) do
-    IO.puts("=== CAMERA READY FORWARDED TO COMPONENT ===")
-    IO.inspect(params, label: "Camera ready params")
-
-    case handle_event("camera_ready", params, socket) do
-      {:noreply, updated_socket} -> {:ok, updated_socket}
-      other -> other
-    end
-  end
-
-  # CRITICAL FIX: Handle camera error events forwarded from parent
-  @impl true
-  def update(%{camera_error_params: params}, socket) do
-    IO.puts("=== CAMERA ERROR FORWARDED TO COMPONENT ===")
-    IO.inspect(params, label: "Camera error params")
-
-    case handle_event("camera_error", params, socket) do
-      {:noreply, updated_socket} -> {:ok, updated_socket}
-      other -> other
-    end
-  end
-
-  # CRITICAL FIX: Handle video blob events forwarded from parent (existing but ensure it's correct)
-  @impl true
-  def update(%{video_blob_params: params}, socket) do
-    IO.puts("=== VIDEO BLOB FORWARDED TO COMPONENT ===")
-    IO.inspect(Map.keys(params), label: "Video blob params keys")
-
-    case handle_event("video_blob_ready", params, socket) do
-      {:noreply, updated_socket} -> {:ok, updated_socket}
-      other -> other
-    end
-  end
-
   # Ignore other messages
   @impl true
   def handle_info(_, socket), do: {:noreply, socket}
+
+  # ============================================================================
+  # RENDER FUNCTIONS
+  # ============================================================================
 
   @impl true
   def render(assigns) do
@@ -510,11 +629,11 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
 
       <!-- Main Content with proper hook integration -->
       <div class="p-6"
-          phx-hook="VideoCapture"
-          id={"video-capture-#{@id}"}
-          data-component-id={@id}
-          data-recording-state={@recording_state}
-          phx-target={@myself}>
+           phx-hook="VideoCapture"
+           id={"video-capture-#{@id}"}
+           data-component-id={@id}
+           data-recording-state={@recording_state}
+           phx-target={@myself}>
 
         <%= case @recording_state do %>
           <% :setup -> %>
@@ -581,28 +700,6 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
                   <p class="text-white text-lg font-semibold mb-2">Camera Access Denied</p>
                   <p class="text-gray-300 text-sm mb-4">Please allow camera access and refresh the page</p>
                   <button phx-click="retake_video" phx-target={@myself}
-                          class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
-                    Try Again
-                  </button>
-
-                <% "no_camera" -> %>
-                  <svg class="w-16 h-16 text-yellow-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                  </svg>
-                  <p class="text-white text-lg font-semibold mb-2">No Camera Found</p>
-                  <p class="text-gray-300 text-sm mb-4">Please connect a camera and try again</p>
-                  <button phx-click="retake_video" phx-target={@myself}
-                          class="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700">
-                    Retry
-                  </button>
-
-                <% "camera_busy" -> %>
-                  <svg class="w-16 h-16 text-orange-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 15.5c-.77.833.192 2.5 1.732 2.5z"/>
-                  </svg>
-                  <p class="text-white text-lg font-semibold mb-2">Camera In Use</p>
-                  <p class="text-gray-300 text-sm mb-4">Camera is being used by another application</p>
-                  <button phx-click="retake_video" phx-target={@myself}
                           class="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
                     Try Again
                   </button>
@@ -655,7 +752,7 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     """
   end
 
-  # Countdown Phase with debug info
+  # Countdown Phase
   defp render_countdown_phase(assigns) do
     ~H"""
     <div class="text-center">
@@ -692,7 +789,7 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     """
   end
 
-  # Recording Phase with enhanced UI
+  # Recording Phase
   defp render_recording_phase(assigns) do
     ~H"""
     <div class="text-center">
@@ -758,7 +855,7 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     """
   end
 
-  # Preview Phase with better playback controls
+  # Preview Phase
   defp render_preview_phase(assigns) do
     ~H"""
     <div class="space-y-6">
@@ -825,7 +922,7 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
     """
   end
 
-  # Saving Phase with progress indicator
+  # Saving Phase
   defp render_saving_phase(assigns) do
     ~H"""
     <div class="text-center py-12">
@@ -865,127 +962,5 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
       </div>
     </div>
     """
-  end
-
-  # Helper function to format recording time
-  defp format_time(seconds) do
-    minutes = div(seconds, 60)
-    secs = rem(seconds, 60)
-    "#{minutes}:#{String.pad_leading(Integer.to_string(secs), 2, "0")}"
-  end
-
-  # Video upload handling
-  defp handle_video_upload(socket, blob_data, mime_type, file_size, duration) do
-    IO.puts("=== STARTING VIDEO UPLOAD ===")
-    IO.puts("Blob data length: #{String.length(blob_data)}")
-    IO.puts("MIME type: #{mime_type}")
-    IO.puts("File size: #{file_size}")
-    IO.puts("Duration: #{duration}")
-
-    # Update progress
-    socket = assign(socket, upload_progress: 25)
-
-    case Base.decode64(blob_data) do
-      {:ok, video_data} ->
-        IO.puts("✅ Base64 decode successful, video data size: #{byte_size(video_data)}")
-        socket = assign(socket, upload_progress: 50)
-
-        # Validate file size (max 50MB)
-        max_size = 50 * 1024 * 1024
-
-        if file_size > max_size do
-          IO.puts("❌ File too large: #{file_size} > #{max_size}")
-          socket =
-            socket
-            |> assign(recording_state: :preview, upload_progress: 0)
-            |> put_flash(:error, "Video file too large. Maximum size is 50MB.")
-
-          {:noreply, socket}
-        else
-          # Generate filename with timestamp and proper extension
-          timestamp = DateTime.utc_now() |> DateTime.to_unix()
-          extension = get_file_extension(mime_type)
-          filename = "portfolio_intro_#{socket.assigns.portfolio.id}_#{timestamp}#{extension}"
-
-          IO.puts("📁 Saving as: #{filename}")
-          socket = assign(socket, upload_progress: 75)
-
-          case save_video_file(filename, video_data, socket.assigns.portfolio, duration) do
-            {:ok, saved_file_info} ->
-              IO.puts("✅ Video saved successfully!")
-              socket = assign(socket, upload_progress: 100)
-
-              # Create or update video intro section
-              case create_portfolio_video_section(socket.assigns.portfolio, saved_file_info.file_path, saved_file_info.filename, duration) do
-                {:ok, section_info} ->
-                  # Success! Reset component and notify parent
-                  socket =
-                    socket
-                    |> assign(
-                      recording_state: :setup,
-                      elapsed_time: 0,
-                      countdown_timer: 3,
-                      upload_progress: 0
-                    )
-                    |> put_flash(:info, "Video introduction saved successfully!")
-
-                  # Send completion event to parent LiveView
-                  send(self(), {:video_intro_complete, %{
-                    "section_id" => section_info.id,
-                    "video_path" => saved_file_info.file_path,
-                    "filename" => saved_file_info.filename,
-                    "duration" => duration,
-                    "portfolio_id" => socket.assigns.portfolio.id
-                  }})
-
-                  {:noreply, socket}
-
-                {:error, section_error} ->
-                  IO.puts("❌ Section creation failed: #{section_error}")
-                  socket =
-                    socket
-                    |> assign(recording_state: :preview, upload_progress: 0)
-                    |> put_flash(:error, "Failed to save video to portfolio: #{section_error}")
-
-                  {:noreply, socket}
-              end
-
-            {:error, save_error} ->
-              IO.puts("❌ Save failed: #{save_error}")
-              socket =
-                socket
-                |> assign(recording_state: :preview, upload_progress: 0)
-                |> put_flash(:error, "Failed to save video: #{save_error}")
-
-              {:noreply, socket}
-          end
-        end
-
-      {:error, decode_error} ->
-        IO.puts("❌ Base64 decode failed: #{inspect(decode_error)}")
-        socket =
-          socket
-          |> assign(recording_state: :preview, upload_progress: 0)
-          |> put_flash(:error, "Invalid video data. Please try recording again.")
-
-        {:noreply, socket}
-    end
-  end
-
-  # Helper to get proper file extension
-  defp get_file_extension(mime_type) do
-    case mime_type do
-      "video/webm" -> ".webm"
-      "video/mp4" -> ".mp4"
-      "video/quicktime" -> ".mov"
-      _ -> ".webm"  # Default fallback
-    end
-  end
-
-  # Helper function to format recording time
-  defp format_time(seconds) do
-    minutes = div(seconds, 60)
-    secs = rem(seconds, 60)
-    "#{minutes}:#{String.pad_leading(Integer.to_string(secs), 2, "0")}"
   end
 end

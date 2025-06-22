@@ -149,6 +149,7 @@ defmodule FrestylWeb.Router do
       live "/channels/:slug/content/:id", ContentLive.Show, :show
 
       # Sessions routes
+      live "/channels/:slug/sessions", SessionLive.Index, :index
       live "/channels/:slug/sessions/:session_id", StudioLive, :show
       live "/channels/:slug/sessions/:session_id/edit", StudioLive, :edit_session
 
