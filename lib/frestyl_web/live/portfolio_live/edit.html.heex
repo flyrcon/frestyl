@@ -1039,4 +1039,29 @@
       });
     });
   });
+
+    document.addEventListener('DOMContentLoaded', function() {
+    // Media upload drag and drop
+    const uploadAreas = document.querySelectorAll('[phx-drop-target]');
+    
+    uploadAreas.forEach(area => {
+      area.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('border-blue-500', 'bg-blue-50');
+      });
+      
+      area.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('border-blue-500', 'bg-blue-50');
+      });
+      
+      area.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('border-blue-500', 'bg-blue-50');
+        
+        // LiveView handles the actual file processing
+        console.log('Files dropped, LiveView will handle upload');
+      });
+    });
+  });
 </script>

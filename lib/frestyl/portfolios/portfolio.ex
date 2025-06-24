@@ -25,17 +25,51 @@ defmodule Frestyl.Portfolios.Portfolio do
       "fixed_navigation" => true,
       "dark_mode_support" => false
     }
+    # NEW: Story-specific fields
+    field :story_type, Ecto.Enum, values: [
+      :personal_narrative, :professional_showcase, :brand_story,
+      :case_study, :creative_portfolio, :educational_content
+    ]
+    field :narrative_structure, Ecto.Enum, values: [
+      :chronological, :hero_journey, :case_study, :before_after, :problem_solution
+    ], default: :chronological
+    field :target_audience, :string
+    field :story_tags, {:array, :string}
+    field :estimated_read_time, :integer, default: 0
+    field :collaboration_settings, :map, default: %{}
 
 
     # Relations
     belongs_to :user, Frestyl.Accounts.User
+    belongs_to :account, Frestyl.Accounts.Account
     has_many :portfolio_sections, Frestyl.Portfolios.PortfolioSection
     has_many :sections, Frestyl.Portfolios.PortfolioSection
     has_many :portfolio_media, Frestyl.Portfolios.PortfolioMedia
     has_many :portfolio_visits, Frestyl.Portfolios.PortfolioVisit
     has_many :portfolio_shares, Frestyl.Portfolios.PortfolioShare
+    has_many :story_chapters, Frestyl.Stories.Chapter
 
     timestamps()
+  end
+
+  def story_changeset(portfolio, attrs) do
+    portfolio
+    |> cast(attrs, [
+      :title, :description, :story_type, :narrative_structure,
+      :target_audience, :story_tags, :collaboration_settings
+    ])
+    |> validate_required([:title, :account_id])
+    |> validate_length(:title, min: 1, max: 255)
+    |> calculate_estimated_read_time()
+  end
+
+  defp calculate_estimated_read_time(changeset) do
+    # Simple estimation: 200 words per minute
+    description = get_change(changeset, :description) || ""
+    word_count = String.split(description) |> length()
+    read_time = div(word_count, 200) |> max(1)
+
+    put_change(changeset, :estimated_read_time, read_time)
   end
 
   def changeset(portfolio, attrs) do

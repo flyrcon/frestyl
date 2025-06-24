@@ -4,6 +4,8 @@ defmodule FrestylWeb.StudioLive.ToolLayoutManager do
   Manages tool panel layouts, docking positions, and user preferences.
   """
 
+  import Phoenix.Component  # Add this import
+  import Phoenix.LiveView
   alias Frestyl.UserPreferences
   alias Phoenix.LiveView
 
@@ -218,8 +220,8 @@ defmodule FrestylWeb.StudioLive.ToolLayoutManager do
     save_user_tool_layout_preference(socket.assigns.current_user.id, new_layout)
 
     {:noreply, socket
-      |> LiveView.assign(workspace_state: new_workspace_state)
-      |> LiveView.push_event("tool_moved", %{tool_id: tool_id, dock_area: dock_area})}
+      |> assign(workspace_state: new_workspace_state)
+      |> push_event("tool_moved", %{tool_id: tool_id, dock_area: dock_area})}
   end
 
   def handle_event("toggle_tool_panel", %{"tool_id" => tool_id}, socket) do
@@ -282,8 +284,9 @@ defmodule FrestylWeb.StudioLive.ToolLayoutManager do
     new_visibility = Map.put(current_visibility, dock_atom, !Map.get(current_visibility, dock_atom, true))
 
     {:noreply, socket
-      |> LiveView.assign(dock_visibility: new_visibility)
-      |> LiveView.push_event("dock_toggled", %{dock: dock, visible: Map.get(new_visibility, dock_atom)})}
+      |> assign(dock_visibility: new_visibility)
+      |> push_event("dock_toggled", %{dock: dock, visible: Map.get(new_visibility, dock_atom)})}
+
   end
 
   # Public API Functions

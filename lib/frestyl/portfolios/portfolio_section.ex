@@ -18,7 +18,11 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       :media_showcase,
       :code_showcase,
       :contact,
-      :custom
+      :custom,
+      :story,
+      :timeline,
+      :narrative,
+      :journey
     ]
     field :content, :map
     field :position, :integer

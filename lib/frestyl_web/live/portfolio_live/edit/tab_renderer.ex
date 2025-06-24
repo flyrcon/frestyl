@@ -9,6 +9,7 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
 
   # 🔥 ADD THESE MISSING IMPORTS
   use FrestylWeb, :verified_routes  # This adds the ~p sigil
+  import FrestylWeb.CoreComponents
   import Phoenix.LiveView.Helpers   # For live_component, etc.
   alias FrestylWeb.PortfolioLive.Edit.HelperFunctions
   alias FrestylWeb.PortfolioLive.VideoIntroComponent
@@ -1165,24 +1166,37 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
           </svg>
         </button>
 
-        <!-- FIXED: All section types dropdown -->
+        <!-- ENHANCED: All section types dropdown with story features -->
         <%= if assigns[:show_add_section_dropdown] do %>
           <div class="absolute right-0 mt-3 w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
             <div class="p-6">
               <h3 class="font-bold text-gray-900 mb-4 text-lg">Choose Section Type</h3>
               <div class="grid grid-cols-2 gap-3">
                 <%= for {section_type, config} <- [
+                  # Professional sections
                   {"intro", %{name: "Introduction", icon: "👋", desc: "Personal intro & contact"}},
                   {"experience", %{name: "Experience", icon: "💼", desc: "Work history & roles"}},
                   {"education", %{name: "Education", icon: "🎓", desc: "Schools & certifications"}},
                   {"skills", %{name: "Skills", icon: "⚡", desc: "Technical & soft skills"}},
+
+                  # Project sections
                   {"featured_project", %{name: "Featured Project", icon: "🚀", desc: "Highlight key project"}},
                   {"case_study", %{name: "Case Study", icon: "📊", desc: "Detailed project analysis"}},
-                  {"media_showcase", %{name: "Media Gallery", icon: "🖼️", desc: "Images & videos"}},
                   {"projects", %{name: "Projects", icon: "🛠️", desc: "Project portfolio"}},
+                  {"code_showcase", %{name: "Code Showcase", icon: "💻", desc: "Code samples"}},
+
+                  # Story & narrative sections (NEW!)
+                  {"story", %{name: "My Story", icon: "📖", desc: "Tell your professional journey"}},
+                  {"timeline", %{name: "Career Timeline", icon: "⏱️", desc: "Chronological career path"}},
+                  {"narrative", %{name: "Narrative", icon: "✍️", desc: "Personal professional story"}},
+                  {"journey", %{name: "My Journey", icon: "🛤️", desc: "Career progression story"}},
+
+                  # Media & presentation
+                  {"media_showcase", %{name: "Media Gallery", icon: "🖼️", desc: "Images & videos"}},
                   {"achievements", %{name: "Achievements", icon: "🏆", desc: "Awards & recognition"}},
                   {"testimonial", %{name: "Testimonials", icon: "💬", desc: "Client feedback"}},
-                  {"code_showcase", %{name: "Code Showcase", icon: "💻", desc: "Code samples"}},
+
+                  # Contact & custom
                   {"contact", %{name: "Contact", icon: "📧", desc: "Contact information"}},
                   {"custom", %{name: "Custom", icon: "🎨", desc: "Flexible content"}}
                 ] do %>
@@ -1191,10 +1205,16 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
                           phx-value-type={section_type}
                           class="text-left p-4 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
                     <div class="flex items-start space-x-3">
-                      <span class="text-2xl flex-shrink-0"><%= config.icon %></span>
-                      <div class="min-w-0 flex-1">
-                        <h4 class="font-semibold text-gray-900 text-sm group-hover:text-blue-700 transition-colors"><%= config.name %></h4>
-                        <p class="text-xs text-gray-500 mt-1 leading-tight"><%= config.desc %></p>
+                      <span class="text-2xl group-hover:scale-110 transition-transform duration-200">
+                        <%= config.icon %>
+                      </span>
+                      <div class="flex-1 min-w-0">
+                        <h4 class="font-semibold text-gray-900 text-sm mb-1 group-hover:text-blue-600">
+                          <%= config.name %>
+                        </h4>
+                        <p class="text-xs text-gray-600 leading-tight">
+                          <%= config.desc %>
+                        </p>
                       </div>
                     </div>
                   </button>
@@ -2524,14 +2544,172 @@ end
 
       <!-- Media Modal Integration -->
       <%= if assigns[:show_media_modal] || assigns[:show_media_library] do %>
-        <%= render_media_library_modal(assigns) %>
+        <%= render_media_modal(assigns) %>
       <% end %>
 
       <!-- Media Preview Modal -->
       <%= if assigns[:media_preview_id] do %>
-        <%= render_media_preview_modal(assigns) %>
+        <%= render_media_modal(assigns) %>
       <% end %>
     </div>
+    """
+  end
+
+  defp render_media_modal(assigns) do
+    ~H"""
+    <%= if @show_media_library do %>
+        <!-- TEMPORARY DEBUG - Remove after fixing -->
+    <div class="fixed top-4 left-4 bg-yellow-100 p-4 rounded-lg text-xs z-[60] max-w-sm">
+      <p><strong>Debug Info:</strong></p>
+      <p>assigns has uploads: <%= Map.has_key?(assigns, :uploads) %></p>
+      <%= if Map.has_key?(assigns, :uploads) do %>
+        <p>uploads keys: <%= inspect(Map.keys(@uploads)) %></p>
+        <%= if Map.has_key?(@uploads, :media) do %>
+          <p>media upload config exists: true</p>
+          <p>media entries: <%= length(@uploads.media.entries) %></p>
+        <% else %>
+          <p>media upload config: missing</p>
+        <% end %>
+      <% else %>
+        <p>uploads assign: missing entirely</p>
+      <% end %>
+    </div>
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+          <!-- Modal Header -->
+          <div class="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-6 rounded-t-2xl">
+            <div class="flex items-center justify-between">
+              <h3 class="text-2xl font-bold text-white">Section Media Library</h3>
+              <button phx-click="hide_section_media_library"
+                      class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Modal Content -->
+          <div class="p-8 space-y-6">
+            <!-- Upload Area -->
+            <%= if Map.has_key?(assigns, :uploads) && Map.has_key?(@uploads, :media) do %>
+              <div class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-blue-500 transition-colors bg-gray-50"
+                  phx-drop-target={@uploads.media.ref}>
+
+                <form phx-submit="upload_section_media" phx-change="validate_media_upload">
+                  <input type="hidden" name="section_id" value={@media_modal_section_id} />
+
+                  <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 48 48">
+                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+
+                  <label for={@uploads.media.ref} class="cursor-pointer">
+                    <span class="text-xl font-semibold text-gray-900 block mb-2">
+                      Drop files here or click to browse
+                    </span>
+                    <.live_file_input upload={@uploads.media} class="sr-only" />
+                  </label>
+                  <p class="text-gray-500 mb-4">Images, videos, documents up to 50MB each</p>
+
+                  <button type="submit"
+                          class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                    Upload Files
+                  </button>
+                </form>
+              </div>
+
+              <!-- Upload Progress -->
+              <%= for entry <- @uploads.media.entries do %>
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-blue-900"><%= entry.client_name %></span>
+                    <span class="text-sm text-blue-700"><%= entry.progress %>%</span>
+                  </div>
+                  <div class="w-full bg-blue-200 rounded-full h-3">
+                    <div class="bg-blue-600 h-3 rounded-full transition-all duration-300"
+                        style={"width: #{entry.progress}%"}></div>
+                  </div>
+                </div>
+              <% end %>
+            <% else %>
+              <!-- No Upload Available -->
+              <div class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center bg-gray-50">
+                <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 48 48">
+                  <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <p class="text-lg text-gray-600">File upload not configured</p>
+                <p class="text-gray-500">Contact administrator to enable media uploads</p>
+              </div>
+            <% end %>
+
+            <!-- Existing Media Grid -->
+            <div>
+              <h4 class="text-lg font-semibold text-gray-900 mb-4">Available Media Files</h4>
+              <%= if length(@portfolio_media || []) > 0 do %>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <%= for media <- @portfolio_media do %>
+                    <div class={"relative border-2 rounded-lg p-3 cursor-pointer transition-all #{if media.id in (@selected_media_ids || []), do: "border-blue-500 bg-blue-50", else: "border-gray-200 hover:border-gray-300"}"}
+                        phx-click="toggle_media_selection"
+                        phx-value-media_id={media.id}>
+
+                      <div class="aspect-w-16 aspect-h-9 mb-2 bg-gray-100 rounded overflow-hidden">
+                        <%= if media.media_type == :image do %>
+                          <img src={media.file_path} alt={media.title} class="object-cover w-full h-full" />
+                        <% else %>
+                          <div class="flex items-center justify-center h-20">
+                            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                          </div>
+                        <% end %>
+                      </div>
+
+                      <p class="text-sm font-medium text-gray-900 truncate"><%= media.title %></p>
+                      <p class="text-xs text-gray-500 capitalize"><%= media.media_type %></p>
+
+                      <%= if media.id in (@selected_media_ids || []) do %>
+                        <div class="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-1">
+                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                          </svg>
+                        </div>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% else %>
+                <div class="text-center py-12">
+                  <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2z"/>
+                  </svg>
+                  <p class="text-gray-500 mt-2">No media files found</p>
+                  <p class="text-gray-400 text-sm">Upload files above to get started</p>
+                </div>
+              <% end %>
+            </div>
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="bg-gray-50 px-8 py-4 border-t border-gray-200 flex justify-between items-center rounded-b-2xl">
+            <span class="text-sm text-gray-600">
+              <%= length(@selected_media_ids || []) %> file(s) selected
+            </span>
+            <div class="flex space-x-3">
+              <button phx-click="hide_section_media_library"
+                      class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <%= if length(@selected_media_ids || []) > 0 do %>
+                <button phx-click="attach_selected_media"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                  Attach Selected (<%= length(@selected_media_ids) %>)
+                </button>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
     """
   end
 
@@ -3548,25 +3726,24 @@ defp render_overview_tab(assigns) do
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-3">Font Family</label>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <%= for font <- available_fonts() do %>
+              <%= for {font_key, font_config} <- [
+                {"Inter", %{preview: "Modern and clean", description: "Perfect for professional portfolios"}},
+                {"Merriweather", %{preview: "Traditional and elegant", description: "Great for academic content"}},
+                {"JetBrains Mono", %{preview: "Technical and precise", description: "Ideal for developers"}},
+                {"Playfair Display", %{preview: "Creative and distinctive", description: "Best for creative portfolios"}}
+              ] do %>
                 <button phx-click="update_typography"
-                        phx-value-field="font_family"
-                        phx-value-value={font.value}
+                        phx-value-font={font_key}
                         class={[
-                          "p-4 border rounded-lg text-left transition-all hover:shadow-md",
-                          if(get_typography_value(@customization, "font_family", "Inter") == font.value,
-                            do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
-                            else: "border-gray-200 hover:border-gray-300")
+                          "w-full p-4 text-left border-2 rounded-lg transition-all",
+                          get_font_class(font_key),
+                          if(get_current_font(@customization) == font_key,
+                             do: "border-blue-500 bg-blue-50",
+                             else: "border-gray-200 hover:border-gray-300")
                         ]}>
-                  <div class="font-medium text-gray-900 mb-1" style={"font-family: #{font.css}"}>
-                    <%= font.name %>
-                  </div>
-                  <div class="text-sm text-gray-600" style={"font-family: #{font.css}"}>
-                    <%= font.description %>
-                  </div>
-                  <div class="text-xs text-gray-500 mt-2" style={"font-family: #{font.css}"}>
-                    The quick brown fox jumps over the lazy dog
-                  </div>
+                  <div class="font-semibold text-lg text-gray-900"><%= font_key %></div>
+                  <div class="text-base text-gray-700 mt-1"><%= font_config.preview %></div>
+                  <div class="text-sm text-gray-500 mt-1"><%= font_config.description %></div>
                 </button>
               <% end %>
             </div>
@@ -3574,8 +3751,8 @@ defp render_overview_tab(assigns) do
 
           <!-- Font Preview -->
           <div class="portfolio-preview p-6 bg-gray-50 rounded-lg">
-            <h4 class="text-2xl font-bold mb-2">Preview Text</h4>
-            <h5 class="text-lg font-semibold mb-2">Professional Portfolio Heading</h5>
+            <h4 class="text-2xl font-bold mb-2">Sample Heading</h4>
+            <h5 class="text-lg font-semibold mb-2">Subheading Example</h5>
             <p class="text-gray-700 mb-4">
               This is how your portfolio content will look with the selected typography.
               The font choice significantly impacts the overall feel and readability of your portfolio.
@@ -3767,7 +3944,7 @@ defp render_overview_tab(assigns) do
       "warm" => ["#dc2626", "#ea580c", "#f59e0b"],
       "cool" => ["#0891b2", "#0284c7", "#6366f1"],
       "minimal" => ["#374151", "#6b7280", "#059669"],
-      "sunset" => ["#f59e0b", "#ec4899", "#8b5cf6"]
+      "sunset" => ["#EE4266", "#274690", "#0A0F0D"]
     }
   end
 
@@ -4014,66 +4191,6 @@ defp render_overview_tab(assigns) do
         nil
       end
     end)
-  end
-
-
-
-  # ============================================================================
-  # TYPOGRAPHY CUSTOMIZATION
-  # ============================================================================
-
-  defp render_typography_customization(assigns) do
-    ~H"""
-    <div class="space-y-6">
-      <div>
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Typography</h3>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-3">Font Family</label>
-            <div class="space-y-2">
-              <%= for {font_key, font_config} <- [
-                {"Inter", %{preview: "Modern and clean", description: "Perfect for professional portfolios"}},
-                {"Merriweather", %{preview: "Traditional and elegant", description: "Great for academic content"}},
-                {"JetBrains Mono", %{preview: "Technical and precise", description: "Ideal for developers"}},
-                {"Playfair Display", %{preview: "Creative and distinctive", description: "Best for creative portfolios"}}
-              ] do %>
-                <button phx-click="update_typography"
-                        phx-value-font={font_key}
-                        class={[
-                          "w-full p-4 text-left border-2 rounded-lg transition-all",
-                          get_font_class(font_key),
-                          if(get_current_font(@customization) == font_key,
-                             do: "border-blue-500 bg-blue-50",
-                             else: "border-gray-200 hover:border-gray-300")
-                        ]}>
-                  <div class="font-semibold text-lg text-gray-900"><%= font_key %></div>
-                  <div class="text-base text-gray-700 mt-1"><%= font_config.preview %></div>
-                  <div class="text-sm text-gray-500 mt-1"><%= font_config.description %></div>
-                </button>
-              <% end %>
-            </div>
-          </div>
-
-          <!-- FIXED: Typography Preview -->
-          <div class="bg-gray-50 rounded-lg p-4">
-            <h4 class="text-md font-semibold text-gray-900 mb-3">Typography Preview</h4>
-            <div class="bg-white rounded-lg p-6 border border-gray-200 space-y-4 portfolio-preview">
-              <h1 class={["text-3xl font-bold", get_font_class(get_current_font(@customization))]}>
-                Heading Example
-              </h1>
-              <h2 class={["text-xl font-semibold", get_font_class(get_current_font(@customization))]}>
-                Subheading Example
-              </h2>
-              <p class={["text-base", get_font_class(get_current_font(@customization))]}>
-                This is an example of body text in your selected typography. It shows how paragraphs will appear with your chosen font family.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    """
   end
 
   # ============================================================================
@@ -4610,102 +4727,15 @@ defp render_overview_tab(assigns) do
 
   defp render_media_modal(assigns) do
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
-         phx-click="hide_media_modal">
-      <div class="bg-white rounded-2xl shadow-2xl max-w-7xl w-full mx-4 max-h-[90vh] overflow-hidden"
-           phx-click-away="hide_media_modal">
-
-        <!-- Modal Header -->
-        <div class="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-6">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                </svg>
-              </div>
-              <div>
-                <h3 class="text-2xl font-bold text-white">Media Library</h3>
-                <p class="text-blue-100">Portfolio media management</p>
-              </div>
-            </div>
-
-            <button phx-click="hide_media_modal"
-                    class="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- Modal Content -->
-        <div class="p-8">
-          <p class="text-gray-600">Media management interface would be rendered here...</p>
-        </div>
-
-        <!-- Modal Footer -->
-        <div class="bg-gray-50 px-8 py-4 border-t border-gray-200 flex items-center justify-between">
-          <div class="text-sm text-gray-600">
-            Media management interface
-          </div>
-
-          <div class="flex items-center space-x-3">
-            <button phx-click="hide_media_modal"
-                    class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_media_preview_modal(assigns) do
-    ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
-         phx-click="hide_media_preview">
-      <div class="max-w-5xl w-full mx-4 max-h-[90vh] overflow-hidden"
-           phx-click-away="hide_media_preview">
-
-        <!-- Preview Header -->
-        <div class="bg-black bg-opacity-50 text-white p-4 flex items-center justify-between">
-          <div class="flex items-center space-x-3">
-            <h3 class="text-lg font-semibold">Media Preview</h3>
-          </div>
-
-          <button phx-click="hide_media_preview"
-                  class="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-all">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-
-        <!-- Preview Content -->
-        <div class="bg-white">
-          <p class="p-8 text-gray-600">Media preview content would be rendered here...</p>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_media_library_modal(assigns) do
-    ~H"""
-    <%= if assigns[:show_media_library] do %>
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-          phx-click="hide_media_library">
-        <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden"
-            phx-click="prevent_close">
-
-          <!-- Header -->
-          <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
+    <%= if @show_media_library do %>
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+          <!-- Modal Header -->
+          <div class="bg-gradient-to-r from-blue-600 to-purple-600 px-8 py-6 rounded-t-2xl">
             <div class="flex items-center justify-between">
-              <h3 class="text-xl font-bold text-white">Media Library</h3>
-              <button phx-click="hide_media_library"
-                      class="text-white hover:text-gray-200 transition-colors">
+              <h3 class="text-2xl font-bold text-white">Section Media Library</h3>
+              <button phx-click="hide_section_media_library"
+                      class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
@@ -4713,75 +4743,134 @@ defp render_overview_tab(assigns) do
             </div>
           </div>
 
-          <!-- Content -->
-          <div class="p-6 overflow-y-auto max-h-[60vh]">
-            <%= if length(assigns[:available_media] || []) > 0 do %>
-              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                <%= for media <- assigns[:available_media] || [] do %>
-                  <div class="group relative bg-gray-50 rounded-lg overflow-hidden hover:bg-gray-100 transition-colors cursor-pointer"
-                      phx-click="attach_media_to_section"
-                      phx-value-section_id={assigns[:media_library_section_id]}
-                      phx-value-media_id={media.id}>
+          <!-- Modal Content -->
+          <div class="p-8 space-y-6">
+            <!-- Upload Area with Safe Upload Check -->
+            <%= if Map.has_key?(assigns, :uploads) && Map.has_key?(@uploads, :media) do %>
+              <div class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-blue-500 transition-colors bg-gray-50"
+                  phx-drop-target={@uploads.media.ref}>
 
-                    <!-- Media Preview -->
-                    <div class="aspect-square bg-gray-200 flex items-center justify-center">
-                      <%= if media.media_type == "image" do %>
-                        <img src={get_media_url_safe(media)}
-                            alt={media.title}
-                            class="w-full h-full object-cover">
-                      <% else %>
-                        <div class="text-4xl text-gray-400">
-                          <%= get_media_icon(media.media_type) %>
+                <form phx-submit="upload_section_media" phx-change="validate_media_upload" class="space-y-4">
+                  <input type="hidden" name="section_id" value={@media_modal_section_id} />
+
+                  <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 48 48">
+                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+
+                  <div>
+                    <label for={@uploads.media.ref} class="cursor-pointer">
+                      <span class="text-xl font-semibold text-gray-900 block mb-2">
+                        Drop files here or click to browse
+                      </span>
+                      <.live_file_input upload={@uploads.media} class="sr-only" />
+                    </label>
+                    <p class="text-gray-500">Images, videos, documents up to 50MB each</p>
+                  </div>
+
+                  <button type="submit"
+                          class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                    Upload Files
+                  </button>
+                </form>
+              </div>
+
+              <!-- Upload Progress -->
+              <%= for entry <- @uploads.media.entries do %>
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-blue-900"><%= entry.client_name %></span>
+                    <div class="flex items-center space-x-2">
+                      <span class="text-sm text-blue-700"><%= entry.progress %>%</span>
+                      <button type="button"
+                              phx-click="cancel_upload"
+                              phx-value-ref={entry.ref}
+                              class="text-red-500 hover:text-red-700">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="w-full bg-blue-200 rounded-full h-3">
+                    <div class="bg-blue-600 h-3 rounded-full transition-all duration-300"
+                        style={"width: #{entry.progress}%"}></div>
+                  </div>
+                </div>
+              <% end %>
+            <% else %>
+              <!-- Fallback Upload Area -->
+              <div class="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center bg-gray-50">
+                <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 48 48">
+                  <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <p class="text-lg text-gray-600 mt-4">File upload not available</p>
+                <p class="text-gray-500">Upload configuration missing</p>
+              </div>
+            <% end %>
+
+            <!-- Existing Media Grid -->
+            <div>
+              <h4 class="text-lg font-semibold text-gray-900 mb-4">Available Media Files</h4>
+              <%= if length(@portfolio_media || []) > 0 do %>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  <%= for media <- @portfolio_media do %>
+                    <div class={"relative border-2 rounded-lg p-3 cursor-pointer transition-all #{if media.id in (@selected_media_ids || []), do: "border-blue-500 bg-blue-50", else: "border-gray-200 hover:border-gray-300"}"}
+                        phx-click="toggle_media_selection"
+                        phx-value-media_id={media.id}>
+
+                      <div class="aspect-w-16 aspect-h-9 mb-2 bg-gray-100 rounded overflow-hidden">
+                        <%= if media.media_type == :image do %>
+                          <img src={media.file_path} alt={media.title} class="object-cover w-full h-full" />
+                        <% else %>
+                          <div class="flex items-center justify-center h-20">
+                            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                          </div>
+                        <% end %>
+                      </div>
+
+                      <p class="text-sm font-medium text-gray-900 truncate"><%= media.title %></p>
+                      <p class="text-xs text-gray-500 capitalize"><%= media.media_type %></p>
+
+                      <%= if media.id in (@selected_media_ids || []) do %>
+                        <div class="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-1">
+                          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                          </svg>
                         </div>
                       <% end %>
                     </div>
-
-                    <!-- Overlay -->
-                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-200 flex items-center justify-center">
-                      <div class="opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div class="bg-white rounded-full p-2">
-                          <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- Info -->
-                    <div class="p-3">
-                      <h4 class="text-sm font-medium text-gray-900 truncate">
-                        <%= media.title %>
-                      </h4>
-                      <p class="text-xs text-gray-500 mt-1">
-                        <%= String.upcase(media.media_type) %>
-                      </p>
-                    </div>
-                  </div>
-                <% end %>
-              </div>
-            <% else %>
-              <div class="text-center py-12">
-                <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                  </svg>
+                  <% end %>
                 </div>
-                <h3 class="text-lg font-medium text-gray-900 mb-2">No available media</h3>
-                <p class="text-gray-600">Upload media files to your portfolio to attach them to sections.</p>
-              </div>
-            <% end %>
+              <% else %>
+                <div class="text-center py-12">
+                  <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2z"/>
+                  </svg>
+                  <p class="text-gray-500 mt-2">No media files found</p>
+                  <p class="text-gray-400 text-sm">Upload files above to get started</p>
+                </div>
+              <% end %>
+            </div>
           </div>
 
-          <!-- Footer -->
-          <div class="bg-gray-50 px-6 py-4 border-t border-gray-200">
-            <div class="flex justify-between items-center">
-              <p class="text-sm text-gray-600">
-                Click on any media file to attach it to this section
-              </p>
-              <button phx-click="hide_media_library"
-                      class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
-                Close
+          <!-- Modal Footer -->
+          <div class="bg-gray-50 px-8 py-4 border-t border-gray-200 flex justify-between items-center rounded-b-2xl">
+            <span class="text-sm text-gray-600">
+              <%= length(@selected_media_ids || []) %> file(s) selected
+            </span>
+            <div class="flex space-x-3">
+              <button phx-click="hide_section_media_library"
+                      class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                Cancel
               </button>
+              <%= if length(@selected_media_ids || []) > 0 do %>
+                <button phx-click="attach_selected_media"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                  Attach Selected (<%= length(@selected_media_ids) %>)
+                </button>
+              <% end %>
             </div>
           </div>
         </div>
@@ -4872,14 +4961,14 @@ defp render_overview_tab(assigns) do
         module={FrestylWeb.PortfolioLive.Edit.ResumeImportModal}
         id="resume-import-modal"
         portfolio={@portfolio}
-        parsing_stage={@resume_parsing_state}
+        parsing_stage={@resume_parsing}
         parsed_data={@parsed_resume_data}
         sections_to_import={@sections_to_import}
         merge_options={@merge_options}
         upload_progress={@upload_progress}
         parsing_progress={@parsing_progress}
         import_progress={@import_progress}
-        error_message={@resume_error_message}
+        error_message={@resume_parsing_error}
       />
     <% end %>
     """
@@ -5507,86 +5596,119 @@ def render_enhanced_javascript(assigns) do
     """
   end
 
-  defp render_layout_preview(layout_key) do
-    case layout_key do
-      "dashboard" ->
-        Phoenix.HTML.raw("""
-        <div class="grid grid-cols-3 gap-1 p-2">
-          <div class="bg-blue-200 h-3 rounded"></div>
-          <div class="bg-blue-200 h-3 rounded"></div>
-          <div class="bg-blue-200 h-3 rounded"></div>
-          <div class="bg-blue-300 h-4 rounded col-span-2"></div>
-          <div class="bg-blue-200 h-3 rounded"></div>
+defp render_layout_preview(layout_key) do
+  case layout_key do
+    "dashboard" ->
+      Phoenix.HTML.raw("""
+      <div class="p-2 h-full grid grid-cols-2 gap-1">
+        <div class="bg-blue-300 rounded"></div>
+        <div class="space-y-1">
+          <div class="bg-blue-200 rounded h-2"></div>
+          <div class="bg-blue-100 rounded h-1"></div>
         </div>
-        """)
+        <div class="col-span-2 bg-blue-200 rounded"></div>
+      </div>
+      """)
 
-      "gallery" ->
-        Phoenix.HTML.raw("""
-        <div class="grid grid-cols-2 gap-1 p-2">
-          <div class="bg-purple-200 h-6 rounded"></div>
-          <div class="bg-purple-200 h-3 rounded"></div>
-          <div class="bg-purple-200 h-3 rounded"></div>
-          <div class="bg-purple-200 h-6 rounded"></div>
+    "gallery" ->
+      Phoenix.HTML.raw("""
+      <div class="p-2 h-full">
+        <div class="columns-2 gap-1">
+          <div class="bg-purple-300 rounded h-4 mb-1"></div>
+          <div class="bg-purple-200 rounded h-6 mb-1"></div>
+          <div class="bg-purple-300 rounded h-3"></div>
+          <div class="bg-purple-200 rounded h-5"></div>
         </div>
-        """)
+      </div>
+      """)
 
-      "timeline" ->
-        Phoenix.HTML.raw("""
-        <div class="p-2 space-y-1">
-          <div class="flex items-center space-x-1">
-            <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-            <div class="bg-green-200 h-1 rounded flex-1"></div>
+    "timeline" ->
+      Phoenix.HTML.raw("""
+      <div class="p-2 h-full relative">
+        <div class="absolute left-4 top-2 bottom-2 w-0.5 bg-green-400"></div>
+        <div class="space-y-1 ml-6">
+          <div class="flex items-center">
+            <div class="w-2 h-2 bg-green-400 rounded-full -ml-7 mr-3"></div>
+            <div class="bg-green-200 rounded h-2 flex-1"></div>
           </div>
-          <div class="flex items-center space-x-1">
-            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-            <div class="bg-green-200 h-1 rounded flex-1"></div>
+          <div class="flex items-center">
+            <div class="w-2 h-2 bg-green-400 rounded-full -ml-7 mr-3"></div>
+            <div class="bg-green-300 rounded h-2 flex-1"></div>
           </div>
-          <div class="flex items-center space-x-1">
-            <div class="w-2 h-2 bg-green-300 rounded-full"></div>
-            <div class="bg-green-200 h-1 rounded flex-1"></div>
-          </div>
-        </div>
-        """)
-
-      "minimal" ->
-        Phoenix.HTML.raw("""
-        <div class="p-2 space-y-1 text-center">
-          <div class="h-1 bg-gray-800 rounded w-full"></div>
-          <div class="h-1 bg-gray-600 rounded w-3/4 mx-auto"></div>
-          <div class="h-1 bg-gray-400 rounded w-1/2 mx-auto"></div>
-        </div>
-        """)
-
-      "corporate" ->
-        Phoenix.HTML.raw("""
-        <div class="p-2">
-          <div class="bg-blue-500 h-2 rounded mb-1"></div>
-          <div class="grid grid-cols-2 gap-1">
-            <div class="bg-blue-100 h-4 rounded"></div>
-            <div class="bg-blue-100 h-4 rounded"></div>
+          <div class="flex items-center">
+            <div class="w-2 h-2 bg-green-400 rounded-full -ml-7 mr-3"></div>
+            <div class="bg-green-200 rounded h-2 flex-1"></div>
           </div>
         </div>
-        """)
+      </div>
+      """)
 
-      "creative" ->
-        Phoenix.HTML.raw("""
-        <div class="p-2">
-          <div class="grid grid-cols-3 gap-1">
-            <div class="bg-pink-400 h-6 rounded transform rotate-2"></div>
-            <div class="bg-yellow-400 h-4 rounded"></div>
-            <div class="bg-purple-400 h-5 rounded transform -rotate-1"></div>
-          </div>
-        </div>
-        """)
+    "minimal" ->
+      Phoenix.HTML.raw("""
+      <div class="p-3 h-full space-y-2">
+        <div class="bg-gray-300 rounded h-1"></div>
+        <div class="bg-gray-200 rounded h-1"></div>
+        <div class="bg-gray-300 rounded h-1"></div>
+        <div class="bg-gray-200 rounded h-1"></div>
+      </div>
+      """)
 
-      _ ->
-        Phoenix.HTML.raw("""
-        <div class="p-2 flex items-center justify-center">
-          <div class="w-6 h-6 bg-gray-400 rounded"></div>
+    "corporate" ->
+      Phoenix.HTML.raw("""
+      <div class="p-2 h-full grid grid-cols-3 gap-1">
+        <div class="bg-blue-200 rounded"></div>
+        <div class="bg-blue-300 rounded col-span-2"></div>
+      </div>
+      """)
+
+    "creative" ->
+      Phoenix.HTML.raw("""
+      <div class="p-2 h-full">
+        <div class="transform rotate-12 bg-pink-300 rounded h-3 mb-1"></div>
+        <div class="transform -rotate-6 bg-purple-300 rounded h-2 ml-2"></div>
+        <div class="transform rotate-3 bg-yellow-300 rounded h-2 mt-1"></div>
+      </div>
+      """)
+
+    "terminal" ->
+      Phoenix.HTML.raw("""
+      <div class="p-2 h-full bg-gray-900 rounded text-green-400">
+        <div class="bg-green-400 rounded h-1 w-2 mb-1"></div>
+        <div class="bg-green-400 rounded h-1 w-4 mb-1"></div>
+        <div class="bg-green-400 rounded h-1 w-3"></div>
+      </div>
+      """)
+
+    "case_study" ->
+      Phoenix.HTML.raw("""
+      <div class="p-2 h-full space-y-1">
+        <div class="bg-indigo-300 rounded h-2"></div>
+        <div class="grid grid-cols-2 gap-1">
+          <div class="bg-indigo-200 rounded h-3"></div>
+          <div class="bg-indigo-200 rounded h-3"></div>
         </div>
-        """)
-    end
+        <div class="bg-indigo-100 rounded h-1"></div>
+      </div>
+      """)
+
+    "academic" ->
+      Phoenix.HTML.raw("""
+      <div class="p-3 h-full space-y-1">
+        <div class="bg-emerald-300 rounded h-1"></div>
+        <div class="bg-emerald-200 rounded h-1 w-4/5"></div>
+        <div class="bg-emerald-200 rounded h-1 w-3/5"></div>
+        <div class="bg-emerald-100 rounded h-1 w-1/2"></div>
+      </div>
+      """)
+
+    _ ->
+      Phoenix.HTML.raw("""
+      <div class="p-2 h-full bg-gray-200 rounded flex items-center justify-center">
+        <div class="text-xs text-gray-500">Preview</div>
+      </div>
+      """)
   end
+end
 
   defp get_current_layout(customization, theme) do
     # Check customization first, then fall back to theme default

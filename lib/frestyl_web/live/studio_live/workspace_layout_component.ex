@@ -73,6 +73,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceLayoutComponent do
               permissions={@permissions}
               is_mobile={@is_mobile}
               collaboration_mode={@collaboration_mode}
+              myself={@myself}
             />
 
             <!-- Bottom Dock Panel -->
@@ -110,10 +111,55 @@ defmodule FrestylWeb.StudioLive.WorkspaceLayoutComponent do
           <% end %>
         </div>
 
+        <!-- Expand buttons for collapsed docks -->
+        <div class="absolute inset-0 pointer-events-none">
+          <!-- Left dock expand button -->
+          <%= if length(@tool_layout.left_dock) > 0 and not Map.get(@dock_visibility, :left, true) do %>
+            <button
+              phx-click="toggle_dock_visibility"
+              phx-value-dock="left"
+              class="absolute left-0 top-1/2 -translate-y-1/2 w-6 h-12 bg-gray-800 hover:bg-gray-700 border-r border-gray-600 rounded-r-md flex items-center justify-center text-gray-400 hover:text-white transition-colors pointer-events-auto z-20"
+              title="Expand left panel"
+            >
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          <% end %>
+
+          <!-- Right dock expand button -->
+          <%= if Map.get(@tool_layout, :right_dock) && length(@tool_layout.right_dock) > 0 and not Map.get(@dock_visibility, :right, true) do %>
+            <button
+              phx-click="toggle_dock_visibility"
+              phx-value-dock="right"
+              class="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-12 bg-gray-800 hover:bg-gray-700 border-l border-gray-600 rounded-l-md flex items-center justify-center text-gray-400 hover:text-white transition-colors pointer-events-auto z-20"
+              title="Expand right panel"
+            >
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          <% end %>
+
+          <!-- Bottom dock expand button -->
+          <%= if length(@tool_layout.bottom_dock) > 0 and not Map.get(@dock_visibility, :bottom, true) do %>
+            <button
+              phx-click="toggle_dock_visibility"
+              phx-value-dock="bottom"
+              class="absolute bottom-0 left-1/2 -translate-x-1/2 h-6 w-12 bg-gray-800 hover:bg-gray-700 border-t border-gray-600 rounded-t-md flex items-center justify-center text-gray-400 hover:text-white transition-colors pointer-events-auto z-20"
+              title="Expand bottom panel"
+            >
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          <% end %>
+        </div>
+
         <!-- Mobile Layout -->
         <div class="lg:hidden flex-1">
           <.live_component
-            module={MobileInterfaceComponent}
+            module={FrestylWeb.StudioLive.Components.MobileInterfaceComponent}
             id="mobile-interface"
             active_tool={@active_tool}
             workspace_state={@workspace_state}
@@ -129,14 +175,14 @@ defmodule FrestylWeb.StudioLive.WorkspaceLayoutComponent do
             chat_messages={@chat_messages}
             message_input={@message_input}
             typing_users={@typing_users}
+            mobile_active_tool={@mobile_active_tool || @active_tool}
+            recording_track={@recording_track}
           />
         </div>
       </div>
 
       <!-- Notification System -->
-      <.live_component
-        module={NotificationComponent}
-        id="notification-system"
+      <FrestylWeb.StudioLive.NotificationComponent.notification_container
         notifications={@notifications}
       />
 
@@ -157,6 +203,8 @@ defmodule FrestylWeb.StudioLive.WorkspaceLayoutComponent do
 
   @impl true
   def update(assigns, socket) do
-    {:ok, assign(socket, assigns)}
+    # Remove reserved LiveView keys before assigning
+    clean_assigns = Map.drop(assigns, [:socket, :myself, :flash])
+    {:ok, assign(socket, clean_assigns)}
   end
 end

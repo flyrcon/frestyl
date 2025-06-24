@@ -2,6 +2,7 @@
 defmodule Frestyl.Accounts do
   import Ecto.Query, warn: false
   alias Frestyl.Repo
+  alias Frestyl.Accounts.{Account, AccountMembership, User}
   alias Frestyl.Accounts.User
   alias Frestyl.Accounts.UserToken
   alias Frestyl.Accounts.UserInvitation
@@ -10,6 +11,52 @@ defmodule Frestyl.Accounts do
   alias Ecto.Multi
   import Bcrypt, only: [verify_pass: 2]
   require Logger
+
+  def create_account(user, attrs) do
+    account_attrs = Map.put(attrs, :owner_id, user.id)
+
+    Repo.transaction(fn ->
+      # Create account
+      account = %Account{}
+      |> Account.changeset(account_attrs)
+      |> Repo.insert!()
+
+      # Create owner membership
+      %AccountMembership{}
+      |> AccountMembership.changeset(%{
+        user_id: user.id,
+        account_id: account.id,
+        role: :owner
+      })
+      |> Repo.insert!()
+
+      account
+    end)
+  end
+
+  def list_user_accounts(user_id) do
+    from(a in Account,
+      join: m in AccountMembership,
+      on: m.account_id == a.id,
+      where: m.user_id == ^user_id,
+      preload: [:owner]
+    )
+    |> Repo.all()
+  end
+
+  def get_account!(id), do: Repo.get!(Account, id)
+
+  def get_user_primary_account(user) do
+    # For now, get the first personal account
+    # Later, add primary_account_id to users table
+    from(a in Account,
+      join: m in AccountMembership,
+      on: m.account_id == a.id,
+      where: m.user_id == ^user.id and a.type == :personal,
+      limit: 1
+    )
+    |> Repo.one()
+  end
 
   @doc """
   Authenticates a user by email and password.

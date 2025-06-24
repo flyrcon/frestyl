@@ -93,6 +93,23 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       |> assign(:video_intro_component_id, "video-intro-#{:rand.uniform(1000)}")
       |> assign(:preview_device, :desktop)
 
+      # Resume handling
+      |> assign(:pdf_export_status, :idle)
+      |> assign(:selected_media_ids, [])
+      |> assign(:media_modal_section_id, nil)
+      |> assign(:resume_parsing, false)
+      |> assign(:parsed_resume_data, nil)
+      |> assign(:resume_parsing_error, nil)
+
+      # Media handling
+      |> assign(:resume_parsing_state, false)
+      |> assign(:sections_to_import, %{})
+      |> assign(:merge_options, %{})
+      |> assign(:upload_progress, 0)
+      |> assign(:parsing_progress, 0)
+      |> assign(:import_progress, 0)
+      |> assign(:resume_error_message, nil)
+
     {:ok, socket}
   end
 
@@ -121,21 +138,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   @impl true
   def handle_event("apply_template", params, socket) do
     {:noreply, TemplateManager.handle_template_selection(socket, params)}
-  end
-
-  @impl true
-  def handle_event("update_color", params, socket) do
-    TemplateManager.handle_template_event(socket, "update_color", params)
-  end
-
-  @impl true
-  def handle_event("update_typography", params, socket) do
-    TemplateManager.handle_template_event(socket, "update_typography", params)
-  end
-
-  @impl true
-  def handle_event("update_background", params, socket) do
-    TemplateManager.handle_template_event(socket, "update_background", params)
   end
 
   @impl true
@@ -187,7 +189,20 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
   @impl true
   def handle_event("duplicate_portfolio", _params, socket) do
-    {:noreply, put_flash(socket, :info, "Portfolio duplication is coming soon!")}
+    if socket.assigns.can_duplicate do
+      case duplicate_portfolio_with_sections(socket.assigns.portfolio, socket.assigns.current_user) do
+        {:ok, new_portfolio} ->
+          {:noreply,
+          socket
+          |> put_flash(:info, "Portfolio duplicated successfully!")
+          |> push_navigate(to: "/portfolios/#{new_portfolio.id}/edit")}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Failed to duplicate portfolio: #{reason}")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, socket.assigns.duplicate_disabled_reason)}
+    end
   end
 
   # Simplified event handlers for missing functionality
@@ -327,8 +342,51 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   end
 
   @impl true
-  def handle_event("export_portfolio", _params, socket) do
-    {:noreply, put_flash(socket, :info, "PDF export is coming soon!")}
+  def handle_event("export_portfolio", params, socket) do
+    portfolio = socket.assigns.portfolio
+    user = socket.assigns.current_user
+
+    socket = assign(socket, :pdf_export_status, :generating)
+
+    pid = self()
+    Task.start(fn ->
+      export_opts = %{
+        template: Map.get(params, "template", "resume"),
+        format: Map.get(params, "format", "letter"),
+        optimize_for_ats: Map.get(params, "ats_optimized", "true") == "true"
+      }
+
+      case generate_portfolio_pdf(portfolio, user, export_opts) do
+        {:ok, pdf_data} ->
+          send(pid, {:pdf_export_complete, pdf_data})
+        {:error, reason} ->
+          send(pid, {:pdf_export_error, reason})
+      end
+    end)
+
+    {:noreply,
+    socket
+    |> put_flash(:info, "Generating PDF export... This may take up to 60 seconds.")}
+  end
+
+  @impl true
+  def handle_info({:pdf_export_complete, pdf_data}, socket) do
+    {:noreply,
+    socket
+    |> assign(:pdf_export_status, :complete)
+    |> put_flash(:info, "Portfolio exported successfully!")
+    |> push_event("download_pdf", %{
+      filename: pdf_data.filename,
+      data: Base.encode64(pdf_data.content)
+    })}
+  end
+
+  @impl true
+  def handle_info({:pdf_export_error, reason}, socket) do
+    {:noreply,
+    socket
+    |> assign(:pdf_export_status, :error)
+    |> put_flash(:error, "Export failed: #{reason}")}
   end
 
   @impl true
@@ -370,40 +428,276 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     end
   end
 
-  # Design tab specific events
+
   @impl true
-  def handle_event("update_color_scheme", params, socket) do
-    TemplateManager.handle_template_event(socket, "update_color_scheme", params)
+  def handle_event("update_layout", %{"layout" => layout_key}, socket) do
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(current_customization, "layout", layout_key)
+
+    case Portfolios.update_portfolio_customization(socket.assigns.portfolio, updated_customization) do
+      {:ok, portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> put_flash(:info, "Layout updated to #{String.capitalize(layout_key)}")}
+
+      {:error, _changeset} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Failed to update layout")}
+    end
   end
 
   @impl true
-  def handle_event("update_layout", %{"layout" => layout}, socket) do
+  def handle_event("update_background", %{"background" => background}, socket) do
+    IO.puts("🎛️ Updating background to: #{background}")
+
     current_customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(current_customization, "layout", layout)
+    updated_customization = Map.put(current_customization, "background", background)
 
     case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
       {:ok, portfolio} ->
-        # Generate updated CSS
-        template_config = try do
-          PortfolioTemplates.get_template_config(portfolio.theme || "professional_executive")
-        rescue
-          _ -> %{primary_color: "#3b82f6", secondary_color: "#64748b", accent_color: "#f59e0b"}
-        end
-
-        updated_css = generate_portfolio_css(updated_customization, template_config, portfolio.theme)
+        updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
 
         {:noreply,
         socket
         |> assign(:portfolio, portfolio)
         |> assign(:customization, updated_customization)
-        |> assign(:template_layout, layout)
         |> assign(:preview_css, updated_css)
         |> assign(:unsaved_changes, false)
-        |> put_flash(:info, "Layout updated successfully!")
-        |> push_event("customization-changed", %{layout: layout})}
+        |> put_flash(:info, "Background updated to #{background}")
+        |> push_event("background-updated", %{background: background})}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to update layout.")}
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update background")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_layout_option", params, socket) do
+    option = params["option"]
+
+    # FIXED: Extract value from multiple possible parameter sources
+    value = case params do
+      %{"value" => val} when val != "" -> val
+      %{^option => val} when val != "" -> val  # Use the option name as key
+      %{"phx-value-value" => val} when val != "" -> val
+      _ ->
+        IO.puts("❌ No valid value found for layout option #{option}")
+        IO.puts("❌ Available params: #{inspect(params)}")
+        nil  # FIXED: Use nil instead of return
+    end
+
+    # FIXED: Handle nil case properly
+    if value == nil do
+      {:noreply, put_flash(socket, :error, "Invalid layout option value")}
+    else
+      IO.puts("🎛️ Updating layout option: #{option} = #{value}")
+      IO.puts("🎛️ Full params: #{inspect(params)}")
+
+      # Convert string values to appropriate types
+      processed_value = case value do
+        "true" -> true
+        "false" -> false
+        "single_page" -> "single_page"
+        "multi_page" -> "multi_page"
+        other -> other
+      end
+
+      current_customization = socket.assigns.customization || %{}
+      updated_customization = Map.put(current_customization, option, processed_value)
+
+      case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+        {:ok, portfolio} ->
+          updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+
+          {:noreply,
+          socket
+          |> assign(:portfolio, portfolio)
+          |> assign(:customization, updated_customization)
+          |> assign(:preview_css, updated_css)
+          |> assign(:template_layout, get_layout_from_customization(updated_customization))
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Layout option updated: #{option} = #{processed_value}")
+          |> push_event("layout-option-updated", %{option: option, value: processed_value})}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update layout option")}
+      end
+    end
+  end
+
+    @impl true
+  def handle_event("toggle_layout_option", params, socket) do
+    option = params["option"]
+
+    IO.puts("🎛️ Toggling layout option: #{option}")
+
+    current_customization = socket.assigns.customization || %{}
+    current_value = Map.get(current_customization, option, false)
+    new_value = !current_value
+
+    updated_customization = Map.put(current_customization, option, new_value)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+
+        {:noreply,
+         socket
+         |> assign(:portfolio, portfolio)
+         |> assign(:customization, updated_customization)
+         |> assign(:preview_css, updated_css)
+         |> assign(:template_layout, get_layout_from_customization(updated_customization))
+         |> assign(:unsaved_changes, false)
+         |> put_flash(:info, "#{String.capitalize(option)} #{if new_value, do: "enabled", else: "disabled"}")
+         |> push_event("layout-option-toggled", %{option: option, value: new_value})}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to toggle layout option")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_section_spacing", params, socket) do
+    spacing = params["spacing"] || params["value"]
+
+    IO.puts("🎛️ Updating section spacing: #{spacing}")
+
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(current_customization, "section_spacing", spacing)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+
+        {:noreply,
+         socket
+         |> assign(:portfolio, portfolio)
+         |> assign(:customization, updated_customization)
+         |> assign(:preview_css, updated_css)
+         |> assign(:unsaved_changes, false)
+         |> put_flash(:info, "Section spacing updated to #{spacing}")
+         |> push_event("spacing-updated", %{spacing: spacing})}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update section spacing")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_font_style", params, socket) do
+    font_style = params["font"] || params["value"]
+
+    IO.puts("🎛️ Updating font style: #{font_style}")
+
+    current_customization = socket.assigns.customization || %{}
+    current_typography = Map.get(current_customization, "typography", %{})
+
+    # Map font style to actual font family
+    font_family = case font_style do
+      "inter" -> "Inter"
+      "merriweather" -> "Merriweather"
+      "roboto" -> "Roboto"
+      "jetbrains" -> "JetBrains Mono"
+      "playfair" -> "Playfair Display"
+      _ -> "Inter"
+    end
+
+    updated_typography = Map.put(current_typography, "font_family", font_family)
+    updated_customization = Map.put(current_customization, "typography", updated_typography)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+
+        {:noreply,
+         socket
+         |> assign(:portfolio, portfolio)
+         |> assign(:customization, updated_customization)
+         |> assign(:preview_css, updated_css)
+         |> assign(:unsaved_changes, false)
+         |> put_flash(:info, "Font style updated to #{font_family}")
+         |> push_event("font-style-updated", %{font_style: font_style, font_family: font_family})}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update font style")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_grid_layout", params, socket) do
+    grid_layout = params["grid"] || params["value"]
+
+    IO.puts("🎛️ Updating grid layout: #{grid_layout}")
+
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(current_customization, "grid_layout", grid_layout)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+
+        {:noreply,
+         socket
+         |> assign(:portfolio, portfolio)
+         |> assign(:customization, updated_customization)
+         |> assign(:preview_css, updated_css)
+         |> assign(:unsaved_changes, false)
+         |> put_flash(:info, "Grid layout updated to #{grid_layout}")
+         |> push_event("grid-layout-updated", %{grid_layout: grid_layout})}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update grid layout")}
+    end
+  end
+
+  defp debug_socket_state(socket, event_name) do
+    IO.puts("🔍 Debug #{event_name}:")
+    IO.puts("  Portfolio theme: #{socket.assigns.portfolio.theme}")
+    IO.puts("  Customization: #{inspect(socket.assigns.customization)}")
+    IO.puts("  Sections count: #{length(socket.assigns.sections || [])}")
+    socket
+  end
+
+  # Enhanced layout handling
+  @impl true
+  def handle_event("update_layout", params, socket) do
+    layout = params["layout"] || params["value"]
+    socket = debug_socket_state(socket, "update_layout")
+
+    IO.puts("🎛️ Updating main layout: #{layout}")
+
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(current_customization, "layout", layout)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+
+        {:noreply,
+         socket
+         |> assign(:portfolio, portfolio)
+         |> assign(:customization, updated_customization)
+         |> assign(:preview_css, updated_css)
+         |> assign(:template_layout, layout)
+         |> assign(:unsaved_changes, false)
+         |> put_flash(:info, "Layout updated to #{layout}")
+         |> push_event("layout-updated", %{layout: layout})}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update layout")}
+    end
+  end
+
+  # Helper function to determine layout from customization
+  defp get_layout_from_customization(customization) do
+    case customization do
+      %{"layout_style" => "single_page"} -> "single_page"
+      %{"layout_style" => "multi_page"} -> "multi_page"
+      %{"layout" => layout} when is_binary(layout) -> layout
+      _ -> "dashboard"  # default
     end
   end
 
@@ -412,111 +706,355 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     TemplateManager.handle_template_event(socket, "refresh_preview", params)
   end
 
-  # Catch-all for section events (delegate to SectionManager if available)
   @impl true
-  def handle_event(event_name, params, socket) when is_binary(event_name) do
-    IO.puts("⚠️  Unhandled event: #{event_name}")
-    IO.inspect(params, label: "Event params")
-    {:noreply, socket}
-  end
+  def handle_event("toggle_visibility", %{"id" => section_id}, socket) do
+    IO.puts("🔧 Toggle visibility clicked for ID: #{section_id}")
 
-  @impl true
-  def handle_event("toggle_add_section_dropdown", params, socket) do
-    IO.puts("🔧 Toggle dropdown called with params: #{inspect(params)}")
-    current_state = socket.assigns[:show_add_section_dropdown] || false
-    new_state = !current_state
-
-    IO.puts("Dropdown state: #{current_state} -> #{new_state}")
-
-    socket = assign(socket, :show_add_section_dropdown, new_state)
-
-    # Add some visual feedback
-    if new_state do
-      IO.puts("✅ Dropdown should now be OPEN")
-    else
-      IO.puts("✅ Dropdown should now be CLOSED")
-    end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("close_add_section_dropdown", _params, socket) do
-    {:noreply, assign(socket, :show_add_section_dropdown, false)}
-  end
-
-  # Section creation
-  @impl true
-  def handle_event("add_section", %{"type" => section_type}, socket) do
-    try do
-      # Create new section
-      section_attrs = %{
-        portfolio_id: socket.assigns.portfolio.id,
-        title: get_default_title_for_type(section_type),
-        section_type: section_type,
-        content: get_default_content_for_type(section_type),
-        position: length(socket.assigns.sections) + 1,
-        visible: true
-      }
-
-      case Portfolios.create_section(section_attrs) do
-        {:ok, section} ->
-          updated_sections = socket.assigns.sections ++ [section]
-
-          {:noreply,
-          socket
-          |> assign(:sections, updated_sections)
-          |> assign(:show_add_section_dropdown, false)
-          |> put_flash(:info, "Section added successfully!")
-          |> push_event("section-added", %{section_id: section.id, section_type: section_type})}
-
-        {:error, changeset} ->
-          error_msg = format_changeset_errors(changeset)
-          {:noreply, put_flash(socket, :error, "Failed to add section: #{error_msg}")}
-      end
-    rescue
-      error ->
-        IO.puts("❌ Add section error: #{Exception.message(error)}")
-        {:noreply, put_flash(socket, :error, "Failed to add section")}
-    end
-  end
-
-  # Section editing
-  @impl true
-  def handle_event("edit_section", %{"id" => section_id}, socket) do
     try do
       section_id_int = String.to_integer(section_id)
       section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
 
       if section do
-        # Get section media if it exists
-        section_media = try do
-          Portfolios.list_section_media(section_id_int)
-        rescue
-          _ -> []
-        end
+        case Portfolios.update_section(section, %{visible: !section.visible}) do
+          {:ok, updated_section} ->
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id_int, do: updated_section, else: s
+            end)
 
-        {:noreply,
-        socket
-        |> assign(:section_edit_id, section_id)
-        |> assign(:editing_section, section)
-        |> assign(:editing_section_media, section_media)
-        |> assign(:section_edit_tab, "content")
-        |> assign(:active_tab, :sections)
-        |> push_event("section-edit-started", %{section_id: section_id_int})}
+            # Update editing_section if it's the same section being edited
+            editing_section = if socket.assigns[:editing_section] &&
+                                socket.assigns.editing_section.id == section_id_int do
+              updated_section
+            else
+              socket.assigns[:editing_section]
+            end
+
+            visibility_text = if updated_section.visible, do: "visible", else: "hidden"
+
+            {:noreply,
+            socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, editing_section)
+            |> put_flash(:info, "Section is now #{visibility_text}")
+            |> push_event("section-visibility-toggled", %{
+              section_id: section_id_int,
+              visible: updated_section.visible
+            })}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section visibility")}
+        end
       else
         {:noreply, put_flash(socket, :error, "Section not found")}
       end
     rescue
       error ->
-        IO.puts("❌ Edit section error: #{Exception.message(error)}")
-        {:noreply, put_flash(socket, :error, "Failed to edit section")}
+        IO.puts("❌ Toggle visibility error: #{Exception.message(error)}")
+        {:noreply, put_flash(socket, :error, "Failed to toggle visibility")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_add_section_dropdown", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_add_section_dropdown, false)
+    IO.puts("🔧 Toggling dropdown from #{current_state} to #{!current_state}")
+    {:noreply, assign(socket, :show_add_section_dropdown, !current_state)}
+  end
+
+
+  @impl true
+  def handle_event("close_add_section_dropdown", _params, socket) do
+    IO.puts("🔧 Closing add section dropdown")
+    {:noreply, assign(socket, :show_add_section_dropdown, false)}
+  end
+  # Section creation
+  @impl true
+  def handle_event("add_section", %{"type" => section_type}, socket) do
+    IO.puts("🔍 ADD_SECTION: Starting with type: #{section_type}")
+
+    try do
+      # Get the default content with debug
+      title = get_default_title_for_type(section_type)
+      content = get_default_content_for_type(section_type)
+
+      IO.puts("🔍 ADD_SECTION: Title: #{title}")
+      IO.puts("🔍 ADD_SECTION: Content keys: #{inspect(Map.keys(content))}")
+
+      # Create new section
+      section_attrs = %{
+        portfolio_id: socket.assigns.portfolio.id,
+        title: title,
+        section_type: section_type,
+        content: content,
+        position: length(socket.assigns.sections) + 1,
+        visible: true
+      }
+
+      IO.puts("🔍 ADD_SECTION: Attempting to create section...")
+      IO.puts("🔍 ADD_SECTION: Portfolio ID: #{socket.assigns.portfolio.id}")
+      IO.puts("🔍 ADD_SECTION: Section type: #{section_type}")
+
+      case Portfolios.create_section(section_attrs) do
+        {:ok, section} ->
+          IO.puts("✅ ADD_SECTION: Section created successfully!")
+          IO.puts("✅ ADD_SECTION: New section ID: #{section.id}")
+
+          updated_sections = socket.assigns.sections ++ [section]
+          IO.puts("✅ ADD_SECTION: Updated sections count: #{length(updated_sections)}")
+
+          {:noreply,
+          socket
+          |> assign(:sections, updated_sections)
+          |> assign(:show_add_section_dropdown, false)
+          |> put_flash(:info, "#{title} section added successfully!")
+          |> push_event("section-added", %{section_id: section.id, section_type: section_type})}
+
+        {:error, changeset} ->
+          IO.puts("❌ ADD_SECTION: Database error!")
+          IO.puts("❌ ADD_SECTION: Changeset errors: #{inspect(changeset.errors)}")
+
+          # Check for specific constraint errors
+          if changeset.errors[:section_type] do
+            IO.puts("❌ ADD_SECTION: Section type constraint error - '#{section_type}' not allowed in database")
+          end
+
+          errors = changeset.errors
+            |> Enum.map(fn {field, {msg, _}} -> "#{field}: #{msg}" end)
+            |> Enum.join(", ")
+
+          {:noreply,
+          socket
+          |> assign(:show_add_section_dropdown, false)
+          |> put_flash(:error, "Failed to add section: #{errors}")}
+
+        other_result ->
+          IO.puts("❌ ADD_SECTION: Unexpected result: #{inspect(other_result)}")
+          {:noreply,
+          socket
+          |> assign(:show_add_section_dropdown, false)
+          |> put_flash(:error, "Unexpected error adding section")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ ADD_SECTION: Exception caught!")
+        IO.puts("❌ ADD_SECTION: Error: #{Exception.message(error)}")
+        IO.puts("❌ ADD_SECTION: Stacktrace:")
+        IO.puts(Exception.format_stacktrace(__STACKTRACE__))
+
+        {:noreply,
+        socket
+        |> assign(:show_add_section_dropdown, false)
+        |> put_flash(:error, "Error adding section: #{Exception.message(error)}")}
+    end
+  end
+
+  # Section editing
+  @impl true
+  def handle_event("edit_section", params, socket) do
+    section_id = Map.get(params, "id")
+
+    IO.puts("🔧 Edit section clicked for ID: #{section_id}")
+    IO.puts("🔧 Full params: #{inspect(params)}")
+
+    if section_id do
+      try do
+        section_id_int = String.to_integer(section_id)
+        section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+        if section do
+          IO.puts("🔧 Section found: #{section.title}")
+
+          # Load section media if needed
+          section_media = try do
+            Portfolios.list_section_media(section_id_int)
+          rescue
+            _ -> []
+          end
+
+          {:noreply,
+          socket
+          |> assign(:section_edit_id, section_id)
+          |> assign(:editing_section, section)
+          |> assign(:section_edit_tab, "content")
+          |> assign(:editing_section_media, section_media)
+          |> assign(:active_tab, :sections)  # Ensure we're on sections tab
+          |> push_event("section-edit-started", %{section_id: section_id_int})}
+        else
+          IO.puts("🔧 Section not found for ID: #{section_id}")
+          {:noreply, put_flash(socket, :error, "Section not found.")}
+        end
+      rescue
+        error ->
+          IO.puts("❌ Edit section error: #{Exception.message(error)}")
+          {:noreply, put_flash(socket, :error, "Failed to edit section")}
+      end
+    else
+      IO.puts("🔧 No section ID provided in params: #{inspect(params)}")
+      {:noreply, put_flash(socket, :error, "Invalid section ID.")}
+    end
+  end
+
+  @impl true
+  def handle_event("show_section_media_library", params, socket) do
+    # Handle both "section-id" and "section_id" parameter formats
+    section_id = params["section_id"] || params["section-id"]
+
+    IO.puts("🔧 Show media library for section: #{section_id}")
+    IO.puts("🔧 Full params: #{inspect(params)}")
+
+    if section_id do
+      try do
+        section_id_int = String.to_integer(section_id)
+        section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+        if section do
+          portfolio_media = try do
+            Portfolios.list_portfolio_media(socket.assigns.portfolio.id)
+          rescue
+            _ -> []
+          end
+
+          section_media = try do
+            Portfolios.list_section_media(section_id_int)
+          rescue
+            _ -> []
+          end
+
+          {:noreply,
+          socket
+          |> assign(:show_media_library, true)
+          |> assign(:media_modal_section_id, section_id)
+          |> assign(:portfolio_media, portfolio_media)
+          |> assign(:section_media, section_media)
+          |> assign(:selected_media_ids, [])
+          |> put_flash(:info, "Media library opened for section: #{section.title}")}
+        else
+          {:noreply, put_flash(socket, :error, "Section not found")}
+        end
+      rescue
+        error ->
+          IO.puts("❌ Show media library error: #{Exception.message(error)}")
+          {:noreply, put_flash(socket, :error, "Failed to open media library")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "No section ID provided")}
+    end
+  end
+
+  # Media upload handling
+  @impl true
+  def handle_event("upload_section_media", params, socket) do
+    section_id = params["section_id"] || socket.assigns.media_modal_section_id
+
+    if section_id do
+      section_id_int = String.to_integer(section_id)
+
+      uploaded_files = consume_uploaded_entries(socket, :media, fn %{path: path}, entry ->
+        upload_media_file_to_section(path, entry, section_id_int, socket.assigns.portfolio.id)
+      end)
+
+      case uploaded_files do
+        [] ->
+          {:noreply, put_flash(socket, :info, "Processing uploaded files...")}
+
+        results ->
+          successful_uploads = Enum.count(results, fn
+            {:ok, _} -> true
+            _ -> false
+          end)
+
+          if successful_uploads > 0 do
+            # Reload media lists
+            portfolio_media = try do
+              Portfolios.list_portfolio_media(socket.assigns.portfolio.id)
+            rescue
+              _ -> socket.assigns.portfolio_media || []
+            end
+
+            section_media = try do
+              Portfolios.list_section_media(section_id_int)
+            rescue
+              _ -> socket.assigns.section_media || []
+            end
+
+            {:noreply,
+            socket
+            |> assign(:portfolio_media, portfolio_media)
+            |> assign(:section_media, section_media)
+            |> put_flash(:info, "Successfully uploaded #{successful_uploads} files!")}
+          else
+            {:noreply, put_flash(socket, :error, "Failed to upload files")}
+          end
+      end
+    else
+      {:noreply, put_flash(socket, :error, "No section selected for media upload")}
+    end
+  end
+
+  @impl true
+  def handle_event("validate_media_upload", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("hide_section_media_library", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_media_library, false)
+    |> assign(:media_modal_section_id, nil)
+    |> assign(:portfolio_media, [])
+    |> assign(:section_media, [])
+    |> assign(:selected_media_ids, [])}
+  end
+
+  @impl true
+  def handle_event("toggle_media_selection", %{"media_id" => media_id}, socket) do
+    media_id_int = String.to_integer(media_id)
+    selected_ids = socket.assigns.selected_media_ids || []
+
+    new_selected_ids = if media_id_int in selected_ids do
+      List.delete(selected_ids, media_id_int)
+    else
+      [media_id_int | selected_ids]
+    end
+
+    {:noreply, assign(socket, :selected_media_ids, new_selected_ids)}
+  end
+
+  @impl true
+  def handle_event("attach_selected_media", _params, socket) do
+    section_id = socket.assigns.media_modal_section_id
+    selected_ids = socket.assigns.selected_media_ids || []
+
+    if section_id && length(selected_ids) > 0 do
+      case attach_media_to_section(section_id, selected_ids) do
+        {:ok, attached_count} ->
+          editing_section_media = if socket.assigns.section_edit_id == to_string(section_id) do
+            Portfolios.list_section_media(section_id)
+          else
+            socket.assigns.editing_section_media || []
+          end
+
+          {:noreply,
+          socket
+          |> assign(:show_media_modal, false)
+          |> assign(:editing_section_media, editing_section_media)
+          |> assign(:selected_media_ids, [])
+          |> put_flash(:info, "Successfully attached #{attached_count} media files!")}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Failed to attach media: #{reason}")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Please select media files to attach")}
     end
   end
 
   # Section deletion
   @impl true
   def handle_event("delete_section", %{"id" => section_id}, socket) do
+    IO.puts("🔧 Delete section clicked for ID: #{section_id}")
+
     try do
       section_id_int = String.to_integer(section_id)
       section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
@@ -526,13 +1064,22 @@ defmodule FrestylWeb.PortfolioLive.Edit do
           {:ok, _} ->
             updated_sections = Enum.reject(socket.assigns.sections, &(&1.id == section_id_int))
 
+            # Close editor if deleting the currently edited section
+            {edit_id, editing_section, editing_media} =
+              if socket.assigns[:section_edit_id] == section_id do
+                {nil, nil, []}
+              else
+                {socket.assigns[:section_edit_id], socket.assigns[:editing_section], socket.assigns[:editing_section_media] || []}
+              end
+
             {:noreply,
-            socket
-            |> assign(:sections, updated_sections)
-            |> assign(:section_edit_id, nil)
-            |> assign(:editing_section, nil)
-            |> put_flash(:info, "Section deleted successfully")
-            |> push_event("section-deleted", %{section_id: section_id_int})}
+             socket
+             |> assign(:sections, updated_sections)
+             |> assign(:section_edit_id, edit_id)
+             |> assign(:editing_section, editing_section)
+             |> assign(:editing_section_media, editing_media)
+             |> put_flash(:info, "Section deleted successfully")
+             |> push_event("section-deleted", %{section_id: section_id_int})}
 
           {:error, _changeset} ->
             {:noreply, put_flash(socket, :error, "Failed to delete section")}
@@ -583,7 +1130,123 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     end
   end
 
-  # Section save/cancel
+  @impl true
+  def handle_event("duplicate_section", %{"id" => section_id}, socket) do
+    try do
+      section_id_int = String.to_integer(section_id)
+      section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+      if section do
+        case duplicate_section_with_media(section) do
+          {:ok, duplicated_section} ->
+            updated_sections = socket.assigns.sections ++ [duplicated_section]
+
+            {:noreply,
+            socket
+            |> assign(:sections, updated_sections)
+            |> put_flash(:info, "Section duplicated successfully!")
+            |> push_event("section-duplicated", %{
+              original_id: section_id_int,
+              new_id: duplicated_section.id
+            })}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to duplicate section: #{reason}")}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Section not found")}
+      end
+    rescue
+      error ->
+      {:noreply, put_flash(socket, :error, "Failed to duplicate section")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_section_field", params, socket) do
+    %{"field" => field, "value" => value, "section-id" => section_id} = params
+
+    IO.puts("🔧 Updating section field: #{field} = #{value} for section #{section_id}")
+
+    try do
+      section_id_int = String.to_integer(section_id)
+      section = socket.assigns.editing_section
+
+      if section && section.id == section_id_int do
+        case Portfolios.update_section(section, %{String.to_atom(field) => value}) do
+          {:ok, updated_section} ->
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id_int, do: updated_section, else: s
+            end)
+
+            {:noreply,
+             socket
+             |> assign(:sections, updated_sections)
+             |> assign(:editing_section, updated_section)
+             |> assign(:unsaved_changes, true)  # Mark as having unsaved changes
+             |> push_event("section-field-updated", %{
+               section_id: section_id_int,
+               field: field,
+               value: value
+             })}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section field")}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Section not found or not being edited")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Update section field error: #{Exception.message(error)}")
+        {:noreply, put_flash(socket, :error, "Failed to update section")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_section_content", params, socket) do
+    %{"field" => field, "value" => value, "section-id" => section_id} = params
+
+    IO.puts("🔧 Updating section content: #{field} = #{value} for section #{section_id}")
+
+    try do
+      section_id_int = String.to_integer(section_id)
+      section = socket.assigns.editing_section
+
+      if section && section.id == section_id_int do
+        current_content = section.content || %{}
+        updated_content = Map.put(current_content, field, value)
+
+        case Portfolios.update_section(section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id_int, do: updated_section, else: s
+            end)
+
+            {:noreply,
+             socket
+             |> assign(:sections, updated_sections)
+             |> assign(:editing_section, updated_section)
+             |> assign(:unsaved_changes, true)  # Mark as having unsaved changes
+             |> push_event("section-content-updated", %{
+               section_id: section_id_int,
+               field: field,
+               value: value
+             })}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section content")}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Section not found or not being edited")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Update section content error: #{Exception.message(error)}")
+        {:noreply, put_flash(socket, :error, "Failed to update section")}
+    end
+  end
+
   @impl true
   def handle_event("save_section", %{"id" => section_id}, socket) do
     try do
@@ -598,13 +1261,21 @@ defmodule FrestylWeb.PortfolioLive.Edit do
             if s.id == section_id_int, do: current_section, else: s
           end)
 
+          # 🔥 FIX: Broadcast section update to other LiveViews
+          Phoenix.PubSub.broadcast(
+            Frestyl.PubSub,
+            "portfolio_updates:#{socket.assigns.portfolio.id}",
+            {:section_updated, current_section}
+          )
+
           {:noreply,
           socket
           |> assign(:sections, updated_sections)
           |> assign(:editing_section, current_section)
           |> assign(:unsaved_changes, false)
           |> put_flash(:info, "Section saved successfully!")
-          |> push_event("section-saved", %{section_id: section_id_int})}
+          |> push_event("section-saved", %{section_id: section_id_int})
+          |> push_event("refresh-portfolio-view", %{})}  # 🔥 ADD THIS
       end
     rescue
       error ->
@@ -615,22 +1286,76 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
   @impl true
   def handle_event("cancel_edit", _params, socket) do
+    IO.puts("🔧 Cancel edit clicked")
     {:noreply,
-    socket
-    |> assign(:section_edit_id, nil)
-    |> assign(:editing_section, nil)
-    |> assign(:editing_section_media, [])
-    |> assign(:section_edit_tab, nil)
-    |> push_event("section-edit-cancelled", %{})}
+     socket
+     |> assign(:section_edit_id, nil)
+     |> assign(:editing_section, nil)
+     |> assign(:editing_section_media, [])
+     |> assign(:section_edit_tab, nil)
+     |> push_event("section-edit-cancelled", %{})}
   end
 
   # Section tab switching
   @impl true
   def handle_event("switch_section_edit_tab", %{"tab" => tab}, socket) do
-    {:noreply,
-    socket
-    |> assign(:section_edit_tab, tab)
-    |> push_event("section-edit-tab-changed", %{tab: tab})}
+    IO.puts("🔧 Switching section edit tab to: #{tab}")
+    {:noreply, assign(socket, :section_edit_tab, tab)}
+  end
+
+  # Resume upload and parsing
+  @impl true
+  def handle_event("upload_resume", _params, socket) do
+    uploaded_files = consume_uploaded_entries(socket, :resume, fn %{path: path}, entry ->
+      case File.read(path) do
+        {:ok, content} ->
+          parse_resume_content(content, entry.client_type, entry.client_name)
+        {:error, reason} ->
+          {:error, "Failed to read file: #{inspect(reason)}"}
+      end
+    end)
+
+    case uploaded_files do
+      [{:ok, parsed_data}] ->
+        {:noreply,
+        socket
+        |> assign(:parsed_resume_data, parsed_data)
+        |> assign(:parsing_resume, false)
+        |> put_flash(:info, "Resume parsed successfully! Review sections below.")}
+
+      [{:error, reason}] ->
+        {:noreply,
+        socket
+        |> assign(:parsing_resume, false)
+        |> put_flash(:error, "Failed to parse resume: #{reason}")}
+
+      [] ->
+        {:noreply, assign(socket, :parsing_resume, true)}
+    end
+  end
+
+  @impl true
+  def handle_event("import_resume_sections", params, socket) do
+    case socket.assigns.parsed_resume_data do
+      nil ->
+        {:noreply, put_flash(socket, :error, "No resume data to import")}
+
+      parsed_data ->
+        case import_selected_sections(socket.assigns.portfolio, parsed_data, params) do
+          {:ok, imported_count} ->
+            updated_sections = Portfolios.list_portfolio_sections(socket.assigns.portfolio.id)
+
+            {:noreply,
+            socket
+            |> assign(:sections, updated_sections)
+            |> assign(:show_resume_import_modal, false)
+            |> assign(:parsed_resume_data, nil)
+            |> put_flash(:info, "Successfully imported #{imported_count} sections!")}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to import: #{reason}")}
+        end
+    end
   end
 
   # Helper functions
@@ -648,6 +1373,11 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       "media_showcase" -> "Media Gallery"
       "code_showcase" -> "Code Showcase"
       "contact" -> "Contact Information"
+      "story" -> "My Story"
+      "timeline" -> "Career Timeline"
+      "narrative" -> "My Journey"
+      "journey" -> "Professional Journey"
+
       "custom" -> "Custom Section"
       _ -> "New Section"
     end
@@ -655,14 +1385,249 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
   defp get_default_content_for_type(type) do
     case type do
+      # Basic sections
       "intro" -> %{
         "headline" => "Hello, I'm [Your Name]",
-        "summary" => "A brief introduction about yourself and your professional journey."
+        "summary" => "A brief introduction about yourself and your professional journey.",
+        "location" => "",
+        "email" => "",
+        "phone" => "",
+        "website" => "",
+        "social_links" => %{
+          "linkedin" => "",
+          "github" => "",
+          "twitter" => ""
+        }
       }
-      "experience" -> %{"jobs" => []}
-      "education" -> %{"education" => []}
-      "skills" -> %{"skills" => []}
-      "projects" -> %{"projects" => []}
+
+      "experience" -> %{
+        "jobs" => [
+          %{
+            "title" => "Your Position",
+            "company" => "Company Name",
+            "start_date" => "Month Year",
+            "end_date" => "Present",
+            "current" => true,
+            "description" => "Key responsibilities and achievements in this role.",
+            "location" => "City, State",
+            "achievements" => []
+          }
+        ]
+      }
+
+      "education" -> %{
+        "education" => [
+          %{
+            "institution" => "School Name",
+            "degree" => "Degree Type",
+            "field" => "Field of Study",
+            "start_date" => "Year",
+            "end_date" => "Year",
+            "gpa" => "",
+            "achievements" => [],
+            "description" => ""
+          }
+        ]
+      }
+
+      "skills" -> %{
+        "skills" => ["Skill 1", "Skill 2", "Skill 3"],
+        "skill_categories" => %{
+          "Technical" => ["Programming", "Software Development"],
+          "Soft Skills" => ["Communication", "Leadership"],
+          "Tools" => ["Tool 1", "Tool 2"]
+        }
+      }
+
+      "projects" -> %{
+        "projects" => [
+          %{
+            "title" => "Project Name",
+            "description" => "Brief description of the project and your role.",
+            "technologies" => ["Tech 1", "Tech 2"],
+            "url" => "",
+            "github_url" => "",
+            "start_date" => "Month Year",
+            "end_date" => "Month Year",
+            "status" => "completed"
+          }
+        ]
+      }
+
+      "featured_project" -> %{
+        "title" => "Featured Project Title",
+        "description" => "Detailed description of your most important project.",
+        "technologies" => ["Technology 1", "Technology 2", "Technology 3"],
+        "url" => "",
+        "github_url" => "",
+        "challenges" => "Key challenges you overcame",
+        "solutions" => "How you solved them",
+        "results" => "The impact and outcomes",
+        "duration" => "Project timeline",
+        "role" => "Your role in the project"
+      }
+
+      "case_study" -> %{
+        "title" => "Case Study Title",
+        "client" => "Client or Company Name",
+        "timeline" => "Project duration",
+        "overview" => "Brief overview of the project",
+        "challenge" => "The problem you were solving",
+        "solution" => "Your approach and methodology",
+        "results" => "Outcomes and impact",
+        "technologies" => ["Tech 1", "Tech 2"],
+        "lessons_learned" => "Key takeaways from the project"
+      }
+
+      "achievements" -> %{
+        "achievements" => [
+          %{
+            "title" => "Achievement Title",
+            "description" => "Description of the achievement",
+            "date" => "Date",
+            "organization" => "Awarding organization",
+            "category" => "Type of achievement"
+          }
+        ]
+      }
+
+      "testimonial" -> %{
+        "testimonials" => [
+          %{
+            "name" => "Client Name",
+            "position" => "Their Title",
+            "company" => "Company Name",
+            "content" => "What they said about working with you",
+            "rating" => 5,
+            "project" => "Related project",
+            "date" => "Date of testimonial"
+          }
+        ]
+      }
+
+      "media_showcase" -> %{
+        "title" => "Media Gallery",
+        "description" => "Showcase of visual work, photos, videos, and other media.",
+        "media_items" => [],
+        "layout" => "grid",
+        "captions_enabled" => true,
+        "what_to_notice" => "Key elements viewers should pay attention to.",
+        "techniques_used" => ["Photography", "Video Editing", "Graphic Design"]
+      }
+
+      "code_showcase" -> %{
+        "title" => "Code Example",
+        "description" => "Demonstration of coding skills and problem-solving approach.",
+        "language" => "JavaScript",
+        "code" => "// Your code example here\nfunction example() {\n  return 'Hello, World!';\n}",
+        "key_features" => [
+          "Clean, readable code structure",
+          "Efficient algorithm implementation"
+        ],
+        "explanation" => "Detailed explanation of the code logic and design decisions.",
+        "line_highlights" => [],
+        "repository_url" => ""
+      }
+
+      "contact" -> %{
+        "email" => "",
+        "phone" => "",
+        "location" => "",
+        "availability" => "Available for new opportunities",
+        "preferred_contact" => "email",
+        "timezone" => "",
+        "response_time" => "Within 24 hours",
+        "social_links" => %{
+          "linkedin" => "",
+          "github" => "",
+          "twitter" => "",
+          "website" => ""
+        }
+      }
+
+      # NEW: Story & Narrative sections
+      "story" -> %{
+        "title" => "My Story",
+        "narrative" => "Tell your professional journey in a compelling narrative format. Share the experiences, challenges, and achievements that have shaped your career.",
+        "chapters" => [
+          %{
+            "title" => "The Beginning",
+            "content" => "Where your professional story starts - your first inspiration, education, or entry into your field.",
+            "year" => "2020"
+          },
+          %{
+            "title" => "Growth & Learning",
+            "content" => "Key milestones, projects, and experiences that contributed to your professional development.",
+            "year" => "2022"
+          },
+          %{
+            "title" => "Today & Future",
+            "content" => "Where you are now and where you're heading in your career journey.",
+            "year" => "2024"
+          }
+        ]
+      }
+
+      "timeline" -> %{
+        "title" => "Career Timeline",
+        "description" => "A chronological overview of my professional journey",
+        "events" => [
+          %{
+            "date" => "2024",
+            "title" => "Current Position",
+            "description" => "Your current role and recent achievements",
+            "type" => "work"
+          },
+          %{
+            "date" => "2022",
+            "title" => "Career Milestone",
+            "description" => "A significant achievement or career change",
+            "type" => "achievement"
+          },
+          %{
+            "date" => "2020",
+            "title" => "Professional Start",
+            "description" => "Beginning of your professional journey",
+            "type" => "education"
+          }
+        ]
+      }
+
+      "narrative" -> %{
+        "title" => "My Journey",
+        "subtitle" => "The story behind my professional path",
+        "narrative" => "Every professional has a unique story. Mine began with...\n\nShare your personal narrative here, including the challenges you've overcome, the lessons you've learned, and the passion that drives your work.\n\nThis is your space to connect with others on a human level and show the person behind the professional achievements."
+      }
+
+      "journey" -> %{
+        "title" => "Professional Journey",
+        "introduction" => "My path to where I am today",
+        "milestones" => [
+          %{
+            "title" => "Discovery",
+            "description" => "How I discovered my passion for this field",
+            "impact" => "What this meant for my career direction"
+          },
+          %{
+            "title" => "Development",
+            "description" => "Key experiences that shaped my skills",
+            "impact" => "How these experiences transformed my approach"
+          },
+          %{
+            "title" => "Mastery",
+            "description" => "Reaching new levels of expertise",
+            "impact" => "The difference I can make now"
+          }
+        ]
+      }
+
+      "custom" -> %{
+        "title" => "Custom Section",
+        "content" => "Add your custom content here.",
+        "layout" => "default",
+        "custom_fields" => %{}
+      }
+
       _ -> %{}
     end
   end
@@ -688,6 +1653,25 @@ defmodule FrestylWeb.PortfolioLive.Edit do
           "minimalist" -> "minimal"
           _ -> "dashboard"
         end
+    end
+  end
+
+  defp format_section_title(section_type) do
+    case section_type do
+      "intro" -> "Introduction"
+      "experience" -> "Work Experience"
+      "education" -> "Education"
+      "skills" -> "Skills & Expertise"
+      "featured_project" -> "Featured Project"
+      "case_study" -> "Case Study"
+      "media_showcase" -> "Media Gallery"
+      "projects" -> "Projects"
+      "achievements" -> "Achievements"
+      "testimonial" -> "Testimonials"
+      "contact" -> "Contact Information"
+      "code_showcase" -> "Code Examples"
+      "custom" -> "Custom Section"
+      _ -> String.capitalize(String.replace(section_type, "_", " "))
     end
   end
 
@@ -908,6 +1892,222 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
+    @impl true
+  def handle_event("update_color_scheme", %{"scheme" => scheme_name}, socket) do
+    IO.puts("🎨 Updating color scheme to: #{scheme_name}")
+
+    # Define color schemes
+    scheme_colors = case scheme_name do
+      "professional" -> %{
+        "primary_color" => "#1e40af",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6"
+      }
+      "creative" -> %{
+        "primary_color" => "#7c3aed",
+        "secondary_color" => "#ec4899",
+        "accent_color" => "#f59e0b"
+      }
+      "warm" -> %{
+        "primary_color" => "#dc2626",
+        "secondary_color" => "#ea580c",
+        "accent_color" => "#f59e0b"
+      }
+      "cool" -> %{
+        "primary_color" => "#0891b2",
+        "secondary_color" => "#0284c7",
+        "accent_color" => "#6366f1"
+      }
+      "minimal" -> %{
+        "primary_color" => "#374151",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#059669"
+      }
+      _ -> %{}
+    end
+
+    # Merge with current customization
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.merge(current_customization, scheme_colors)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, portfolio} ->
+        # Generate updated CSS
+        updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+
+        {:noreply,
+         socket
+         |> assign(:portfolio, portfolio)
+         |> assign(:customization, updated_customization)
+         |> assign(:preview_css, updated_css)
+         |> assign(:unsaved_changes, false)
+         |> put_flash(:info, "Color scheme updated to #{String.capitalize(scheme_name)}")
+         |> push_event("color-scheme-updated", %{scheme: scheme_name})}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update color scheme")}
+    end
+  end
+
+  # Individual color updates
+  @impl true
+  def handle_event("update_primary_color", params, socket) do
+    color = params["primary_color"] || params["value"]
+    IO.puts("🎨 Updating primary color to: #{color}")
+
+    update_single_color(socket, "primary_color", color)
+  end
+
+  @impl true
+  def handle_event("update_secondary_color", params, socket) do
+    color = params["secondary_color"] || params["value"]
+    IO.puts("🎨 Updating secondary color to: #{color}")
+
+    update_single_color(socket, "secondary_color", color)
+  end
+
+  @impl true
+  def handle_event("update_accent_color", params, socket) do
+    color = params["accent_color"] || params["value"]
+    IO.puts("🎨 Updating accent color to: #{color}")
+
+    update_single_color(socket, "accent_color", color)
+  end
+
+  # Generic color update handler
+  @impl true
+  def handle_event("update_color", params, socket) do
+    color = params["color"] || params["value"]
+    color_type = params["type"] || params["field"] || "primary"
+
+    IO.puts("🎨 Generic color update: #{color_type} = #{color}")
+
+    color_field = case color_type do
+      "primary" -> "primary_color"
+      "secondary" -> "secondary_color"
+      "accent" -> "accent_color"
+      field when field in ["primary_color", "secondary_color", "accent_color"] -> field
+      _ -> "primary_color"
+    end
+
+    update_single_color(socket, color_field, color)
+  end
+
+  # Typography updates
+  @impl true
+  def handle_event("update_typography", params, socket) do
+    IO.puts("🎨 Typography params received: #{inspect(params)}")
+
+    # Extract font family from different possible parameter formats
+    font_family = case params do
+      %{"font" => font} when font != "" -> font
+      %{"font_family" => font} when font != "" -> font
+      %{"value" => font} when font != "" -> font
+      %{"field" => "font_family", "font" => font} when font != "" -> font
+      _ ->
+        # Log the issue and return error
+        IO.puts("❌ No valid font family found in params: #{inspect(params)}")
+        nil  # Set to nil instead of using return
+    end
+
+    # Handle case where no valid font was found
+    if font_family == nil do
+      {:noreply, put_flash(socket, :error, "Invalid font family parameter")}
+    else
+      IO.puts("🎨 Updating typography to font: #{font_family}")
+
+      # Update the typography in customization
+      current_customization = socket.assigns.customization || %{}
+      current_typography = Map.get(current_customization, "typography", %{})
+      updated_typography = Map.put(current_typography, "font_family", font_family)
+      updated_customization = Map.put(current_customization, "typography", updated_typography)
+
+      case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+        {:ok, portfolio} ->
+          # Generate updated CSS with the new font
+          updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+
+          {:noreply,
+          socket
+          |> assign(:portfolio, portfolio)
+          |> assign(:customization, updated_customization)
+          |> assign(:preview_css, updated_css)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Typography updated to #{font_family}")
+          |> push_event("typography-updated", %{font_family: font_family})}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update typography")}
+      end
+    end
+  end
+
+  # Helper function for updating individual colors
+  defp update_single_color(socket, color_field, color) do
+    if valid_hex_color?(color) do
+      current_customization = socket.assigns.customization || %{}
+      updated_customization = Map.put(current_customization, color_field, color)
+
+      case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+        {:ok, portfolio} ->
+          # Generate updated CSS
+          updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+
+          color_name = String.replace(color_field, "_color", "")
+
+          {:noreply,
+           socket
+           |> assign(:portfolio, portfolio)
+           |> assign(:customization, updated_customization)
+           |> assign(:preview_css, updated_css)
+           |> assign(:unsaved_changes, false)
+           |> put_flash(:info, "#{String.capitalize(color_name)} color updated")
+           |> push_event("color-updated", %{field: color_field, color: color})}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update color")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Invalid color format")}
+    end
+  end
+
+  # Helper function to validate hex colors
+  defp valid_hex_color?(color) do
+    Regex.match?(~r/^#[0-9A-Fa-f]{6}$/, color)
+  end
+
+  # Helper function to get color scheme colors (for existing handler)
+  defp get_color_scheme_colors(scheme) do
+    case scheme do
+      "professional" -> %{
+        "primary_color" => "#1e40af",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6"
+      }
+      "creative" -> %{
+        "primary_color" => "#7c3aed",
+        "secondary_color" => "#ec4899",
+        "accent_color" => "#f59e0b"
+      }
+      "warm" -> %{
+        "primary_color" => "#dc2626",
+        "secondary_color" => "#ea580c",
+        "accent_color" => "#f59e0b"
+      }
+      "cool" -> %{
+        "primary_color" => "#0891b2",
+        "secondary_color" => "#0284c7",
+        "accent_color" => "#6366f1"
+      }
+      "minimal" -> %{
+        "primary_color" => "#374151",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#059669"
+      }
+      _ -> %{}
+    end
+  end
 
   defp get_template_layout(config, theme) do
     case config do
@@ -943,7 +2143,7 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   end
 
   defp generate_portfolio_css(customization, template_config, theme) do
-    # Generate CSS from customization and template config
+    # Extract colors
     primary_color = customization["primary_color"] || template_config[:primary_color] || "#3b82f6"
     secondary_color = customization["secondary_color"] || template_config[:secondary_color] || "#64748b"
     accent_color = customization["accent_color"] || template_config[:accent_color] || "#f59e0b"
@@ -953,11 +2153,101 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     font_family = typography["font_family"] || typography[:font_family] || "Inter"
 
     font_family_css = case font_family do
-      "Inter" -> "'Inter', system-ui, sans-serif"
+      "Inter" -> "'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
       "Merriweather" -> "'Merriweather', Georgia, serif"
-      "JetBrains Mono" -> "'JetBrains Mono', 'Fira Code', monospace"
+      "JetBrains Mono" -> "'JetBrains Mono', 'SF Mono', Consolas, monospace"
       "Playfair Display" -> "'Playfair Display', Georgia, serif"
-      _ -> "system-ui, sans-serif"
+      _ -> "'Inter', system-ui, sans-serif"
+    end
+
+    # FIXED: Extract layout options and generate proper CSS
+    layout_style = customization["layout_style"] || "single_page"
+    section_spacing = customization["section_spacing"] || "normal"
+    grid_layout = customization["grid_layout"] || "single"
+    fixed_navigation = customization["fixed_navigation"] || true
+    dark_mode_support = customization["dark_mode_support"] || false
+
+    # Generate layout-specific CSS
+    layout_css = case layout_style do
+      "single_page" -> """
+        .portfolio-container { max-width: 800px; margin: 0 auto; }
+        .portfolio-sections { display: block; }
+        .portfolio-section { margin-bottom: 3rem; }
+        """
+      "multi_page" -> """
+        .portfolio-container { max-width: 1200px; margin: 0 auto; }
+        .portfolio-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 2rem; }
+        .portfolio-section { margin-bottom: 1rem; }
+        """
+      _ -> """
+        .portfolio-container { max-width: 1024px; margin: 0 auto; }
+        .portfolio-sections { display: block; }
+        """
+    end
+
+    # Generate spacing CSS
+    spacing_css = case section_spacing do
+      "compact" -> """
+        .portfolio-section { padding: 1rem; margin-bottom: 1rem; }
+        .section-content { margin-bottom: 0.5rem; }
+        """
+      "normal" -> """
+        .portfolio-section { padding: 2rem; margin-bottom: 2rem; }
+        .section-content { margin-bottom: 1rem; }
+        """
+      "spacious" -> """
+        .portfolio-section { padding: 3rem; margin-bottom: 3rem; }
+        .section-content { margin-bottom: 2rem; }
+        """
+      _ -> """
+        .portfolio-section { padding: 2rem; margin-bottom: 2rem; }
+        """
+    end
+
+    # Generate grid CSS
+    grid_css = case grid_layout do
+      "single" -> """
+        .content-grid { display: block; }
+        .grid-item { width: 100%; }
+        """
+      "two" -> """
+        .content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        """
+      "three" -> """
+        .content-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+        """
+      "masonry" -> """
+        .content-grid { columns: 3; column-gap: 1rem; }
+        .grid-item { break-inside: avoid; margin-bottom: 1rem; }
+        """
+      _ -> """
+        .content-grid { display: block; }
+        """
+    end
+
+    # Generate navigation CSS
+    nav_css = if fixed_navigation do
+      """
+      .portfolio-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; }
+      .portfolio-content { padding-top: 4rem; }
+      """
+    else
+      """
+      .portfolio-nav { position: relative; }
+      .portfolio-content { padding-top: 0; }
+      """
+    end
+
+    # Generate dark mode CSS
+    dark_mode_css = if dark_mode_support do
+      """
+      @media (prefers-color-scheme: dark) {
+        .portfolio-container { background-color: #1f2937; color: #f9fafb; }
+        .portfolio-section { background-color: #374151; }
+      }
+      """
+    else
+      ""
     end
 
     """
@@ -967,8 +2257,20 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       --portfolio-secondary-color: #{secondary_color};
       --portfolio-accent-color: #{accent_color};
       --portfolio-font-family: #{font_family_css};
+      --portfolio-layout-style: #{layout_style};
+      --portfolio-section-spacing: #{section_spacing};
+      --portfolio-grid-layout: #{grid_layout};
     }
 
+    /* Apply font to preview areas */
+    .portfolio-preview,
+    .portfolio-preview *,
+    .template-preview-card,
+    .typography-preview {
+      font-family: var(--portfolio-font-family) !important;
+    }
+
+    /* Color classes */
     .portfolio-primary { color: var(--portfolio-primary-color) !important; }
     .portfolio-secondary { color: var(--portfolio-secondary-color) !important; }
     .portfolio-accent { color: var(--portfolio-accent-color) !important; }
@@ -976,10 +2278,498 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     .portfolio-bg-secondary { background-color: var(--portfolio-secondary-color) !important; }
     .portfolio-bg-accent { background-color: var(--portfolio-accent-color) !important; }
 
-    .portfolio-preview {
-      font-family: var(--portfolio-font-family) !important;
+    /* LAYOUT-SPECIFIC CSS */
+    #{layout_css}
+
+    /* SPACING CSS */
+    #{spacing_css}
+
+    /* GRID CSS */
+    #{grid_css}
+
+    /* NAVIGATION CSS */
+    #{nav_css}
+
+    /* DARK MODE CSS */
+    #{dark_mode_css}
+
+    /* Layout preview styles */
+    .layout-preview {
+      border: 2px solid var(--portfolio-primary-color);
+      border-radius: 8px;
+      padding: 1rem;
+      background: var(--portfolio-bg-primary);
+      color: white;
+      font-family: var(--portfolio-font-family);
+    }
+
+    .layout-preview.single-page {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .layout-preview.multi-page {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+      max-width: 1200px;
     }
     </style>
     """
+  end
+
+  defp get_layout_from_customization(customization) do
+    # Priority: layout_style > layout > theme default
+    case customization do
+      %{"layout_style" => "single_page"} -> "single_page"
+      %{"layout_style" => "multi_page"} -> "multi_page"
+      %{"layout" => layout} when is_binary(layout) -> layout
+      _ -> "dashboard"  # default fallback
+    end
+  end
+
+    # Catch-all for section events (delegate to SectionManager if available)
+  @impl true
+  def handle_event(event_name, params, socket) do
+    IO.puts("🔧 UNHANDLED EVENT: #{event_name}")
+    IO.puts("🔧 Params: #{inspect(params)}")
+
+    case event_name do
+      # Section-related events we haven't handled yet
+      "reorder_sections" ->
+        IO.puts("🔧 Section reordering not implemented yet")
+        {:noreply, socket}
+
+      "duplicate_section" ->
+        IO.puts("🔧 Section duplication not implemented yet")
+        {:noreply, socket}
+
+      # Media-related events
+      event when event in ["show_media_modal", "hide_media_modal", "upload_media"] ->
+        IO.puts("🔧 Media functionality not implemented yet")
+        {:noreply, socket}
+
+      # Events that should have been handled by specific handlers above
+      event when event in ["toggle_add_section_dropdown", "close_add_section_dropdown", "edit_section", "toggle_visibility", "show_section_media_library"] ->
+        IO.puts("🔧 WARNING: #{event_name} should have been handled by specific handler above!")
+        {:noreply, socket}
+
+      # Unknown events
+      _ ->
+        IO.puts("🔧 Truly unknown event: #{event_name}")
+        {:noreply, socket}
+    end
+  end
+
+    # ============================================================================
+  # HELPER FUNCTIONS FOR NEW FUNCTIONALITY
+  # ============================================================================
+
+  # Resume parsing helpers
+  defp parse_resume_content(content, mime_type, _filename) do
+    case mime_type do
+      "application/pdf" -> parse_pdf_resume(content)
+      "text/plain" -> parse_text_resume(content)
+      _ -> {:error, "Unsupported file type: #{mime_type}"}
+    end
+  end
+
+  defp parse_pdf_resume(_content) do
+    # Basic implementation - replace with actual PDF parsing
+    {:ok, %{
+      personal_info: %{"name" => "Extracted Name", "email" => "extracted@email.com"},
+      professional_summary: "Extracted summary from PDF",
+      work_experience: [],
+      education: [],
+      skills: []
+    }}
+  end
+
+  defp parse_text_resume(content) do
+    lines = String.split(content, "\n")
+    {:ok, %{
+      personal_info: %{"name" => "Text Resume", "email" => ""},
+      professional_summary: Enum.join(Enum.take(lines, 3), " "),
+      work_experience: [],
+      education: [],
+      skills: []
+    }}
+  end
+
+  # Portfolio duplication
+  defp duplicate_portfolio_with_sections(original_portfolio, user) do
+    new_attrs = %{
+      title: "#{original_portfolio.title} (Copy)",
+      description: original_portfolio.description,
+      theme: original_portfolio.theme,
+      customization: original_portfolio.customization,
+      visibility: :private
+    }
+
+    case Portfolios.create_portfolio(user.id, new_attrs) do
+      {:ok, new_portfolio} ->
+        copy_portfolio_sections(original_portfolio.id, new_portfolio.id)
+        {:ok, new_portfolio}
+      {:error, _changeset} ->
+        {:error, "Failed to create portfolio copy"}
+    end
+  end
+
+  defp copy_portfolio_sections(from_portfolio_id, to_portfolio_id) do
+    sections = Portfolios.list_portfolio_sections(from_portfolio_id)
+
+    Enum.each(sections, fn section ->
+      section_attrs = %{
+        portfolio_id: to_portfolio_id,
+        title: section.title,
+        section_type: section.section_type,
+        content: section.content,
+        position: section.position,
+        visible: section.visible
+      }
+      Portfolios.create_section(section_attrs)
+    end)
+  end
+
+  # Section duplication
+  defp duplicate_section_with_media(section) do
+    max_position = get_max_section_position(section.portfolio_id)
+
+    new_attrs = %{
+      portfolio_id: section.portfolio_id,
+      title: "#{section.title} (Copy)",
+      section_type: section.section_type,
+      content: section.content,
+      position: max_position + 1,
+      visible: section.visible
+    }
+
+    case Portfolios.create_section(new_attrs) do
+      {:ok, new_section} ->
+        copy_section_media(section.id, new_section.id)
+        {:ok, new_section}
+      {:error, changeset} ->
+        {:error, "Failed to duplicate section"}
+    end
+  end
+
+  defp copy_section_media(from_section_id, to_section_id) do
+    try do
+      media_files = Portfolios.list_section_media(from_section_id)
+      Enum.each(media_files, fn media ->
+        Portfolios.create_section_media_association(to_section_id, media.id)
+      end)
+    rescue
+      _ -> :ok  # Continue even if media copying fails
+    end
+  end
+
+  # Media attachment
+  defp attach_media_to_section(section_id, media_ids) do
+    try do
+      attached_count = Enum.reduce(media_ids, 0, fn media_id, acc ->
+        case Portfolios.create_section_media_association(section_id, media_id) do
+          {:ok, _} -> acc + 1
+          {:error, _} -> acc
+        end
+      end)
+      {:ok, attached_count}
+    rescue
+      error -> {:error, Exception.message(error)}
+    end
+  end
+
+  # PDF generation
+  defp generate_portfolio_pdf(portfolio, _user, _opts) do
+    try do
+      sections = Portfolios.list_portfolio_sections(portfolio.id)
+      html_content = render_portfolio_for_pdf(portfolio, sections)
+
+      # Basic PDF generation - replace with actual PDF library
+      case PdfGenerator.generate_binary(html_content, page_size: "Letter") do
+        {:ok, pdf_binary} ->
+          timestamp = DateTime.utc_now() |> DateTime.to_unix()
+          filename = "#{Slug.slugify(portfolio.title)}-#{timestamp}.pdf"
+
+          {:ok, %{
+            content: pdf_binary,
+            filename: filename,
+            content_type: "application/pdf"
+          }}
+        {:error, reason} ->
+          {:error, "PDF generation failed: #{inspect(reason)}"}
+      end
+    rescue
+      error -> {:error, "PDF export error: #{Exception.message(error)}"}
+    end
+  end
+
+  defp render_portfolio_for_pdf(portfolio, sections) do
+    """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>#{portfolio.title}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin-bottom: 30px; }
+        .section-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; }
+      </style>
+    </head>
+    <body>
+      <h1>#{portfolio.title}</h1>
+      #{render_sections_for_pdf(sections)}
+    </body>
+    </html>
+    """
+  end
+
+  defp render_sections_for_pdf(sections) do
+    sections
+    |> Enum.filter(& &1.visible)
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map(fn section ->
+      """
+      <div class="section">
+        <h2 class="section-title">#{section.title}</h2>
+        <div>#{render_basic_section_content(section)}</div>
+      </div>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp render_basic_section_content(section) do
+    case section.content do
+      %{"summary" => summary} when is_binary(summary) -> summary
+      %{"description" => desc} when is_binary(desc) -> desc
+      _ -> "Section content"
+    end
+  end
+
+  # Portfolio broadcasting for live updates
+  defp broadcast_portfolio_update(portfolio_id, event_type) do
+    try do
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio:#{portfolio_id}",
+        {event_type, portfolio_id}
+      )
+    rescue
+      _ -> :ok  # Continue even if broadcast fails
+    end
+  end
+
+  # Section helpers
+  defp get_max_section_position(portfolio_id) do
+    sections = Portfolios.list_portfolio_sections(portfolio_id)
+    case sections do
+      [] -> 0
+      sections -> Enum.map(sections, & &1.position) |> Enum.max()
+    end
+  end
+
+  defp import_selected_sections(portfolio, parsed_data, selections) do
+    try do
+      imported_count = Enum.reduce(selections, 0, fn {section_type, selected}, acc ->
+        if selected == "true" do
+          case import_resume_section(portfolio, section_type, parsed_data) do
+            {:ok, _section} -> acc + 1
+            {:error, _reason} -> acc
+          end
+        else
+          acc
+        end
+      end)
+      {:ok, imported_count}
+    rescue
+      error -> {:error, Exception.message(error)}
+    end
+  end
+
+  defp import_resume_section(portfolio, section_type, parsed_data) do
+    case section_type do
+      "personal_info" -> create_contact_section(portfolio, parsed_data.personal_info)
+      "professional_summary" -> create_intro_section(portfolio, parsed_data.professional_summary)
+      "work_experience" -> create_experience_section(portfolio, parsed_data.work_experience)
+      "education" -> create_education_section(portfolio, parsed_data.education)
+      "skills" -> create_skills_section(portfolio, parsed_data.skills)
+      _ -> {:error, "Unknown section type: #{section_type}"}
+    end
+  end
+
+  defp create_contact_section(portfolio, personal_info) do
+    max_position = get_max_section_position(portfolio.id)
+
+    section_attrs = %{
+      portfolio_id: portfolio.id,
+      title: "Contact Information",
+      section_type: :contact,
+      position: max_position + 1,
+      content: %{
+        "email" => Map.get(personal_info, "email", ""),
+        "phone" => Map.get(personal_info, "phone", ""),
+        "location" => Map.get(personal_info, "location", ""),
+        "name" => Map.get(personal_info, "name", "")
+      },
+      visible: true
+    }
+    Portfolios.create_section(section_attrs)
+  end
+
+  defp create_intro_section(portfolio, summary) do
+    max_position = get_max_section_position(portfolio.id)
+
+    section_attrs = %{
+      portfolio_id: portfolio.id,
+      title: "Professional Summary",
+      section_type: :intro,
+      position: max_position + 1,
+      content: %{
+        "headline" => "Professional Summary",
+        "summary" => summary || ""
+      },
+      visible: true
+    }
+    Portfolios.create_section(section_attrs)
+  end
+
+  defp create_experience_section(portfolio, experience) do
+    max_position = get_max_section_position(portfolio.id)
+
+    section_attrs = %{
+      portfolio_id: portfolio.id,
+      title: "Work Experience",
+      section_type: :experience,
+      position: max_position + 1,
+      content: %{"jobs" => experience || []},
+      visible: true
+    }
+    Portfolios.create_section(section_attrs)
+  end
+
+  defp create_education_section(portfolio, education) do
+    max_position = get_max_section_position(portfolio.id)
+
+    section_attrs = %{
+      portfolio_id: portfolio.id,
+      title: "Education",
+      section_type: :education,
+      position: max_position + 1,
+      content: %{"education" => education || []},
+      visible: true
+    }
+    Portfolios.create_section(section_attrs)
+  end
+
+  defp create_skills_section(portfolio, skills) do
+    max_position = get_max_section_position(portfolio.id)
+
+    section_attrs = %{
+      portfolio_id: portfolio.id,
+      title: "Skills & Expertise",
+      section_type: :skills,
+      position: max_position + 1,
+      content: %{"skills" => skills || []},
+      visible: true
+    }
+    Portfolios.create_section(section_attrs)
+  end
+
+  # Media upload helper
+  defp upload_media_file_to_section(temp_path, entry, section_id, portfolio_id) do
+    try do
+      # Generate unique filename
+      file_extension = Path.extname(entry.client_name)
+      timestamp = System.unique_integer([:positive])
+      filename = "media_#{timestamp}#{file_extension}"
+
+      # Create upload directory
+      upload_dir = Path.join(["priv", "static", "uploads", "portfolios", to_string(portfolio_id), "media"])
+      File.mkdir_p!(upload_dir)
+
+      # Final file path
+      final_path = Path.join(upload_dir, filename)
+
+      # Copy file
+      case File.cp(temp_path, final_path) do
+        :ok ->
+          # Get file info
+          %{size: file_size} = File.stat!(final_path)
+
+          # Determine media type
+          media_type = determine_media_type(entry.client_type)
+
+          # Public path for serving
+          public_path = "/uploads/portfolios/#{portfolio_id}/media/#{filename}"
+
+          # Create database record
+          media_attrs = %{
+            title: Path.basename(entry.client_name, file_extension),
+            description: "",
+            file_path: public_path,
+            file_size: file_size,
+            media_type: media_type,
+            mime_type: entry.client_type,
+            portfolio_id: portfolio_id,
+            visible: true
+          }
+
+          case Portfolios.create_portfolio_media(media_attrs) do
+            {:ok, media} ->
+              # Associate with section
+              case Portfolios.create_section_media_association(section_id, media.id) do
+                {:ok, _} -> {:ok, media}
+                {:error, _} -> {:ok, media}  # Continue even if association fails
+              end
+
+            {:error, changeset} ->
+              # Clean up uploaded file on database error
+              File.rm(final_path)
+              {:error, "Database error: #{inspect(changeset.errors)}"}
+          end
+
+        {:error, reason} ->
+          {:error, "File copy failed: #{inspect(reason)}"}
+      end
+    rescue
+      e ->
+        {:error, "Upload failed: #{Exception.message(e)}"}
+    end
+  end
+
+  defp configure_uploads(socket) do
+    limits = socket.assigns[:limits] || %{max_media_size_mb: 50}
+
+    socket
+    |> allow_upload(:media,
+        accept: ~w(.jpg .jpeg .png .gif .mp4 .mov .avi .pdf .doc .docx .mp3 .wav),
+        max_entries: 10,
+        max_file_size: limits.max_media_size_mb * 1_048_576)
+    |> allow_upload(:resume,
+        accept: ~w(.pdf .doc .docx .txt .rtf),
+        max_entries: 1,
+        max_file_size: 10 * 1_048_576)
+  end
+
+  # Add progress handler
+  defp handle_progress(:media, entry, socket) do
+    if entry.done? do
+      # File upload completed
+      socket
+      |> put_flash(:info, "File uploaded successfully!")
+    else
+      socket
+    end
+  end
+
+  defp determine_media_type(mime_type) do
+    case mime_type do
+      "image/" <> _ -> :image
+      "video/" <> _ -> :video
+      "audio/" <> _ -> :audio
+      "application/pdf" -> :document
+      _ -> :file
+    end
   end
 end

@@ -19,7 +19,7 @@ defmodule FrestylWeb.StudioLive.DockPanelComponent do
               phx-value-tool={tool_id}
               class={[
                 "flex-1 py-2 px-3 text-center text-sm font-medium transition-colors border-r border-gray-800 last:border-r-0",
-                (@active_dock_tool || List.first(@tools)) == tool_id && "bg-indigo-600 text-white" || "text-gray-400 hover:text-white hover:bg-gray-700"
+                (Map.get(assigns, :active_dock_tool) || List.first(@tools)) == tool_id && "bg-indigo-600 text-white" || "text-gray-400 hover:text-white hover:bg-gray-700"
               ]}
             >
               <div class="flex items-center justify-center space-x-1">
@@ -54,7 +54,7 @@ defmodule FrestylWeb.StudioLive.DockPanelComponent do
         <%= if length(@tools) > 1 do %>
           <!-- Multi-tool view - show active tool -->
           <div class="h-full">
-            <%= render_tool_content(assigns, @active_dock_tool || List.first(@tools)) %>
+            <%= render_tool_content(assigns, Map.get(assigns, :active_dock_tool) || List.first(@tools)) %>
           </div>
         <% else %>
           <!-- Single tool view -->
@@ -336,12 +336,12 @@ defmodule FrestylWeb.StudioLive.DockPanelComponent do
 
       <!-- Recording status -->
       <div class="p-3 border-b border-gray-700">
-        <%= if @recording_track do %>
+        <%= if Map.get(assigns, :recording_track) do %>
           <div class="flex items-center space-x-3 text-red-400">
             <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
             <div>
               <p class="font-medium">Recording</p>
-              <p class="text-sm text-gray-400">Track: <%= @recording_track %></p>
+              <p class="text-sm text-gray-400">Track: <%= Map.get(assigns, :recording_track) %></p>
             </div>
           </div>
         <% else %>
@@ -395,7 +395,7 @@ defmodule FrestylWeb.StudioLive.DockPanelComponent do
 
         <!-- Recording controls -->
         <div class="space-y-3">
-          <%= if @recording_track do %>
+          <%= if Map.get(assigns, :recording_track) do %>
             <button
               phx-click="audio_stop_recording"
               phx-target={@myself}

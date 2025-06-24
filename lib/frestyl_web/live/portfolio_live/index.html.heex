@@ -5,6 +5,20 @@
   <!-- Navigation -->
   <.nav current_user={@current_user} active_tab={:portfolios} />
 
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900">Your Stories</h1>
+      <p class="text-gray-600 mt-1">Manage your portfolio stories across accounts</p>
+    </div>
+    
+    <.live_component
+      module={FrestylWeb.Components.AccountSwitcher}
+      id="account-switcher"
+      current_account={@current_account}
+      accounts={@accounts}
+    />
+  </div>
+
   <!-- Main Content -->
   <div class="pt-16 min-h-screen">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

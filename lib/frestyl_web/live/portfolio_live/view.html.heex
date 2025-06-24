@@ -249,7 +249,20 @@
                   </div>
                 </header>
                 <div class="portfolio-card-content">
-                  <%= render_section_content_safe(section) %>
+                  <div class="portfolio-secondary">
+                    <%= case section.section_type do %>
+                      <% "story" -> %>
+                        <%= render_story_section(section) %>
+                      <% "timeline" -> %>
+                        <%= render_timeline_section(section) %>
+                      <% "narrative" -> %>
+                        <%= render_narrative_section(section) %>
+                      <% "journey" -> %>
+                        <%= render_journey_section(section) %>
+                      <% _ -> %>
+                        <%= render_section_content_safe(section) %>
+                    <% end %>
+                  </div>
                 </div>
               </article>
             <% end %>

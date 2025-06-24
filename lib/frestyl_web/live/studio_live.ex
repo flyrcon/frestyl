@@ -123,6 +123,10 @@ defmodule FrestylWeb.StudioLive do
     ToolLayoutManager.handle_event(event_name, params, socket)
   end
 
+  def handle_event("toggle_dock_visibility", %{"dock" => dock}, socket) do
+    ToolLayoutManager.handle_event("toggle_dock_visibility", %{"dock" => dock}, socket)
+  end
+
   @impl true
   def handle_event(event_name, params, socket) do
     # Handle remaining general events
@@ -139,6 +143,12 @@ defmodule FrestylWeb.StudioLive do
       "end_session_confirmed" -> handle_end_session(socket)
       _ -> {:noreply, socket}
     end
+  end
+
+  def handle_event("set_active_dock_tool", %{"dock" => dock, "tool" => tool}, socket) do
+    dock_atom = String.to_atom(dock)
+    active_dock_tools = Map.put(socket.assigns.active_dock_tools, dock_atom, tool)
+    {:noreply, assign(socket, active_dock_tools: active_dock_tools)}
   end
 
   @impl true
@@ -235,12 +245,24 @@ defmodule FrestylWeb.StudioLive do
 
   defp assign_ui_state(socket) do
     socket
+    |> assign(:active_tool, "audio")
+    |> assign(:active_dock_tools, %{left: nil, right: "chat", bottom: nil})
+    |> assign(:mobile_active_tool, "audio")
+    |> assign(:mobile_tool_drawer_open, false)
+    |> assign(:show_mobile_tool_modal, false)
+    |> assign(:mobile_modal_tool, nil)
+    |> assign(:mobile_layout, get_default_mobile_layout())
     |> assign(:show_invite_modal, false)
     |> assign(:show_settings_modal, false)
     |> assign(:show_end_session_modal, false)
     |> assign(:mobile_tool_drawer_open, false)
     |> assign(:show_mobile_tool_modal, false)
     |> assign(:mobile_modal_tool, nil)
+    |> assign(:recording_track, nil)
+    |> assign(:voice_commands_active, false)
+    |> assign(:mobile_simplified_mode, false)
+    |> assign(:mobile_text_size, "base")
+    |> assign(:current_mobile_track, 0)
     |> assign(:dock_visibility, %{left: true, right: true, bottom: true})
     |> assign(:notifications, [])
     |> assign(:collaborators, CollaborationManager.list_collaborators(socket.assigns.session.id))
@@ -250,6 +272,14 @@ defmodule FrestylWeb.StudioLive do
     |> assign(:typing_users, MapSet.new())
     |> assign(:pending_operations, [])
     |> assign(:operation_conflicts, [])
+  end
+
+  defp get_default_mobile_layout do
+    %{
+      primary_tools: ["recorder", "mixer", "effects"],
+      hidden_tools: [],
+      quick_access: ["editor", "chat"]
+    }
   end
 
   defp apply_action(socket, :show, _params) do
@@ -282,7 +312,7 @@ defmodule FrestylWeb.StudioLive do
   end
 
   defp handle_end_session(socket) do
-    case Sessions.end_session(socket.assigns.session.id, socket.assigns.current_user.id) do
+    case Sessions.update_session(socket.assigns.session, %{status: "ended", ended_at: DateTime.utc_now()}) do
       {:ok, _updated_session} ->
         {:noreply, socket
           |> put_flash(:info, "Session ended successfully.")

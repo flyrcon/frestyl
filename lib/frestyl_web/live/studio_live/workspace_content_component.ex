@@ -6,7 +6,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
   def render(assigns) do
     ~H"""
     <div class="flex-1 overflow-hidden" id="workspace-content">
-      <%= case @active_tool do %>
+      <%= case Map.get(assigns, :active_tool, "audio") do %>
         <% "audio" -> %>
           <.render_audio_workspace assigns={assigns} />
 
@@ -29,6 +29,14 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
     """
   end
 
+  @impl true
+  def update(assigns, socket) do
+    # Don't filter out legitimate assigns like active_tool
+    # Only filter out the reserved LiveView keys
+    clean_assigns = Map.drop(assigns, [:socket, :flash, :myself])
+    {:ok, assign(socket, clean_assigns)}
+  end
+
   # Audio Workspace Implementation
   defp render_audio_workspace(assigns) do
     tracks = get_in(assigns, [:workspace_state, :audio, :tracks]) || []
@@ -43,7 +51,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
             <%= if get_in(assigns, [:workspace_state, :audio, :playing]) do %>
               <button
                 phx-click="audio_pause_playback"
-                phx-target={@myself}
+                phx-target={assigns[:myself]}
                 class="w-10 h-10 bg-yellow-600 hover:bg-yellow-700 rounded-full flex items-center justify-center text-white"
                 title="Pause"
               >
@@ -54,7 +62,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
             <% else %>
               <button
                 phx-click="audio_start_playback"
-                phx-target={@myself}
+                phx-target={assigns[:myself]}
                 class="w-10 h-10 bg-green-600 hover:bg-green-700 rounded-full flex items-center justify-center text-white"
                 title="Play"
               >
@@ -66,7 +74,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
 
             <button
               phx-click="audio_stop_playback"
-              phx-target={@myself}
+              phx-target={assigns[:myself]}
               class="w-10 h-10 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white"
               title="Stop"
             >
@@ -79,7 +87,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
           <!-- Record Button -->
           <button
             phx-click="audio_toggle_recording"
-            phx-target={@myself}
+            phx-target={assigns[:myself]}
             class={[
               "w-10 h-10 rounded-full flex items-center justify-center text-white border-2",
               get_in(assigns, [:workspace_state, :audio, :recording]) && "bg-red-600 border-red-400 animate-pulse" || "bg-gray-700 border-gray-500 hover:bg-red-600 hover:border-red-400"
@@ -92,7 +100,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
           <!-- Loop Toggle -->
           <button
             phx-click="audio_toggle_loop"
-            phx-target={@myself}
+            phx-target={assigns[:myself]}
             class={[
               "px-3 py-2 rounded text-sm font-medium",
               get_in(assigns, [:workspace_state, :audio, :loop_enabled]) && "bg-indigo-600 text-white" || "bg-gray-700 text-gray-300 hover:bg-gray-600"
@@ -117,7 +125,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
               max="200"
               value={get_in(assigns, [:workspace_state, :audio, :bpm]) || 120}
               phx-change="audio_set_bpm"
-              phx-target={@myself}
+              phx-target={assigns[:myself]}
               class="w-16 bg-gray-700 border-gray-600 rounded text-white text-sm text-center"
             />
           </div>
@@ -126,7 +134,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
           <div class="flex items-center space-x-2">
             <button
               phx-click="audio_zoom_out"
-              phx-target={@myself}
+              phx-target={assigns[:myself]}
               class="p-1 text-gray-400 hover:text-white"
               title="Zoom Out"
             >
@@ -137,7 +145,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
             <span class="text-gray-400 text-sm"><%= round((get_in(assigns, [:workspace_state, :audio, :zoom_level]) || 1.0) * 100) %>%</span>
             <button
               phx-click="audio_zoom_in"
-              phx-target={@myself}
+              phx-target={assigns[:myself]}
               class="p-1 text-gray-400 hover:text-white"
               title="Zoom In"
             >
@@ -156,7 +164,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
           <div class="p-3 border-b border-gray-700">
             <button
               phx-click="audio_add_track"
-              phx-target={@myself}
+              phx-target={assigns[:myself]}
               class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded text-sm font-medium"
             >
               + Add Track
@@ -180,7 +188,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                     value={track.name || "Untitled Track"}
                     phx-blur="audio_update_track_name"
                     phx-value-track-id={track.id}
-                    phx-target={@myself}
+                    phx-target={assigns[:myself]}
                     class="bg-transparent text-white text-sm font-medium border-none focus:outline-none focus:ring-1 focus:ring-indigo-500 rounded px-1"
                   />
                   <div class="flex items-center space-x-1">
@@ -198,7 +206,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                   <button
                     phx-click="audio_toggle_track_mute"
                     phx-value-track-id={track.id}
-                    phx-target={@myself}
+                    phx-target={assigns[:myself]}
                     class={[
                       "w-6 h-6 rounded text-xs font-medium",
                       Map.get(track, :muted, false) && "bg-red-600 text-white" || "bg-gray-600 text-gray-300"
@@ -212,7 +220,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                   <button
                     phx-click="audio_toggle_track_solo"
                     phx-value-track-id={track.id}
-                    phx-target={@myself}
+                    phx-target={assigns[:myself]}
                     class={[
                       "w-6 h-6 rounded text-xs font-medium",
                       Map.get(track, :solo, false) && "bg-yellow-600 text-white" || "bg-gray-600 text-gray-300"
@@ -226,7 +234,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                   <button
                     phx-click="audio_toggle_track_record_arm"
                     phx-value-track-id={track.id}
-                    phx-target={@myself}
+                    phx-target={assigns[:myself]}
                     class={[
                       "w-6 h-6 rounded text-xs font-medium",
                       Map.get(track, :record_armed, false) && "bg-red-600 text-white" || "bg-gray-600 text-gray-300"
@@ -245,7 +253,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                     value={track.volume || 0.8}
                     phx-change="audio_update_track_volume"
                     phx-value-track-id={track.id}
-                    phx-target={@myself}
+                    phx-target={assigns[:myself]}
                     class="flex-1 h-2"
                   />
                 </div>
@@ -278,7 +286,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                       draggable="true"
                       phx-click="audio_select_clip"
                       phx-value-clip-id={clip.id}
-                      phx-target={@myself}
+                      phx-target={assigns[:myself]}
                     >
                       <div class="p-1">
                         <div class="text-xs text-white font-medium truncate">
@@ -316,7 +324,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                 <p class="text-gray-400 mb-4">Create tracks and record audio to get started</p>
                 <button
                   phx-click="audio_add_track"
-                  phx-target={@myself}
+                  phx-target={assigns[:myself]}
                   class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded font-medium"
                 >
                   Create Your First Track
@@ -352,7 +360,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
               type="text"
               value={document.title || "Untitled Document"}
               phx-blur="text_update_document_title"
-              phx-target={@myself}
+              phx-target={assigns[:myself]}
               class="text-lg font-semibold bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded px-2 py-1"
             />
             <span class="text-sm text-gray-500 bg-gray-200 px-2 py-1 rounded">
@@ -390,14 +398,14 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
             <div class="flex items-center space-x-2">
               <button
                 phx-click="text_export_document"
-                phx-target={@myself}
+                phx-target={assigns[:myself]}
                 class="text-sm text-gray-600 hover:text-gray-900 px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
               >
                 Export
               </button>
               <button
                 phx-click="text_save_document"
-                phx-target={@myself}
+                phx-target={assigns[:myself]}
                 class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded"
               >
                 Save
@@ -437,7 +445,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                 phx-blur="text_update_content"
                 phx-keyup="text_update_content"
                 phx-focus="text_editor_focus"
-                phx-target={@myself}
+                phx-target={assigns[:myself]}
                 phx-debounce="300"
               ><%= get_in(assigns, [:workspace_state, :text, :content]) || "" %></textarea>
             </div>
@@ -481,7 +489,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
               <button
                 phx-click="text_create_document"
                 phx-value-type="plain_text"
-                phx-target={@myself}
+                phx-target={assigns[:myself]}
                 class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-4 rounded-lg font-medium"
               >
                 Create New Document
@@ -491,7 +499,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                 <button
                   phx-click="text_create_document"
                   phx-value-type="blog_post"
-                  phx-target={@myself}
+                  phx-target={assigns[:myself]}
                   class="p-3 border border-gray-300 rounded-lg hover:border-indigo-300 hover:bg-indigo-50"
                 >
                   <div class="text-2xl mb-1">📝</div>
@@ -500,7 +508,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                 <button
                   phx-click="text_create_document"
                   phx-value-type="book_chapter"
-                  phx-target={@myself}
+                  phx-target={assigns[:myself]}
                   class="p-3 border border-gray-300 rounded-lg hover:border-indigo-300 hover:bg-indigo-50"
                 >
                   <div class="text-2xl mb-1">📚</div>
@@ -510,7 +518,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
 
               <button
                 phx-click="text_load_existing"
-                phx-target={@myself}
+                phx-target={assigns[:myself]}
                 class="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
               >
                 Or open an existing document →
@@ -541,7 +549,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
           <!-- Mode Switcher -->
           <select
             phx-change="audio_text_set_mode"
-            phx-target={@myself}
+            phx-target={assigns[:myself]}
             class="bg-gray-700 border-gray-600 text-white rounded text-sm"
           >
             <option value="lyrics_with_audio" selected={get_in(assigns, [:workspace_state, :audio_text, :mode]) == "lyrics_with_audio"}>
@@ -575,7 +583,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
           <div class="flex items-center space-x-2">
             <button
               phx-click="audio_text_toggle_sync"
-              phx-target={@myself}
+              phx-target={assigns[:myself]}
               class={[
                 "px-3 py-1 rounded text-sm font-medium",
                 get_in(assigns, [:workspace_state, :audio_text, :sync_enabled]) && "bg-green-600 text-white" || "bg-gray-600 text-gray-300"
@@ -585,7 +593,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
             </button>
             <button
               phx-click="audio_text_detect_beats"
-              phx-target={@myself}
+              phx-target={assigns[:myself]}
               class="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm font-medium"
             >
               Detect Beats
@@ -605,7 +613,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                <button
                  phx-click="audio_text_add_block"
                  phx-value-type="verse"
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                  class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 rounded"
                >
                  + Verse
@@ -613,7 +621,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                <button
                  phx-click="audio_text_add_block"
                  phx-value-type="chorus"
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                  class="text-xs bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded"
                >
                  + Chorus
@@ -621,7 +629,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                <button
                  phx-click="audio_text_add_block"
                  phx-value-type="bridge"
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                  class="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
                >
                  + Bridge
@@ -631,7 +639,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
              <div class="flex items-center space-x-2">
                <button
                  phx-click="audio_text_auto_align"
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                  class="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded"
                  disabled={!get_in(assigns, [:workspace_state, :audio_text, :beat_detection, :enabled])}
                >
@@ -651,7 +659,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                ]}
                phx-click="audio_text_select_block"
                phx-value-block-id={block.id}
-               phx-target={@myself}
+               phx-target={assigns[:myself]}
              >
                <div class="flex items-center justify-between mb-2">
                  <div class="flex items-center space-x-2">
@@ -672,7 +680,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                    <button
                      phx-click="audio_text_sync_block"
                      phx-value-block-id={block.id}
-                     phx-target={@myself}
+                     phx-target={assigns[:myself]}
                      class="text-gray-400 hover:text-green-400 text-xs"
                      title="Sync to current time"
                    >
@@ -681,7 +689,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                    <button
                      phx-click="audio_text_delete_block"
                      phx-value-block-id={block.id}
-                     phx-target={@myself}
+                     phx-target={assigns[:myself]}
                      class="text-gray-400 hover:text-red-400 text-xs"
                      title="Delete block"
                    >
@@ -696,7 +704,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                  placeholder="Enter lyrics or script content..."
                  phx-blur="audio_text_update_block"
                  phx-value-block-id={block.id}
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                ><%= block.content %></textarea>
              </div>
            <% end %>
@@ -711,7 +719,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                <button
                  phx-click="audio_text_add_block"
                  phx-value-type="verse"
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                  class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded font-medium"
                >
                  Add Your First <%= if get_in(assigns, [:workspace_state, :audio_text, :mode]) == "lyrics_with_audio", do: "Verse", else: "Scene" %>
@@ -729,21 +737,21 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
              <div class="flex items-center space-x-3">
                <button
                  phx-click="audio_text_play"
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                  class="w-8 h-8 bg-green-600 hover:bg-green-700 rounded-full flex items-center justify-center text-white"
                >
                  ▶️
                </button>
                <button
                  phx-click="audio_text_pause"
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                  class="w-8 h-8 bg-yellow-600 hover:bg-yellow-700 rounded-full flex items-center justify-center text-white"
                >
                  ⏸️
                </button>
                <button
                  phx-click="audio_text_stop"
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                  class="w-8 h-8 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white"
                >
                  ⏹️
@@ -830,7 +838,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                      style={"left: #{block.sync_point.start_time * 0.4}px; width: #{(block.sync_point.duration || 10000) * 0.4}px;"}
                      phx-click="audio_text_select_block"
                      phx-value-block-id={block.id}
-                     phx-target={@myself}
+                     phx-target={assigns[:myself]}
                      title={block.content}
                    >
                      <div class="p-1 text-xs text-white font-medium truncate">
@@ -853,7 +861,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
            <div class="flex items-center space-x-2">
              <button
                phx-click="audio_text_start_recording"
-               phx-target={@myself}
+               phx-target={assigns[:myself]}
                class="w-10 h-10 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white"
              >
                ⚫
@@ -867,7 +875,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                type="checkbox"
                checked={get_in(assigns, [:workspace_state, :audio_text, :text_sync, :auto_scroll])}
                phx-click="audio_text_toggle_auto_scroll"
-               phx-target={@myself}
+               phx-target={assigns[:myself]}
                class="rounded border-gray-600 text-indigo-600"
              />
              <span>Auto-scroll text</span>
@@ -879,7 +887,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                type="checkbox"
                checked={get_in(assigns, [:workspace_state, :audio_text, :text_sync, :highlight_current])}
                phx-click="audio_text_toggle_highlight"
-               phx-target={@myself}
+               phx-target={assigns[:myself]}
                class="rounded border-gray-600 text-indigo-600"
              />
              <span>Highlight current</span>
@@ -924,7 +932,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
              <button
                phx-click="visual_set_tool"
                phx-value-tool={tool}
-               phx-target={@myself}
+               phx-target={assigns[:myself]}
                class={[
                  "p-2 rounded border-2 transition-colors",
                  get_in(assigns, [:workspace_state, :visual, :tool]) == tool && "border-indigo-500 bg-indigo-50" || "border-gray-300 hover:border-gray-400"
@@ -945,7 +953,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
              type="color"
              value={get_in(assigns, [:workspace_state, :visual, :color]) || "#4f46e5"}
              phx-change="visual_set_color"
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
              class="w-8 h-8 rounded border border-gray-300"
            />
          </div>
@@ -959,7 +967,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
              max="50"
              value={get_in(assigns, [:workspace_state, :visual, :brush_size]) || 5}
              phx-change="visual_set_brush_size"
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
              class="w-20"
            />
            <span class="text-sm text-gray-600 w-8"><%= get_in(assigns, [:workspace_state, :visual, :brush_size]) || 5 %>px</span>
@@ -969,14 +977,14 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
          <div class="flex items-center space-x-2">
            <button
              phx-click="visual_clear_canvas"
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
              class="text-sm text-gray-600 hover:text-gray-900 px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
            >
              Clear
            </button>
            <button
              phx-click="visual_save_canvas"
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
              class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded"
            >
              Save
@@ -1041,7 +1049,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
          <!-- Instrument Selector -->
          <select
            phx-change="midi_set_instrument"
-           phx-target={@myself}
+           phx-target={assigns[:myself]}
            class="bg-gray-700 border-gray-600 text-white rounded text-sm"
          >
            <option value="piano" selected={get_in(assigns, [:workspace_state, :midi, :current_instrument]) == "piano"}>Piano</option>
@@ -1054,7 +1062,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
          <div class="flex items-center space-x-2">
            <button
              phx-click="midi_octave_down"
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
              class="w-6 h-6 bg-gray-600 hover:bg-gray-500 rounded text-white text-xs"
            >
              -
@@ -1062,7 +1070,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
            <span class="text-white text-sm">Oct <%= get_in(assigns, [:workspace_state, :midi, :octave]) || 4 %></span>
            <button
              phx-click="midi_octave_up"
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
              class="w-6 h-6 bg-gray-600 hover:bg-gray-500 rounded text-white text-xs"
            >
              +
@@ -1076,7 +1084,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
            <label class="text-gray-400 text-sm">Grid:</label>
            <select
              phx-change="midi_set_grid_size"
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
              class="bg-gray-700 border-gray-600 text-white rounded text-sm"
            >
              <option value="4">1/4</option>
@@ -1090,14 +1098,14 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
          <div class="flex items-center space-x-2">
            <button
              phx-click="midi_play"
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
              class="w-8 h-8 bg-green-600 hover:bg-green-700 rounded-full flex items-center justify-center text-white"
            >
              ▶️
            </button>
            <button
              phx-click="midi_stop"
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
              class="w-8 h-8 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center text-white"
            >
              ⏹️
@@ -1120,7 +1128,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
              ]}
              phx-click="midi_preview_note"
              phx-value-note={note}
-             phx-target={@myself}
+             phx-target={assigns[:myself]}
            >
              <%= note %>
            </div>
@@ -1148,7 +1156,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                    phx-click="midi_toggle_note"
                    phx-value-note={note}
                    phx-value-beat={beat}
-                   phx-target={@myself}
+                   phx-target={assigns[:myself]}
                    data-note={note}
                    data-beat={beat}
                  ></div>
@@ -1161,7 +1169,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                    style={"left: #{midi_note.start_beat * 16}px; width: #{midi_note.duration * 16}px;"}
                    phx-click="midi_select_note"
                    phx-value-note-id={midi_note.id}
-                   phx-target={@myself}
+                   phx-target={assigns[:myself]}
                  ></div>
                <% end %>
              </div>
@@ -1187,7 +1195,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
              <button
                phx-click="midi_play_note"
                phx-value-note={"#{note}#{get_in(assigns, [:workspace_state, :midi, :octave]) || 4}"}
-               phx-target={@myself}
+               phx-target={assigns[:myself]}
                class="w-8 h-16 bg-white border border-gray-400 hover:bg-gray-100 text-gray-900 text-xs flex items-end justify-center pb-1"
              >
                <%= note %>
@@ -1198,7 +1206,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
                <button
                  phx-click="midi_play_note"
                  phx-value-note={"#{note}##{get_in(assigns, [:workspace_state, :midi, :octave]) || 4}"}
-                 phx-target={@myself}
+                 phx-target={assigns[:myself]}
                  class="w-6 h-10 bg-gray-900 hover:bg-gray-800 text-white text-xs -ml-3 -mr-3 z-10 relative"
                >
                </button>
@@ -1222,7 +1230,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
          </svg>
        </div>
        <h3 class="text-2xl font-bold text-white mb-2">
-         <%= String.capitalize(@active_tool) %> Workspace
+         <%= String.capitalize(Map.get(assigns, :active_tool, "unknown")) %> Workspace
        </h3>
        <p class="text-gray-400 mb-6">
          This workspace is being prepared for you

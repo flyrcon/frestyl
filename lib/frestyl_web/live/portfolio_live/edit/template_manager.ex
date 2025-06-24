@@ -157,6 +157,191 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
       --portfolio-font-family: #{font_family_css};
     }
 
+    /* 🔥 PORTFOLIO CARD FIXED HEIGHT AND SCROLLABLE CONTENT */
+
+    /* Base portfolio card with fixed height */
+    .portfolio-card {
+      height: 400px; /* Fixed height for all cards */
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      border: 1px solid #e5e7eb;
+      transition: all 0.3s ease;
+    }
+
+    /* Portfolio card header - fixed at top */
+    .portfolio-card-header {
+      flex-shrink: 0; /* Prevent header from shrinking */
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+      margin-bottom: 1rem;
+      min-height: 60px; /* Minimum header height */
+      max-height: 120px; /* Maximum header height */
+    }
+
+    /* Portfolio card content - scrollable area */
+    .portfolio-card-content {
+      flex: 1; /* Take remaining space */
+      overflow-y: auto; /* Enable vertical scrolling */
+      overflow-x: hidden; /* Hide horizontal scrolling */
+      padding-right: 0.5rem; /* Space for scrollbar */
+      margin-right: -0.5rem; /* Offset padding to align content */
+    }
+
+    /* Custom scrollbar styling for webkit browsers */
+    .portfolio-card-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .portfolio-card-content::-webkit-scrollbar-track {
+      background: rgba(243, 244, 246, 0.5);
+      border-radius: 3px;
+    }
+
+    .portfolio-card-content::-webkit-scrollbar-thumb {
+      background: rgba(156, 163, 175, 0.7);
+      border-radius: 3px;
+    }
+
+    .portfolio-card-content::-webkit-scrollbar-thumb:hover {
+      background: rgba(107, 114, 128, 0.8);
+    }
+
+    /* Firefox scrollbar styling */
+    .portfolio-card-content {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(156, 163, 175, 0.7) rgba(243, 244, 246, 0.5);
+    }
+
+    /* Card hover effects with fixed height */
+    .portfolio-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Ensure header content doesn't overflow */
+    .portfolio-card-title {
+      font-size: 1.125rem;
+      line-height: 1.4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .portfolio-card-subtitle {
+      font-size: 0.875rem;
+      opacity: 0.7;
+    }
+
+    /* Ensure content within cards doesn't break layout */
+    .portfolio-card-content * {
+      max-width: 100%;
+      word-wrap: break-word;
+    }
+
+    /* Handle long content gracefully */
+    .portfolio-card-content pre,
+    .portfolio-card-content code {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .portfolio-card-content img {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Layout-specific height adjustments */
+
+    /* Dashboard layout - standard cards */
+    .portfolio-layout-dashboard .portfolio-card {
+      height: 420px;
+    }
+
+    /* Gallery layout - varying heights for masonry effect but with max */
+    .portfolio-layout-gallery .portfolio-card {
+      height: auto;
+      max-height: 500px;
+      min-height: 350px;
+    }
+
+    .portfolio-layout-gallery .portfolio-card-content {
+      max-height: 400px; /* Ensure content doesn't exceed reasonable height */
+    }
+
+    /* Timeline layout - consistent height */
+    .portfolio-layout-timeline .portfolio-card {
+      height: 450px;
+    }
+
+    /* Minimal layout - slightly shorter */
+    .portfolio-layout-minimal .portfolio-card {
+      height: 380px;
+    }
+
+    /* Corporate layout - professional height */
+    .portfolio-layout-corporate .portfolio-card {
+      height: 440px;
+    }
+
+    /* Terminal layout specific adjustments */
+    .terminal-window .portfolio-card {
+      height: 400px;
+    }
+
+    .terminal-window .portfolio-card-content {
+      flex: 1;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    /* Responsive height adjustments */
+    @media (max-width: 768px) {
+      .portfolio-card {
+        height: 350px; /* Shorter on mobile */
+      }
+
+      .portfolio-layout-dashboard .portfolio-card,
+      .portfolio-layout-timeline .portfolio-card,
+      .portfolio-layout-corporate .portfolio-card {
+        height: 350px;
+      }
+
+      .portfolio-layout-minimal .portfolio-card {
+        height: 320px;
+      }
+
+      .portfolio-layout-gallery .portfolio-card {
+        max-height: 400px;
+        min-height: 300px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .portfolio-card {
+        height: 320px; /* Even shorter on very small screens */
+      }
+
+      .portfolio-layout-dashboard .portfolio-card,
+      .portfolio-layout-timeline .portfolio-card,
+      .portfolio-layout-corporate .portfolio-card,
+      .portfolio-layout-minimal .portfolio-card {
+        height: 320px;
+      }
+
+      .portfolio-layout-gallery .portfolio-card {
+        max-height: 350px;
+        min-height: 280px;
+      }
+    }
+
+    /* 🔥 EXISTING COLOR AND TYPOGRAPHY STYLES */
     .portfolio-primary { color: var(--portfolio-primary-color) !important; }
     .portfolio-secondary { color: var(--portfolio-secondary-color) !important; }
     .portfolio-accent { color: var(--portfolio-accent-color) !important; }
@@ -164,19 +349,8 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
     .portfolio-bg-secondary { background-color: var(--portfolio-secondary-color) !important; }
     .portfolio-bg-accent { background-color: var(--portfolio-accent-color) !important; }
 
-    /* Color swatches */
-    .color-swatch-primary { background-color: var(--portfolio-primary-color) !important; }
-    .color-swatch-secondary { background-color: var(--portfolio-secondary-color) !important; }
-    .color-swatch-accent { background-color: var(--portfolio-accent-color) !important; }
-
-    /* Font preview ONLY in typography preview area */
     .portfolio-preview {
       font-family: var(--portfolio-font-family) !important;
-    }
-
-    /* Template preview cards */
-    .template-preview-card.border-blue-500 {
-      border-color: var(--portfolio-primary-color) !important;
     }
     </style>
     """
@@ -383,6 +557,10 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
           padding: 2rem;
         }
         .portfolio-layout-dashboard .portfolio-card {
+          height: 420px; /* Fixed height for dashboard */
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
           background: white;
           border-radius: 12px;
           padding: 1.5rem;
@@ -393,6 +571,17 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
         .portfolio-layout-dashboard .portfolio-card:hover {
           transform: translateY(-2px);
           box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
+        }
+        .portfolio-layout-dashboard .portfolio-card-header {
+          flex-shrink: 0;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+          margin-bottom: 1rem;
+        }
+        .portfolio-layout-dashboard .portfolio-card-content {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
         }
         </style>
         """
@@ -423,6 +612,24 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
           padding: 2rem;
           box-shadow: 0 8px 25px -3px rgba(0, 0, 0, 0.1);
           border: 1px solid #f3f4f6;
+          height: auto;
+          max-height: 500px; /* Max height for gallery cards */
+          min-height: 350px; /* Min height for gallery cards */
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .portfolio-layout-gallery .portfolio-card-header {
+          flex-shrink: 0;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+          margin-bottom: 1rem;
+        }
+        .portfolio-layout-gallery .portfolio-card-content {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
+          max-height: 400px; /* Ensure content doesn't exceed reasonable height */
         }
         </style>
         """
@@ -449,6 +656,10 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
           margin-left: 4rem;
           margin-bottom: 3rem;
           position: relative;
+          height: 450px; /* Fixed height for timeline */
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
           background: white;
           border-radius: 12px;
           padding: 2rem;
@@ -466,6 +677,17 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
           border: 3px solid white;
           box-shadow: 0 0 0 3px #3b82f6;
         }
+        .portfolio-layout-timeline .portfolio-card-header {
+          flex-shrink: 0;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+          margin-bottom: 1rem;
+        }
+        .portfolio-layout-timeline .portfolio-card-content {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
         </style>
         """
 
@@ -479,6 +701,10 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
         }
         .portfolio-layout-minimal .portfolio-card {
           margin-bottom: 4rem;
+          height: 380px; /* Fixed height for minimal */
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
           background: transparent;
           border: none;
           box-shadow: none;
@@ -487,6 +713,17 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
         }
         .portfolio-layout-minimal .portfolio-card:last-child {
           border-bottom: none;
+        }
+        .portfolio-layout-minimal .portfolio-card-header {
+          flex-shrink: 0;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+          margin-bottom: 1rem;
+        }
+        .portfolio-layout-minimal .portfolio-card-content {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
         }
         </style>
         """
@@ -508,11 +745,26 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
           }
         }
         .portfolio-layout-corporate .portfolio-card {
+          height: 440px; /* Fixed height for corporate */
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
           background: white;
           border-radius: 8px;
           padding: 2rem;
           box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
           border-left: 4px solid var(--portfolio-primary-color, #3b82f6);
+        }
+        .portfolio-layout-corporate .portfolio-card-header {
+          flex-shrink: 0;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+          margin-bottom: 1rem;
+        }
+        .portfolio-layout-corporate .portfolio-card-content {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
         }
         </style>
         """
@@ -526,32 +778,74 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
           gap: 1.5rem;
           padding: 1.5rem;
         }
+        .portfolio-card {
+          height: 400px; /* Default fixed height */
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .portfolio-card-header {
+          flex-shrink: 0;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+          margin-bottom: 1rem;
+        }
+        .portfolio-card-content {
+          flex: 1;
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
         </style>
         """
     end
   end
 
-  defp get_available_layouts do
+  def get_available_layouts do
     [
       {"dashboard", %{
         name: "Dashboard",
-        description: "Grid-based layout perfect for showcasing multiple sections"
+        description: "Modern grid-based layout",
+        features: ["Grid Layout", "Card-based", "Responsive", "Professional"]
       }},
       {"gallery", %{
         name: "Gallery",
-        description: "Masonry-style layout ideal for creative portfolios"
+        description: "Visual masonry-style layout",
+        features: ["Masonry", "Image Focus", "Creative"]
       }},
       {"timeline", %{
         name: "Timeline",
-        description: "Chronological layout great for career progression"
+        description: "Chronological vertical layout with story features",
+        features: ["Timeline", "Chronological", "Story", "Narrative"]
       }},
       {"minimal", %{
         name: "Minimal",
-        description: "Clean, focused layout with minimal visual elements"
+        description: "Clean single-column layout",
+        features: ["Single Column", "Clean", "Focus"]
       }},
       {"corporate", %{
         name: "Corporate",
-        description: "Professional two-column layout for business portfolios"
+        description: "Structured business layout",
+        features: ["Structured", "Professional", "Formal"]
+      }},
+      {"creative", %{
+        name: "Creative",
+        description: "Dynamic asymmetric layout",
+        features: ["Asymmetric", "Dynamic", "Bold"]
+      }},
+      {"terminal", %{
+        name: "Terminal",
+        description: "Developer-focused terminal theme",
+        features: ["Code Style", "Dark Theme", "Technical"]
+      }},
+      {"case_study", %{
+        name: "Case Study",
+        description: "Business presentation layout",
+        features: ["Structured", "Data Focus", "Business"]
+      }},
+      {"academic", %{
+        name: "Academic",
+        description: "Research and publication layout",
+        features: ["Publication Ready", "Clean Typography", "Academic"]
       }}
     ]
   end

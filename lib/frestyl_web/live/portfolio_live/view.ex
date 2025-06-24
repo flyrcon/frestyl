@@ -530,16 +530,11 @@ defmodule FrestylWeb.PortfolioLive.View do
     end)
   end
 
-  # 🔥 MISSING: get_video_content_safe function
   defp get_video_content_safe(intro_video_section) do
     case intro_video_section do
-      # Case 1: intro_video_section has a nested section with content
       %{section: %{content: content}} -> content
-      # Case 2: intro_video_section has content directly
       %{content: content} -> content
-      # Case 3: intro_video_section IS the content (flat structure)
       %{"video_url" => _} = content -> content
-      # Case 4: fallback - extract from available fields
       video_data ->
         %{
           "video_url" => Map.get(video_data, :video_url, ""),
@@ -550,11 +545,11 @@ defmodule FrestylWeb.PortfolioLive.View do
     end
   end
 
-  # 🔥 MISSING: get_video_url_safe function
   defp get_video_url_safe(video_content, intro_video_section) do
     cond do
       Map.has_key?(video_content, "video_url") -> Map.get(video_content, "video_url", "")
-      Map.has_key?(intro_video_section, :video_url) -> intro_video_section.video_url
+      Map.has_key?(video_content, :video_url) -> Map.get(video_content, :video_url, "")
+      Map.has_key?(intro_video_section, :video_url) -> Map.get(intro_video_section, :video_url, "")
       true -> ""
     end
   end
@@ -1805,6 +1800,122 @@ defmodule FrestylWeb.PortfolioLive.View do
     end
   end
 
+  defp render_story_section(section) do
+    content = section.content || %{}
+    chapters = Map.get(content, "chapters", [])
+
+    Phoenix.HTML.raw("""
+    <section class="py-16 bg-gradient-to-br from-purple-50 to-pink-50">
+      <div class="max-w-4xl mx-auto px-6">
+        <h2 class="text-3xl font-bold text-gray-900 mb-4">#{Map.get(content, "title", "My Story")}</h2>
+        <div class="prose prose-lg max-w-none mb-12">
+          <p class="text-gray-600 leading-relaxed text-lg">#{Map.get(content, "narrative", "")}</p>
+        </div>
+
+        <div class="space-y-8">
+          #{Enum.map(chapters, fn chapter ->
+            """
+            <div class="flex items-start space-x-6 bg-white rounded-lg p-6 shadow-sm">
+              <div class="flex-shrink-0 w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center">
+                <span class="text-purple-600 font-semibold">#{Map.get(chapter, "year", "")}</span>
+              </div>
+              <div class="flex-1">
+                <h3 class="text-xl font-semibold text-gray-900 mb-2">#{Map.get(chapter, "title", "")}</h3>
+                <p class="text-gray-600 leading-relaxed">#{Map.get(chapter, "content", "")}</p>
+              </div>
+            </div>
+            """
+          end) |> Enum.join("")}
+        </div>
+      </div>
+    </section>
+    """)
+  end
+
+  defp render_timeline_section(section) do
+    content = section.content || %{}
+    events = Map.get(content, "events", [])
+
+    Phoenix.HTML.raw("""
+    <section class="py-16 bg-white">
+      <div class="max-w-4xl mx-auto px-6">
+        <h2 class="text-3xl font-bold text-gray-900 mb-4 text-center">#{Map.get(content, "title", "Timeline")}</h2>
+        <p class="text-gray-600 text-center mb-12">#{Map.get(content, "description", "")}</p>
+
+        <div class="relative">
+          <div class="absolute left-1/2 transform -translate-x-px h-full w-0.5 bg-gray-300"></div>
+
+          <div class="space-y-12">
+            #{Enum.with_index(events) |> Enum.map(fn {event, index} ->
+              is_left = rem(index, 2) == 0
+              """
+              <div class="relative flex items-center #{if is_left, do: "justify-start", else: "justify-end"}">
+                <div class="#{if is_left, do: "mr-8 text-right", else: "ml-8 text-left"} w-5/12">
+                  <div class="bg-white p-6 rounded-lg shadow-lg border">
+                    <div class="text-sm text-blue-600 font-semibold mb-1">#{Map.get(event, "date", "")}</div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">#{Map.get(event, "title", "")}</h3>
+                    <p class="text-gray-600">#{Map.get(event, "description", "")}</p>
+                  </div>
+                </div>
+                <div class="absolute left-1/2 transform -translate-x-1/2 w-4 h-4 bg-blue-500 rounded-full border-4 border-white"></div>
+              </div>
+              """
+            end) |> Enum.join("")}
+          </div>
+        </div>
+      </div>
+    </section>
+    """)
+  end
+
+  defp render_narrative_section(section) do
+    content = section.content || %{}
+
+    Phoenix.HTML.raw("""
+    <section class="py-16 bg-gray-50">
+      <div class="max-w-4xl mx-auto px-6">
+        <h2 class="text-3xl font-bold text-gray-900 mb-4">#{Map.get(content, "title", "My Journey")}</h2>
+        <h3 class="text-xl text-gray-600 mb-8">#{Map.get(content, "subtitle", "")}</h3>
+
+        <div class="prose prose-lg max-w-none">
+          <div class="text-gray-700 leading-relaxed whitespace-pre-line">
+            #{Map.get(content, "narrative", "")}
+          </div>
+        </div>
+      </div>
+    </section>
+    """)
+  end
+
+  defp render_journey_section(section) do
+    content = section.content || %{}
+    milestones = Map.get(content, "milestones", [])
+
+    Phoenix.HTML.raw("""
+    <section class="py-16 bg-gradient-to-br from-blue-50 to-indigo-50">
+      <div class="max-w-6xl mx-auto px-6">
+        <h2 class="text-3xl font-bold text-gray-900 mb-4 text-center">#{Map.get(content, "title", "Professional Journey")}</h2>
+        <p class="text-gray-600 text-center mb-12 text-lg">#{Map.get(content, "introduction", "")}</p>
+
+        <div class="grid md:grid-cols-3 gap-8">
+          #{Enum.map(milestones, fn milestone ->
+            """
+            <div class="bg-white rounded-lg p-6 shadow-lg">
+              <h3 class="text-xl font-semibold text-gray-900 mb-3">#{Map.get(milestone, "title", "")}</h3>
+              <p class="text-gray-600 mb-4">#{Map.get(milestone, "description", "")}</p>
+              <div class="border-t pt-4">
+                <p class="text-sm font-medium text-blue-600">Impact:</p>
+                <p class="text-sm text-gray-700">#{Map.get(milestone, "impact", "")}</p>
+              </div>
+            </div>
+            """
+          end) |> Enum.join("")}
+        </div>
+      </div>
+    </section>
+    """)
+  end
+
   # 🔥 ENHANCED HEADER CONTACT/SOCIAL DISPLAY COMPONENT
   defp render_header_contact_social(assigns) do
     contact_info = assigns[:contact_info] || %{}
@@ -2261,26 +2372,46 @@ defmodule FrestylWeb.PortfolioLive.View do
     end
   end
 
-  # 🔥 ADD THIS HELPER FUNCTION IF IT DOESN'T EXIST:
   defp render_section_content_safe(section) do
     try do
       content = section.content || %{}
 
       case section.section_type do
         :skills ->
-          render_skills_content_simple(content)
+          render_skills_content_enhanced(content)
         :experience ->
-          render_experience_content_simple(content)
+          render_experience_content_enhanced(content)
         :education ->
-          render_education_content_simple(content)
+          render_education_content_enhanced(content)
         :projects ->
-          render_projects_content_simple(content)
+          render_projects_content_enhanced(content)
         :contact ->
-          render_contact_content_simple(content)
+          render_contact_content_enhanced(content)
         :intro ->
-          render_intro_content_simple(content)
+          render_intro_content_enhanced(content)
+
+        # ADD THESE NEW STORY SECTION CASES:
+        :story ->
+          render_story_content_enhanced(content)
+        :timeline ->
+          render_timeline_content_enhanced(content)
+        :narrative ->
+          render_narrative_content_enhanced(content)
+        :journey ->
+          render_journey_content_enhanced(content)
+
+        # Also handle string versions (in case section_type is stored as string)
+        "story" ->
+          render_story_content_enhanced(content)
+        "timeline" ->
+          render_timeline_content_enhanced(content)
+        "narrative" ->
+          render_narrative_content_enhanced(content)
+        "journey" ->
+          render_journey_content_enhanced(content)
+
         _ ->
-          render_generic_content_simple(content)
+          render_generic_content_enhanced(content)
       end
     rescue
       _ ->
@@ -2288,6 +2419,112 @@ defmodule FrestylWeb.PortfolioLive.View do
         <div class="text-gray-500 italic">Content loading...</div>
         """)
     end
+  end
+
+  defp render_story_content_enhanced(content) do
+    chapters = Map.get(content, "chapters", [])
+    narrative = Map.get(content, "narrative", "")
+
+    Phoenix.HTML.raw("""
+    <div class="story-section space-y-6">
+      #{if narrative != "", do: """
+      <div class="prose prose-sm max-w-none">
+        <p class="text-gray-600 leading-relaxed">#{narrative}</p>
+      </div>
+      """, else: ""}
+
+      <div class="space-y-4">
+        #{Enum.map(chapters, fn chapter ->
+          """
+          <div class="flex items-start space-x-4 p-4 bg-purple-50 rounded-lg">
+            <div class="flex-shrink-0 w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+              <span class="text-purple-600 font-semibold text-sm">#{Map.get(chapter, "year", "")}</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="font-semibold text-gray-900 text-sm mb-1">#{Map.get(chapter, "title", "")}</h4>
+              <p class="text-gray-600 text-sm leading-relaxed">#{Map.get(chapter, "content", "")}</p>
+            </div>
+          </div>
+          """
+        end) |> Enum.join("")}
+      </div>
+    </div>
+    """)
+  end
+
+  defp render_timeline_content_enhanced(content) do
+    events = Map.get(content, "events", [])
+    description = Map.get(content, "description", "")
+
+    Phoenix.HTML.raw("""
+    <div class="timeline-section">
+      #{if description != "", do: """
+      <p class="text-gray-600 text-sm mb-4">#{description}</p>
+      """, else: ""}
+
+      <div class="space-y-3 relative">
+        <div class="absolute left-3 top-0 bottom-0 w-0.5 bg-blue-200"></div>
+
+        #{Enum.map(events, fn event ->
+          """
+          <div class="relative flex items-start">
+            <div class="absolute left-2 w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+            <div class="ml-6">
+              <div class="text-xs text-blue-600 font-semibold">#{Map.get(event, "date", "")}</div>
+              <h4 class="font-semibold text-gray-900 text-sm">#{Map.get(event, "title", "")}</h4>
+              <p class="text-gray-600 text-sm">#{Map.get(event, "description", "")}</p>
+            </div>
+          </div>
+          """
+        end) |> Enum.join("")}
+      </div>
+    </div>
+    """)
+  end
+
+  defp render_narrative_content_enhanced(content) do
+    narrative = Map.get(content, "narrative", "")
+    subtitle = Map.get(content, "subtitle", "")
+
+    Phoenix.HTML.raw("""
+    <div class="narrative-section space-y-4">
+      #{if subtitle != "", do: """
+      <h3 class="text-lg font-semibold text-gray-900">#{subtitle}</h3>
+      """, else: ""}
+
+      <div class="prose prose-sm max-w-none">
+        <div class="text-gray-700 leading-relaxed whitespace-pre-line">#{narrative}</div>
+      </div>
+    </div>
+    """)
+  end
+
+  defp render_journey_content_enhanced(content) do
+    milestones = Map.get(content, "milestones", [])
+    introduction = Map.get(content, "introduction", "")
+
+    Phoenix.HTML.raw("""
+    <div class="journey-section space-y-4">
+      #{if introduction != "", do: """
+      <p class="text-gray-600 text-sm">#{introduction}</p>
+      """, else: ""}
+
+      <div class="grid gap-3">
+        #{Enum.map(milestones, fn milestone ->
+          """
+          <div class="bg-blue-50 rounded-lg p-4">
+            <h4 class="font-semibold text-gray-900 text-sm mb-2">#{Map.get(milestone, "title", "")}</h4>
+            <p class="text-gray-600 text-sm mb-2">#{Map.get(milestone, "description", "")}</p>
+            <div class="border-t border-blue-200 pt-2">
+              <p class="text-xs font-medium text-blue-600">Impact:</p>
+              <p class="text-xs text-blue-800">#{Map.get(milestone, "impact", "")}</p>
+            </div>
+          </div>
+          """
+        end) |> Enum.join("")}
+      </div>
+    </div>
+    """)
   end
 
   defp render_education_content_simple(content) do
@@ -2770,6 +3007,179 @@ defmodule FrestylWeb.PortfolioLive.View do
         color: var(--portfolio-text-color) !important;
       }
 
+
+      /* 🔥 FIXED HEIGHT PORTFOLIO CARDS WITH SCROLLABLE CONTENT */
+
+      /* Base portfolio card with fixed height */
+      .portfolio-card {
+        height: 400px !important; /* Fixed height for all cards */
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        background-color: white !important;
+      }
+
+      /* Portfolio card title/header - fixed at top */
+      .portfolio-card h2 {
+        flex-shrink: 0 !important; /* Prevent header from shrinking */
+        padding-bottom: 1rem !important;
+        border-bottom: 1px solid rgba(229, 231, 235, 0.5) !important;
+        margin-bottom: 1rem !important;
+      }
+
+      /* Portfolio card content - scrollable area */
+      .portfolio-card .portfolio-secondary {
+        flex: 1 !important; /* Take remaining space */
+        overflow-y: auto !important; /* Enable vertical scrolling */
+        overflow-x: hidden !important; /* Hide horizontal scrolling */
+        padding-right: 0.5rem !important;
+        margin-right: -0.5rem !important;
+      }
+
+      /* Custom scrollbar styling for webkit browsers */
+      .portfolio-card .portfolio-secondary::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .portfolio-card .portfolio-secondary::-webkit-scrollbar-track {
+        background: rgba(243, 244, 246, 0.5);
+        border-radius: 3px;
+      }
+
+      .portfolio-card .portfolio-secondary::-webkit-scrollbar-thumb {
+        background: rgba(156, 163, 175, 0.7);
+        border-radius: 3px;
+      }
+
+      .portfolio-card .portfolio-secondary::-webkit-scrollbar-thumb:hover {
+        background: rgba(107, 114, 128, 0.8);
+      }
+
+      /* Firefox scrollbar styling */
+      .portfolio-card .portfolio-secondary {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(156, 163, 175, 0.7) rgba(243, 244, 246, 0.5);
+      }
+
+      /* Ensure content within cards doesn't break layout */
+      .portfolio-card .portfolio-secondary * {
+        max-width: 100% !important;
+        word-wrap: break-word !important;
+      }
+
+      /* Handle long content gracefully */
+      .portfolio-card .portfolio-secondary pre,
+      .portfolio-card .portfolio-secondary code {
+        white-space: pre-wrap !important;
+        word-break: break-word !important;
+      }
+
+      .portfolio-card .portfolio-secondary img {
+        max-width: 100% !important;
+        height: auto !important;
+      }
+
+      /* 🔥 SCROLL INDICATORS */
+
+      /* Subtle fade gradient at bottom to indicate more content */
+      .portfolio-card .portfolio-secondary::after {
+        content: '';
+        position: sticky;
+        bottom: 0;
+        display: block;
+        height: 20px;
+        background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.9) 100%);
+        pointer-events: none;
+        margin-top: -20px;
+        z-index: 1;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+      }
+
+      /* Hide fade effect when scrolled to bottom */
+      .portfolio-card .portfolio-secondary.scrolled-to-bottom::after {
+        opacity: 0;
+      }
+
+      /* Subtle shadow at top when scrolled down */
+      .portfolio-card .portfolio-secondary::before {
+        content: '';
+        position: sticky;
+        top: 0;
+        display: block;
+        height: 20px;
+        background: linear-gradient(to bottom, rgba(255, 255, 255, 0.9) 0%, transparent 100%);
+        pointer-events: none;
+        margin-bottom: -20px;
+        z-index: 1;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      /* Show top shadow when scrolled */
+      .portfolio-card .portfolio-secondary.scrolled::before {
+        opacity: 1;
+      }
+
+      /* Enhanced scrollbar visibility */
+      .portfolio-card .portfolio-secondary:hover::-webkit-scrollbar-thumb {
+        background: rgba(107, 114, 128, 0.9);
+      }
+
+      /* Subtle bounce animation hint */
+      .portfolio-card:hover .portfolio-secondary {
+        animation: subtle-scroll-hint 2s ease-in-out;
+      }
+
+      @keyframes subtle-scroll-hint {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-2px); }
+      }
+
+      /* Visual indicator for overflow content */
+      .portfolio-card.has-overflow::after {
+        content: '⤓';
+        position: absolute;
+        bottom: 1rem;
+        right: 1rem;
+        background: rgba(59, 130, 246, 0.1);
+        color: var(--portfolio-primary-color);
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        opacity: 0.7;
+        animation: pulse-hint 2s infinite;
+        pointer-events: none;
+      }
+
+      @keyframes pulse-hint {
+        0%, 100% { opacity: 0.7; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.1); }
+      }
+
+      /* Hide scroll hint when actively scrolling */
+      .portfolio-card.has-overflow.scrolling::after {
+        opacity: 0;
+      }
+
+      /* 🔥 FIX VIDEO HERO SECTION HEIGHT AND SPACING */
+      .portfolio-bg {
+        min-height: auto !important;
+      }
+
+      .portfolio-bg > section {
+        min-height: 60vh !important;
+        padding-bottom: 1rem !important;
+      }
+
+      .portfolio-bg #portfolio-sections {
+        margin-top: -3rem !important;
+      }
+
       /* 🔥 TEMPLATE-SPECIFIC STYLING */
       #{template_classes}
 
@@ -2783,13 +3193,6 @@ defmodule FrestylWeb.PortfolioLive.View do
       .portfolio-bg-primary { background-color: var(--portfolio-primary-color) !important; }
       .portfolio-bg-secondary { background-color: var(--portfolio-secondary-color) !important; }
       .portfolio-bg-accent { background-color: var(--portfolio-accent-color) !important; }
-
-      /* 🔥 TEMPLATE-SPECIFIC OVERRIDES */
-      .portfolio-card {
-        background-color: var(--portfolio-card-bg) !important;
-        color: var(--portfolio-text-color) !important;
-        #{get_template_card_styling(theme)}
-      }
 
       /* 🔥 HEADER CUSTOMIZATION */
       .portfolio-header {

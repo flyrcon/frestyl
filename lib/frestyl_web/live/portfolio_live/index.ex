@@ -5,30 +5,92 @@ defmodule FrestylWeb.PortfolioLive.Index do
   alias Frestyl.Portfolios.PortfolioTemplates
   alias Frestyl.Accounts
   alias FrestylWeb.PortfolioLive.VideoIntroComponent
+  alias Frestyl.{Portfolios, Accounts}
   import FrestylWeb.Navigation, only: [nav: 1]
 
 
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
-    portfolios = Portfolios.list_user_portfolios(user.id)
-    limits = Portfolios.get_portfolio_limits(user)
-    can_create = Portfolios.can_create_portfolio?(user)
-    available_templates = Frestyl.Portfolios.PortfolioTemplates.available_templates()
 
-    # Get dashboard analytics
-    overview = Portfolios.get_user_portfolio_overview(user.id)
+    IO.puts("🔍 INDEX MOUNT: Starting mount for user: #{user.id}")
 
-    # Get individual portfolio stats safely
-    portfolio_stats = Enum.map(portfolios, fn portfolio ->
-      stats = try do
-        Portfolios.get_portfolio_analytics(portfolio.id, user.id)
-      rescue
-        _ ->
-          %{total_visits: 0, unique_visitors: 0, last_visit: nil}
-      end
-      {portfolio.id, stats}
-    end) |> Enum.into(%{})
+    # Debug portfolio loading
+    portfolios = try do
+      result = Portfolios.list_user_portfolios(user.id)
+      IO.puts("🔍 INDEX MOUNT: Portfolios loaded: #{length(result)}")
+      Enum.each(result, fn p ->
+        IO.puts("  - Portfolio: #{p.id} - #{p.title} - #{p.slug}")
+      end)
+      result
+    rescue
+      e ->
+        IO.puts("❌ INDEX MOUNT: Portfolio loading failed: #{inspect(e)}")
+        []
+    end
+
+    # Debug limits loading
+    limits = try do
+      result = Portfolios.get_portfolio_limits(user)
+      IO.puts("🔍 INDEX MOUNT: Limits loaded: #{inspect(result)}")
+      result
+    rescue
+      e ->
+        IO.puts("❌ INDEX MOUNT: Limits loading failed: #{inspect(e)}")
+        %{max_portfolios: 2, max_media_size_mb: 50}
+    end
+
+    # Debug can_create loading
+    can_create = try do
+      result = Portfolios.can_create_portfolio?(user)
+      IO.puts("🔍 INDEX MOUNT: Can create: #{result}")
+      result
+    rescue
+      e ->
+        IO.puts("❌ INDEX MOUNT: Can create check failed: #{inspect(e)}")
+        false
+    end
+
+    # Debug available templates
+    available_templates = try do
+      result = Frestyl.Portfolios.PortfolioTemplates.available_templates()
+      IO.puts("🔍 INDEX MOUNT: Templates loaded: #{map_size(result)}")
+      result
+    rescue
+      e ->
+        IO.puts("❌ INDEX MOUNT: Template loading failed: #{inspect(e)}")
+        %{}
+    end
+
+    # Debug overview loading
+    overview = try do
+      result = Portfolios.get_user_portfolio_overview(user.id)
+      IO.puts("🔍 INDEX MOUNT: Overview loaded: #{inspect(result)}")
+      result
+    rescue
+      e ->
+        IO.puts("❌ INDEX MOUNT: Overview loading failed: #{inspect(e)}")
+        %{total_visits: 0, total_portfolios: length(portfolios), total_shares: 0}
+    end
+
+    # Debug portfolio stats loading
+    portfolio_stats = try do
+      result = Enum.map(portfolios, fn portfolio ->
+        stats = try do
+          Portfolios.get_portfolio_analytics(portfolio.id, user.id)
+        rescue
+          _ ->
+            %{total_visits: 0, unique_visitors: 0, last_visit: nil}
+        end
+        {portfolio.id, stats}
+      end) |> Enum.into(%{})
+      IO.puts("🔍 INDEX MOUNT: Portfolio stats loaded for #{map_size(result)} portfolios")
+      result
+    rescue
+      e ->
+        IO.puts("❌ INDEX MOUNT: Portfolio stats loading failed: #{inspect(e)}")
+        %{}
+    end
 
     socket =
       socket
@@ -39,7 +101,7 @@ defmodule FrestylWeb.PortfolioLive.Index do
       |> assign(:overview, overview)
       |> assign(:portfolio_stats, portfolio_stats)
       |> assign(:show_create_modal, false)
-      |> assign(:selected_template, nil)
+      |> assign(:selected_template, "professional_executive")  # Set default
       |> assign(:available_templates, available_templates)
       |> assign(:show_video_intro_modal, false)
       |> assign(:current_portfolio_for_video, nil)
@@ -48,7 +110,36 @@ defmodule FrestylWeb.PortfolioLive.Index do
       |> assign(:show_collaboration_modal, false)
       |> assign(:selected_portfolio_for_collab, nil)
 
+    IO.puts("🔍 INDEX MOUNT: Final assigns:")
+    IO.puts("  - portfolios: #{length(socket.assigns.portfolios)}")
+    IO.puts("  - can_create: #{socket.assigns.can_create}")
+    IO.puts("  - limits: #{inspect(socket.assigns.limits)}")
+
     {:ok, socket}
+  end
+
+  defp get_current_account(socket, accounts) do
+    # Check for account switching parameter
+    account_id = get_connect_params(socket)["account_id"]
+
+    if account_id do
+      Enum.find(accounts, &(&1.id == String.to_integer(account_id)))
+    else
+      List.first(accounts)  # Default to first account
+    end
+  end
+
+  defp get_account_limits(nil), do: %{max_portfolios: 0}
+  defp get_account_limits(account) do
+    # TODO: Implement proper limits based on subscription tier
+    %{
+      max_portfolios: case account.subscription_tier do
+        :personal -> 3
+        :creator -> 25
+        :professional -> :unlimited
+        :enterprise -> :unlimited
+      end
+    }
   end
 
   # Additional helper function for safe stat access
@@ -102,15 +193,23 @@ defmodule FrestylWeb.PortfolioLive.Index do
 
   # Template selection handler
   @impl true
-    def handle_event("select_template", %{"template" => template}, socket) do
-      available_template_keys = Map.keys(socket.assigns.available_templates)
-
-      if template in available_template_keys do
-        {:noreply, assign(socket, selected_template: template)}
-      else
-        {:noreply, socket}
-      end
+  def handle_event("select_template", %{"template" => template}, socket) do
+    # Fix: Handle both map and list formats for available_templates
+    available_template_keys = case socket.assigns.available_templates do
+      templates when is_map(templates) ->
+        Map.keys(templates)
+      templates when is_list(templates) ->
+        Enum.map(templates, fn {key, _config} -> key end)
+      _ ->
+        []
     end
+
+    if template in available_template_keys do
+      {:noreply, assign(socket, selected_template: template)}
+    else
+      {:noreply, socket}
+    end
+  end
 
     # CRITICAL: Add missing video event handlers
   @impl true
@@ -238,77 +337,202 @@ defmodule FrestylWeb.PortfolioLive.Index do
      |> assign(:selected_portfolio_for_collab, nil)}
   end
 
-  @impl true
-  def handle_event("create_collaboration_link", %{"message" => message}, socket) do
-    portfolio = socket.assigns.selected_portfolio_for_collab
+  def handle_event("create_portfolio", %{"title" => title}, socket) do
+    IO.puts("🔍 CREATE: Starting portfolio creation with title: #{title}")
 
-    share_attrs = %{
-      portfolio_id: portfolio.id,
-      name: "#{socket.assigns.current_user.name || "User"} - Help Request",
-      message: message,
-      collaboration_type: "feedback_request",
-      expires_at: DateTime.utc_now() |> DateTime.add(30, :day) # 30 days
-    }
+    case validate_portfolio_title(title) do
+      {:ok, validated_title} ->
+        user = socket.assigns.current_user
+        selected_template = socket.assigns.selected_template || "professional_executive"
 
-    case Portfolios.create_share(share_attrs) do
-      {:ok, share} ->
-        collaboration_url = portfolio_collaboration_url(share.token)
+        IO.puts("🔍 CREATE: Selected template: #{selected_template}")
 
-        {:noreply,
-         socket
-         |> assign(:show_collaboration_modal, false)
-         |> assign(:selected_portfolio_for_collab, nil)
-         |> put_flash(:info, "Collaboration link created! Share this link: #{collaboration_url}")
-         |> push_event("copy_to_clipboard", %{text: collaboration_url})}
+        # Map complex template names to valid database enum values
+        theme = map_template_to_valid_theme(selected_template)
+        IO.puts("🔍 CREATE: Mapped theme: #{theme}")
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to create collaboration link.")}
+        # Generate slug from title - ensure minimum 5 characters
+        base_slug = validated_title
+          |> String.downcase()
+          |> String.replace(~r/[^a-z0-9\s-]/, "")
+          |> String.replace(~r/\s+/, "-")
+          |> String.slice(0, 50)
+
+        # Ensure slug is at least 5 characters
+        slug = if String.length(base_slug) < 5 do
+          "#{base_slug}-portfolio"
+        else
+          base_slug
+        end
+
+        IO.puts("🔍 CREATE: Generated slug: #{slug}")
+
+        # Get template config using the original selected template (for styling)
+        template_config = try do
+          PortfolioTemplates.get_template_config(selected_template)
+        rescue
+          e ->
+            IO.puts("⚠️ CREATE: Template config failed for #{selected_template}: #{inspect(e)}")
+            # Fallback config
+            %{
+              "layout" => "dashboard",
+              "primary_color" => "#3b82f6",
+              "secondary_color" => "#64748b",
+              "accent_color" => "#f59e0b"
+            }
+        end
+
+        IO.puts("🔍 CREATE: Template config: #{inspect(template_config)}")
+
+        portfolio_attrs = %{
+          title: validated_title,
+          slug: slug,
+          theme: theme,  # Use the mapped valid theme
+          customization: template_config,
+          visibility: :private
+        }
+
+        IO.puts("🔍 CREATE: Portfolio attrs: #{inspect(portfolio_attrs)}")
+
+        case Portfolios.create_portfolio(user.id, portfolio_attrs) do
+          {:ok, portfolio} ->
+            IO.puts("✅ CREATE: Portfolio created successfully with ID: #{portfolio.id}")
+
+            # Refresh ALL data that the index page depends on
+            portfolios = Portfolios.list_user_portfolios(user.id)
+            can_create = Portfolios.can_create_portfolio?(user)
+
+            # Refresh dashboard analytics
+            overview = try do
+              Portfolios.get_user_portfolio_overview(user.id)
+            rescue
+              _ -> %{total_visits: 0, total_portfolios: length(portfolios), total_shares: 0}
+            end
+
+            # Refresh individual portfolio stats (including the new one)
+            portfolio_stats = Enum.map(portfolios, fn portfolio ->
+              stats = try do
+                Portfolios.get_portfolio_analytics(portfolio.id, user.id)
+              rescue
+                _ ->
+                  %{total_visits: 0, unique_visitors: 0, last_visit: nil}
+              end
+              {portfolio.id, stats}
+            end) |> Enum.into(%{})
+
+            {:noreply,
+            socket
+            |> assign(:portfolios, portfolios)
+            |> assign(:can_create, can_create)
+            |> assign(:overview, overview)
+            |> assign(:portfolio_stats, portfolio_stats)
+            |> assign(:show_create_modal, false)
+            |> assign(:selected_template, nil)
+            |> debug_socket_assigns()
+            |> put_flash(:info, "Portfolio '#{portfolio.title}' created successfully!")
+            |> push_navigate(to: "/portfolios/#{portfolio.id}/edit")}
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            IO.puts("❌ CREATE: Changeset errors: #{inspect(changeset.errors)}")
+
+            errors = changeset.errors
+              |> Enum.map(fn {field, {msg, _}} -> "#{field} #{msg}" end)
+              |> Enum.join(", ")
+
+            {:noreply, put_flash(socket, :error, "Failed to create portfolio: #{errors}")}
+
+          {:error, reason} ->
+            IO.puts("❌ CREATE: Other error: #{inspect(reason)}")
+            {:noreply, put_flash(socket, :error, "Failed to create portfolio: #{inspect(reason)}")}
+        end
+
+      {:error, message} ->
+        {:noreply, put_flash(socket, :error, message)}
     end
   end
 
-  # Create portfolio handler
-  @impl true
-  def handle_event("create_portfolio", %{"title" => title}, socket) do
-    if String.trim(title) == "" do
-      {:noreply, put_flash(socket, :error, "Portfolio title cannot be empty")}
-    else
-      user = socket.assigns.current_user
-      template = socket.assigns.selected_template || "executive"
+  def debug_portfolio_creation(user_id, attrs) do
+    IO.puts("🔍 DEBUG: Creating portfolio for user #{user_id}")
+    IO.puts("🔍 DEBUG: Attrs: #{inspect(attrs)}")
 
-      # Generate slug from title
-      slug = title
-        |> String.downcase()
-        |> String.replace(~r/[^a-z0-9\s-]/, "")
-        |> String.replace(~r/\s+/, "-")
-        |> String.slice(0, 50)
-
-      portfolio_attrs = %{
-        title: title,
-        slug: slug,
-        theme: template,
-        customization: PortfolioTemplates.get_template_config(template),
-        visibility: :private
-      }
-
-      case Portfolios.create_portfolio(user.id, portfolio_attrs) do
-        {:ok, portfolio} ->
-          portfolios = Portfolios.list_user_portfolios(user.id)
-          can_create = Portfolios.can_create_portfolio?(user)
-
-          {:noreply,
-          socket
-          |> assign(:portfolios, portfolios)
-          |> assign(:can_create, can_create)
-          |> assign(:show_create_modal, false)
-          |> assign(:selected_template, nil)
-          |> put_flash(:info, "Portfolio '#{portfolio.title}' created successfully!")
-          |> push_navigate(to: "/portfolios/#{portfolio.id}/edit")}
-
-        {:error, changeset} ->
-          errors = changeset.errors |> Enum.map(fn {field, {msg, _}} -> "#{field} #{msg}" end) |> Enum.join(", ")
-          {:noreply, put_flash(socket, :error, "Failed to create portfolio: #{errors}")}
-      end
+    try do
+      result = Portfolios.create_portfolio(user_id, attrs)
+      IO.puts("🔍 DEBUG: Result: #{inspect(result)}")
+      result
+    rescue
+      e ->
+        IO.puts("🔍 DEBUG: Exception: #{inspect(e)}")
+        {:error, e}
     end
+  end
+
+  def debug_socket_assigns(socket) do
+    required_assigns = [
+      :portfolios, :limits, :can_create, :overview, :portfolio_stats,
+      :show_create_modal, :selected_template, :available_templates,
+      :show_video_intro_modal, :current_portfolio_for_video,
+      :show_share_modal, :selected_portfolio_for_share,
+      :show_collaboration_modal, :selected_portfolio_for_collab
+    ]
+
+    missing = Enum.filter(required_assigns, fn assign ->
+      not Map.has_key?(socket.assigns, assign)
+    end)
+
+    if length(missing) > 0 do
+      IO.puts("❌ Missing assigns: #{inspect(missing)}")
+    else
+      IO.puts("✅ All required assigns present")
+    end
+
+    socket
+  end
+
+
+  def handle_event("create_new_story", _params, socket) do
+    account = socket.assigns.current_account
+
+    case Frestyl.Features.FeatureGate.can_access_feature?(account, :create_story) do
+      true ->
+        {:noreply, push_navigate(socket, to: ~p"/portfolios/new")}
+
+      false ->
+        suggestion = Frestyl.Features.FeatureGate.get_upgrade_suggestion(account, :create_story)
+
+        socket = socket
+        |> assign(:show_upgrade_modal, true)
+        |> assign(:upgrade_suggestion, suggestion)
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("invite_collaborator", %{"story_id" => story_id}, socket) do
+    account = socket.assigns.current_account
+
+    case Frestyl.Features.FeatureGate.can_access_feature?(account, {:collaborator_invite, 1}) do
+      true ->
+        # Proceed with collaboration
+        {:noreply, assign(socket, :show_collaboration_modal, true)}
+
+      false ->
+        suggestion = Frestyl.Features.FeatureGate.get_upgrade_suggestion(account, :real_time_collaboration)
+
+        socket = socket
+        |> assign(:show_upgrade_modal, true)
+        |> assign(:upgrade_suggestion, suggestion)
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info(:close_upgrade_modal, socket) do
+    {:noreply, assign(socket, :show_upgrade_modal, false)}
+  end
+
+  def handle_info({:start_upgrade, tier}, socket) do
+    # Redirect to billing/upgrade page
+    {:noreply, push_navigate(socket, to: ~p"/account/upgrade?tier=#{tier}")}
   end
 
   # Share link handlers
@@ -360,16 +584,30 @@ defmodule FrestylWeb.PortfolioLive.Index do
     if portfolio.user_id == socket.assigns.current_user.id do
       case Portfolios.delete_portfolio(portfolio) do
         {:ok, _} ->
-          portfolios = Portfolios.list_user_portfolios(socket.assigns.current_user.id)
-          can_create = Portfolios.can_create_portfolio?(socket.assigns.current_user)
-          overview = Portfolios.get_user_portfolio_overview(socket.assigns.current_user.id)
+          # Refresh ALL index data after deletion
+          user = socket.assigns.current_user
+          portfolios = Portfolios.list_user_portfolios(user.id)
+          can_create = Portfolios.can_create_portfolio?(user)
+          overview = Portfolios.get_user_portfolio_overview(user.id)
+
+          # Update portfolio stats (excluding the deleted one)
+          portfolio_stats = Enum.map(portfolios, fn portfolio ->
+            stats = try do
+              Portfolios.get_portfolio_analytics(portfolio.id, user.id)
+            rescue
+              _ ->
+                %{total_visits: 0, unique_visitors: 0, last_visit: nil}
+            end
+            {portfolio.id, stats}
+          end) |> Enum.into(%{})
 
           {:noreply,
-           socket
-           |> assign(:portfolios, portfolios)
-           |> assign(:can_create, can_create)
-           |> assign(:overview, overview)
-           |> put_flash(:info, "Portfolio deleted successfully.")}
+          socket
+          |> assign(:portfolios, portfolios)
+          |> assign(:can_create, can_create)
+          |> assign(:overview, overview)
+          |> assign(:portfolio_stats, portfolio_stats)
+          |> put_flash(:info, "Portfolio deleted successfully.")}
 
         {:error, _} ->
           {:noreply, put_flash(socket, :error, "Failed to delete portfolio.")}
@@ -475,7 +713,27 @@ defmodule FrestylWeb.PortfolioLive.Index do
     {:noreply, socket}
   end
 
+  # Account switching
+  def handle_info({:switch_account, account_id}, socket) do
+    account = Enum.find(socket.assigns.accounts, &(&1.id == account_id))
 
+    if account do
+      # Update URL to include account parameter
+      new_path = ~p"/portfolios?account_id=#{account.id}"
+
+      socket = socket
+      |> assign(:current_account, account)
+      |> push_patch(to: new_path)
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Account not found")}
+    end
+  end
+
+  def handle_info(:show_create_account_modal, socket) do
+    {:noreply, assign(socket, :show_create_account_modal, true)}
+  end
 
   # ADD THESE MISSING HANDLERS
   @impl true
@@ -502,6 +760,68 @@ defmodule FrestylWeb.PortfolioLive.Index do
   end
 
   # Helper functions for the template:
+
+  defp map_template_to_valid_theme(template) do
+    case template do
+      # Minimalist templates
+      "minimalist_clean" -> "minimalist"
+      "minimalist_elegant" -> "minimalist"
+
+      # Professional templates
+      "professional_corporate" -> "corporate"
+      "professional_executive" -> "executive"
+
+      # Creative templates
+      "creative_artistic" -> "creative"
+      "creative_designer" -> "designer"
+
+      # Technical templates
+      "technical_developer" -> "developer"
+      "technical_engineer" -> "developer"
+
+      # Legacy/direct mappings
+      "creative" -> "creative"
+      "corporate" -> "corporate"
+      "minimalist" -> "minimalist"
+      "executive" -> "executive"
+      "developer" -> "developer"
+      "designer" -> "designer"
+      "consultant" -> "consultant"
+      "academic" -> "academic"
+      "artist" -> "artist"
+      "entrepreneur" -> "entrepreneur"
+      "freelancer" -> "freelancer"
+      "photographer" -> "photographer"
+      "writer" -> "writer"
+      "marketing" -> "marketing"
+      "healthcare" -> "healthcare"
+
+      # Default fallback
+      _ -> "executive"
+    end
+  end
+
+  # Also add validation for the title to ensure slug will be long enough:
+  # Add this validation before creating the portfolio:
+
+  defp validate_portfolio_title(title) do
+    title = String.trim(title)
+
+    cond do
+      title == "" ->
+        {:error, "Portfolio title cannot be empty"}
+
+      String.length(title) < 3 ->
+        {:error, "Portfolio title must be at least 3 characters long"}
+
+      String.length(title) > 100 ->
+        {:error, "Portfolio title must be less than 100 characters"}
+
+      true ->
+        {:ok, title}
+    end
+  end
+
   defp format_video_time(seconds) do
     minutes = div(seconds, 60)
     secs = rem(seconds, 60)

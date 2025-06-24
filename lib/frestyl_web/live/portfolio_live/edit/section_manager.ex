@@ -2196,6 +2196,52 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
     end
   end
 
+  defp get_default_content_for_type("story") do
+    %{
+      "title" => "My Story",
+      "narrative" => "Tell your professional journey in a compelling narrative format.",
+      "chapters" => [
+        %{
+          "title" => "The Beginning",
+          "content" => "Where your story starts...",
+          "year" => "2020"
+        },
+        %{
+          "title" => "The Journey",
+          "content" => "Key milestones and growth...",
+          "year" => "2022"
+        },
+        %{
+          "title" => "Today",
+          "content" => "Where you are now...",
+          "year" => "2024"
+        }
+      ]
+    }
+  end
+
+  defp get_default_content_for_type("timeline") do
+    %{
+      "title" => "Career Timeline",
+      "events" => [
+        %{
+          "date" => "2024",
+          "title" => "Current Role",
+          "description" => "Your current position and achievements"
+        },
+        %{
+          "date" => "2022",
+          "title" => "Career Milestone",
+          "description" => "A significant career achievement"
+        },
+        %{
+          "date" => "2020",
+          "title" => "Professional Start",
+          "description" => "Beginning of your professional journey"
+        }
+      ]
+    }
+  end
   # Helper Functions
 
     # Update specific job fields in experience content
@@ -2531,6 +2577,10 @@ defmodule FrestylWeb.PortfolioLive.Edit.SectionManager do
       "media_showcase" -> "Media Gallery"
       "code_showcase" -> "Code Showcase"
       "contact" -> "Contact Information"
+      "story" -> "My Story"           # Added
+      "timeline" -> "Timeline"        # Added
+      "narrative" -> "Narrative"      # Added
+      "journey" -> "My Journey"       # Added
       "custom" -> "Custom Section"
       _ -> "New Section"
     end

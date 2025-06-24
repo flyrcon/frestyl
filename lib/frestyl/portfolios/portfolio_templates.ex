@@ -7,110 +7,121 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
   """
 
   def available_templates do
-    [
-      # MINIMALIST CATEGORY
-      {"minimalist_clean", %{
+    %{
+      "minimalist_clean" => %{
         name: "Clean",
-        category: "Minimalist",
         description: "Ultra-clean design with maximum white space and typography focus",
-        preview_color: "from-gray-100 to-gray-200",
         features: ["Typography-focused", "Maximum white space", "Distraction-free", "Mobile-optimized"],
-        icon: "⚪",
-        mobile_optimized: true
-      }},
-      {"minimalist_elegant", %{
-        name: "Elegant",
         category: "Minimalist",
+        icon: "⚪",
+        preview_color: "from-gray-100 to-gray-200",
+        mobile_optimized: true
+      },
+      "minimalist_elegant" => %{
+        name: "Elegant",
         description: "Sophisticated minimalism with subtle accents and refined spacing",
-        preview_color: "from-slate-50 to-slate-100",
         features: ["Subtle accents", "Refined typography", "Elegant spacing", "Premium feel"],
+        category: "Minimalist",
         icon: "◽",
+        preview_color: "from-slate-50 to-slate-100",
         mobile_optimized: true
-      }},
-
-      # PROFESSIONAL CATEGORY
-      {"professional_corporate", %{
+      },
+      "professional_corporate" => %{
         name: "Corporate",
-        category: "Professional",
         description: "Traditional business layout with structured sections and formal presentation",
-        preview_color: "from-blue-600 to-blue-700",
         features: ["Structured layout", "Business metrics", "Professional timeline", "Corporate styling"],
-        icon: "🏢",
-        mobile_optimized: true
-      }},
-      {"professional_executive", %{
-        name: "Executive",
         category: "Professional",
+        icon: "🏢",
+        preview_color: "from-blue-600 to-blue-700",
+        mobile_optimized: true
+      },
+      "professional_executive" => %{
+        name: "Executive",
         description: "Executive dashboard with KPIs, achievements, and leadership focus",
-        preview_color: "from-slate-600 to-slate-700",
         features: ["Executive summary", "Key metrics", "Leadership showcase", "Results-focused"],
+        category: "Professional",
         icon: "📊",
+        preview_color: "from-slate-600 to-slate-700",
         mobile_optimized: true
-      }},
-
-      # CREATIVE CATEGORY
-      {"creative_artistic", %{
+      },
+      "creative_artistic" => %{
         name: "Artistic",
-        category: "Creative",
         description: "Bold visual design with dynamic layouts and creative expression",
-        preview_color: "from-purple-600 to-pink-600",
         features: ["Visual storytelling", "Dynamic layouts", "Creative showcase", "Artistic flair"],
-        icon: "🎨",
-        mobile_optimized: true
-      }},
-      {"creative_designer", %{
-        name: "Designer",
         category: "Creative",
+        icon: "🎨",
+        preview_color: "from-purple-600 to-pink-600",
+        mobile_optimized: true
+      },
+      "creative_designer" => %{
+        name: "Designer",
         description: "Designer-focused layout with portfolio showcase and case study emphasis",
-        preview_color: "from-indigo-500 to-purple-600",
         features: ["Portfolio showcase", "Case studies", "Design process", "Visual hierarchy"],
+        category: "Creative",
         icon: "✨",
+        preview_color: "from-indigo-500 to-purple-600",
         mobile_optimized: true
-      }},
-
-      # TECHNICAL CATEGORY
-      {"technical_developer", %{
+      },
+      "technical_developer" => %{
         name: "Developer",
-        category: "Technical",
         description: "Code-focused layout with technical projects and development showcase",
-        preview_color: "from-green-600 to-teal-600",
         features: ["Code showcase", "Technical stack", "Project demos", "Development metrics"],
-        icon: "💻",
-        mobile_optimized: true
-      }},
-      {"technical_engineer", %{
-        name: "Engineer",
         category: "Technical",
-        description: "Engineering-focused with problem-solving emphasis and technical depth",
-        preview_color: "from-gray-700 to-gray-800",
-        features: ["Problem solving", "Technical depth", "Engineering process", "System design"],
-        icon: "⚙️",
+        icon: "💻",
+        preview_color: "from-green-600 to-teal-600",
         mobile_optimized: true
-      }}
-    ]
+      },
+      "technical_engineer" => %{
+        name: "Engineer",
+        description: "Engineering-focused with problem-solving emphasis and technical depth",
+        features: ["Problem solving", "Technical depth", "Engineering process", "System design"],
+        category: "Technical",
+        icon: "⚙️",
+        preview_color: "from-gray-700 to-gray-800",
+        mobile_optimized: true
+      }
+    }
   end
 
-  def get_template_config(theme) do
-    case theme do
-      "minimalist_clean" -> minimalist_clean_config()
-      "minimalist_elegant" -> minimalist_elegant_config()
-      "professional_corporate" -> professional_corporate_config()
-      "professional_executive" -> professional_executive_config()
-      "creative_artistic" -> creative_artistic_config()
-      "creative_designer" -> creative_designer_config()
-      "technical_developer" -> technical_developer_config()
-      "technical_engineer" -> technical_engineer_config()
-      # Legacy support
-      "executive" -> professional_executive_config()
-      "developer" -> technical_developer_config()
-      "designer" -> creative_designer_config()
-      "consultant" -> professional_corporate_config()
-      "academic" -> professional_corporate_config()
-      "corporate" -> professional_corporate_config()
-      "creative" -> creative_artistic_config()
-      "minimalist" -> minimalist_clean_config()
-      _ -> professional_executive_config()
-    end
+  # Also add this function to help with layout selection:
+  def get_available_layouts do
+    [
+      {"dashboard", %{
+        name: "Dashboard",
+        description: "Modern grid-based layout",
+        features: ["Grid Layout", "Card-based", "Responsive", "Professional"]
+      }},
+      {"gallery", %{
+        name: "Gallery",
+        description: "Visual masonry-style layout",
+        features: ["Masonry", "Image Focus", "Creative"]
+      }},
+      {"timeline", %{
+        name: "Timeline",
+        description: "Chronological vertical layout with story features",
+        features: ["Timeline", "Chronological", "Story", "Narrative"]
+      }},
+      {"minimal", %{
+        name: "Minimal",
+        description: "Clean single-column layout",
+        features: ["Single Column", "Clean", "Focus"]
+      }},
+      {"corporate", %{
+        name: "Corporate",
+        description: "Structured business layout",
+        features: ["Structured", "Professional", "Formal"]
+      }},
+      {"creative", %{
+        name: "Creative",
+        description: "Dynamic asymmetric layout",
+        features: ["Asymmetric", "Dynamic", "Bold"]
+      }},
+      {"terminal", %{
+        name: "Terminal",
+        description: "Developer-focused terminal theme",
+        features: ["Code Style", "Dark Theme", "Technical"]
+      }}
+    ]
   end
 
   # MINIMALIST CLEAN
@@ -378,6 +389,123 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
   end
 
   # HELPER FUNCTIONS
+
+  def get_template_config(theme) do
+    case theme do
+      # Minimalist templates
+      "minimalist_clean" -> %{
+        "layout" => "minimal",
+        "primary_color" => "#000000",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#374151"
+      }
+      "minimalist_elegant" -> %{
+        "layout" => "minimal",
+        "primary_color" => "#1f2937",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#9ca3af"
+      }
+
+      # Professional templates
+      "professional_corporate" -> %{
+        "layout" => "corporate",
+        "primary_color" => "#1e40af",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6"
+      }
+      "professional_executive" -> %{
+        "layout" => "dashboard",
+        "primary_color" => "#374151",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#4f46e5"
+      }
+
+      # Creative templates
+      "creative_artistic" -> %{
+        "layout" => "creative",
+        "primary_color" => "#7c3aed",
+        "secondary_color" => "#ec4899",
+        "accent_color" => "#f59e0b"
+      }
+      "creative_designer" -> %{
+        "layout" => "gallery",
+        "primary_color" => "#4f46e5",
+        "secondary_color" => "#7c3aed",
+        "accent_color" => "#ec4899"
+      }
+
+      # Technical templates
+      "technical_developer" -> %{
+        "layout" => "terminal",
+        "primary_color" => "#059669",
+        "secondary_color" => "#374151",
+        "accent_color" => "#10b981"
+      }
+      "technical_engineer" -> %{
+        "layout" => "dashboard",
+        "primary_color" => "#374151",
+        "secondary_color" => "#4b5563",
+        "accent_color" => "#6b7280"
+      }
+
+      # Legacy template names (for backward compatibility)
+      "executive" -> %{
+        "layout" => "dashboard",
+        "primary_color" => "#1e40af",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6"
+      }
+      "developer" -> %{
+        "layout" => "terminal",
+        "primary_color" => "#059669",
+        "secondary_color" => "#374151",
+        "accent_color" => "#10b981"
+      }
+      "designer" -> %{
+        "layout" => "gallery",
+        "primary_color" => "#7c3aed",
+        "secondary_color" => "#ec4899",
+        "accent_color" => "#f59e0b"
+      }
+      "minimalist" -> %{
+        "layout" => "minimal",
+        "primary_color" => "#000000",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#374151"
+      }
+
+      # Default fallback
+      _ -> %{
+        "layout" => "dashboard",
+        "primary_color" => "#3b82f6",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#f59e0b"
+      }
+    end
+  end
+
+  defp get_available_templates_safe do
+    case Code.ensure_loaded(Frestyl.Portfolios.PortfolioTemplates) do
+      {:module, _} ->
+        try do
+          apply(Frestyl.Portfolios.PortfolioTemplates, :available_templates, [])
+        rescue
+          UndefinedFunctionError ->
+            get_fallback_templates()
+        end
+      {:error, _} ->
+        get_fallback_templates()
+    end
+  end
+
+  defp get_fallback_templates do
+    %{
+      "executive" => %{name: "Executive", category: "business"},
+      "developer" => %{name: "Developer", category: "technical"},
+      "designer" => %{name: "Designer", category: "creative"},
+      "minimalist" => %{name: "Minimalist", category: "minimal"}
+    }
+  end
 
   def get_mobile_layout_classes(config) do
     case config.mobile_config.card_stacking do
