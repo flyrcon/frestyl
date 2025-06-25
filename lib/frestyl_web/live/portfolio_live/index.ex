@@ -1057,6 +1057,25 @@ defmodule FrestylWeb.PortfolioLive.Index do
               </div>
             <% end %>
 
+            <!-- Streaming -->
+            <div class="group bg-gradient-to-br from-red-600 to-pink-600 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden">
+              <div class="h-full flex items-center justify-center p-12 text-center">
+                <div>
+                  <div class="w-16 h-16 mx-auto mb-6 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                    <svg class="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                  </div>
+                  <h3 class="text-xl font-black text-white mb-2">Live Streaming</h3>
+                  <p class="text-red-100 text-sm mb-4">Stream your presentations and connect with audiences</p>
+                  <.link navigate="/streaming"
+                        class="inline-flex items-center px-4 py-2 bg-white text-red-600 font-bold text-sm rounded-lg hover:bg-gray-50 transition-all">
+                    Start Streaming
+                  </.link>
+                </div>
+              </div>
+            </div>
+
             <!-- Create New Portfolio Card -->
             <%= if @can_create do %>
               <div class="group bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden border-2 border-dashed border-gray-300 hover:border-pink-400 cursor-pointer"

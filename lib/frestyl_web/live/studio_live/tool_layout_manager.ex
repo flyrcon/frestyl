@@ -105,6 +105,44 @@ defmodule FrestylWeb.StudioLive.ToolLayoutManager do
         floating: [],
         minimized: ["effects"]
       }
+    },
+    "story_development" => %{
+      description: "Collaborative story creation and development",
+      primary_tools: ["story_outline", "editor", "character_sheets"],
+      secondary_tools: ["chat", "world_building", "timeline"],
+      default_layout: %{
+        left_dock: ["story_outline", "character_sheets"],
+        right_dock: ["chat"],
+        bottom_dock: ["timeline"],
+        floating: [],
+        minimized: ["world_building"]
+      }
+    },
+
+    "narrative_workshop" => %{
+      description: "Story review and collaborative editing",
+      primary_tools: ["editor", "story_outline", "chat"],
+      secondary_tools: ["character_sheets", "world_building"],
+      default_layout: %{
+        left_dock: ["editor"],
+        right_dock: ["chat", "story_outline"],
+        bottom_dock: [],
+        floating: [],
+        minimized: ["character_sheets", "world_building"]
+      }
+    },
+
+    "world_building" => %{
+      description: "Collaborative universe and lore creation",
+      primary_tools: ["world_building", "character_sheets", "editor"],
+      secondary_tools: ["story_outline", "chat"],
+      default_layout: %{
+        left_dock: ["world_building"],
+        right_dock: ["chat"],
+        bottom_dock: ["character_sheets"],
+        floating: [],
+        minimized: ["story_outline", "editor"]
+      }
     }
   }
 
@@ -150,6 +188,40 @@ defmodule FrestylWeb.StudioLive.ToolLayoutManager do
       description: "Script/lyrics editor",
       icon: "document-text",
       category: "content"
+    },
+    "story_outline" => %{
+      name: "Story Outline",
+      description: "Structured story planning and organization",
+      icon: "document-text",
+      category: "story"
+    },
+
+    "character_sheets" => %{
+      name: "Characters",
+      description: "Character development and relationship tracking",
+      icon: "users",
+      category: "story"
+    },
+
+    "world_building" => %{
+      name: "World Bible",
+      description: "Shared lore, settings, and continuity",
+      icon: "globe-alt",
+      category: "story"
+    },
+
+    "story_timeline" => %{
+      name: "Story Timeline",
+      description: "Chronological story events and plotting",
+      icon: "calendar",
+      category: "story"
+    },
+
+    "story_comments" => %{
+      name: "Story Review",
+      description: "Collaborative feedback and suggestions",
+      icon: "chat-bubble-left-right",
+      category: "story"
     }
   }
 

@@ -53,7 +53,11 @@ let Hooks = {
     }
   },
 
-
+  DragDropOutline,
+  CharacterRelationships,
+  WorldBibleSearch,
+  StoryAutoSave,
+  CollaborativeCursors,  
 
   // FIXED: Single PDF Download Hook
   PdfDownload: {

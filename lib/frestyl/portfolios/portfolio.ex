@@ -16,6 +16,9 @@ defmodule Frestyl.Portfolios.Portfolio do
     field :resume_template, :string, default: "ats_friendly"
     field :resume_config, :map, default: %{}
     field :require_approval, :boolean, default: false
+    field :account_type, Ecto.Enum, values: [:personal, :professional, :enterprise]
+    field :sharing_permissions, :map
+    field :cross_account_sharing, :boolean, default: false
 
     field :customization, :map, default: %{
       "color_scheme" => "purple-pink",
@@ -38,10 +41,12 @@ defmodule Frestyl.Portfolios.Portfolio do
     field :estimated_read_time, :integer, default: 0
     field :collaboration_settings, :map, default: %{}
 
+    many_to_many :shared_with_accounts, Frestyl.Accounts.UserAccount,
+      join_through: "portfolio_account_shares"
 
     # Relations
     belongs_to :user, Frestyl.Accounts.User
-    belongs_to :account, Frestyl.Accounts.Account
+    belongs_to :account, Frestyl.Accounts.UserAccount
     has_many :portfolio_sections, Frestyl.Portfolios.PortfolioSection
     has_many :sections, Frestyl.Portfolios.PortfolioSection
     has_many :portfolio_media, Frestyl.Portfolios.PortfolioMedia
@@ -74,7 +79,8 @@ defmodule Frestyl.Portfolios.Portfolio do
 
   def changeset(portfolio, attrs) do
     portfolio
-    |> cast(attrs, [:title, :slug, :description, :visibility, :expires_at,
+    |> cast(attrs, [:title, :slug, :account_type, :sharing_permissions, :cross_account_sharing,
+                    :description, :visibility, :expires_at,
                     :approval_required, :require_approval, :theme, :custom_css,
                     :user_id, :allow_resume_export, :resume_template, :resume_config,
                     :customization])
@@ -83,6 +89,8 @@ defmodule Frestyl.Portfolios.Portfolio do
     |> validate_length(:description, max: 500)
     |> validate_length(:slug, min: 5, max: 50)
     |> validate_slug()
+    |> validate_format(:slug, ~r/^[a-z0-9-]+$/, message: "must contain only lowercase letters, numbers, and hyphens")
+    |> validate_inclusion(:account_type, [:personal, :professional, :enterprise])
     |> validate_inclusion(:visibility, [:public, :private, :link_only])
     |> validate_inclusion(:theme, [
       "default", "creative", "corporate", "minimalist",

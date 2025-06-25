@@ -126,6 +126,24 @@ defmodule FrestylWeb.Router do
     pipe_through [:browser, :require_auth]
 
     live_session :require_auth, on_mount: [{FrestylWeb.UserAuth, :ensure_authenticated}] do
+
+      live "/onboarding", OnboardingLive, :index
+
+      # NEW: Portfolio Hub routes (Portfolio-first approach)
+      live "/hub", PortfolioHubLive, :index
+
+      # UPDATED: Existing portfolio routes now under /portfolios/dashboard
+      live "/portfolios/dashboard", PortfolioLive.Index, :index
+      live "/portfolios/new", PortfolioLive.Index, :new
+      live "/portfolios/:id", PortfolioLive.Show, :show
+      live "/portfolios/:id/show/edit", PortfolioLive.Show, :edit
+      live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
+      live "/portfolios/:id/analytics", PortfolioLive.AnalyticsLive, :show
+      live "/portfolios/:id/share", PortfolioLive.ShareLive, :show
+
+      # Legacy route redirect (for SEO and bookmarks)
+      live "/portfolios", PortfolioHubLive, :index
+
       live "/dashboard", DashboardLive, :index
 
       # Channels routes - CLEANED UP
@@ -179,6 +197,9 @@ defmodule FrestylWeb.Router do
       live "/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
       live "/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
       live "/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
+
+      # Streaming route
+      live "/streaming", StreamingLive.Index, :index
 
       # Chat
       live "/chat", ChatLive.Show

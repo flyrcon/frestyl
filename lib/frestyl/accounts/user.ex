@@ -34,6 +34,8 @@ defmodule Frestyl.Accounts.User do
     field :social_links, :map, default: %{}
     field :last_active_at, :utc_datetime
     field :status, :string, default: "active"
+    field :primary_account_type, Ecto.Enum, values: [:personal, :professional, :enterprise]
+
 
     # Virtual field for forms
     field :password, :string, virtual: true, redact: true
@@ -46,6 +48,8 @@ defmodule Frestyl.Accounts.User do
     has_many :saved_filters, Frestyl.Media.SavedFilter, on_delete: :delete_all, foreign_key: :user_id
     has_many :discussions, Frestyl.Media.MediaDiscussion, on_delete: :delete_all, foreign_key: :user_id
     has_many :discussion_messages, Frestyl.Media.DiscussionMessage, on_delete: :delete_all, foreign_key: :user_id
+    has_many :user_accounts, Frestyl.Accounts.UserAccount
+    has_many :portfolios, Frestyl.Portfolios.Portfolio
 
     timestamps(type: :utc_datetime)
   end
@@ -53,10 +57,11 @@ defmodule Frestyl.Accounts.User do
   @doc false
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [:name, :email, :username, :display_name, :bio, :avatar_url, :full_name, :website, :social_links, :timezone, :preferences, :privacy_settings])
-    |> validate_required([:email])
+    |> cast(attrs, [:name, :email, :primary_account_type, :username, :display_name, :bio, :avatar_url, :full_name, :website, :social_links, :timezone, :preferences, :privacy_settings])
+    |> validate_required([:email, :primary_account_type])
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "must have the @ sign and no spaces")
     |> validate_length(:email, max: 160)
+    |> validate_inclusion(:primary_account_type, [:personal, :professional, :enterprise])
     |> unique_constraint(:email)
     |> validate_username()
   end

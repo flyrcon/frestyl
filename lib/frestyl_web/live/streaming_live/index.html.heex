@@ -1,0 +1,554 @@
+<div class="min-h-screen bg-gray-50">
+  <!-- Header -->
+  <div class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div class="flex justify-between items-center">
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900">Live Streaming</h1>
+          <p class="text-sm text-gray-600">
+            <%= @current_user.subscription_tier |> String.capitalize() %> Plan • 
+            Max Quality: <%= @streaming_limits.max_quality %> • 
+            Max Viewers: <%= if @streaming_limits.max_viewers == -1, do: "Unlimited", else: @streaming_limits.max_viewers %>
+          </p>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+          <!-- Stream Status -->
+          <div class="flex items-center space-x-2">
+            <div class={[
+              "w-3 h-3 rounded-full",
+              case @streaming_state do
+                :live -> "bg-red-500 animate-pulse"
+                :ready -> "bg-yellow-500"
+                _ -> "bg-gray-400"
+              end
+            ]}></div>
+            <span class="text-sm font-medium text-gray-700">
+              <%= case @streaming_state do
+                :setup -> "Setup"
+                :ready -> "Ready"
+                :live -> "LIVE"
+                :stopped -> "Stopped"
+              end %>
+            </span>
+          </div>
+          
+          <!-- Audience Counter -->
+          <%= if @streaming_state == :live do %>
+            <div class="flex items-center space-x-2 bg-red-50 px-3 py-1 rounded-full">
+              <svg class="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <span class="text-sm font-semibold text-red-600"><%= @audience_count %> viewers</span>
+            </div>
+          <% end %>
+          
+          <!-- Create Stream Button -->
+          <%= if @streaming_state == :setup do %>
+            <button phx-click="show_create_stream_modal"
+                    class="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+              Create Stream
+            </button>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      
+      <!-- Main Streaming Area -->
+      <div class="lg:col-span-2 space-y-6">
+        
+        <!-- Video Preview/Stream -->
+        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div class="aspect-video bg-gray-900 relative">
+            <!-- Video Element -->
+            <video id="stream-video" 
+                   class="w-full h-full object-cover"
+                   autoplay muted playsinline></video>
+            
+            <!-- Stream Overlay -->
+            <%= if @streaming_state == :live do %>
+              <div class="absolute top-4 left-4">
+                <div class="bg-red-600 text-white px-3 py-1 rounded-full flex items-center space-x-2">
+                  <div class="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                  <span class="text-sm font-bold">LIVE</span>
+                </div>
+              </div>
+            <% end %>
+            
+            <!-- Setup Message -->
+            <%= if @streaming_state == :setup do %>
+              <div class="absolute inset-0 flex items-center justify-center">
+                <div class="text-center text-white">
+                  <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                  </svg>
+                  <h3 class="text-xl font-semibold mb-2">Ready to Stream</h3>
+                  <p class="text-gray-300">Create a stream to get started</p>
+                </div>
+              </div>
+            <% end %>
+          </div>
+          
+          <!-- Stream Controls -->
+          <%= if @streaming_state != :setup do %>
+            <div class="p-6 border-t border-gray-200">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                  <!-- Main Stream Control -->
+                  <%= if @streaming_state == :ready do %>
+                    <button phx-click="start_streaming"
+                            class="inline-flex items-center px-6 py-3 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors">
+                      <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+                      </svg>
+                      Go Live
+                    </button>
+                  <% else %>
+                    <button phx-click="stop_streaming"
+                            class="inline-flex items-center px-6 py-3 bg-gray-600 text-white font-bold rounded-lg hover:bg-gray-700 transition-colors">
+                      <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 012 0v6a1 1 0 11-2 0V7zM12 7a1 1 0 012 0v6a1 1 0 11-2 0V7z" clip-rule="evenodd"/>
+                      </svg>
+                      Stop Stream
+                    </button>
+                  <% end %>
+                  
+                  <!-- Quality Selector -->
+                  <div class="relative">
+                    <select phx-change="update_quality" 
+                            name="quality"
+                            class="pl-3 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <%= for quality <- @quality_settings.available_qualities do %>
+                        <option value={quality} selected={quality == @quality_settings.selected_quality}>
+                          <%= quality %>
+                        </option>
+                      <% end %>
+                    </select>
+                  </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="flex items-center space-x-6 text-sm text-gray-600">
+                  <div class="flex items-center space-x-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    <span><%= @audience_count %></span>
+                  </div>
+                  
+                  <%= if @streaming_state == :live and @stream_stats != %{} do %>
+                    <div class="flex items-center space-x-1">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                      <span><%= format_duration(@stream_stats[:uptime] || 0) %></span>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+        
+        <!-- Platform Distribution -->
+        <%= if @streaming_state != :setup do %>
+          <div class="bg-white rounded-xl shadow-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Platform Distribution</h3>
+            
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <!-- Twitch -->
+              <div class="border border-gray-200 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-purple-600 rounded flex items-center justify-center">
+                      <span class="text-white text-xs font-bold">T</span>
+                    </div>
+                    <span class="font-medium">Twitch</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" 
+                           phx-click="toggle_platform" 
+                           phx-value-platform="twitch"
+                           phx-value-enabled={not Map.has_key?(@platform_connections, "twitch")}
+                           class="sr-only peer">
+                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                <%= if Map.get(@platform_connections, "twitch") do %>
+                  <div class="text-xs text-green-600">Connected</div>
+                <% end %>
+              </div>
+              
+              <!-- YouTube -->
+              <div class="border border-gray-200 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-red-600 rounded flex items-center justify-center">
+                      <span class="text-white text-xs font-bold">Y</span>
+                    </div>
+                    <span class="font-medium">YouTube</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" 
+                           phx-click="toggle_platform" 
+                           phx-value-platform="youtube"
+                           phx-value-enabled={not Map.has_key?(@platform_connections, "youtube")}
+                           class="sr-only peer">
+                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                <%= if Map.get(@platform_connections, "youtube") do %>
+                  <div class="text-xs text-green-600">Connected</div>
+                <% end %>
+              </div>
+              
+              <!-- Facebook -->
+              <div class="border border-gray-200 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+                      <span class="text-white text-xs font-bold">F</span>
+                    </div>
+                    <span class="font-medium">Facebook</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" 
+                           phx-click="toggle_platform" 
+                           phx-value-platform="facebook"
+                           phx-value-enabled={not Map.has_key?(@platform_connections, "facebook")}
+                           class="sr-only peer">
+                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                <%= if Map.get(@platform_connections, "facebook") do %>
+                  <div class="text-xs text-green-600">Connected</div>
+                <% end %>
+              </div>
+              
+              <!-- Custom RTMP -->
+              <%= if @streaming_limits[:custom_rtmp] do %>
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center space-x-2">
+                      <div class="w-8 h-8 bg-gray-600 rounded flex items-center justify-center">
+                        <span class="text-white text-xs font-bold">R</span>
+                      </div>
+                      <span class="font-medium">Custom RTMP</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" 
+                             phx-click="toggle_platform" 
+                             phx-value-platform="custom_rtmp"
+                             phx-value-enabled={not Map.has_key?(@platform_connections, "custom_rtmp")}
+                             class="sr-only peer">
+                      <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+                  <%= if Map.get(@platform_connections, "custom_rtmp") do %>
+                    <div class="text-xs text-green-600">Connected</div>
+                  <% end %>
+                </div>
+              <% else %>
+                <div class="border border-gray-200 rounded-lg p-4 opacity-50">
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center space-x-2">
+                      <div class="w-8 h-8 bg-gray-400 rounded flex items-center justify-center">
+                        <span class="text-white text-xs font-bold">R</span>
+                      </div>
+                      <span class="font-medium text-gray-500">Custom RTMP</span>
+                    </div>
+                    <div class="text-xs text-gray-500">Pro+</div>
+                  </div>
+                  <div class="text-xs text-gray-400">Requires Professional plan</div>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+        
+      </div>
+      
+      <!-- Sidebar -->
+      <div class="space-y-6">
+        
+        <!-- Subscription Limits -->
+        <div class="bg-white rounded-xl shadow-lg p-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Current Plan Limits</h3>
+          
+          <div class="space-y-4">
+            <!-- Max Viewers -->
+            <div>
+              <div class="flex justify-between text-sm font-medium text-gray-700 mb-1">
+                <span>Max Viewers</span>
+                <span>
+                  <%= @audience_count %> / 
+                  <%= if @streaming_limits.max_viewers == -1, do: "∞", else: @streaming_limits.max_viewers %>
+                </span>
+              </div>
+              <%= if @streaming_limits.max_viewers != -1 do %>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                       style={"width: #{min(100, (@audience_count / @streaming_limits.max_viewers) * 100)}%"}></div>
+                </div>
+              <% else %>
+                <div class="text-xs text-green-600">Unlimited</div>
+              <% end %>
+            </div>
+            
+            <!-- Duration -->
+            <div>
+              <div class="flex justify-between text-sm font-medium text-gray-700 mb-1">
+                <span>Duration</span>
+                <span>
+                  <%= if @streaming_state == :live, do: format_duration(@stream_stats[:uptime] || 0), else: "0m" %> / 
+                  <%= if @streaming_limits.max_duration_minutes == -1, do: "∞", else: "#{@streaming_limits.max_duration_minutes}m" %>
+                </span>
+              </div>
+              <%= if @streaming_limits.max_duration_minutes != -1 do %>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="bg-green-600 h-2 rounded-full transition-all duration-300" 
+                       style={"width: #{min(100, ((@stream_stats[:uptime] || 0) / (@streaming_limits.max_duration_minutes * 60)) * 100)}%"}></div>
+                </div>
+              <% else %>
+                <div class="text-xs text-green-600">Unlimited</div>
+              <% end %>
+            </div>
+            
+            <!-- Platforms -->
+            <div>
+              <div class="flex justify-between text-sm font-medium text-gray-700 mb-1">
+                <span>Platforms</span>
+                <span>
+                  <%= map_size(@platform_connections) %> / 
+                  <%= if @streaming_limits.max_platforms == -1, do: "∞", else: @streaming_limits.max_platforms %>
+                </span>
+              </div>
+              <%= if @streaming_limits.max_platforms != -1 do %>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="bg-purple-600 h-2 rounded-full transition-all duration-300" 
+                       style={"width: #{min(100, (map_size(@platform_connections) / @streaming_limits.max_platforms) * 100)}%"}></div>
+                </div>
+              <% else %>
+                <div class="text-xs text-green-600">Unlimited</div>
+              <% end %>
+            </div>
+          </div>
+          
+          <!-- Upgrade CTA -->
+          <%= if @current_user.subscription_tier in ["personal", "creator"] do %>
+            <div class="mt-6 pt-4 border-t border-gray-200">
+              <button phx-click={JS.navigate("/account/subscription")}
+                      class="w-full inline-flex justify-center items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-colors">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                Upgrade Plan
+              </button>
+            </div>
+          <% end %>
+        </div>
+        
+        <!-- Stream Analytics -->
+        <%= if @streaming_state in [:live, :stopped] and @stream_stats != %{} do %>
+          <div class="bg-white rounded-xl shadow-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Stream Analytics</h3>
+            
+            <div class="space-y-4">
+              <div class="flex justify-between">
+                <span class="text-sm text-gray-600">Current Viewers</span>
+                <span class="text-sm font-semibold"><%= @audience_count %></span>
+              </div>
+              
+              <div class="flex justify-between">
+                <span class="text-sm text-gray-600">Peak Viewers</span>
+                <span class="text-sm font-semibold"><%= @stream_stats[:peak_viewers] || 0 %></span>
+              </div>
+              
+              <div class="flex justify-between">
+                <span class="text-sm text-gray-600">Stream Duration</span>
+                <span class="text-sm font-semibold"><%= format_duration(@stream_stats[:uptime] || 0) %></span>
+              </div>
+              
+              <%= if @stream_stats[:bytes_sent] do %>
+                <div class="flex justify-between">
+                  <span class="text-sm text-gray-600">Data Sent</span>
+                  <span class="text-sm font-semibold"><%= format_bytes(@stream_stats[:bytes_sent]) %></span>
+                </div>
+              <% end %>
+            </div>
+            
+            <button phx-click="refresh_stats"
+                    class="mt-4 w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              Refresh Stats
+            </button>
+          </div>
+        <% end %>
+        
+        <!-- Interaction Features -->
+        <%= if @streaming_state == :live do %>
+          <div class="bg-white rounded-xl shadow-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Interaction Tools</h3>
+            
+            <div class="space-y-3">
+              <%= if :chat in @interaction_features do %>
+                <button class="w-full inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                  </svg>
+                  Chat Moderation
+                </button>
+              <% end %>
+              
+              <%= if :polls in @interaction_features do %>
+                <button class="w-full inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4"/>
+                  </svg>
+                  Create Poll
+                </button>
+              <% end %>
+              
+              <%= if :quiz in @interaction_features do %>
+                <button class="w-full inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  Start Quiz
+                </button>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+        
+      </div>
+    </div>
+  </div>
+  
+  <!-- Create Stream Modal -->
+  <%= if @show_create_modal do %>
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" 
+         phx-click="hide_create_modal">
+      <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4" 
+           phx-click-away="hide_create_modal">
+        <div class="p-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Create New Stream</h3>
+          
+          <form phx-submit="create_stream">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Stream Title</label>
+                <input type="text" 
+                       name="stream_config[title]" 
+                       required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="Enter stream title">
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Quality</label>
+                <select name="stream_config[quality]" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <%= for quality <- @quality_settings.available_qualities do %>
+                    <option value={quality} selected={quality == @quality_settings.selected_quality}>
+                      <%= quality %>
+                    </option>
+                  <% end %>
+                </select>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                <select name="stream_config[category]" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="gaming">Gaming</option>
+                  <option value="creative">Creative</option>
+                  <option value="music">Music</option>
+                  <option value="talk">Talk Show</option>
+                  <option value="education">Education</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3 mt-6">
+              <button type="button" 
+                      phx-click="hide_create_modal"
+                      class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button type="submit"
+                      class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                Create Stream
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  <% end %>
+  
+  <!-- Upgrade Modal -->
+  <%= if @show_upgrade_modal do %>
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" 
+         phx-click={JS.patch(@show_upgrade_modal, false)}>
+      <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+        <div class="p-6 text-center">
+          <div class="w-16 h-16 mx-auto mb-4 bg-purple-100 rounded-full flex items-center justify-center">
+            <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-gray-900 mb-2">Upgrade Required</h3>
+          <p class="text-gray-600 mb-6">This feature requires a higher subscription tier. Upgrade your plan to unlock advanced streaming capabilities.</p>
+          
+          <div class="flex justify-center space-x-3">
+            <button phx-click={JS.patch(@show_upgrade_modal, false)}
+                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+              Maybe Later
+            </button>
+            <button phx-click={JS.navigate("/account/subscription")}
+                    class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+              Upgrade Now
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+</div>
+
+<!-- Helper Functions -->
+<script>
+  window.formatDuration = function(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  };
+  
+  window.formatBytes = function(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+</script>

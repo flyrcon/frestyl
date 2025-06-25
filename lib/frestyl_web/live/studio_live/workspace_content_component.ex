@@ -37,9 +37,120 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
     {:ok, assign(socket, clean_assigns)}
   end
 
+  @impl true
+  def handle_info({:initialize_story_outline, outline_data}, socket) do
+    # Update workspace state with new story outline
+    new_workspace_state = put_in(
+      socket.assigns.workspace_state,
+      [:story, :outline],
+      outline_data
+    )
+
+    # Broadcast to collaborators
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "studio:#{socket.assigns.session.id}",
+      {:story_outline_initialized, outline_data, socket.assigns.current_user.id}
+    )
+
+    {:noreply, assign(socket, workspace_state: new_workspace_state)}
+  end
+
+  @impl true
+  def handle_info({:update_story_outline, outline_data}, socket) do
+    new_workspace_state = put_in(
+      socket.assigns.workspace_state,
+      [:story, :outline],
+      outline_data
+    )
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "studio:#{socket.assigns.session.id}",
+      {:story_outline_updated, outline_data, socket.assigns.current_user.id}
+    )
+
+    {:noreply, assign(socket, workspace_state: new_workspace_state)}
+  end
+
+  @impl true
+  def handle_info({:update_characters, characters_data}, socket) do
+    new_workspace_state = put_in(
+      socket.assigns.workspace_state,
+      [:story, :characters],
+      characters_data
+    )
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "studio:#{socket.assigns.session.id}",
+      {:story_characters_updated, characters_data, socket.assigns.current_user.id}
+    )
+
+    {:noreply, assign(socket, workspace_state: new_workspace_state)}
+  end
+
+  @impl true
+  def handle_info({:update_world_bible, world_bible_data}, socket) do
+    new_workspace_state = put_in(
+      socket.assigns.workspace_state,
+      [:story, :world_bible],
+      world_bible_data
+    )
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "studio:#{socket.assigns.session.id}",
+      {:story_world_bible_updated, world_bible_data, socket.assigns.current_user.id}
+    )
+
+    {:noreply, assign(socket, workspace_state: new_workspace_state)}
+  end
+
+  @impl true
+  def handle_info({:update_story_template, template}, socket) do
+    # When template changes, reinitialize the outline with new structure
+    send_update(FrestylWeb.StudioLive.StoryOutlineComponent,
+      id: "story-outline",
+      selected_template: template
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:open_character_editor, character_id}, socket) do
+    # Could open a detailed character editing modal or switch to character tool
+    send(self(), {:show_character_detail_modal, character_id})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:open_world_entry_editor, entry_id}, socket) do
+    # Could open a detailed world entry editing modal
+    send(self(), {:show_world_entry_detail_modal, entry_id})
+    {:noreply, socket}
+  end
+
+  defp ensure_story_workspace_state(workspace_state) do
+    story_state = Map.get(workspace_state, :story, %{})
+
+    default_story_state = %{
+      outline: %{template: "three_act", sections: []},
+      characters: [],
+      world_bible: %{},
+      timeline: %{events: []},
+      comments: []
+    }
+
+    updated_story_state = Map.merge(default_story_state, story_state)
+    Map.put(workspace_state, :story, updated_story_state)
+  end
+
   # Audio Workspace Implementation
   defp render_audio_workspace(assigns) do
     tracks = get_in(assigns, [:workspace_state, :audio, :tracks]) || []
+    assigns = assign(assigns, :tracks, tracks)
 
     ~H"""
     <div class="h-full flex flex-col bg-gray-900">
@@ -171,7 +282,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
             </button>
           </div>
 
-          <%= if length(tracks) == 0 do %>
+          <%= if length(@tracks) == 0 do %>
             <div class="p-6 text-center">
               <svg class="w-12 h-12 mx-auto mb-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
@@ -180,7 +291,7 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
               <p class="text-xs text-gray-600 mt-1">Add your first track to start</p>
             </div>
           <% else %>
-            <%= for track <- tracks do %>
+            <%= for track <- @tracks do %>
               <div class="p-3 border-b border-gray-700 hover:bg-gray-750">
                 <div class="flex items-center justify-between mb-2">
                   <input
@@ -274,8 +385,8 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
           </div>
 
           <!-- Track Lanes -->
-          <%= if length(tracks) > 0 do %>
-            <%= for track <- tracks do %>
+          <%= if length(@tracks) > 0 do %>
+            <%= for track <- @tracks do %>
               <div class="h-20 border-b border-gray-700 relative" data-track-id={track.id}>
                 <!-- Waveform/Clips Container -->
                 <div class="absolute inset-0 p-2">
@@ -1244,6 +1355,157 @@ defmodule FrestylWeb.StudioLive.WorkspaceContentComponent do
    </div>
    """
  end
+
+ defp render_workspace_content(assigns, "story_outline") do
+  ~H"""
+  <.live_component
+    module={FrestylWeb.StudioLive.StoryOutlineComponent}
+    id="story-outline"
+    workspace_state={@workspace_state}
+    current_user={@current_user}
+    session={@session}
+    permissions={@permissions}
+    collaboration_mode={@collaboration_mode}
+  />
+  """
+end
+
+defp render_workspace_content(assigns, "character_sheets") do
+  ~H"""
+  <.live_component
+    module={FrestylWeb.StudioLive.CharacterSheetsComponent}
+    id="character-sheets"
+    workspace_state={@workspace_state}
+    current_user={@current_user}
+    session={@session}
+    permissions={@permissions}
+    collaboration_mode={@collaboration_mode}
+  />
+  """
+end
+
+defp render_workspace_content(assigns, "world_building") do
+  ~H"""
+  <.live_component
+    module={FrestylWeb.StudioLive.WorldBuildingComponent}
+    id="world-building"
+    workspace_state={@workspace_state}
+    current_user={@current_user}
+    session={@session}
+    permissions={@permissions}
+    collaboration_mode={@collaboration_mode}
+  />
+  """
+end
+
+defp render_workspace_content(assigns, "story_timeline") do
+  ~H"""
+  <div class="h-full flex flex-col bg-white">
+    <!-- Story Timeline Header -->
+    <div class="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
+          <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="font-semibold text-gray-900">Story Timeline</h3>
+          <p class="text-sm text-gray-600">Chronological story events</p>
+        </div>
+      </div>
+
+      <button class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded-lg text-sm font-medium">
+        Add Event
+      </button>
+    </div>
+
+    <!-- Timeline Content -->
+    <div class="flex-1 overflow-y-auto p-4">
+      <div class="space-y-4">
+        <!-- Timeline events would go here -->
+        <div class="text-center py-12">
+          <div class="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-medium text-gray-900 mb-2">No Timeline Events</h3>
+          <p class="text-gray-600 mb-6">Create a chronological timeline of your story events.</p>
+          <button class="bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-medium">
+            Create First Event
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  """
+end
+
+defp render_workspace_content(assigns, "story_comments") do
+  ~H"""
+  <div class="h-full flex flex-col bg-white">
+    <!-- Comments Header -->
+    <div class="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center">
+          <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="font-semibold text-gray-900">Story Review</h3>
+          <p class="text-sm text-gray-600">Collaborative feedback and suggestions</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <select class="text-sm border border-gray-300 rounded-lg px-3 py-1 focus:ring-2 focus:ring-yellow-500">
+          <option>All Comments</option>
+          <option>Unresolved</option>
+          <option>Suggestions</option>
+          <option>My Comments</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Comments List -->
+    <div class="flex-1 overflow-y-auto p-4">
+      <div class="space-y-4">
+        <!-- Comments would go here -->
+        <div class="text-center py-12">
+          <div class="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-medium text-gray-900 mb-2">No Comments Yet</h3>
+          <p class="text-gray-600 mb-6">Start collaborating by adding feedback and suggestions.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comment Input -->
+    <div class="border-t border-gray-200 p-4">
+      <form class="flex space-x-3">
+        <div class="flex-1">
+          <textarea
+            rows="2"
+            placeholder="Add a comment or suggestion..."
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 resize-none"
+          ></textarea>
+        </div>
+        <button
+          type="submit"
+          class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+        >
+          Add Comment
+        </button>
+      </form>
+    </div>
+  </div>
+  """
+end
 
  # Event Handlers
  @impl true
