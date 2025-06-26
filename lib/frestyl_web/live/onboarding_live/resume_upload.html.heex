@@ -1,0 +1,450 @@
+<!-- lib/frestyl_web/live/onboarding_live/resume_upload.html.heex -->
+<div id="resume-upload-container" class="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50" phx-hook="ResumeUploadExperience">
+  <!-- Creative Header -->
+  <header class="relative overflow-hidden bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 text-white py-16">
+    <div class="absolute inset-0 bg-black opacity-20"></div>
+    
+    <!-- Floating Background Elements -->
+    <div class="absolute inset-0">
+      <div class="absolute top-10 left-10 w-20 h-20 bg-white opacity-10 rounded-full animate-float"></div>
+      <div class="absolute top-32 right-20 w-16 h-16 bg-yellow-300 opacity-20 rounded-full animate-bounce" style="animation-delay: 1s;"></div>
+      <div class="absolute bottom-20 left-1/4 w-12 h-12 bg-pink-300 opacity-15 rounded-full animate-pulse" style="animation-delay: 2s;"></div>
+    </div>
+    
+    <div class="relative z-10 max-w-4xl mx-auto px-6 text-center">
+      <div class="animate-fade-in">
+        <h1 class="text-5xl md:text-6xl font-black mb-6">
+          Turn Your Resume Into 
+          <span class="block text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-pink-300">
+            Portfolio Magic ✨
+          </span>
+        </h1>
+        <p class="text-xl md:text-2xl text-indigo-100 mb-8 max-w-3xl mx-auto leading-relaxed">
+          Upload your resume and watch as we transform it into a stunning, interactive portfolio that showcases your unique creative story.
+        </p>
+        
+        <!-- Status Indicators -->
+        <div class="flex items-center justify-center space-x-6 text-indigo-200">
+          <div class="flex items-center space-x-2">
+            <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <span class="text-sm font-medium">AI-Powered</span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <div class="w-2 h-2 bg-blue-400 rounded-full animate-pulse" style="animation-delay: 0.5s;"></div>
+            <span class="text-sm font-medium">Instant Preview</span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <div class="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style="animation-delay: 1s;"></div>
+            <span class="text-sm font-medium">Creative Focus</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-6xl mx-auto px-6 py-16">
+    <!-- Step Progress -->
+    <div class="flex items-center justify-center mb-12 animate-slide-up">
+      <div class="flex items-center space-x-4">
+        <!-- Step 1: Discovery (Completed) -->
+        <div class="flex items-center">
+          <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white font-bold shadow-lg">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+          </div>
+          <span class="ml-3 text-lg font-medium text-gray-500">Story Discovery</span>
+        </div>
+        
+        <div class="w-16 h-1 bg-green-300 rounded"></div>
+        
+        <!-- Step 2: Resume Upload (Current) -->
+        <div class="flex items-center">
+          <div class="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold shadow-lg animate-pulse">
+            <%= @step %>
+          </div>
+          <span class="ml-3 text-lg font-semibold text-gray-700">Resume Upload</span>
+        </div>
+        
+        <div class="w-16 h-1 bg-gray-200 rounded"></div>
+        
+        <!-- Step 3: Portfolio Creation -->
+        <div class="flex items-center">
+          <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-bold">
+            3
+          </div>
+          <span class="ml-3 text-lg font-medium text-gray-500">Portfolio Creation</span>
+        </div>
+        
+        <div class="w-16 h-1 bg-gray-200 rounded"></div>
+        
+        <!-- Step 4: Portfolio Hub -->
+        <div class="flex items-center">
+          <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-bold">
+            4
+          </div>
+          <span class="ml-3 text-lg font-medium text-gray-500">Portfolio Hub</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload Experience -->
+    <%= if @upload_state == :waiting do %>
+      <div id="upload-zone" class="animate-scale-in">
+        <!-- Drop Zone -->
+        <div class="upload-zone rounded-3xl p-12 mb-8 text-center cursor-pointer relative overflow-hidden transition-all duration-300 hover:scale-105"
+             phx-drop-target={@uploads.resume.ref}
+             phx-click={JS.dispatch("click", to: "#resume-file-input")}>
+          
+          <.live_file_input upload={@uploads.resume} id="resume-file-input" class="hidden" />
+          
+          <!-- Upload Icon -->
+          <div class="mb-6">
+            <div class="inline-block p-6 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full magic-glow animate-bounce">
+              <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Upload Text -->
+          <h3 class="text-3xl font-bold text-gray-800 mb-4">
+            Drop Your Resume Here
+          </h3>
+          <p class="text-xl text-gray-600 mb-6">
+            Or click to browse your files
+          </p>
+          
+          <!-- File Types -->
+          <div class="flex flex-wrap justify-center gap-3 mb-6">
+            <span class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">.PDF</span>
+            <span class="px-4 py-2 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">.DOCX</span>
+            <span class="px-4 py-2 bg-pink-100 text-pink-700 rounded-full text-sm font-medium">.DOC</span>
+            <span class="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">.TXT</span>
+          </div>
+
+          <!-- Creative Encouragement -->
+          <div class="text-gray-500 text-sm">
+            <p>✨ We'll extract your story and transform it into visual magic</p>
+          </div>
+        </div>
+
+        <!-- Upload Entries Preview -->
+        <%= for entry <- @uploads.resume.entries do %>
+          <div class="bg-white rounded-xl shadow-lg p-6 mb-6 border-l-4 border-indigo-500">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-4">
+                <div class="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                </div>
+                <div>
+                  <p class="font-semibold text-gray-900"><%= entry.client_name %></p>
+                  <p class="text-sm text-gray-500"><%= Float.round(entry.client_size / 1_048_576, 1) %> MB</p>
+                </div>
+              </div>
+              
+              <div class="flex items-center space-x-3">
+                <button type="button" 
+                        phx-click="start_upload"
+                        class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300 transform hover:scale-105 shadow-lg">
+                  <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                  Transform to Portfolio
+                </button>
+                
+                <button type="button" 
+                        phx-click="cancel-upload" 
+                        phx-value-ref={entry.ref}
+                        class="text-gray-400 hover:text-red-500 transition-colors">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Skip Option -->
+        <div class="text-center mt-8">
+          <p class="text-gray-600 mb-4">Don't have a resume ready?</p>
+          <button type="button" 
+                  phx-click="skip_resume"
+                  class="inline-flex items-center px-6 py-3 border-2 border-gray-300 text-base font-medium rounded-xl text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-300">
+            Start with a blank portfolio
+          </button>
+        </div>
+      </div>
+    <% end %>
+
+    <!-- Processing Experience -->
+    <%= if @upload_state == :processing do %>
+      <div id="processing-experience" class="animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl overflow-hidden max-w-4xl mx-auto">
+          <!-- Processing Header -->
+          <div class="processing-bg p-8 text-white text-center">
+            <div class="inline-block p-4 bg-white bg-opacity-20 rounded-full mb-4">
+              <svg class="w-8 h-8 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+            </div>
+            <h3 class="text-3xl font-bold mb-2">Transforming Your Resume</h3>
+            <p id="processing-message" class="text-lg opacity-90"><%= @processing_message %></p>
+          </div>
+
+          <!-- Progress Visualization -->
+          <div class="p-8">
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-sm font-medium text-gray-700">Progress</span>
+              <span class="text-sm font-medium text-indigo-600"><%= @processing_progress %>%</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-3 mb-8">
+              <div class="bg-gradient-to-r from-indigo-500 to-purple-500 h-3 rounded-full transition-all duration-500 ease-out" 
+                   style={"width: #{@processing_progress}%"}></div>
+            </div>
+
+            <!-- Live Processing Steps -->
+            <div class="space-y-4">
+              <div class={"flex items-center space-x-3 transition-all duration-300 #{if @processing_stage in [:extracting, :analyzing, :enhancing, :creating, :complete], do: "opacity-100", else: "opacity-50"}"}>
+                <div class={"w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300 #{if @processing_stage in [:extracting, :analyzing, :enhancing, :creating, :complete], do: "bg-green-500", else: "bg-gray-300"}"}>
+                  <%= if @processing_stage in [:extracting, :analyzing, :enhancing, :creating, :complete] do %>
+                    <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  <% end %>
+                </div>
+                <span class="text-gray-600">Reading your professional story</span>
+              </div>
+              
+              <div class={"flex items-center space-x-3 transition-all duration-300 #{if @processing_stage in [:analyzing, :enhancing, :creating, :complete], do: "opacity-100", else: "opacity-50"}"}>
+                <div class={"w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300 #{if @processing_stage in [:analyzing, :enhancing, :creating, :complete], do: "bg-green-500", else: "bg-gray-300"}"}>
+                  <%= if @processing_stage in [:analyzing, :enhancing, :creating, :complete] do %>
+                    <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  <% end %>
+                </div>
+                <span class="text-gray-600">Discovering your unique strengths</span>
+              </div>
+              
+              <div class={"flex items-center space-x-3 transition-all duration-300 #{if @processing_stage in [:enhancing, :creating, :complete], do: "opacity-100", else: "opacity-50"}"}>
+                <div class={"w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300 #{if @processing_stage in [:enhancing, :creating, :complete], do: "bg-green-500", else: "bg-gray-300"}"}>
+                  <%= if @processing_stage in [:enhancing, :creating, :complete] do %>
+                    <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  <% end %>
+                </div>
+                <span class="text-gray-600">Adding creative flair to your story</span>
+              </div>
+              
+              <div class={"flex items-center space-x-3 transition-all duration-300 #{if @processing_stage in [:creating, :complete], do: "opacity-100", else: "opacity-50"}"}>
+                <div class={"w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300 #{if @processing_stage in [:creating, :complete], do: "bg-green-500", else: "bg-gray-300"}"}>
+                  <%= if @processing_stage in [:creating, :complete] do %>
+                    <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  <% end %>
+                </div>
+                <span class="text-gray-600">Crafting your portfolio sections</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <!-- Success Experience -->
+    <%= if @upload_state == :success do %>
+      <div id="success-experience" class="animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl overflow-hidden max-w-5xl mx-auto">
+          <!-- Success Header -->
+          <div class="bg-gradient-to-r from-green-500 to-emerald-500 p-8 text-white text-center">
+            <div class="inline-block p-4 bg-white bg-opacity-20 rounded-full mb-4 animate-bounce">
+              <svg class="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <h3 class="text-3xl font-bold mb-2">Portfolio Magic Created! ✨</h3>
+            <p class="text-lg opacity-90">Your resume has been transformed into a stunning portfolio</p>
+          </div>
+
+          <!-- Enhanced Preview -->
+          <div class="p-8">
+            <!-- Creative Enhancements -->
+            <div class="mb-8">
+              <h4 class="text-xl font-bold text-gray-900 mb-4">✨ Creative Enhancements Applied</h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <%= for enhancement <- @creative_enhancements do %>
+                  <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
+                    <div class="flex items-start space-x-3">
+                      <span class="text-2xl"><%= enhancement.icon %></span>
+                      <div>
+                        <h5 class="font-semibold text-gray-900"><%= enhancement.title %></h5>
+                        <p class="text-sm text-gray-600"><%= enhancement.description %></p>
+                      </div>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+
+            <!-- Portfolio Sections Preview -->
+            <div class="mb-8">
+              <h4 class="text-xl font-bold text-gray-900 mb-4">📖 Your Portfolio Sections</h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <%= for {section_key, section_data} <- @sections_preview do %>
+                  <div class="bg-white border-2 border-gray-200 rounded-xl p-6 text-center hover:border-indigo-300 transition-colors">
+                    <div class="text-3xl mb-3"><%= section_data.icon %></div>
+                    <h5 class="font-semibold text-gray-900 mb-2"><%= section_data.title %></h5>
+                    <p class="text-sm text-gray-600"><%= section_data.preview %></p>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
+              <button type="button" 
+                      phx-click="create_portfolio"
+                      class="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 border border-transparent text-lg font-medium rounded-xl text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300 transform hover:scale-105 shadow-lg">
+                <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                Create My Portfolio
+              </button>
+              
+              <button type="button" 
+                      phx-click="retry_upload"
+                      class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border-2 border-gray-300 text-base font-medium rounded-xl text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-300">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Try Different Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <!-- Error Experience -->
+    <%= if @upload_state == :error do %>
+      <div id="error-experience" class="animate-fade-in">
+        <div class="bg-white rounded-3xl shadow-2xl overflow-hidden max-w-3xl mx-auto">
+          <!-- Error Header -->
+          <div class="bg-gradient-to-r from-red-500 to-pink-500 p-8 text-white text-center">
+            <div class="inline-block p-4 bg-white bg-opacity-20 rounded-full mb-4">
+              <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold mb-2">Oops! Something Went Wrong</h3>
+            <p class="text-lg opacity-90">Don't worry, we can try again</p>
+          </div>
+
+          <!-- Error Details -->
+          <div class="p-8 text-center">
+            <div class="bg-red-50 border border-red-200 rounded-xl p-6 mb-6">
+              <p class="text-red-800 font-medium"><%= @error_message %></p>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+              <button type="button" 
+                      phx-click="retry_upload"
+                      class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300 transform hover:scale-105">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Try Again
+              </button>
+              
+              <button type="button" 
+                      phx-click="skip_resume"
+                      class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border-2 border-gray-300 text-base font-medium rounded-xl text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-300">
+                Start Without Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </main>
+</div>
+
+<!-- Custom Styles -->
+<style>
+  .gradient-text {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .upload-zone {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border: 2px dashed rgba(102, 126, 234, 0.4);
+    transition: all 0.3s ease;
+  }
+  
+  .upload-zone:hover {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+    border-color: rgba(102, 126, 234, 0.8);
+  }
+  
+  .magic-glow {
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.3), 0 0 40px rgba(118, 75, 162, 0.2);
+  }
+  
+  .processing-bg {
+    background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+    background-size: 400% 400%;
+    animation: gradient 3s ease infinite;
+  }
+  
+  @keyframes gradient {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-20px); }
+  }
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.8s ease-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.6s ease-out;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.5s ease-out;
+  }
+  
+  @keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  
+  @keyframes slideUp {
+    0% { transform: translateY(20px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  
+  @keyframes scaleIn {
+    0% { transform: scale(0.95); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+</style>

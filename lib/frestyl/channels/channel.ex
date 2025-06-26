@@ -75,6 +75,11 @@ defmodule Frestyl.Channels.Channel do
     |> Ecto.Changeset.cast_embeds(:featured_content, with: &featured_content_changeset/2) # Validate featured_content array of maps
     |> validate_funding_fields()
     |> validate_archived_fields()
+    |> validate_inclusion(:channel_type, ~w(
+      general gaming music education
+      portfolio_voice_over portfolio_writing portfolio_music portfolio_design
+      portfolio_quarterly_update portfolio_feedback portfolio_collaboration
+    )a)
   end
 
   @doc """
@@ -123,6 +128,181 @@ defmodule Frestyl.Channels.Channel do
     |> Ecto.Changeset.cast_embedding(:social_links, with: &social_links_changeset/2)
     |> validate_inclusion(:channel_type, ~w(general gaming music education)a) # Example types
     |> validate_funding_fields() # Re-apply if fundraising can be set here
+  end
+
+  @doc """
+  Enhanced channel type detection including portfolio collaboration types.
+  """
+  def detect_channel_type(channel_id) do
+    channel = Frestyl.Repo.get(Channel, channel_id)
+
+    cond do
+      String.contains?(channel.name || "", "Voice") ||
+      String.contains?(channel.description || "", "voice") ||
+      String.contains?(channel.description || "", "introduction") ->
+        "portfolio_voice_over"
+
+      String.contains?(channel.name || "", "Writing") ||
+      String.contains?(channel.description || "", "writing") ||
+      String.contains?(channel.description || "", "description") ->
+        "portfolio_writing"
+
+      String.contains?(channel.name || "", "Music") ||
+      String.contains?(channel.description || "", "music") ||
+      String.contains?(channel.description || "", "background") ->
+        "portfolio_music"
+
+      String.contains?(channel.name || "", "Update") ||
+      String.contains?(channel.description || "", "quarterly") ||
+      String.contains?(channel.description || "", "progress") ->
+        "portfolio_quarterly_update"
+
+      String.contains?(channel.description || "", "portfolio") ->
+        "portfolio_collaboration"
+
+      true ->
+        "general"
+    end
+  end
+
+  @doc """
+  Gets the default Studio tools configuration for portfolio channel types.
+  """
+  def get_portfolio_channel_tools(channel_type) do
+    case channel_type do
+      "portfolio_voice_over" -> %{
+        primary_tools: ["recorder", "script", "chat"],
+        secondary_tools: ["effects", "mixer"],
+        collaboration_mode: "audio_with_script",
+        default_layout: %{
+          left_dock: ["script"],
+          right_dock: ["chat"],
+          bottom_dock: ["recorder"],
+          floating: [],
+          minimized: ["effects", "mixer"]
+        },
+        welcome_message: "Welcome to your voice introduction workspace! Use the script editor to write your intro, then record it with professional quality."
+      }
+
+      "portfolio_writing" -> %{
+        primary_tools: ["editor", "chat"],
+        secondary_tools: ["recorder"],
+        collaboration_mode: "content_review",
+        default_layout: %{
+          left_dock: ["editor"],
+          right_dock: ["chat"],
+          bottom_dock: [],
+          floating: [],
+          minimized: ["recorder"]
+        },
+        welcome_message: "Collaborate with writers to enhance your portfolio content! Share drafts and get real-time feedback."
+      }
+
+      "portfolio_music" -> %{
+        primary_tools: ["recorder", "mixer", "effects"],
+        secondary_tools: ["chat", "editor"],
+        collaboration_mode: "multimedia_creation",
+        default_layout: %{
+          left_dock: ["mixer"],
+          right_dock: ["chat"],
+          bottom_dock: ["recorder", "effects"],
+          floating: [],
+          minimized: ["editor"]
+        },
+        welcome_message: "Create custom background music for your portfolio! Collaborate with musicians to set the perfect mood."
+      }
+
+      "portfolio_design" -> %{
+        primary_tools: ["visual", "chat"],
+        secondary_tools: ["editor"],
+        collaboration_mode: "content_review",
+        default_layout: %{
+          left_dock: ["visual"],
+          right_dock: ["chat"],
+          bottom_dock: [],
+          floating: [],
+          minimized: ["editor"]
+        },
+        welcome_message: "Design and refine your portfolio's visual elements with collaborative feedback!"
+      }
+
+      "portfolio_quarterly_update" -> %{
+        primary_tools: ["editor", "chat"],
+        secondary_tools: ["recorder"],
+        collaboration_mode: "content_review",
+        default_layout: %{
+          left_dock: ["editor"],
+          right_dock: ["chat"],
+          bottom_dock: [],
+          floating: [],
+          minimized: ["recorder"]
+        },
+        welcome_message: "Time to update your portfolio! Document your recent achievements and get feedback on your progress."
+      }
+
+      "portfolio_feedback" -> %{
+        primary_tools: ["chat", "editor"],
+        secondary_tools: ["recorder"],
+        collaboration_mode: "content_review",
+        default_layout: %{
+          left_dock: ["editor"],
+          right_dock: ["chat"],
+          bottom_dock: [],
+          floating: [],
+          minimized: ["recorder"]
+        },
+        welcome_message: "Get comprehensive feedback on your portfolio! Invite mentors, peers, or industry experts to review and suggest improvements."
+      }
+
+      _ -> %{
+        primary_tools: ["chat", "editor"],
+        secondary_tools: ["recorder"],
+        collaboration_mode: "content_review",
+        default_layout: %{
+          left_dock: ["editor"],
+          right_dock: ["chat"],
+          bottom_dock: [],
+          floating: [],
+          minimized: ["recorder"]
+        },
+        welcome_message: "Welcome to your portfolio collaboration workspace!"
+      }
+    end
+  end
+
+  @doc """
+  Gets channel limits based on account type for portfolio channels.
+  """
+  def get_portfolio_channel_limits(subscription_tier) do
+    case subscription_tier do
+      "storyteller" -> %{
+        max_portfolio_channels: 2,
+        max_collaborators_per_channel: 3,
+        can_create_quarterly_updates: false,
+        can_invite_external_collaborators: false
+      }
+
+      "professional" -> %{
+        max_portfolio_channels: 10,
+        max_collaborators_per_channel: 10,
+        can_create_quarterly_updates: true,
+        can_invite_external_collaborators: true
+      }
+
+      "business" -> %{
+        max_portfolio_channels: :unlimited,
+        max_collaborators_per_channel: :unlimited,
+        can_create_quarterly_updates: true,
+        can_invite_external_collaborators: true
+      }
+
+      _ -> %{
+        max_portfolio_channels: 1,
+        max_collaborators_per_channel: 2,
+        can_create_quarterly_updates: false,
+        can_invite_external_collaborators: false
+      }
+    end
   end
 
   # --- Embedded Changesets ---

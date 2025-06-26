@@ -118,6 +118,18 @@ defmodule FrestylWeb.Router do
     delete "/logout", UserSessionController, :delete
 
     resources "/users", UserController, except: [:new, :create, :show]
+
+    # Public portfolio routes
+    # Public portfolio viewing
+    live "/p/:slug", PortfolioLive.View, :show
+    live "/portfolio/:slug", PortfolioLive.View, :show  # Alternative URL
+
+    # Shared portfolio access via token
+    live "/share/:token", PortfolioLive.SharedView, :shared
+
+    # Portfolio export endpoints
+    get "/p/:slug/export", PortfolioController, :export_pdf
+    get "/p/:slug/resume", PortfolioController, :export_resume
   end
 
 
@@ -127,127 +139,137 @@ defmodule FrestylWeb.Router do
 
     live_session :require_auth, on_mount: [{FrestylWeb.UserAuth, :ensure_authenticated}] do
 
-      live "/onboarding", OnboardingLive, :index
+      # Onboarding routes
+    live "/onboarding", OnboardingLive, :index
+    live "/resume-upload", OnboardingLive.ResumeUpload, :upload
 
-      # NEW: Portfolio Hub routes (Portfolio-first approach)
-      live "/hub", PortfolioHubLive, :index
+    # Main dashboard/hub routes - MUST come before generic routes
+    live "/", PortfolioHubLive, :index           # Main landing page
+    live "/hub", PortfolioHubLive, :index        # Portfolio hub
+    live "/hub/welcome", PortfolioHubLive, :welcome  # Welcome page
+    live "/dashboard", DashboardLive, :index     # General dashboard
 
-      # UPDATED: Existing portfolio routes now under /portfolios/dashboard
-      live "/portfolios/dashboard", PortfolioLive.Index, :index
-      live "/portfolios/new", PortfolioLive.Index, :new
-      live "/portfolios/:id", PortfolioLive.Show, :show
-      live "/portfolios/:id/show/edit", PortfolioLive.Show, :edit
-      live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
-      live "/portfolios/:id/analytics", PortfolioLive.AnalyticsLive, :show
-      live "/portfolios/:id/share", PortfolioLive.ShareLive, :show
+    # Channels routes - CLEANED UP
+    live "/channels", ChannelLive.Index, :index
+    live "/channels/new", ChannelLive.Index, :new
+    live "/channels/:id/edit", ChannelLive.Index, :edit  # ID-based editing from index
 
-      # Legacy route redirect (for SEO and bookmarks)
-      live "/portfolios", PortfolioHubLive, :index
+    # Main channel show route (handles both ID and slug)
+    live "/channels/:id_or_slug", ChannelLive.Show, :show
 
-      live "/dashboard", DashboardLive, :index
+    # Channel management routes (all use slug)
+    live "/channels/:slug/edit", ChannelLive.Show, :edit
+    live "/channels/:slug/customize", ChannelLive.Customize, :edit
+    live "/channels/:slug/settings", ChannelLive.Settings, :edit
+    live "/channels/:slug/members", ChannelLive.Members, :index
+    live "/channels/:slug/analytics", ChannelLive.Analytics, :index
 
-      # Channels routes - CLEANED UP
-      live "/channels", ChannelLive.Index, :index
-      live "/channels/new", ChannelLive.Index, :new
-      live "/channels/:id/edit", ChannelLive.Index, :edit  # ID-based editing from index
+    # Channel content management
+    live "/channels/:slug/content", ContentLive.Index, :index
+    live "/channels/:slug/content/upload", ContentLive.Upload, :new
+    live "/channels/:slug/content/:id", ContentLive.Show, :show
 
-      # Main channel show route (handles both ID and slug)
-      live "/channels/:id_or_slug", ChannelLive.Show, :show
+    # Sessions routes
+    live "/channels/:slug/sessions", SessionLive.Index, :index
+    live "/channels/:slug/sessions/:session_id", StudioLive, :show
+    live "/channels/:slug/sessions/:session_id/edit", StudioLive, :edit_session
 
-      # Channel management routes (all use slug)
-      live "/channels/:slug/edit", ChannelLive.Show, :edit
-      live "/channels/:slug/customize", ChannelLive.Customize, :edit
-      live "/channels/:slug/settings", ChannelLive.Settings, :edit
-      live "/channels/:slug/members", ChannelLive.Members, :index
-      live "/channels/:slug/analytics", ChannelLive.Analytics, :index
+    # Broadcasts routes
+    live "/channels/:slug/broadcasts", BroadcastLive.Index, :index
+    live "/channels/:slug/broadcasts/new", BroadcastLive.Index, :new
+    live "/channels/:slug/broadcasts/:id", BroadcastLive.Show, :show
+    live "/channels/:slug/broadcasts/:id/edit", BroadcastLive.Show, :edit
+    live "/channels/:slug/broadcasts/:id/manage", BroadcastLive.Manage, :show
+    live "/channels/:slug/broadcasts/:id/sound-check", BroadcastLive.SoundCheck, :show
+    live "/channels/:slug/broadcasts/:id/waiting", BroadcastLive.WaitingRoom, :show
+    live "/channels/:slug/broadcasts/:id/live", BroadcastLive.Show, :live
 
-      # Channel content management
-      live "/channels/:slug/content", ContentLive.Index, :index
-      live "/channels/:slug/content/upload", ContentLive.Upload, :new
-      live "/channels/:slug/content/:id", ContentLive.Show, :show
+    # Studio routes
+    live "/channels/:slug/studio", StudioLive.Index, :index
+    live "/channels/:slug/go-live", StudioLive.Broadcast, :new
 
-      # Sessions routes
-      live "/channels/:slug/sessions", SessionLive.Index, :index
-      live "/channels/:slug/sessions/:session_id", StudioLive, :show
-      live "/channels/:slug/sessions/:session_id/edit", StudioLive, :edit_session
+    # Content Management Routes (moved from /media to avoid conflict with SupremeDiscovery)
+    live "/content/media", MediaLive.Index, :index
+    live "/content/media/new", MediaLive.Index, :new
+    live "/content/media/:id/edit", MediaLive.Index, :edit
+    live "/content/media/:id", MediaLive.Show, :show
+    live "/content/media/:id/show/edit", MediaLive.Show, :edit
 
-      # Broadcasts routes
-      live "/channels/:slug/broadcasts", BroadcastLive.Index, :index
-      live "/channels/:slug/broadcasts/new", BroadcastLive.Index, :new
-      live "/channels/:slug/broadcasts/:id", BroadcastLive.Show, :show
-      live "/channels/:slug/broadcasts/:id/edit", BroadcastLive.Show, :edit
-      live "/channels/:slug/broadcasts/:id/manage", BroadcastLive.Manage, :show
-      live "/channels/:slug/broadcasts/:id/sound-check", BroadcastLive.SoundCheck, :show
-      live "/channels/:slug/broadcasts/:id/waiting", BroadcastLive.WaitingRoom, :show
-      live "/channels/:slug/broadcasts/:id/live", BroadcastLive.Show, :live
+    # Keep existing broadcast routes with slug consistency
+    live "/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
+    live "/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
+    live "/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
+    live "/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
 
-      # Studio routes
-      live "/channels/:slug/studio", StudioLive.Index, :index
-      live "/channels/:slug/go-live", StudioLive.Broadcast, :new
+    # Streaming route
+    live "/streaming", StreamingLive.Index, :index
 
-      # Content Management Routes (moved from /media to avoid conflict with SupremeDiscovery)
-      live "/content/media", MediaLive.Index, :index
-      live "/content/media/new", MediaLive.Index, :new
-      live "/content/media/:id/edit", MediaLive.Index, :edit
-      live "/content/media/:id", MediaLive.Show, :show
-      live "/content/media/:id/show/edit", MediaLive.Show, :edit
+    # Chat
+    live "/chat", ChatLive.Show
+    live "/chat/channel/:id", ChatLive.Show, :channel
+    live "/chat/conversation/:id", ChatLive.Show, :conversation
+    live "/chat/:id", ChatLive.Show  # Auto-detect
 
-      # Keep existing broadcast routes with slug consistency
-      live "/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
-      live "/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
-      live "/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
-      live "/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
+    # 🚀 REVOLUTIONARY DISCOVERY INTERFACE ROUTES (now at /media)
+    live "/media", MediaLive.SupremeDiscovery, :index
+    live "/media/:id", SupremeDiscoveryLive, :show
+    live "/media/:id/expand", SupremeDiscoveryLive, :expand
 
-      # Streaming route
-      live "/streaming", StreamingLive.Index, :index
+    # Events
+    live "/events", EventLive.Index, :index
+    live "/events/new", EventLive.Index, :new
+    live "/events/:id", EventLive.Show, :show
+    live "/events/:id/edit", EventLive.Index, :edit
+    live "/events/:id/attend", EventAttendanceLive, :show
 
-      # Chat
-      live "/chat", ChatLive.Show
-      live "/chat/channel/:id", ChatLive.Show, :channel
-      live "/chat/conversation/:id", ChatLive.Show, :conversation
-      live "/chat/:id", ChatLive.Show  # Auto-detect
+    # Portfolio management dashboard
+    live "/portfolios", PortfolioLive.Index, :index
 
-      # 🚀 REVOLUTIONARY DISCOVERY INTERFACE ROUTES (now at /media)
-      live "/media", MediaLive.SupremeDiscovery, :index
-      live "/media/:id", SupremeDiscoveryLive, :show
-      live "/media/:id/expand", SupremeDiscoveryLive, :expand
+    # Portfolio CRUD operations
+    live "/portfolios/new", PortfolioLive.New, :new
+    live "/portfolios/:id", PortfolioLive.Show, :show
+    live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
+    live "/portfolios/:id/settings", PortfolioLive.Settings, :settings
 
-      # Events
-      live "/events", EventLive.Index, :index
-      live "/events/new", EventLive.Index, :new
-      live "/events/:id", EventLive.Show, :show
-      live "/events/:id/edit", EventLive.Index, :edit
-      live "/events/:id/attend", EventAttendanceLive, :show
+    # Portfolio analytics and insights
+    live "/portfolios/:id/analytics", PortfolioLive.AnalyticsLive, :analytics
+    live "/portfolios/:id/insights", PortfolioLive.InsightsLive, :insights
 
-      # Portfolio routes - Clean module names
-      live "/portfolios", PortfolioLive.Index, :index
-      live "/portfolios/new", PortfolioLive.New, :new
-      live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
-      live "/portfolios/:id/share", PortfolioLive.Share, :share
-      live "/portfolios/:portfolio_id/resume-import", PortfolioLive.ResumeParser, :import
+    # Portfolio collaboration
+    live "/portfolios/:id/collaborate", PortfolioLive.CollaborationLive, :collaborate
+    live "/portfolios/:id/shares", PortfolioLive.SharesLive, :shares
 
-      live "/portfolios/:id/analytics", PortfolioLive.Analytics, :analytics
-      # REMOVED: live "/portfolios/:portfolio_id/resume-parser", PortfolioLive.ResumeParser, :parse
-      live "/portfolios/:portfolio_id/sections/new", PortfolioLive.SectionEdit, :new
-      live "/portfolios/:portfolio_id/sections/:id/edit", PortfolioLive.SectionEdit, :edit
-      live "/p/:slug", PortfolioLive.View, :show
-      live "/s/:token", PortfolioLive.SharedShow, :show
+    # Portfolio sections management
+    live "/portfolios/:portfolio_id/sections/:id/edit", PortfolioLive.SectionEdit, :edit
 
-      # Users and Profile
-      live "/invite", InviteUserLive, :index
-      live "/collaborations", CollaborationLive, :index
-      live "/analytics", AnalyticsLive.Dashboard, :index
-      live "/analytics/channels/:channel_id", AnalyticsLive.Dashboard, :channel
-      live "/analytics/performance", AnalyticsLive.PerformanceDashboard, :index
-      live "/analytics/revenue", AnalyticsLive.RevenueDashboard, :index
-      live "/analytics/audience", AnalyticsLive.AudienceDashboard, :index
-      live "/profile", UserLive.Profile, :show
-      live "/users/settings/two_factor", UserLive.TwoFactorSetupLive, :index
-      live "/account/sessions", UserLive.SessionManagementLive, :index
-      live "/account/privacy", UserLive.PrivacySettingsLive, :index
-      live "/account/subscription", SubscriptionLive.Index, :index # Moved to LiveView
+    # Media management
+    post "/portfolios/:id/media/upload", PortfolioController, :upload_media
+    delete "/portfolios/:id/media/:media_id", PortfolioController, :delete_media
 
-    end
+    # Portfolio templates and themes
+    live "/portfolios/:id/themes", PortfolioLive.ThemesLive, :themes
+    live "/portfolios/:id/customization", PortfolioLive.CustomizationLive, :customization
+
+    # Import/Export functionality
+    live "/portfolios/:id/import", PortfolioLive.ImportLive, :import
+    post "/portfolios/:id/import/resume", PortfolioController, :import_resume
+    get "/portfolios/:id/export/:format", PortfolioController, :export
+
+    # Users and Profile
+    live "/invite", InviteUserLive, :index
+    live "/collaborations", CollaborationLive, :index
+    live "/analytics", AnalyticsLive.Dashboard, :index
+    live "/analytics/channels/:channel_id", AnalyticsLive.Dashboard, :channel
+    live "/analytics/performance", AnalyticsLive.PerformanceDashboard, :index
+    live "/analytics/revenue", AnalyticsLive.RevenueDashboard, :index
+    live "/analytics/audience", AnalyticsLive.AudienceDashboard, :index
+    live "/profile", UserLive.Profile, :show
+    live "/users/settings/two_factor", UserLive.TwoFactorSetupLive, :index
+    live "/account/sessions", UserLive.SessionManagementLive, :index
+    live "/account/privacy", UserLive.PrivacySettingsLive, :index
+    live "/account/subscription", SubscriptionLive.Index, :index # Moved to LiveView
+
+  end
 
     get "/dashboard", DashboardController, :index # Keep for non-LiveView access if needed
     get "/users/log_in_success", UserSessionController, :log_in_success
@@ -334,6 +356,15 @@ defmodule FrestylWeb.Router do
     get "/broadcasts/:id/join", BroadcastController, :join
   end
 
+  # Admin routes for portfolio management
+  scope "/admin", FrestylWeb.Admin do
+    pipe_through [:browser, :require_authenticated_user, :require_admin]
+
+    live "/portfolios", PortfolioLive.AdminIndex, :index
+    live "/portfolios/:id", PortfolioLive.AdminShow, :show
+    live "/portfolios/:id/moderate", PortfolioLive.AdminModerate, :moderate
+  end
+
   # API: Public
   scope "/api", FrestylWeb.Api do
     pipe_through [:api]
@@ -400,6 +431,19 @@ defmodule FrestylWeb.Router do
   scope "/api", FrestylWeb.Api do
     pipe_through [:api, :api_auth, :api_2fa]
 
+    # Portfolio API endpoints
+    resources "/portfolios", PortfolioController, except: [:new, :edit] do
+      resources "/sections", SectionController
+      resources "/media", MediaController
+      get "/analytics", PortfolioController, :analytics
+      post "/duplicate", PortfolioController, :duplicate
+    end
+
+    # Portfolio sharing API
+    post "/portfolios/:id/shares", ShareController, :create
+    get "/portfolios/:id/shares", ShareController, :index
+    delete "/shares/:token", ShareController, :delete
+
     resources "/users", UserController, only: [:update, :delete]
     post "/users/change_password", UserController, :change_password
     post "/users/disable_2fa", UserController, :disable_2fa
@@ -420,6 +464,12 @@ defmodule FrestylWeb.Router do
     resources "/admin/users", AdminUserController
     resources "/admin/settings", AdminSettingsController
     resources "/admin/metrics", AdminMetricsController, only: [:index]
+  end
+
+  scope "/api/webhooks", FrestylWeb do
+   pipe_through :api
+
+   post "/stripe", StripeWebhookController, :handle
   end
 
     # ADD: Portfolio download routes (protected)

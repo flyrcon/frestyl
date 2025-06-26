@@ -1,0 +1,581 @@
+/* assets/css/mobile_portfolio_hub.css */
+/* Mobile-First CSS for Portfolio Hub - Enhances your existing Tailwind setup */
+
+/* ============================================================================ */
+/* MOBILE BREAKPOINT STRATEGY */
+/* ============================================================================ */
+
+/* Using your existing Tailwind breakpoints:
+   - Default: Mobile-first (0px+)
+   - sm: 640px+
+   - md: 768px+  
+   - lg: 1024px+ (Desktop)
+   - xl: 1280px+
+   - 2xl: 1536px+
+*/
+
+/* ============================================================================ */
+/* MOBILE TOUCH & GESTURE ENHANCEMENTS */
+/* ============================================================================ */
+
+/* Touch-friendly targets - following iOS/Android guidelines */
+.mobile-touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  touch-action: manipulation;
+}
+
+/* Prevent touch callouts and text selection on UI elements */
+.mobile-ui-element {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Enhanced touch feedback */
+.mobile-touch-feedback {
+  transition: all 0.15s ease-out;
+  touch-action: manipulation;
+}
+
+.mobile-touch-feedback:active {
+  transform: scale(0.98);
+  opacity: 0.8;
+}
+
+/* ============================================================================ */
+/* MOBILE NAVIGATION & LAYOUT */
+/* ============================================================================ */
+
+/* Mobile header with proper safe area handling */
+.mobile-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Mobile navigation slide animations */
+.mobile-nav-slide-enter {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.mobile-nav-slide-enter-active {
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              opacity 0.3s ease-out;
+}
+
+.mobile-nav-slide-exit {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.mobile-nav-slide-exit-active {
+  transform: translateX(100%);
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(0.55, 0.06, 0.68, 0.19),
+              opacity 0.3s ease-in;
+}
+
+/* Bottom sheet animations */
+.mobile-bottom-sheet {
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.mobile-bottom-sheet.open {
+  transform: translateY(0);
+}
+
+/* ============================================================================ */
+/* MOBILE PORTFOLIO CARDS */
+/* ============================================================================ */
+
+/* Mobile portfolio card optimizations */
+.mobile-portfolio-card {
+  touch-action: manipulation;
+  will-change: transform;
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.mobile-portfolio-card:active {
+  transform: translateY(1px);
+}
+
+/* Mobile portfolio grid with proper spacing */
+.mobile-portfolio-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+@media (min-width: 480px) {
+  .mobile-portfolio-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+/* Mobile portfolio card content layout */
+.mobile-portfolio-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mobile-portfolio-actions {
+  margin-top: auto;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mobile-portfolio-actions button {
+  flex: 1;
+  min-height: 44px;
+}
+
+/* ============================================================================ */
+/* MOBILE TYPOGRAPHY & READABILITY */
+/* ============================================================================ */
+
+/* Mobile-optimized typography scales */
+.mobile-heading-xl {
+  font-size: 1.875rem; /* 30px */
+  line-height: 2.25rem; /* 36px */
+  font-weight: 800;
+}
+
+.mobile-heading-lg {
+  font-size: 1.5rem; /* 24px */
+  line-height: 2rem; /* 32px */
+  font-weight: 700;
+}
+
+.mobile-heading-md {
+  font-size: 1.25rem; /* 20px */
+  line-height: 1.75rem; /* 28px */
+  font-weight: 600;
+}
+
+.mobile-body-text {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.25rem; /* 20px */
+}
+
+.mobile-caption-text {
+  font-size: 0.75rem; /* 12px */
+  line-height: 1rem; /* 16px */
+}
+
+/* Enhanced readability for mobile */
+.mobile-readable {
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================================ */
+/* MOBILE SCROLLING & PERFORMANCE */
+/* ============================================================================ */
+
+/* Smooth scrolling optimizations */
+.mobile-smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Hide scrollbars while maintaining functionality */
+.mobile-hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.mobile-hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Momentum scrolling for iOS */
+.mobile-momentum-scroll {
+  -webkit-overflow-scrolling: touch;
+  overflow-scrolling: touch;
+}
+
+/* Performance optimizations for mobile */
+.mobile-gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* ============================================================================ */
+/* MOBILE SAFE AREAS & NOTCH HANDLING */
+/* ============================================================================ */
+
+/* Safe area support for devices with notches */
+@supports (padding: max(0px)) {
+  .mobile-safe-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+  
+  .mobile-safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  
+  .mobile-safe-left {
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+  
+  .mobile-safe-right {
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+  
+  .mobile-safe-all {
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}
+
+/* ============================================================================ */
+/* MOBILE LOADING & ANIMATIONS */
+/* ============================================================================ */
+
+/* Mobile-optimized loading states */
+.mobile-skeleton {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: mobile-skeleton-loading 1.5s infinite;
+}
+
+@keyframes mobile-skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Mobile pull-to-refresh animation */
+.mobile-pull-refresh {
+  transform: translateY(-50px);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.mobile-pull-refresh.active {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* Mobile swipe indicators */
+.mobile-swipe-indicator {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+
+.mobile-swipe-indicator.show {
+  opacity: 1;
+}
+
+/* ============================================================================ */
+/* MOBILE FORM & INPUT OPTIMIZATIONS */
+/* ============================================================================ */
+
+/* Mobile-friendly form inputs */
+.mobile-input {
+  min-height: 44px;
+  font-size: 16px; /* Prevents zoom on iOS */
+  border-radius: 0.5rem;
+  transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.mobile-input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+/* Mobile textarea optimization */
+.mobile-textarea {
+  min-height: 88px;
+  resize: vertical;
+  font-size: 16px;
+}
+
+/* Mobile select styling */
+.mobile-select {
+  min-height: 44px;
+  font-size: 16px;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+/* ============================================================================ */
+/* MOBILE COLLABORATION FEATURES */
+/* ============================================================================ */
+
+/* Mobile collaboration indicators */
+.mobile-collab-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.mobile-collab-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 2px solid white;
+  margin-left: -0.5rem;
+  transition: transform 0.2s ease-out;
+}
+
+.mobile-collab-avatar:first-child {
+  margin-left: 0;
+}
+
+.mobile-collab-avatar:hover {
+  transform: scale(1.1);
+  z-index: 1;
+}
+
+/* Mobile collaboration panel */
+.mobile-collab-panel {
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 
+              0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* ============================================================================ */
+/* MOBILE ACTIVITY FEED */
+/* ============================================================================ */
+
+/* Mobile activity items */
+.mobile-activity-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.2s ease-out;
+}
+
+.mobile-activity-item:hover {
+  background-color: #f9fafb;
+}
+
+.mobile-activity-avatar {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-right: 0.75rem;
+}
+
+.mobile-activity-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ============================================================================ */
+/* MOBILE ACCESSIBILITY ENHANCEMENTS */
+/* ============================================================================ */
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .mobile-card {
+    border-width: 2px;
+  }
+  
+  .mobile-button {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .mobile-animated {
+    animation: none !important;
+    transition: none !important;
+  }
+  
+  .mobile-transform {
+    transform: none !important;
+  }
+}
+
+/* Focus management for mobile */
+.mobile-focus-visible:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* Screen reader only content */
+.mobile-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================================================ */
+/* MOBILE DARK MODE SUPPORT */
+/* ============================================================================ */
+
+@media (prefers-color-scheme: dark) {
+  .mobile-dark-adaptive {
+    background-color: #111827;
+    color: #f9fafb;
+  }
+  
+  .mobile-dark-card {
+    background-color: #1f2937;
+    border-color: #374151;
+  }
+  
+  .mobile-dark-text {
+    color: #e5e7eb;
+  }
+  
+  .mobile-dark-text-muted {
+    color: #9ca3af;
+  }
+}
+
+/* ============================================================================ */
+/* MOBILE UTILITY CLASSES */
+/* ============================================================================ */
+
+/* Text truncation utilities */
+.mobile-truncate-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mobile-truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mobile-truncate-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Mobile spacing utilities */
+.mobile-spacing-xs { gap: 0.5rem; }
+.mobile-spacing-sm { gap: 0.75rem; }
+.mobile-spacing-md { gap: 1rem; }
+.mobile-spacing-lg { gap: 1.5rem; }
+.mobile-spacing-xl { gap: 2rem; }
+
+/* Mobile border radius utilities */
+.mobile-rounded-card { border-radius: 0.75rem; }
+.mobile-rounded-modal { border-radius: 1rem; }
+.mobile-rounded-full { border-radius: 9999px; }
+
+/* ============================================================================ */
+/* MOBILE RESPONSIVE BREAKPOINT HELPERS */
+/* ============================================================================ */
+
+/* Show/hide at specific breakpoints */
+@media (max-width: 639px) {
+  .mobile-only { display: block; }
+  .mobile-hidden { display: none; }
+}
+
+@media (min-width: 640px) {
+  .mobile-only { display: none; }
+  .tablet-up { display: block; }
+}
+
+@media (min-width: 1024px) {
+  .desktop-up { display: block; }
+  .mobile-tablet-only { display: none; }
+}
+
+/* ============================================================================ */
+/* MOBILE PERFORMANCE OPTIMIZATIONS */
+/* ============================================================================ */
+
+/* Optimize repaints and reflows */
+.mobile-optimized {
+  contain: layout style paint;
+  will-change: auto;
+}
+
+/* Optimize for touch scrolling */
+.mobile-scroll-container {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+/* GPU acceleration for animations */
+.mobile-animated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* ============================================================================ */
+/* MOBILE DEBUGGING HELPERS (Remove in production) */
+/* ============================================================================ */
+
+
+.mobile-debug-grid {
+  background-image: 
+    linear-gradient(rgba(255, 0, 0, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.1) 1px, transparent 1px);
+  background-size: 1rem 1rem;
+}
+
+.mobile-debug-touch {
+  border: 2px dashed red;
+  min-height: 44px;
+  min-width: 44px;
+}

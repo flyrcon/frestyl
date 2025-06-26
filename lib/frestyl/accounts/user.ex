@@ -35,6 +35,7 @@ defmodule Frestyl.Accounts.User do
     field :last_active_at, :utc_datetime
     field :status, :string, default: "active"
     field :primary_account_type, Ecto.Enum, values: [:personal, :professional, :enterprise]
+    field :onboarding_completed, :boolean, default: false
 
 
     # Virtual field for forms
@@ -57,7 +58,7 @@ defmodule Frestyl.Accounts.User do
   @doc false
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [:name, :email, :primary_account_type, :username, :display_name, :bio, :avatar_url, :full_name, :website, :social_links, :timezone, :preferences, :privacy_settings])
+    |> cast(attrs, [:name, :email, :primary_account_type, :username, :display_name, :bio, :avatar_url, :full_name, :website, :social_links, :timezone, :preferences, :privacy_settings, :onboarding_completed])
     |> validate_required([:email, :primary_account_type])
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "must have the @ sign and no spaces")
     |> validate_length(:email, max: 160)

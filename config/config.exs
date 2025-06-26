@@ -205,6 +205,15 @@ import_config "#{config_env()}.exs"
 config :stripity_stripe,
   api_key: System.get_env("STRIPE_SECRET_KEY")
 
+#   public_key: System.get_env("STRIPE_PUBLIC_KEY"),
+#   secret_key: System.get_env("STRIPE_SECRET_KEY"),
+#   webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET"),
+#   professional_price_id: System.get_env("STRIPE_PROFESSIONAL_PRICE_ID"),
+#   business_price_id: System.get_env("STRIPE_BUSINESS_PRICE_ID")
+
+
+
+
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
 # config/config.exs

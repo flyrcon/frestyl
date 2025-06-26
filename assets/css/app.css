@@ -982,3 +982,85 @@ input:disabled {
   transform: translateX(-50%);
   margin-bottom: 5px;
 }
+
+
+/* Portfolio Hub Enhancements */
+.portfolio-card {
+  transition: all 0.3s ease;
+}
+
+.portfolio-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.contribution-graph-day {
+  transition: all 0.2s ease;
+}
+
+.contribution-graph-day:hover {
+  transform: scale(1.2);
+  z-index: 10;
+  position: relative;
+}
+
+/* Welcome celebration animations */
+@keyframes confettifall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(300px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+@keyframes celebrationPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.celebration-pulse {
+  animation: celebrationPulse 2s ease-in-out infinite;
+}
+
+/* Enhanced collaboration indicators */
+.collaboration-avatar {
+  transition: all 0.2s ease;
+}
+
+.collaboration-avatar:hover {
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+/* Portfolio grid responsive enhancements */
+@media (max-width: 768px) {
+  .portfolio-grid {
+    grid-template-columns: repeat(1, 1fr);
+    gap: 1rem;
+  }
+  
+  .portfolio-card {
+    margin-bottom: 1rem;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .portfolio-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+@media (min-width: 1025px) {
+  .portfolio-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+  }
+}

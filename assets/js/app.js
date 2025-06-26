@@ -19,6 +19,116 @@ import SortableSections from "./hooks/section_sortable"
 // Import Sortable for drag-and-drop
 import Sortable from 'sortablejs'
 
+// Portfolio Hub Hooks
+export const PortfolioHub = {
+  mounted() {
+    this.initializeGridAnimations()
+    this.initializeFilterAnimations()
+    this.initializeCollaborationFeatures()
+  },
+
+  initializeGridAnimations() {
+    // Animate portfolio cards on load
+    const cards = this.el.querySelectorAll('.portfolio-card')
+    cards.forEach((card, index) => {
+      card.style.opacity = '0'
+      card.style.transform = 'translateY(20px)'
+      
+      setTimeout(() => {
+        card.style.transition = 'all 0.6s ease-out'
+        card.style.opacity = '1'
+        card.style.transform = 'translateY(0)'
+      }, index * 100)
+    })
+  },
+
+  initializeFilterAnimations() {
+    // Add smooth transitions when filtering
+    const filterButtons = this.el.querySelectorAll('[phx-click="filter_portfolios"]')
+    filterButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        // Add loading state
+        button.classList.add('opacity-50')
+        setTimeout(() => {
+          button.classList.remove('opacity-50')
+        }, 300)
+      })
+    })
+  },
+
+  initializeCollaborationFeatures() {
+    // Enhanced collaboration panel interactions
+    const collaborationBell = this.el.querySelector('[phx-click="toggle_collaboration_panel"]')
+    if (collaborationBell) {
+      collaborationBell.addEventListener('click', () => {
+        // Add bell animation
+        collaborationBell.classList.add('animate-bounce')
+        setTimeout(() => {
+          collaborationBell.classList.remove('animate-bounce')
+        }, 1000)
+      })
+    }
+  },
+
+  updated() {
+    // Re-initialize animations after updates
+    setTimeout(() => {
+      this.initializeGridAnimations()
+    }, 100)
+  }
+}
+
+export const WelcomeCelebration = {
+  mounted() {
+    this.initializeCelebration()
+  },
+
+  initializeCelebration() {
+    // Auto-start confetti effect
+    setTimeout(() => {
+      this.createConfettiEffect()
+    }, 500)
+
+    // Auto-dismiss after 30 seconds unless user interacts
+    this.dismissTimer = setTimeout(() => {
+      this.pushEvent("dismiss_welcome", {})
+    }, 30000)
+  },
+
+  createConfettiEffect() {
+    const colors = ['#fbbf24', '#f59e0b', '#3b82f6', '#8b5cf6', '#ef4444', '#10b981']
+    const container = this.el
+    
+    for (let i = 0; i < 50; i++) {
+      setTimeout(() => {
+        const confetti = document.createElement('div')
+        confetti.style.cssText = `
+          position: absolute;
+          width: 8px;
+          height: 8px;
+          background: ${colors[Math.floor(Math.random() * colors.length)]};
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 1000;
+          top: 20%;
+          left: ${20 + Math.random() * 60}%;
+          animation: confettifall 3s ease-out forwards;
+        `
+        
+        container.appendChild(confetti)
+        
+        setTimeout(() => confetti.remove(), 3000)
+      }, i * 50)
+    }
+  },
+
+  destroyed() {
+    if (this.dismissTimer) {
+      clearTimeout(this.dismissTimer)
+    }
+  }
+}
+
 // Make Sortable globally available
 window.Sortable = Sortable;
 

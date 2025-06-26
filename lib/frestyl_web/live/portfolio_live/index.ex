@@ -167,6 +167,32 @@ defmodule FrestylWeb.PortfolioLive.Index do
     "#{FrestylWeb.Endpoint.url()}/p/#{token}?collaboration=true"
   end
 
+  def handle_event("create_portfolio_from_onboarding", params, socket) do
+    # Enhanced portfolio creation with onboarding context
+    portfolio_attrs = Map.merge(params, %{
+      "user_id" => socket.assigns.current_user.id,
+      "created_from_onboarding" => true,
+      "onboarding_step" => "portfolio_creation"
+    })
+
+    case Portfolios.create_portfolio(portfolio_attrs) do
+      {:ok, portfolio} ->
+        # Mark onboarding progress
+        Accounts.update_onboarding_progress(socket.assigns.current_user, %{
+          portfolio_created: true,
+          current_step: "customization"
+        })
+
+        {:noreply,
+        socket
+        |> put_flash(:info, "Portfolio created successfully!")
+        |> push_navigate(to: "/portfolios/hub/welcome?portfolio_id=#{portfolio.id}")}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to create portfolio")}
+    end
+  end
+
   # Create Portfolio modal handlers
   @impl true
   def handle_event("show_create_modal", _params, socket) do
