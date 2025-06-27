@@ -477,6 +477,15 @@ defmodule FrestylWeb.PortfolioLive.Index do
     end
   end
 
+  def handle_params(%{"dashboard" => true}, _url, socket) do
+    # Handle dashboard-specific logic here
+    {:noreply, assign(socket, :view_mode, :dashboard)}
+  end
+
+  def handle_params(_params, _url, socket) do
+    {:noreply, assign(socket, :view_mode, :index)}
+  end
+
   def debug_portfolio_creation(user_id, attrs) do
     IO.puts("🔍 DEBUG: Creating portfolio for user #{user_id}")
     IO.puts("🔍 DEBUG: Attrs: #{inspect(attrs)}")

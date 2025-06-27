@@ -40,6 +40,7 @@ defmodule Frestyl.Portfolios.Portfolio do
     field :story_tags, {:array, :string}
     field :estimated_read_time, :integer, default: 0
     field :collaboration_settings, :map, default: %{}
+    field :service_booking_enabled, :boolean, default: false
 
     many_to_many :shared_with_accounts, Frestyl.Accounts.UserAccount,
       join_through: "portfolio_account_shares"
@@ -53,6 +54,7 @@ defmodule Frestyl.Portfolios.Portfolio do
     has_many :portfolio_visits, Frestyl.Portfolios.PortfolioVisit
     has_many :portfolio_shares, Frestyl.Portfolios.PortfolioShare
     has_many :story_chapters, Frestyl.Stories.Chapter
+    has_many :services, Frestyl.Services.Service
 
     timestamps()
   end

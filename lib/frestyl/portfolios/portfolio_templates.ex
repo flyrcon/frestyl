@@ -79,6 +79,106 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
         icon: "⚙️",
         preview_color: "from-gray-700 to-gray-800",
         mobile_optimized: true
+      },
+      # Audio-First Templates
+      "audio_producer" => %{
+        name: "Audio Producer",
+        category: "audio",
+        description: "Showcase tracks, albums, and production work",
+        subscription_tier: :creator,
+        features: ["waveform_player", "track_listing", "social_integration"],
+        layout: "audio_grid",
+        customization: %{
+          "primary_color" => "#8B5CF6",
+          "secondary_color" => "#06B6D4",
+          "accent_color" => "#F59E0B",
+          "audio_player_style" => "modern",
+          "track_display" => "waveform"
+        }
+      },
+
+      "podcast_host" => %{
+        name: "Podcast Host",
+        category: "audio",
+        description: "Episode showcase with guest features",
+        subscription_tier: :creator,
+        features: ["episode_grid", "guest_showcase", "subscribe_buttons"],
+        layout: "podcast_episodes",
+        customization: %{
+          "primary_color" => "#059669",
+          "secondary_color" => "#047857",
+          "accent_color" => "#10b981",
+          "episode_layout" => "card_grid",
+          "player_position" => "sticky_bottom"
+        }
+      },
+
+      # Gallery Templates
+      "photographer_portrait" => %{
+        name: "Portrait Photographer",
+        category: "gallery",
+        description: "Client galleries with session types",
+        subscription_tier: :creator,
+        features: ["masonry_layout", "lightbox_gallery", "client_booking"],
+        layout: "photo_masonry",
+        customization: %{
+          "primary_color" => "#1F2937",
+          "secondary_color" => "#6B7280",
+          "accent_color" => "#F59E0B",
+          "gallery_layout" => "masonry",
+          "image_aspect_ratio" => "auto"
+        }
+      },
+
+      # Dashboard Templates
+      "data_scientist" => %{
+        name: "Data Scientist",
+        category: "dashboard",
+        description: "Project showcases with methodology",
+        subscription_tier: :professional,
+        features: ["chart_integration", "methodology_sections", "code_display"],
+        layout: "analytics_dashboard",
+        customization: %{
+          "primary_color" => "#1E40AF",
+          "secondary_color" => "#64748B",
+          "accent_color" => "#3B82F6",
+          "chart_theme" => "professional",
+          "code_syntax_theme" => "github"
+        }
+      },
+
+      # Service Provider Templates
+      "life_coach" => %{
+        name: "Life Coach",
+        category: "service",
+        description: "Testimonials and program offerings",
+        subscription_tier: :professional,
+        features: ["testimonial_carousel", "service_booking", "pricing_tables"],
+        layout: "service_showcase",
+        customization: %{
+          "primary_color" => "#059669",
+          "secondary_color" => "#047857",
+          "accent_color" => "#10b981",
+          "testimonial_style" => "card_carousel",
+          "booking_integration" => "calendly"
+        }
+      },
+
+      # Social-First Templates
+      "content_creator" => %{
+        name: "Content Creator",
+        category: "social",
+        description: "Multi-platform content showcase",
+        subscription_tier: :professional,
+        features: ["social_feeds", "engagement_metrics", "collaboration_showcase"],
+        layout: "social_grid",
+        customization: %{
+          "primary_color" => "#EC4899",
+          "secondary_color" => "#BE185D",
+          "accent_color" => "#F472B6",
+          "social_layout" => "instagram_grid",
+          "metrics_display" => "animated_counters"
+        }
       }
     }
   end

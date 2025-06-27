@@ -38,9 +38,358 @@ defmodule Frestyl.Features.FeatureGate do
       {:collaborator_invite, count} ->
         check_collaborator_limit(limits, current_usage, count)
 
+          :service_booking ->
+      limits.service_booking_enabled
+
+      :service_creation ->
+        check_service_limit(limits, current_usage)
+
+      {:service_booking_payment, amount_cents} ->
+        check_service_booking_payment_limit(limits, current_usage, amount_cents)
+
+      :service_calendar_integration ->
+        limits.service_calendar_integration
+
+      :service_analytics ->
+        limits.service_analytics_enabled
+
       _ ->
         false
     end
+  end
+
+  # ============================================================================
+  # Template Access Control Functions
+  # ============================================================================
+
+  @doc """
+  Check if a user can access a specific template based on their subscription tier
+  """
+  def can_access_template?(user, template_key) do
+    template_config = get_template_config_safe(template_key)
+    required_tier = Map.get(template_config, :subscription_tier, :personal)
+    user_tier = get_user_tier(user)
+
+    # Check access based on tier hierarchy
+    case user_tier do
+      :enterprise -> true  # Enterprise can access everything
+      :professional -> required_tier in [:professional, :creator, :personal]
+      :creator -> required_tier in [:creator, :personal]
+      :personal -> required_tier == :personal
+      _ -> false
+    end
+  end
+
+  @doc """
+  Get template access summary for a user, grouped by accessible/locked
+  """
+  def get_template_access_summary(user) do
+    all_templates = get_all_templates_safe()
+    user_tier = get_user_tier(user)
+
+    Enum.group_by(all_templates, fn {template_key, _config} ->
+      if can_access_template?(user, template_key), do: :accessible, else: :locked
+    end)
+  end
+
+  @doc """
+  Get templates by category with access information for a user
+  """
+  def get_templates_by_category_with_access(user) do
+    all_templates = get_all_templates_safe()
+    user_tier = get_user_tier(user)
+
+    all_templates
+    |> Enum.group_by(fn {_key, config} ->
+      Map.get(config, :category, "general")
+    end)
+    |> Enum.map(fn {category, templates} ->
+      accessible_templates = Enum.filter(templates, fn {key, _config} ->
+        can_access_template?(user, key)
+      end)
+
+      locked_templates = Enum.filter(templates, fn {key, _config} ->
+        !can_access_template?(user, key)
+      end)
+
+      {category, %{
+        accessible: accessible_templates,
+        locked: locked_templates,
+        total_count: length(templates),
+        accessible_count: length(accessible_templates),
+        locked_count: length(locked_templates)
+      }}
+    end)
+    |> Enum.into(%{})
+  end
+
+  @doc """
+  Get upgrade suggestion when user tries to access a locked template
+  """
+  def get_template_upgrade_suggestion(user, template_key) do
+    if can_access_template?(user, template_key) do
+      nil
+    else
+      template_config = get_template_config_safe(template_key)
+      required_tier = Map.get(template_config, :subscription_tier, :personal)
+      user_tier = get_user_tier(user)
+      template_name = Map.get(template_config, :name, String.capitalize(to_string(template_key)))
+
+      case {user_tier, required_tier} do
+        {:personal, :creator} ->
+          %{
+            suggested_tier: :creator,
+            title: "Upgrade to Creator",
+            reason: "The '#{template_name}' template requires Creator tier or higher",
+            benefits: [
+              "Access to all Audio-First templates",
+              "Access to all Gallery templates",
+              "Advanced customization options",
+              "10GB storage"
+            ],
+            price: "$19/month",
+            cta: "Upgrade to Creator"
+          }
+
+        {:personal, :professional} ->
+          %{
+            suggested_tier: :professional,
+            title: "Upgrade to Professional",
+            reason: "The '#{template_name}' template requires Professional tier",
+            benefits: [
+              "Access to all template categories",
+              "Service booking integration",
+              "Advanced analytics",
+              "Custom branding options"
+            ],
+            price: "$49/month",
+            cta: "Go Professional"
+          }
+
+        {:creator, :professional} ->
+          %{
+            suggested_tier: :professional,
+            title: "Upgrade to Professional",
+            reason: "The '#{template_name}' template includes professional features",
+            benefits: [
+              "Service Provider templates",
+              "Social-First templates with metrics",
+              "Advanced dashboard templates",
+              "Client portal access"
+            ],
+            price: "$49/month",
+            cta: "Unlock Professional Features"
+          }
+
+        _ ->
+          %{
+            suggested_tier: :professional,
+            title: "Template Access Restricted",
+            reason: "This template requires a higher subscription tier",
+            benefits: ["Access to all premium templates", "Advanced features", "Priority support"],
+            price: "Starting at $19/month",
+            cta: "View Plans"
+          }
+      end
+    end
+  end
+
+  @doc """
+  Check if user can access a specific template feature
+  """
+  def can_access_template_feature?(user, template_key, feature_name) do
+    # First check if user can access the template at all
+    unless can_access_template?(user, template_key) do
+      false
+    else
+      # Then check feature-specific access
+      template_config = get_template_config_safe(template_key)
+      template_features = Map.get(template_config, :features, [])
+      user_tier = get_user_tier(user)
+
+      # Check tier-based feature access
+      tier_allows_feature = case user_tier do
+        :enterprise ->
+          true
+
+        :professional ->
+          feature_name in [
+            "service_booking", "client_portal", "advanced_analytics",
+            "social_metrics", "custom_branding", "api_access"
+          ]
+
+        :creator ->
+          feature_name in [
+            "waveform_player", "lightbox_gallery", "social_integration",
+            "track_listing", "masonry_layout", "episode_grid"
+          ]
+
+        :personal ->
+          feature_name in [
+            "basic_gallery", "contact_form", "basic_player", "text_content"
+          ]
+
+        _ ->
+          false
+      end
+
+      # Check if feature is in template's feature list or tier allows it
+      tier_allows_feature || feature_name in template_features
+    end
+  end
+
+  # ============================================================================
+  # Helper Functions
+  # ============================================================================
+
+  @doc """
+  Get user's subscription tier from user struct or account
+  """
+  defp get_user_tier(user) do
+    cond do
+      # Check if user has subscription_tier directly
+      Map.has_key?(user, :subscription_tier) && user.subscription_tier ->
+        user.subscription_tier
+
+      # Check if user has account with subscription_tier
+      Map.has_key?(user, :account) && user.account && Map.has_key?(user.account, :subscription_tier) ->
+        user.account.subscription_tier
+
+      # Check if user has accounts list (get first account's tier)
+      Map.has_key?(user, :accounts) && is_list(user.accounts) && length(user.accounts) > 0 ->
+        user.accounts |> List.first() |> Map.get(:subscription_tier, :personal)
+
+      # Default to personal tier
+      true ->
+        :personal
+    end
+  end
+
+  @doc """
+  Safely get template configuration with fallback
+  """
+  defp get_template_config_safe(template_key) do
+    try do
+      case Code.ensure_loaded(Frestyl.Portfolios.PortfolioTemplates) do
+        {:module, _} ->
+          Frestyl.Portfolios.PortfolioTemplates.get_template_config(template_key)
+        _ ->
+          get_fallback_template_config(template_key)
+      end
+    rescue
+      _ -> get_fallback_template_config(template_key)
+    end
+  end
+
+  @doc """
+  Safely get all templates with fallback
+  """
+  defp get_all_templates_safe() do
+    try do
+      case Code.ensure_loaded(Frestyl.Portfolios.PortfolioTemplates) do
+        {:module, _} ->
+          Frestyl.Portfolios.PortfolioTemplates.available_templates()
+        _ ->
+          get_fallback_templates()
+      end
+    rescue
+      _ -> get_fallback_templates()
+    end
+  end
+
+  @doc """
+  Fallback template configuration when PortfolioTemplates module isn't available
+  """
+  defp get_fallback_template_config(template_key) do
+    fallback_templates = get_fallback_templates()
+    case Map.get(fallback_templates, template_key) do
+      nil -> %{
+        name: String.capitalize(to_string(template_key)),
+        category: "general",
+        subscription_tier: :personal,
+        features: []
+      }
+      config -> config
+    end
+  end
+
+  @doc """
+  Fallback templates when PortfolioTemplates module isn't available
+  """
+  defp get_fallback_templates() do
+    %{
+      # Personal tier templates
+      "executive" => %{
+        name: "Executive",
+        category: "professional",
+        subscription_tier: :personal,
+        features: ["contact_form", "text_content"]
+      },
+      "minimalist" => %{
+        name: "Minimalist",
+        category: "minimal",
+        subscription_tier: :personal,
+        features: ["basic_gallery", "text_content"]
+      },
+
+      # Creator tier templates
+      "audio_producer" => %{
+        name: "Audio Producer",
+        category: "audio",
+        subscription_tier: :creator,
+        features: ["waveform_player", "track_listing", "social_integration"]
+      },
+      "photographer_portrait" => %{
+        name: "Portrait Photographer",
+        category: "gallery",
+        subscription_tier: :creator,
+        features: ["lightbox_gallery", "masonry_layout", "client_gallery"]
+      },
+
+      # Professional tier templates
+      "life_coach" => %{
+        name: "Life Coach",
+        category: "service",
+        subscription_tier: :professional,
+        features: ["service_booking", "testimonial_carousel", "client_portal"]
+      },
+      "content_creator" => %{
+        name: "Content Creator",
+        category: "social",
+        subscription_tier: :professional,
+        features: ["social_metrics", "engagement_tracking", "brand_partnerships"]
+      }
+    }
+  end
+
+  @doc """
+  Get readable tier name for display
+  """
+  def get_tier_display_name(tier) do
+    case tier do
+      :personal -> "Personal"
+      :creator -> "Creator"
+      :professional -> "Professional"
+      :enterprise -> "Enterprise"
+      _ -> "Unknown"
+    end
+  end
+
+  @doc """
+  Get tier hierarchy for upgrade suggestions
+  """
+  def get_tier_hierarchy() do
+    [:personal, :creator, :professional, :enterprise]
+  end
+
+  @doc """
+  Check if target tier is an upgrade from current tier
+  """
+  def is_tier_upgrade?(current_tier, target_tier) do
+    hierarchy = get_tier_hierarchy()
+    current_index = Enum.find_index(hierarchy, &(&1 == current_tier)) || 0
+    target_index = Enum.find_index(hierarchy, &(&1 == target_tier)) || 0
+    target_index > current_index
   end
 
   def get_upgrade_suggestion(account, failed_feature, context \\ %{}) do
@@ -339,6 +688,42 @@ defmodule Frestyl.Features.FeatureGate do
           }
         }
 
+      :service_booking ->
+      %{
+        name: "Service Booking",
+        description: "Allow clients to book your services",
+        tiers: %{
+          personal: false,
+          creator: %{usage_type: :services, limit: 10},
+          professional: true,
+          enterprise: true
+        }
+      }
+
+      :service_analytics ->
+        %{
+          name: "Service Analytics",
+          description: "Detailed booking and revenue analytics",
+          tiers: %{
+            personal: false,
+            creator: %{usage_type: :analytics_views, limit: 50},
+            professional: true,
+            enterprise: true
+          }
+        }
+
+      :service_calendar_integration ->
+        %{
+          name: "Calendar Integration",
+          description: "Sync bookings with external calendars",
+          tiers: %{
+            personal: false,
+            creator: true,
+            professional: true,
+            enterprise: true
+          }
+        }
+
       _ ->
         %{
           name: "Unknown Feature",
@@ -473,6 +858,79 @@ defmodule Frestyl.Features.FeatureGate do
       {%{limit: from_limit}, %{limit: to_limit}} when to_limit > from_limit -> true
       {%{}, true} -> true
       _ -> false
+    end
+  end
+
+  defp check_service_limit(limits, usage) do
+    case limits.max_services do
+      :unlimited -> true
+      max_count -> usage.service_count < max_count
+    end
+  end
+
+  defp check_service_booking_payment_limit(limits, usage, amount_cents) do
+    case limits.max_booking_amount_cents do
+      :unlimited -> true
+      max_amount -> amount_cents <= max_amount
+    end
+  end
+
+  defp track_enhancement_start(portfolio_id, enhancement_type) do
+    # Get the portfolio to access user account
+    case Portfolios.get_portfolio(portfolio_id) do
+      nil ->
+        # Portfolio not found - log error but don't crash
+        IO.puts("Warning: Portfolio #{portfolio_id} not found for enhancement tracking")
+        :ok
+
+      portfolio ->
+        # Check if portfolio has user and account
+        case get_portfolio_account(portfolio) do
+          nil ->
+            IO.puts("Warning: No account found for portfolio #{portfolio_id}")
+            :ok
+
+          account ->
+            # Track the usage
+            Billing.UsageTracker.track_usage(
+              account,
+              :enhancement_session_start,
+              1,
+              %{
+                portfolio_id: portfolio_id,
+                enhancement_type: enhancement_type,
+                started_at: DateTime.utc_now()
+              }
+            )
+        end
+    end
+  end
+
+  # Helper function to safely get account from portfolio
+  defp get_portfolio_account(portfolio) do
+    cond do
+      portfolio.user && portfolio.user.account ->
+        portfolio.user.account
+
+      portfolio.user_id ->
+        # If user not preloaded, get it
+        case Accounts.get_user(portfolio.user_id) do
+          nil -> nil
+          user -> user.account
+        end
+
+      true ->
+        nil
+    end
+  end
+
+
+  defp calculate_session_duration(channel) do
+    started_at = get_in(channel.metadata, ["started_at"])
+    if started_at do
+      DateTime.diff(DateTime.utc_now(), started_at, :minute)
+    else
+      0
     end
   end
 

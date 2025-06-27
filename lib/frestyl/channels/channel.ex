@@ -69,7 +69,11 @@ defmodule Frestyl.Channels.Channel do
     |> validate_length(:description, max: 500)
     |> validate_inclusion(:visibility, ["public", "private", "invite_only"])
     |> validate_inclusion(:transparency_level, ["basic", "detailed", "full"])
-    |> validate_inclusion(:channel_type, ~w(general gaming music education)a) # Example types, adjust as needed
+    |> validate_inclusion(:channel_type, ~w(
+      general gaming music education
+      portfolio_voice_over portfolio_writing portfolio_music portfolio_design
+      portfolio_quarterly_update portfolio_feedback portfolio_collaboration
+    )a)
     |> Ecto.Changeset.cast_embedding(:color_scheme, with: &color_scheme_changeset/2) # Validate color_scheme map
     |> Ecto.Changeset.cast_embedding(:social_links, with: &social_links_changeset/2) # Validate social_links map
     |> Ecto.Changeset.cast_embeds(:featured_content, with: &featured_content_changeset/2) # Validate featured_content array of maps
@@ -163,6 +167,24 @@ defmodule Frestyl.Channels.Channel do
       true ->
         "general"
     end
+  end
+
+    @doc """
+  Create a channel (basic channel creation function)
+  """
+  def create_channel(attrs \\ %{}) do
+    %__MODULE__{}
+    |> changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Update a channel
+  """
+  def update_channel(%__MODULE__{} = channel, attrs) do
+    channel
+    |> changeset(attrs)
+    |> Repo.update()
   end
 
   @doc """
@@ -305,6 +327,562 @@ defmodule Frestyl.Channels.Channel do
     end
   end
 
+  def create_portfolio_enhancement_channel(portfolio, enhancement_type, user) do
+    channel_attrs = %{
+      name: generate_enhancement_channel_name(portfolio, enhancement_type),
+      description: generate_enhancement_description(enhancement_type),
+      channel_type: "portfolio_#{enhancement_type}",
+      visibility: "private",
+      user_id: user.id,
+      featured_content: [%{
+        "type" => "portfolio",
+        "id" => portfolio.id,
+        "enhancement_type" => enhancement_type,
+        "started_at" => DateTime.utc_now()
+      }],
+      # Portfolio-specific metadata
+      metadata: %{
+        portfolio_id: portfolio.id,
+        enhancement_type: enhancement_type,
+        quality_score_at_start: calculate_portfolio_quality_score(portfolio),
+        expected_duration: get_enhancement_duration(enhancement_type),
+        milestone_targets: get_enhancement_milestones(enhancement_type)
+      }
+    }
+
+    create_channel(channel_attrs)
+  end
+
+  def update_enhancement_progress(channel, progress_data) do
+    current_metadata = channel.metadata || %{}
+
+    updated_metadata = Map.merge(current_metadata, %{
+      progress_percentage: progress_data.percentage,
+      milestones_completed: progress_data.milestones,
+      last_activity: DateTime.utc_now(),
+      collaborator_contributions: progress_data.contributions
+    })
+
+    # Check for completion triggers
+    cond do
+      progress_data.percentage >= 100 ->
+        trigger_enhancement_completion(channel, progress_data)
+      progress_data.percentage >= 75 ->
+        suggest_final_polish(channel)
+      true ->
+        :ok
+    end
+
+    update_channel(channel, %{metadata: updated_metadata})
+  end
+
+    @doc """
+  Generate enhancement channel name
+  """
+  defp generate_enhancement_channel_name(portfolio, enhancement_type) do
+    enhancement_names = %{
+      "voice_over" => "Voice Introduction",
+      "writing" => "Content Enhancement",
+      "design" => "Visual Design",
+      "music" => "Background Music",
+      "quarterly_update" => "Portfolio Update",
+      "feedback" => "Portfolio Review"
+    }
+
+    enhancement_name = Map.get(enhancement_names, enhancement_type, "Enhancement")
+    "#{portfolio.title} - #{enhancement_name}"
+  end
+
+  @doc """
+  Generate enhancement description
+  """
+  defp generate_enhancement_description(enhancement_type) do
+    case enhancement_type do
+      "voice_over" ->
+        "Collaborative workspace for creating professional voice introductions"
+      "writing" ->
+        "Collaborative content enhancement and writing improvement workspace"
+      "design" ->
+        "Visual design collaboration space for portfolio improvements"
+      "music" ->
+        "Music creation and audio enhancement collaboration workspace"
+      "quarterly_update" ->
+        "Quarterly portfolio update and progress documentation space"
+      "feedback" ->
+        "Professional feedback and portfolio review collaboration space"
+      _ ->
+        "Portfolio enhancement collaboration workspace"
+    end
+  end
+
+  @doc """
+  Calculate portfolio quality score
+  """
+  defp calculate_portfolio_quality_score(portfolio) do
+    # Use the existing helper function or implement basic scoring
+    sections = Portfolios.list_portfolio_sections(portfolio.id)
+
+    # Basic scoring algorithm
+    content_score = calculate_content_score(sections)
+    visual_score = calculate_visual_score(portfolio, sections)
+    engagement_score = calculate_engagement_score(portfolio)
+
+    total_score = content_score + visual_score + engagement_score
+
+    %{
+      total: min(total_score, 100),
+      content: content_score,
+      visual: visual_score,
+      engagement: engagement_score,
+      breakdown: %{
+        has_voice_intro: has_voice_introduction?(portfolio),
+        content_quality: content_score,
+        visual_consistency: visual_score > 20,
+        professional_media: has_media_content?(sections),
+        engagement_elements: engagement_score / 10
+      }
+    }
+  end
+
+  @doc """
+  Get enhancement duration estimate
+  """
+  defp get_enhancement_duration(enhancement_type) do
+    case enhancement_type do
+      "voice_over" -> "30-45 minutes"
+      "writing" -> "2-3 hours"
+      "design" -> "1-2 hours"
+      "music" -> "45-60 minutes"
+      "quarterly_update" -> "1-2 hours"
+      "feedback" -> "45 minutes"
+      _ -> "1-2 hours"
+    end
+  end
+
+  @doc """
+  Get enhancement milestones
+  """
+  defp get_enhancement_milestones(enhancement_type) do
+    case enhancement_type do
+      "voice_over" -> [
+        %{name: "Script Preparation", percentage: 25},
+        %{name: "Recording Session", percentage: 60},
+        %{name: "Audio Editing", percentage: 85},
+        %{name: "Integration", percentage: 100}
+      ]
+      "writing" -> [
+        %{name: "Content Audit", percentage: 20},
+        %{name: "Outline Creation", percentage: 40},
+        %{name: "Writing & Revision", percentage: 80},
+        %{name: "Final Polish", percentage: 100}
+      ]
+      "design" -> [
+        %{name: "Design Analysis", percentage: 25},
+        %{name: "Concept Development", percentage: 50},
+        %{name: "Visual Implementation", percentage: 85},
+        %{name: "Final Refinement", percentage: 100}
+      ]
+      "music" -> [
+        %{name: "Music Selection", percentage: 30},
+        %{name: "Audio Recording", percentage: 70},
+        %{name: "Mixing & Editing", percentage: 90},
+        %{name: "Integration", percentage: 100}
+      ]
+      "quarterly_update" -> [
+        %{name: "Progress Review", percentage: 25},
+        %{name: "Content Update", percentage: 65},
+        %{name: "Quality Check", percentage: 85},
+        %{name: "Publishing", percentage: 100}
+      ]
+      "feedback" -> [
+        %{name: "Review Setup", percentage: 20},
+        %{name: "Feedback Collection", percentage: 60},
+        %{name: "Analysis & Discussion", percentage: 85},
+        %{name: "Action Planning", percentage: 100}
+      ]
+      _ -> [
+        %{name: "Planning", percentage: 25},
+        %{name: "Execution", percentage: 75},
+        %{name: "Completion", percentage: 100}
+      ]
+    end
+  end
+
+  @doc """
+  Suggest final polish when enhancement is 75% complete
+  """
+  defp suggest_final_polish(channel) do
+    enhancement_type = get_in(channel.metadata, ["enhancement_type"])
+    portfolio_id = get_in(channel.metadata, ["portfolio_id"])
+
+    # Create suggestion for final polish
+    polish_suggestion = %{
+      type: "final_polish",
+      enhancement_type: enhancement_type,
+      portfolio_id: portfolio_id,
+      title: "Ready for Final Polish",
+      description: "Your #{enhancement_type} enhancement is almost complete. Time for final review and polish!",
+      actions: get_final_polish_actions(enhancement_type)
+    }
+
+    # Broadcast to channel participants
+    broadcast_to_channel(channel.id, "final_polish_suggestion", polish_suggestion)
+  end
+
+  @doc """
+  Calculate session duration from channel metadata
+  """
+  defp calculate_session_duration(channel) do
+    started_at = get_in(channel.metadata, ["started_at"])
+
+    if started_at do
+      case DateTime.from_iso8601(started_at) do
+        {:ok, start_time, _} ->
+          DateTime.diff(DateTime.utc_now(), start_time, :minute)
+        _ ->
+          0
+      end
+    else
+      0
+    end
+  end
+
+  @doc """
+  Consider channel transition after completion
+  """
+  defp consider_channel_transition(channel, status) do
+    case status do
+      :completed ->
+        # Archive the enhancement channel or convert to feedback channel
+        transition_options = %{
+          archive: "Archive the enhancement channel",
+          convert_to_feedback: "Convert to ongoing feedback channel",
+          create_showcase: "Create portfolio showcase channel"
+        }
+
+        # For now, archive the channel
+        update_channel(channel, %{
+          archived: true,
+          archived_at: DateTime.utc_now(),
+          metadata: Map.put(channel.metadata || %{}, "completion_status", "completed")
+        })
+
+      :paused ->
+        update_channel(channel, %{
+          metadata: Map.put(channel.metadata || %{}, "status", "paused")
+        })
+
+      _ ->
+        :ok
+    end
+  end
+
+  @doc """
+  Broadcast enhancement suggestions to user
+  """
+  defp broadcast_enhancement_suggestions(user_id, portfolio_id, suggestions) do
+    message = %{
+      type: "enhancement_suggestions",
+      portfolio_id: portfolio_id,
+      suggestions: suggestions,
+      timestamp: DateTime.utc_now()
+    }
+
+    # Use Phoenix PubSub to broadcast to user
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "user:#{user_id}",
+      {:enhancement_suggestions, message}
+    )
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS FOR QUALITY SCORING
+  # ============================================================================
+
+  defp calculate_content_score(sections) do
+    # Score based on number and completeness of sections
+    base_score = length(sections) * 8
+
+    # Bonus for content quality
+    content_bonus = Enum.reduce(sections, 0, fn section, acc ->
+      content_length = get_section_content_length(section)
+      if content_length > 100, do: acc + 5, else: acc
+    end)
+
+    min(base_score + content_bonus, 40)
+  end
+
+  defp calculate_visual_score(portfolio, sections) do
+    score = 0
+
+    # Hero image
+    score = if portfolio.hero_image_url, do: score + 10, else: score
+
+    # Theme consistency
+    score = if portfolio.theme, do: score + 8, else: score
+
+    # Media content in sections
+    media_count = Enum.count(sections, &has_media_content?/1)
+    media_score = min(media_count * 4, 12)
+
+    score + media_score
+  end
+
+  defp calculate_engagement_score(portfolio) do
+    score = 0
+
+    # Social links
+    score = if has_social_links?(portfolio), do: score + 8, else: score
+
+    # Contact information
+    score = if has_contact_info?(portfolio), do: score + 7, else: score
+
+    # Interactive elements (mock check)
+    score = if has_interactive_elements?(portfolio), do: score + 5, else: score
+
+    score
+  end
+
+  defp get_section_content_length(section) do
+    case section.content do
+      nil -> 0
+      content when is_map(content) ->
+        content
+        |> Map.values()
+        |> Enum.reduce(0, fn value, acc ->
+          if is_binary(value), do: acc + String.length(value), else: acc
+        end)
+      _ -> 0
+    end
+  end
+
+  defp has_voice_introduction?(portfolio) do
+    # Check if portfolio has voice introduction
+    # This would check for voice files in sections or metadata
+    false # Mock implementation
+  end
+
+  defp has_media_content?(section) do
+    content = section.content || %{}
+    Map.has_key?(content, "images") ||
+    Map.has_key?(content, "media") ||
+    Map.has_key?(content, "hero_image")
+  end
+
+  defp has_social_links?(portfolio) do
+    social_links = portfolio.social_links || %{}
+    map_size(social_links) > 0
+  end
+
+  defp has_contact_info?(portfolio) do
+    contact_info = portfolio.contact_info || %{}
+    map_size(contact_info) > 0
+  end
+
+  defp has_interactive_elements?(portfolio) do
+    # Mock check for interactive elements
+    false
+  end
+
+  defp get_final_polish_actions(enhancement_type) do
+    case enhancement_type do
+      "voice_over" -> [
+        "Review audio quality",
+        "Check synchronization",
+        "Test on different devices",
+        "Final integration"
+      ]
+      "writing" -> [
+        "Proofread content",
+        "Check grammar and spelling",
+        "Verify consistency",
+        "Final formatting"
+      ]
+      "design" -> [
+        "Review visual consistency",
+        "Check responsive design",
+        "Optimize images",
+        "Final styling"
+      ]
+      "music" -> [
+        "Audio level check",
+        "Test with portfolio",
+        "Optimize file size",
+        "Final integration"
+      ]
+      _ -> [
+        "Final review",
+        "Quality check",
+        "Test functionality",
+        "Publish changes"
+      ]
+    end
+  end
+
+  defp broadcast_to_channel(channel_id, event_type, data) do
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "channel:#{channel_id}",
+      {event_type, data}
+    )
+  end
+
+  # ============================================================================
+  # ENHANCED ENHANCEMENT FUNCTIONS (from original artifact)
+  # ============================================================================
+
+  @doc """
+  Enhanced portfolio channel creation with completion tracking
+  """
+  def create_portfolio_enhancement_channel(portfolio, enhancement_type, user) do
+    channel_attrs = %{
+      name: generate_enhancement_channel_name(portfolio, enhancement_type),
+      description: generate_enhancement_description(enhancement_type),
+      channel_type: "portfolio_#{enhancement_type}",
+      visibility: "private",
+      user_id: user.id,
+      featured_content: [%{
+        "type" => "portfolio",
+        "id" => portfolio.id,
+        "enhancement_type" => enhancement_type,
+        "started_at" => DateTime.utc_now()
+      }],
+      # Portfolio-specific metadata
+      metadata: %{
+        portfolio_id: portfolio.id,
+        enhancement_type: enhancement_type,
+        quality_score_at_start: calculate_portfolio_quality_score(portfolio),
+        expected_duration: get_enhancement_duration(enhancement_type),
+        milestone_targets: get_enhancement_milestones(enhancement_type)
+      }
+    }
+
+    create_channel(channel_attrs)
+  end
+
+  @doc """
+  Track portfolio enhancement completion progress
+  """
+  def update_enhancement_progress(channel, progress_data) do
+    current_metadata = channel.metadata || %{}
+
+    updated_metadata = Map.merge(current_metadata, %{
+      progress_percentage: progress_data.percentage,
+      milestones_completed: progress_data.milestones,
+      last_activity: DateTime.utc_now(),
+      collaborator_contributions: progress_data.contributions
+    })
+
+    # Check for completion triggers
+    cond do
+      progress_data.percentage >= 100 ->
+        trigger_enhancement_completion(channel, progress_data)
+      progress_data.percentage >= 75 ->
+        suggest_final_polish(channel)
+      true ->
+        :ok
+    end
+
+    update_channel(channel, %{metadata: updated_metadata})
+  end
+
+  defp trigger_enhancement_completion(channel, progress_data) do
+    portfolio_id = get_in(channel.metadata, ["portfolio_id"])
+    enhancement_type = get_in(channel.metadata, ["enhancement_type"])
+
+    # Update portfolio with enhancement completion
+    Portfolios.mark_enhancement_completed(portfolio_id, enhancement_type, %{
+      completed_at: DateTime.utc_now(),
+      channel_id: channel.id,
+      final_score: progress_data.final_quality_score,
+      collaborators: progress_data.collaborators
+    })
+
+    # Trigger new enhancement suggestions
+    suggest_next_enhancements(portfolio_id, enhancement_type)
+
+    # Archive enhancement channel or convert to feedback channel
+    consider_channel_transition(channel, :completed)
+
+    # Track completion for billing/analytics
+    Billing.UsageTracker.track_usage(channel.user.account, :enhancement_completion, 1, %{
+      enhancement_type: enhancement_type,
+      duration_minutes: calculate_session_duration(channel),
+      collaborator_count: length(progress_data.collaborators || [])
+    })
+  end
+
+  defp suggest_next_enhancements(portfolio_id, completed_enhancement_type) do
+    portfolio = Portfolios.get_portfolio(portfolio_id)
+    updated_quality_score = calculate_portfolio_quality_score(portfolio)
+
+    # Smart suggestion logic based on what was just completed
+    next_suggestions = case completed_enhancement_type do
+      "voice_over" ->
+        if updated_quality_score.visual < 70, do: ["design"], else: ["music"]
+      "writing" ->
+        ["voice_over", "design"]
+      "design" ->
+        if updated_quality_score.engagement < 60, do: ["music", "voice_over"], else: ["quarterly_update"]
+      "music" ->
+        ["quarterly_update", "feedback"]
+      _ ->
+        []
+    end
+
+    # Send suggestions to user
+    broadcast_enhancement_suggestions(portfolio.user_id, portfolio_id, next_suggestions)
+  end
+
+  defp trigger_enhancement_completion(channel, progress_data) do
+    portfolio_id = get_in(channel.metadata, ["portfolio_id"])
+    enhancement_type = get_in(channel.metadata, ["enhancement_type"])
+
+    # Update portfolio with enhancement completion
+    Portfolios.mark_enhancement_completed(portfolio_id, enhancement_type, %{
+      completed_at: DateTime.utc_now(),
+      channel_id: channel.id,
+      final_score: progress_data.final_quality_score,
+      collaborators: progress_data.collaborators
+    })
+
+    # Trigger new enhancement suggestions
+    suggest_next_enhancements(portfolio_id, enhancement_type)
+
+    # Archive enhancement channel or convert to feedback channel
+    consider_channel_transition(channel, :completed)
+
+    # Track completion for billing/analytics
+    Billing.UsageTracker.track_usage(channel.user.account, :enhancement_completion, 1, %{
+      enhancement_type: enhancement_type,
+      duration_minutes: calculate_session_duration(channel),
+      collaborator_count: length(progress_data.collaborators)
+    })
+  end
+
+  defp suggest_next_enhancements(portfolio_id, completed_enhancement_type) do
+    portfolio = Portfolios.get_portfolio(portfolio_id)
+    updated_quality_score = calculate_portfolio_quality_score(portfolio)
+
+    # Smart suggestion logic based on what was just completed
+    next_suggestions = case completed_enhancement_type do
+      "voice_over" ->
+        if updated_quality_score.visual < 70, do: ["design"], else: ["music"]
+      "writing" ->
+        ["voice_over", "design"]
+      "design" ->
+        if updated_quality_score.engagement < 60, do: ["music", "voice_over"], else: ["quarterly_update"]
+      "music" ->
+        ["quarterly_update", "feedback"]
+      _ ->
+        []
+    end
+
+    # Send suggestions to user
+    broadcast_enhancement_suggestions(portfolio.user_id, portfolio_id, next_suggestions)
+  end
+
   # --- Embedded Changesets ---
   # For `color_scheme` map
   defp color_scheme_changeset(changeset, attrs) do
@@ -394,4 +972,6 @@ defmodule Frestyl.Channels.Channel do
       true -> "general"
     end
   end
+
+
 end

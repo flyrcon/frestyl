@@ -75,6 +75,15 @@ defmodule FrestylWeb.Router do
   # SCOPES
   # ----------------
 
+  # In router.ex
+  scope "/", FrestylWeb do
+    live "/services", ServiceLive.Index, :index
+    live "/services/new", ServiceLive.New, :new
+    live "/services/:id", ServiceLive.Show, :show
+    live "/services/:id/edit", ServiceLive.Edit, :edit
+    live "/book/:id", ServiceLive.Book, :book
+  end
+
   # Public routes
   scope "/", FrestylWeb do
     pipe_through [:browser]
@@ -121,6 +130,7 @@ defmodule FrestylWeb.Router do
 
     # Public portfolio routes
     # Public portfolio viewing
+    get "/p/:slug", PortfolioController, :show
     live "/p/:slug", PortfolioLive.View, :show
     live "/portfolio/:slug", PortfolioLive.View, :show  # Alternative URL
 
@@ -148,6 +158,45 @@ defmodule FrestylWeb.Router do
     live "/hub", PortfolioHubLive, :index        # Portfolio hub
     live "/hub/welcome", PortfolioHubLive, :welcome  # Welcome page
     live "/dashboard", DashboardLive, :index     # General dashboard
+
+      # Studio routes
+    live "/studio", StudioLive.Index, :index
+
+    # Portfolio dashboard route
+    get "/portfolios/dashboard", PortfolioController, :dashboard
+
+    # Portfolio management dashboard
+    live "/portfolios", PortfolioLive.Index, :index
+
+    # Portfolio CRUD operations
+    live "/portfolios/new", PortfolioLive.New, :new
+    live "/portfolios/:id", PortfolioLive.Show, :show
+    live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
+    live "/portfolios/:id/settings", PortfolioLive.Settings, :settings
+
+    # Portfolio analytics and insights
+    live "/portfolios/:id/analytics", PortfolioLive.AnalyticsLive, :analytics
+    live "/portfolios/:id/insights", PortfolioLive.InsightsLive, :insights
+
+    # Portfolio collaboration
+    live "/portfolios/:id/collaborate", PortfolioLive.CollaborationLive, :collaborate
+    live "/portfolios/:id/shares", PortfolioLive.SharesLive, :shares
+
+    # Portfolio sections management
+    live "/portfolios/:portfolio_id/sections/:id/edit", PortfolioLive.SectionEdit, :edit
+
+    # Media management
+    post "/portfolios/:id/media/upload", PortfolioController, :upload_media
+    delete "/portfolios/:id/media/:media_id", PortfolioController, :delete_media
+
+    # Portfolio templates and themes
+    live "/portfolios/:id/themes", PortfolioLive.ThemesLive, :themes
+    live "/portfolios/:id/customization", PortfolioLive.CustomizationLive, :customization
+
+    # Import/Export functionality
+    live "/portfolios/:id/import", PortfolioLive.ImportLive, :import
+    post "/portfolios/:id/import/resume", PortfolioController, :import_resume
+    get "/portfolios/:id/export/:format", PortfolioController, :export
 
     # Channels routes - CLEANED UP
     live "/channels", ChannelLive.Index, :index
@@ -221,39 +270,6 @@ defmodule FrestylWeb.Router do
     live "/events/:id", EventLive.Show, :show
     live "/events/:id/edit", EventLive.Index, :edit
     live "/events/:id/attend", EventAttendanceLive, :show
-
-    # Portfolio management dashboard
-    live "/portfolios", PortfolioLive.Index, :index
-
-    # Portfolio CRUD operations
-    live "/portfolios/new", PortfolioLive.New, :new
-    live "/portfolios/:id", PortfolioLive.Show, :show
-    live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
-    live "/portfolios/:id/settings", PortfolioLive.Settings, :settings
-
-    # Portfolio analytics and insights
-    live "/portfolios/:id/analytics", PortfolioLive.AnalyticsLive, :analytics
-    live "/portfolios/:id/insights", PortfolioLive.InsightsLive, :insights
-
-    # Portfolio collaboration
-    live "/portfolios/:id/collaborate", PortfolioLive.CollaborationLive, :collaborate
-    live "/portfolios/:id/shares", PortfolioLive.SharesLive, :shares
-
-    # Portfolio sections management
-    live "/portfolios/:portfolio_id/sections/:id/edit", PortfolioLive.SectionEdit, :edit
-
-    # Media management
-    post "/portfolios/:id/media/upload", PortfolioController, :upload_media
-    delete "/portfolios/:id/media/:media_id", PortfolioController, :delete_media
-
-    # Portfolio templates and themes
-    live "/portfolios/:id/themes", PortfolioLive.ThemesLive, :themes
-    live "/portfolios/:id/customization", PortfolioLive.CustomizationLive, :customization
-
-    # Import/Export functionality
-    live "/portfolios/:id/import", PortfolioLive.ImportLive, :import
-    post "/portfolios/:id/import/resume", PortfolioController, :import_resume
-    get "/portfolios/:id/export/:format", PortfolioController, :export
 
     # Users and Profile
     live "/invite", InviteUserLive, :index

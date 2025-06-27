@@ -545,6 +545,28 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
     """
   end
 
+  def get_templates_by_category_with_access(user) do
+    all_templates = PortfolioTemplates.available_templates()
+
+    all_templates
+    |> Enum.group_by(fn {_key, config} -> config.category end)
+    |> Enum.map(fn {category, templates} ->
+      accessible_templates = Enum.filter(templates, fn {key, config} ->
+        FeatureGate.can_access_template?(user, key)
+      end)
+
+      locked_templates = Enum.filter(templates, fn {key, config} ->
+        !FeatureGate.can_access_template?(user, key)
+      end)
+
+      {category, %{
+        accessible: accessible_templates,
+        locked: locked_templates,
+        total_count: length(templates)
+      }}
+    end)
+  end
+
   defp get_layout_specific_styles(layout) do
     case layout do
       "dashboard" ->

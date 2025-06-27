@@ -39,7 +39,13 @@ defmodule Frestyl.Accounts.AccountLimits do
       analytics_depth: :basic,
       cross_account_sharing: :view_only,
       guest_access_enabled: false,
-      real_time_collaboration: false
+      real_time_collaboration: false,
+      service_booking_enabled: false,
+      max_services: 0,
+      service_calendar_integration: false,
+      service_analytics_enabled: false,
+      max_booking_amount_cents: 0,
+      platform_fee_percentage: Decimal.new("0.00")
     }
   end
 
@@ -57,7 +63,13 @@ defmodule Frestyl.Accounts.AccountLimits do
       analytics_depth: :standard,
       cross_account_sharing: :comment_and_suggest,
       guest_access_enabled: true,
-      real_time_collaboration: :limited
+      real_time_collaboration: :limited,
+      service_booking_enabled: true,
+      max_services: 10,
+      service_calendar_integration: true,
+      service_analytics_enabled: true,
+      max_booking_amount_cents: 50000, # $500 max per booking
+      platform_fee_percentage: Decimal.new("5.0") # 5% platform fee
     }
   end
 
@@ -75,7 +87,13 @@ defmodule Frestyl.Accounts.AccountLimits do
       analytics_depth: :advanced,
       cross_account_sharing: :full_edit,
       guest_access_enabled: true,
-      real_time_collaboration: :full
+      real_time_collaboration: :full,
+      service_booking_enabled: true,
+      max_services: :unlimited,
+      service_calendar_integration: true,
+      service_analytics_enabled: true,
+      max_booking_amount_cents: :unlimited,
+      platform_fee_percentage: Decimal.new("3.0") # 3% platform fee
     }
   end
 
@@ -87,7 +105,8 @@ defmodule Frestyl.Accounts.AccountLimits do
       analytics_depth: :enterprise,
       sso_enabled: true,
       api_access: true,
-      dedicated_support: true
+      dedicated_support: true,
+      platform_fee_percentage: Decimal.new("1.5") # 1.5% platform fee
     })
   end
 end
