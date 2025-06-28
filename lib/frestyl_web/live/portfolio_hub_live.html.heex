@@ -1,1279 +1,271 @@
-<!-- lib/frestyl_web/live/portfolio_hub_live.html.heex -->
-<div class="min-h-screen bg-gradient-to-br from-gray-50 via-slate-50 to-blue-50">
-  <!-- GitHub + Behance Inspired Header -->
-  <div class="border-b border-gray-200 bg-white/80 backdrop-blur-sm sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between py-4">
-        <!-- Left: Logo & Navigation -->
-        <div class="flex items-center space-x-8">
-          <div class="flex items-center space-x-3">
-            <img src="/images/logo.svg" alt="Frestyl" class="w-8 h-8" />
-            <h1 class="text-xl font-bold text-gray-900">Portfolio Hub</h1>
-          </div>
+<!-- lib/frestyl_web/live/portfolio_hub_live.html.heex - CORRECTED CREATOR COMMAND CENTER -->
+
+<div class="min-h-screen bg-gray-50">
+  <!-- ============================================================================ -->
+  <!-- MOBILE HEADER - Enhanced for Creator Hub -->
+  <!-- ============================================================================ -->
+  
+  <.live_component module={FrestylWeb.PortfolioHubLive.Components} 
+                   id="mobile-header" 
+                   active_section={@active_section}
+                   quick_actions={@quick_actions}
+                   collaboration_requests={@collaboration_requests}
+                   account={@account}
+                   hub_config={@hub_config}
+                   show_mobile_menu={@show_mobile_menu} />
+
+  <!-- ============================================================================ -->
+  <!-- WELCOME CELEBRATION (First-time users) -->
+  <!-- ============================================================================ -->
+  
+  <%= if @show_welcome_celebration do %>
+    <div class="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 text-white">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="text-center">
+          <div class="text-6xl mb-4">🎉</div>
+          <h1 class="text-3xl font-bold mb-2">Welcome to Your Creator Hub!</h1>
+          <p class="text-xl text-purple-100 mb-6">Your comprehensive command center for creative success</p>
           
-          <!-- Navigation Tabs -->
-          <nav class="hidden md:flex space-x-6">
-            <button class="px-3 py-2 text-sm font-medium text-gray-900 border-b-2 border-blue-500">
-              Overview
-            </button>
-            <.link navigate="/portfolios/dashboard" class="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-b-2 hover:border-gray-300">
-              Dashboard
-            </.link>
-            <.link navigate="/studio" class="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:border-b-2 hover:border-gray-300">
-              Studio
-            </.link>
-          </nav>
-        </div>
-
-        <!-- Right: Actions & Profile -->
-        <div class="flex items-center space-x-4">
-          <!-- Collaboration Bell -->
-          <button phx-click="toggle_collaboration_panel" class="relative p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-            </svg>
-            <%= if length(@collaboration_requests) > 0 do %>
-              <span class="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                <%= length(@collaboration_requests) %>
-              </span>
-            <% end %>
-          </button>
-
-          <!-- Create Portfolio Button -->
-          <button phx-click="show_create_modal" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            New Portfolio
-          </button>
-
-          <!-- Profile Avatar -->
-          <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
-            <%= String.first(@current_user.email) |> String.upcase() %>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Smart Enhancement Suggestions - ADD THIS ANYWHERE IN YOUR MAIN CONTENT AREA -->
-  <%= if length(@enhancement_suggestions) > 0 do %>
-    <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-bold text-gray-900 flex items-center">
-          <svg class="w-6 h-6 text-purple-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-          </svg>
-          Smart Enhancement Suggestions
-        </h2>
-        <span class="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-1 rounded-full">
-          AI Powered
-        </span>
-      </div>
-      
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <%= for suggestion <- @enhancement_suggestions do %>
-          <div class="border border-gray-200 rounded-lg p-4 hover:border-purple-300 hover:shadow-md transition-all">
-            <!-- Priority Badge -->
-            <div class="flex items-start justify-between mb-3">
-              <div class="flex items-center">
-                <%= case suggestion.priority do %>
-                  <% priority when priority >= 90 -> %>
-                    <span class="bg-red-100 text-red-800 text-xs font-medium px-2 py-1 rounded-full">High Priority</span>
-                  <% priority when priority >= 70 -> %>
-                    <span class="bg-yellow-100 text-yellow-800 text-xs font-medium px-2 py-1 rounded-full">Medium Priority</span>
-                  <% _ -> %>
-                    <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">Low Priority</span>
-                <% end %>
-              </div>
-              <%= if suggestion.completion_percentage > 0 do %>
-                <div class="text-xs text-gray-500"><%= suggestion.completion_percentage %>% complete</div>
-              <% end %>
-            </div>
-            
-            <!-- Suggestion Content -->
-            <h3 class="font-semibold text-gray-900 mb-2"><%= suggestion.title %></h3>
-            <p class="text-sm text-gray-600 mb-3"><%= suggestion.description %></p>
-            <p class="text-xs text-purple-600 font-medium mb-3">For: <%= suggestion.portfolio_title %></p>
-            
-            <!-- Benefits List -->
-            <div class="mb-4">
-              <div class="text-xs font-medium text-gray-700 mb-1">Benefits:</div>
-              <ul class="text-xs text-gray-600 space-y-1">
-                <%= for benefit <- Enum.take(suggestion.benefits, 2) do %>
-                  <li class="flex items-center">
-                    <svg class="w-3 h-3 text-green-500 mr-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                    </svg>
-                    <%= benefit %>
-                  </li>
-                <% end %>
-              </ul>
-            </div>
-            
-            <!-- Time and Cost -->
-            <div class="flex items-center justify-between text-xs text-gray-500 mb-4">
-              <span>⏱ <%= suggestion.estimated_time %></span>
-              <%= if Map.get(suggestion, :estimated_cost, 0) > 0 do %>
-                <span>💰 $<%= suggestion.estimated_cost %></span>
-              <% else %>
-                <span class="text-green-600">✨ Free</span>
-              <% end %>
-            </div>
-            
-            <!-- Action Button -->
-            <%= if suggestion.can_collaborate do %>
-              <button 
-                phx-click="start_enhancement" 
-                phx-value-suggestion_id={suggestion.id}
-                class="w-full bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors">
-                Start Enhancement
+          <%= if @recently_created_portfolio do %>
+            <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+              <.link href={"/portfolios/#{@recently_created_portfolio.id}/edit"}
+                    class="inline-flex items-center px-6 py-3 bg-white text-purple-600 rounded-lg font-medium hover:bg-purple-50 transition-all">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+                Enhance My Portfolio
+              </.link>
+              
+              <button phx-click="dismiss_welcome"
+                      class="px-6 py-3 text-white/80 hover:text-white transition-colors">
+                Continue to Hub
               </button>
-            <% else %>
-              <button 
-                phx-click="show_upgrade_modal"
-                class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-4 rounded-lg transition-colors">
-                Upgrade to Access
-              </button>
-            <% end %>
-          </div>
-        <% end %>
+            </div>
+          <% end %>
+        </div>
       </div>
     </div>
   <% end %>
 
-  <!-- Main Content -->
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
-      
-      <!-- Main Portfolio Area (3/4 width) -->
-      <div class="lg:col-span-3 space-y-6">
-        
-        <!-- Welcome Hero with GitHub README vibes -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:p-8">
-          <div class="flex items-start justify-between">
-            <div class="flex-1">
-              <div class="flex items-center space-x-3 mb-4">
-                <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xl font-bold">
-                  <%= String.first(@current_user.email) |> String.upcase() %>
-                </div>
-                <div>
-                  <h2 class="text-2xl font-bold text-gray-900">
-                    Welcome back, <%= String.split(@current_user.name, "@") |> List.first() |> String.capitalize() %>
-                  </h2>
-                  <p class="text-gray-600">Your creative portfolio workspace</p>
-                </div>
-              </div>
-              
-              <!-- Contribution graph concept -->
-              <div class="mb-6">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-sm font-medium text-gray-700">Portfolio Activity</span>
-                  <span class="text-xs text-gray-500">Last 30 days</span>
-                </div>
-                <div class="grid grid-cols-30 gap-1">
-                  <%= for day <- 1..30 do %>
-                    <div class={[
-                      "w-3 h-3 rounded-sm",
-                      case rem(day, 4) do
-                        0 -> "bg-green-200"
-                        1 -> "bg-green-300" 
-                        2 -> "bg-green-400"
-                        _ -> "bg-gray-100"
-                      end
-                    ]} title={"Day #{day}"}></div>
-                  <% end %>
-                </div>
-              </div>
-
-              <!-- Quick Stats -->
-              <div class="grid grid-cols-3 gap-4">
-                <div class="text-center">
-                  <div class="text-2xl font-bold text-blue-600"><%= length(@portfolios) %></div>
-                  <div class="text-sm text-gray-600">Portfolios</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-2xl font-bold text-green-600"><%= @overview.total_visits || 0 %></div>
-                  <div class="text-sm text-gray-600">Total Views</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-2xl font-bold text-purple-600"><%= length(@collaboration_requests) %></div>
-                  <div class="text-sm text-gray-600">Collaborations</div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Featured work preview -->
-            <%= if length(@portfolios) > 0 do %>
-              <div class="hidden lg:block ml-8">
-                <div class="text-sm font-medium text-gray-700 mb-2">Featured Work</div>
-                <div class="w-32 h-24 bg-gray-100 rounded-lg overflow-hidden">
-                  <div class="w-full h-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white text-xs">
-                    <%= List.first(@portfolios).title %>
-                  </div>
-                </div>
-              </div>
-            <% end %>
-          </div>
+  <!-- ============================================================================ -->
+  <!-- MAIN CREATOR HUB LAYOUT -->
+  <!-- ============================================================================ -->
+  
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    
+    <!-- ======== HUB HEADER & NAVIGATION ======== -->
+    <div class="mb-8">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900 mb-2">Creator Hub</h1>
+          <p class="text-gray-600">Your comprehensive command center for creative success</p>
         </div>
-
-        <!-- Portfolio Grid/List Section -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-          
-          <!-- Filter Bar (GitHub-style) -->
-          <div class="border-b border-gray-200 px-6 py-4">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center space-x-4">
-                <h3 class="text-lg font-semibold text-gray-900">Your Portfolios</h3>
-                <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
-                  <%= length(@portfolios) %>
-                </span>
-              </div>
-              
-              <div class="flex items-center space-x-3">
-                <!-- Filter Buttons -->
-                <div class="flex border border-gray-300 rounded-lg overflow-hidden">
-                  <button phx-click="filter_portfolios" phx-value-status="all" 
-                          class={["px-3 py-1 text-xs font-medium", if(@filter_status == "all", do: "bg-blue-500 text-white", else: "bg-white text-gray-700 hover:bg-gray-50")]}>
-                    All
-                  </button>
-                  <button phx-click="filter_portfolios" phx-value-status="published" 
-                          class={["px-3 py-1 text-xs font-medium border-l", if(@filter_status == "published", do: "bg-green-500 text-white", else: "bg-white text-gray-700 hover:bg-gray-50")]}>
-                    Published
-                  </button>
-                  <button phx-click="filter_portfolios" phx-value-status="collaborative" 
-                          class={["px-3 py-1 text-xs font-medium border-l", if(@filter_status == "collaborative", do: "bg-purple-500 text-white", else: "bg-white text-gray-700 hover:bg-gray-50")]}>
-                    Collaborative
-                  </button>
-                </div>
-
-                <!-- View Toggle -->
-                <div class="flex border border-gray-300 rounded-lg overflow-hidden">
-                  <button phx-click="toggle_view_mode" phx-value-mode="grid" 
-                          class={["p-2", if(@view_mode == "grid", do: "bg-gray-100", else: "hover:bg-gray-50")]}>
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
-                    </svg>
-                  </button>
-                  <button phx-click="toggle_view_mode" phx-value-mode="list" 
-                          class={["p-2 border-l", if(@view_mode == "list", do: "bg-gray-100", else: "hover:bg-gray-50")]}>
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Portfolio Cards/List -->
-          <div class="p-6">
-            <%= if length(@portfolios) == 0 do %>
-              <!-- Empty State -->
-              <div class="text-center py-12">
-                <div class="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                  <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                  </svg>
-                </div>
-                <h3 class="text-lg font-medium text-gray-900 mb-2">Create your first portfolio</h3>
-                <p class="text-gray-600 mb-6">Showcase your work and connect with opportunities</p>
-                <button phx-click="show_create_modal" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                  </svg>
-                  Create Portfolio
-                </button>
-              </div>
-            <% else %>
-              <!-- Portfolio Grid -->
-              <%= if @view_mode == "grid" do %>
-                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                  <%= for portfolio <- get_filtered_portfolios(@portfolios, @filter_status) do %>
-                    <div class="group bg-white border border-gray-200 rounded-lg hover:shadow-md transition-all duration-200 overflow-hidden">
-                      <!-- Portfolio Preview -->
-                      <div class="aspect-w-16 aspect-h-9 bg-gradient-to-br from-gray-100 to-gray-200">
-                        <div class={[
-                          "w-full h-32 flex items-center justify-center",
-                          case portfolio.theme do
-                            "executive" -> "bg-gradient-to-br from-blue-500 to-indigo-600"
-                            "creative" -> "bg-gradient-to-br from-purple-500 to-pink-600" 
-                            "developer" -> "bg-gradient-to-br from-green-500 to-teal-600"
-                            _ -> "bg-gradient-to-br from-gray-500 to-gray-600"
-                          end
-                        ]}>
-                          <div class="text-center text-white">
-                            <h4 class="font-bold text-lg"><%= portfolio.title %></h4>
-                            <p class="text-sm opacity-90">/<%= portfolio.slug %></p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <!-- Portfolio Info -->
-                      <div class="p-4">
-                        <div class="flex items-start justify-between mb-3">
-                          <div class="flex-1">
-                            <h3 class="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                              <%= portfolio.title %>
-                            </h3>
-                            <p class="text-sm text-gray-600 mt-1"><%= portfolio.description %></p>
-                          </div>
-                          
-                          <!-- Collaboration Indicators -->
-                          <%= if stats = Map.get(@portfolio_stats, portfolio.id) do %>
-                            <div class="flex items-center space-x-1 ml-2">
-                              <%= if length(stats.collaborations) > 0 do %>
-                                <div class="flex -space-x-1">
-                                  <%= for collab <- Enum.take(stats.collaborations, 3) do %>
-                                    <div class="w-6 h-6 bg-purple-500 rounded-full border-2 border-white flex items-center justify-center text-xs text-white font-bold">
-                                      <%= String.first(collab.user) %>
-                                    </div>
-                                  <% end %>
-                                  <%= if length(stats.collaborations) > 3 do %>
-                                    <div class="w-6 h-6 bg-gray-400 rounded-full border-2 border-white flex items-center justify-center text-xs text-white">
-                                      +<%= length(stats.collaborations) - 3 %>
-                                    </div>
-                                  <% end %>
-                                </div>
-                              <% end %>
-                              
-                              <%= if stats.needs_feedback do %>
-                                <div class="w-2 h-2 bg-orange-400 rounded-full" title="Seeking feedback"></div>
-                              <% end %>
-                            </div>
-                          <% end %>
-                        </div>
-
-                        <!-- Stats Row -->
-                        <div class="flex items-center justify-between text-sm text-gray-500 mb-3">
-                          <div class="flex items-center space-x-4">
-                            <span class="flex items-center">
-                              <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                              </svg>
-                              <%= Map.get(@portfolio_stats, portfolio.id, %{}) |> Map.get(:stats, %{}) |> Map.get(:total_visits, 0) %>
-                            </span>
-                            <span class="flex items-center">
-                              <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10m0 0V5a2 2 0 00-2-2H9a2 2 0 00-2 2v3m10 0v3a2 2 0 01-2 2H9a2 2 0 01-2-2v-3"/>
-                              </svg>
-                              <%= Map.get(@portfolio_stats, portfolio.id, %{}) |> Map.get(:comments, 0) %>
-                            </span>
-                          </div>
-                          <span class="text-xs">
-                            Updated <%= relative_date(portfolio.updated_at) %>
-                          </span>
-                        </div>
-
-                        <!-- Actions Row -->
-                        <div class="flex items-center justify-between">
-                          <div class="flex items-center space-x-2">
-                            <.link href={"/portfolios/#{portfolio.id}/edit"} 
-                                  class="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
-                              <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                              </svg>
-                              Edit
-                            </.link>
-                            
-                            <.link href={"/p/#{portfolio.slug}"} target="_blank"
-                                  class="inline-flex items-center px-2 py-1 text-xs font-medium text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition-colors">
-                              <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                              </svg>
-                              View
-                            </.link>
-                          </div>
-
-                          <!-- Collaboration Actions -->
-                          <div class="flex items-center space-x-1">
-                            <button phx-click="request_feedback" phx-value-portfolio_id={portfolio.id}
-                                    class="inline-flex items-center px-2 py-1 text-xs font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded transition-colors"
-                                    title="Request feedback">
-                              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10m0 0V5a2 2 0 00-2-2H9a2 2 0 00-2 2v3m10 0v3a2 2 0 01-2 2H9a2 2 0 01-2-2v-3"/>
-                              </svg>
-                            </button>
-                            
-                            <button phx-click="start_collaboration" phx-value-portfolio_id={portfolio.id}
-                                    class="inline-flex items-center px-2 py-1 text-xs font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded transition-colors"
-                                    title="Start collaboration">
-                              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  <% end %>
-                </div>
-              <% else %>
-                <!-- List View -->
-                <div class="space-y-3">
-                  <%= for portfolio <- get_filtered_portfolios(@portfolios, @filter_status) do %>
-                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                      <div class="flex items-center space-x-4 flex-1">
-                        <div class={[
-                          "w-12 h-12 rounded-lg flex items-center justify-center text-white text-sm font-bold",
-                          case portfolio.theme do
-                            "executive" -> "bg-gradient-to-br from-blue-500 to-indigo-600"
-                            "creative" -> "bg-gradient-to-br from-purple-500 to-pink-600" 
-                            "developer" -> "bg-gradient-to-br from-green-500 to-teal-600"
-                            _ -> "bg-gradient-to-br from-gray-500 to-gray-600"
-                          end
-                        ]}>
-                          <%= String.first(portfolio.title) %>
-                        </div>
-                        
-                        <div class="flex-1">
-                          <h3 class="font-semibold text-gray-900"><%= portfolio.title %></h3>
-                          <p class="text-sm text-gray-600"><%= portfolio.description %></p>
-                        </div>
-                        
-                        <!-- Collaboration Indicators -->
-                        <%= if stats = Map.get(@portfolio_stats, portfolio.id) do %>
-                          <div class="hidden md:flex items-center space-x-4 text-sm text-gray-500">
-                            <span><%= Map.get(stats, :stats, %{}) |> Map.get(:total_visits, 0) %> views</span>
-                            <span><%= Map.get(stats, :comments, 0) %> comments</span>
-                            <%= if length(Map.get(stats, :collaborations, [])) > 0 do %>
-                              <span class="text-purple-600"><%= length(stats.collaborations) %> collaborators</span>
-                            <% end %>
-                          </div>
-                        <% end %>
-                      </div>
-
-                      <div>
-                        <%= if Map.get(@portfolio_stats, portfolio.id, %{}) |> Map.get(:active_enhancement) do %>
-                          <div class="mt-4 p-3 bg-purple-50 rounded-lg">
-                            <div class="flex items-center justify-between text-sm">
-                              <span class="text-purple-800 font-medium">Active Enhancement</span>
-                              <span class="text-purple-600">
-                                <%= Map.get(@portfolio_stats, portfolio.id, %{}) |> Map.get(:enhancement_progress, 0) %>%
-                              </span>
-                            </div>
-                            <div class="mt-2 w-full bg-purple-200 rounded-full h-2">
-                              <div 
-                                class="bg-purple-600 h-2 rounded-full" 
-                                style={"width: #{Map.get(@portfolio_stats, portfolio.id, %{}) |> Map.get(:enhancement_progress, 0)}%"}>
-                              </div>
-                            </div>
-                          </div>
-                        <% end %>
-                      </div>
-                      
-                      <!-- Actions -->
-                      <div class="flex items-center space-x-2">
-                        <.link href={"/portfolios/#{portfolio.id}/edit"} 
-                              class="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                          </svg>
-                        </.link>
-                        
-                        <.link href={"/p/#{portfolio.slug}"} target="_blank"
-                              class="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition-colors">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                          </svg>
-                        </.link>
-                        
-                        <button phx-click="request_feedback" phx-value-portfolio_id={portfolio.id}
-                                class="p-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded transition-colors">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10m0 0V5a2 2 0 00-2-2H9a2 2 0 00-2 2v3m10 0v3a2 2 0 01-2 2H9a2 2 0 01-2-2v-3"/>
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  <% end %>
-                </div>
-              <% end %>
-            <% end %>
-          </div>
-        </div>
-      </div>
-
-      <!-- Sidebar (1/4 width) -->
-      <div class="lg:col-span-1 space-y-6">
         
-        <!-- Collaboration Panel -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold text-gray-900">Collaborations</h3>
-            <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-            </svg>
-          </div>
-          
-          <%= if length(@collaboration_requests) > 0 do %>
-            <div class="space-y-3">
-              <%= for request <- @collaboration_requests do %>
-                <div class="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                  <div class="flex items-start justify-between">
-                    <div class="flex-1">
-                      <p class="text-sm font-medium text-purple-900"><%= request.user %></p>
-                      <p class="text-xs text-purple-700">wants to <%= request.type %></p>
-                      <p class="text-xs text-purple-600 mt-1">"<%= request.portfolio %>"</p>
-                    </div>
-                    <div class="flex space-x-1">
-                      <button class="p-1 text-green-600 hover:bg-green-100 rounded">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                        </svg>
-                      </button>
-                      <button class="p-1 text-red-600 hover:bg-red-100 rounded">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          <% else %>
-            <div class="text-center py-6">
-              <div class="w-12 h-12 mx-auto mb-3 bg-purple-100 rounded-full flex items-center justify-center">
-                <svg class="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                </svg>
-              </div>
-              <p class="text-sm text-gray-600 mb-3">No active collaborations</p>
-              <button class="text-xs text-purple-600 hover:text-purple-700 font-medium">
-                Invite collaborators →
+        <!-- Quick Actions Panel -->
+        <div class="mt-4 lg:mt-0">
+          <div class="flex flex-wrap gap-2">
+            <%= for action <- @quick_actions do %>
+              <button phx-click={action.action}
+                      class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all">
+                <span class="mr-2"><%= action.icon %></span>
+                <%= action.title %>
               </button>
-            </div>
-          <% end %>
-
-          <div class="bg-white rounded-xl shadow-lg p-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Enhancement Progress</h3>
-            
-            <div class="space-y-4">
-              <div>
-                <div class="flex justify-between text-sm mb-1">
-                  <span class="text-gray-600">Overall Completion</span>
-                  <span class="font-medium"><%= Map.get(@portfolio_stats, :enhancement_completion_rate, 0) %>%</span>
-                </div>
-                <div class="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    class="bg-purple-600 h-2 rounded-full" 
-                    style={"width: #{Map.get(@portfolio_stats, :enhancement_completion_rate, 0)}%"}>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- Enhancement Types Progress -->
-              <%= for {type, percentage} <- Map.get(@portfolio_stats, :enhancement_breakdown, []) do %>
-                <div>
-                  <div class="flex justify-between text-xs mb-1">
-                    <span class="text-gray-600 capitalize"><%= String.replace(type, "_", " ") %></span>
-                    <span class="font-medium"><%= percentage %>%</span>
-                  </div>
-                  <div class="w-full bg-gray-200 rounded-full h-1.5">
-                    <div 
-                      class={"#{enhancement_color(type)} h-1.5 rounded-full"} 
-                      style={"width: #{percentage}%"}>
-                    </div>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-          </div>
-        </div>
-
-        <!-- Recent Activity -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 class="font-semibold text-gray-900 mb-4">Recent Activity</h3>
-          
-          <div class="space-y-3">
-            <%= for activity <- @recent_activity do %>
-              <div class="flex items-start space-x-3">
-                <div class={[
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white",
-                  case activity.type do
-                    :portfolio_view -> "bg-blue-500"
-                    :comment_received -> "bg-green-500" 
-                    :collaboration_invite -> "bg-purple-500"
-                    :feedback_received -> "bg-orange-500"
-                    _ -> "bg-gray-500"
-                  end
-                ]}>
-                  <%= case activity.type do
-                    :portfolio_view -> "👁"
-                    :comment_received -> "💬"
-                    :collaboration_invite -> "🤝"
-                    :feedback_received -> "⭐"
-                    _ -> "📝"
-                  end %>
-                </div>
-                
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm text-gray-900">
-                    <%= case activity.type do
-                      :portfolio_view -> "#{activity.count} new views on"
-                      :comment_received -> "#{activity.user} commented on"
-                      :collaboration_invite -> "#{activity.user} invited you to collaborate on"
-                      :feedback_received -> "Received #{activity.rating}⭐ feedback on"
-                      :experiment_completed -> "#{activity.user} completed"
-                      _ -> "Activity on"
-                    end %>
-                  </p>
-                  <p class="text-xs text-gray-600 truncate">
-                    "<%= activity[:portfolio] || activity[:experiment] || activity[:description] || "Unknown" %>"
-                  </p>
-                  <p class="text-xs text-gray-500"><%= activity.time %></p>
-                </div>
-              </div>
             <% end %>
           </div>
-          
-          <button class="w-full mt-4 text-sm text-blue-600 hover:text-blue-700 font-medium">
-            View all activity →
-          </button>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 class="font-semibold text-gray-900 mb-4">Quick Actions</h3>
-          
-          <div class="space-y-3">
-            <button phx-click="show_create_modal" class="w-full flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-              </svg>
-              New Portfolio
-            </button>
-            
-            <.link navigate="/studio" class="w-full flex items-center justify-center px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
-              </svg>
-              Open Studio
-            </.link>
-            
-            <.link navigate="/portfolios/dashboard" class="w-full flex items-center justify-center px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-              </svg>
-              View Dashboard
-            </.link>
-          </div>
-        </div>
-
-        <!-- Subscription Status -->
-        <div class="bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl p-6 text-white">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="font-semibold">Frestyl Pro</h3>
-            <div class="text-xs bg-white/20 px-2 py-1 rounded-full">
-              <%= String.capitalize(@current_user.subscription_tier || "free") %>
-            </div>
-          </div>
-          
-          <p class="text-sm text-purple-100 mb-4">
-            <%= if @current_user.subscription_tier == "free" do %>
-              Upgrade to unlock unlimited portfolios and advanced collaboration features.
-            <% else %>
-              You have access to all premium features including unlimited collaborations.
-            <% end %>
-          </p>
-          
-          <%= if @current_user.subscription_tier == "free" do %>
-            <.link navigate="/account/subscription" class="inline-flex items-center px-4 py-2 bg-white text-purple-600 rounded-lg hover:bg-purple-50 transition-colors text-sm font-medium">
-              Upgrade Now
-            </.link>
-          <% else %>
-            <.link navigate="/account/subscription" class="inline-flex items-center text-sm text-purple-100 hover:text-white">
-              Manage subscription →
-            </.link>
-          <% end %>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- Welcome Celebration Modal for Post-Onboarding -->
-    <%= if @show_welcome_celebration do %>
-    <div id="welcome-celebration" class="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center" phx-hook="WelcomeCelebration">
-        <div class="bg-white rounded-3xl shadow-2xl max-w-2xl w-full mx-4 overflow-hidden animate-scale-in">
-        <!-- Celebration Header -->
-        <div class="bg-gradient-to-r from-green-500 to-emerald-500 p-8 text-white text-center relative">
-            <div class="absolute inset-0 bg-black opacity-20"></div>
-            
-            <!-- Floating Confetti -->
-            <div class="absolute inset-0">
-            <div class="absolute top-4 left-8 w-3 h-3 bg-yellow-300 rounded-full animate-bounce" style="animation-delay: 0.5s;"></div>
-            <div class="absolute top-12 right-12 w-2 h-2 bg-pink-300 rounded-full animate-bounce" style="animation-delay: 1s;"></div>
-            <div class="absolute bottom-8 left-1/4 w-4 h-4 bg-blue-300 rounded-full animate-pulse" style="animation-delay: 1.5s;"></div>
-            </div>
-            
-            <div class="relative z-10">
-            <div class="inline-block p-4 bg-white bg-opacity-20 rounded-full mb-4 animate-bounce">
-                <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-            </div>
-            <h2 class="text-3xl font-bold mb-2">🎉 Welcome to Your Portfolio Hub!</h2>
-            <p class="text-lg opacity-90">Your creative portfolio has been successfully created</p>
-            </div>
-        </div>
-
-        <!-- Celebration Content -->
-        <div class="p-8">
-            <%= if @recently_created_portfolio do %>
-            <!-- Show the newly created portfolio -->
-            <div class="mb-6">
-                <h3 class="text-xl font-bold text-gray-900 mb-4">Your New Portfolio is Ready!</h3>
-                <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
-                <div class="flex items-center space-x-4">
-                    <div class={[
-                    "w-16 h-16 rounded-xl flex items-center justify-center text-white text-xl font-bold",
-                    case @recently_created_portfolio.theme do
-                        "creative" -> "bg-gradient-to-br from-purple-500 to-pink-600"
-                        "executive" -> "bg-gradient-to-br from-blue-500 to-indigo-600"
-                        "developer" -> "bg-gradient-to-br from-green-500 to-teal-600"
-                        _ -> "bg-gradient-to-br from-gray-500 to-gray-600"
-                    end
+      <!-- Section Navigation Tabs -->
+      <div class="border-b border-gray-200">
+        <nav class="flex space-x-8 overflow-x-auto">
+          <%= for section <- @hub_config.primary_sections do %>
+            <button phx-click="switch_section" phx-value-section={section}
+                    class={[
+                      "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors",
+                      if(@active_section == section, 
+                        do: "border-purple-500 text-purple-600", 
+                        else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
                     ]}>
-                    <%= String.first(@recently_created_portfolio.title) %>
-                    </div>
-                    <div class="flex-1">
-                    <h4 class="text-lg font-bold text-gray-900"><%= @recently_created_portfolio.title %></h4>
-                    <p class="text-gray-600"><%= @recently_created_portfolio.description %></p>
-                    <p class="text-sm text-purple-600 mt-1">frestyl.com/p/<%= @recently_created_portfolio.slug %></p>
-                    </div>
-                </div>
-                </div>
-            </div>
-            <% end %>
-
-            <!-- Next Steps -->
-            <div class="mb-6">
-            <h4 class="text-lg font-bold text-gray-900 mb-4">🚀 Ready for Next Steps?</h4>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button phx-click="complete_onboarding_step" phx-value-step="customize_portfolio"
-                        class="p-4 border-2 border-blue-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all group">
-                <div class="text-2xl mb-2">🎨</div>
-                <h5 class="font-semibold text-gray-900 group-hover:text-blue-600">Customize Design</h5>
-                <p class="text-sm text-gray-600">Choose colors, fonts, and layouts</p>
-                </button>
-                
-                <button phx-click="complete_onboarding_step" phx-value-step="share_portfolio"
-                        class="p-4 border-2 border-green-200 rounded-xl hover:border-green-400 hover:bg-green-50 transition-all group">
-                <div class="text-2xl mb-2">📢</div>
-                <h5 class="font-semibold text-gray-900 group-hover:text-green-600">Share & Promote</h5>
-                <p class="text-sm text-gray-600">Get your portfolio discovered</p>
-                </button>
-                
-                <button phx-click="complete_onboarding_step" phx-value-step="upload_resume"
-                        class="p-4 border-2 border-purple-200 rounded-xl hover:border-purple-400 hover:bg-purple-50 transition-all group">
-                <div class="text-2xl mb-2">📄</div>
-                <h5 class="font-semibold text-gray-900 group-hover:text-purple-600">Upload Another Resume</h5>
-                <p class="text-sm text-gray-600">Create more portfolios</p>
-                </button>
-            </div>
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-            <%= if @recently_created_portfolio do %>
-                <.link href={"/portfolios/#{@recently_created_portfolio.id}/edit"}
-                    class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-medium hover:from-purple-700 hover:to-blue-700 transition-all transform hover:scale-105">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                </svg>
-                Edit My Portfolio
-                </.link>
-                
-                <.link href={"/p/#{@recently_created_portfolio.slug}"} target="_blank"
-                    class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-                View Live Portfolio
-                </.link>
-            <% end %>
-            
-            <button phx-click="dismiss_welcome"
-                    class="w-full sm:w-auto px-6 py-3 text-gray-600 hover:text-gray-800 font-medium">
-                Explore Hub Later
+              <%= humanize_section_name(section) %>
             </button>
-            </div>
-        </div>
-        </div>
+          <% end %>
+          
+          <%= for section <- @hub_config.secondary_sections do %>
+            <button phx-click="switch_section" phx-value-section={section}
+                    class={[
+                      "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors",
+                      if(@active_section == section, 
+                        do: "border-purple-500 text-purple-600", 
+                        else: "border-transparent text-gray-400 hover:text-gray-600")
+                    ]}>
+              <%= humanize_section_name(section) %>
+            </button>
+          <% end %>
+        </nav>
+      </div>
     </div>
+
+    <!-- ============================================================================ -->
+    <!-- SECTION CONTENT - Equal Feature Prominence -->
+    <!-- ============================================================================ -->
+
+    <%= case @active_section do %>
+      <% "portfolio_studio" -> %>
+        <div class="space-y-6">
+          <!-- Studio Overview Cards -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Total Portfolios -->
+            <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+              <div class="flex items-center">
+                <div class="p-3 bg-purple-100 rounded-lg">
+                  <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                  </svg>
+                </div>
+                <div class="ml-4">
+                  <p class="text-sm font-medium text-gray-600">Total Portfolios</p>
+                  <p class="text-2xl font-bold text-gray-900"><%= @studio_data.total_portfolios %></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Published Count -->
+            <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+              <div class="flex items-center">
+                <div class="p-3 bg-green-100 rounded-lg">
+                  <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                </div>
+                <div class="ml-4">
+                  <p class="text-sm font-medium text-gray-600">Published</p>
+                  <p class="text-2xl font-bold text-gray-900"><%= @studio_data.published_count %></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Drafts -->
+            <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+              <div class="flex items-center">
+                <div class="p-3 bg-yellow-100 rounded-lg">
+                  <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                  </svg>
+                </div>
+                <div class="ml-4">
+                  <p class="text-sm font-medium text-gray-600">Drafts</p>
+                  <p class="text-2xl font-bold text-gray-900"><%= @studio_data.draft_count %></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Templates Available -->
+            <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+              <div class="flex items-center">
+                <div class="p-3 bg-blue-100 rounded-lg">
+                  <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+                  </svg>
+                </div>
+                <div class="ml-4">
+                  <p class="text-sm font-medium text-gray-600">Templates</p>
+                  <p class="text-2xl font-bold text-gray-900"><%= @studio_data.templates_available %></p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Portfolios Section -->
+          <%= portfolio_grid_section(assigns) %>
+
+          <!-- Enhancement Suggestions -->
+          <%= if length(@enhancement_suggestions) > 0 do %>
+            <%= enhancement_suggestions_section(assigns) %>
+          <% end %>
+        </div>
+      
+      <% "collaboration_hub" -> %>
+        <%= collaboration_hub_section(assigns) %>
+      
+      <% "community_channels" -> %>
+        <%= community_channels_section(assigns) %>
+      
+      <% "creator_lab" -> %>
+        <%= creator_lab_section(assigns) %>
+      
+      <% "service_dashboard" -> %>
+        <%= service_dashboard_section(assigns) %>
+      
+      <% "revenue_center" -> %>
+        <%= revenue_center_section(assigns) %>
+      
+      <% _ -> %>
+        <%= portfolio_studio_section(assigns) %>
     <% end %>
 
-  <!-- Collaboration Panel Overlay -->
-  <%= if @show_collaboration_panel do %>
-    <div class="fixed inset-0 z-50 overflow-hidden">
-      <div class="absolute inset-0 bg-black bg-opacity-50" phx-click="toggle_collaboration_panel"></div>
-      <div class="absolute right-0 top-0 h-full w-96 bg-white shadow-xl">
-        <div class="p-6 border-b border-gray-200">
-          <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Collaboration Center</h2>
-            <button phx-click="toggle_collaboration_panel" class="text-gray-400 hover:text-gray-600">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        
-        <div class="p-6">
-          <div class="text-center py-8">
-            <div class="w-16 h-16 mx-auto mb-4 bg-purple-100 rounded-full flex items-center justify-center">
-              <svg class="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-              </svg>
-            </div>
-            <h3 class="text-lg font-medium text-gray-900 mb-2">Advanced Collaboration</h3>
-            <p class="text-gray-600 mb-6">Real-time collaboration features are coming soon to Portfolio Hub.</p>
-            <.link navigate="/studio" class="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
-              Explore Studio →
-            </.link>
-          </div>
-        </div>
-      </div>
-    </div>
-  <% end %>
-
-  <!-- Portfolio Enhancement Section -->
-  <%= if length(@enhancement_suggestions) > 0 or length(@quarterly_reminders) > 0 do %>
-    <div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl p-8 mb-8 border border-purple-100">
-      <div class="flex items-center justify-between mb-6">
-        <div>
-          <h2 class="text-2xl font-bold text-gray-900 mb-2 flex items-center">
-            <div class="w-8 h-8 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center mr-3">
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-              </svg>
-            </div>
-            Level Up Your Portfolios
-          </h2>
-          <p class="text-gray-600">Collaborate with others to make your portfolios even better</p>
-        </div>
-        <button 
-          phx-click="show_studio_welcome"
-          class="px-4 py-2 bg-white border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50 transition-colors text-sm font-medium">
-          <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          How it works
-        </button>
-      </div>
-
-      <!-- Quarterly Reminders -->
-      <%= if length(@quarterly_reminders) > 0 do %>
-        <div class="mb-6">
-          <%= for reminder <- @quarterly_reminders do %>
-            <div class="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-4 mb-4">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                  <span class="text-2xl mr-3"><%= reminder.icon %></span>
-                  <div>
-                    <h3 class="font-bold text-gray-900"><%= reminder.title %></h3>
-                    <p class="text-sm text-gray-600"><%= reminder.description %></p>
-                  </div>
-                </div>
-                <button 
-                  phx-click="start_quarterly_update"
-                  phx-value-portfolio_id={List.first(@portfolios).id}
-                  class="px-4 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg hover:shadow-lg transition-all font-medium text-sm">
-                  <%= reminder.action %>
-                </button>
-              </div>
-            </div>
-          <% end %>
-        </div>
-      <% end %>
-
-      <!-- Enhancement Suggestions Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <%= for suggestion <- @enhancement_suggestions do %>
-          <div class="group relative bg-white rounded-xl p-6 border border-gray-100 hover:border-purple-200 hover:shadow-lg transition-all duration-300 cursor-pointer"
-              phx-click="enhance_portfolio"
-              phx-value-type={suggestion.type}
-              phx-value-portfolio_id={suggestion.portfolio_id}>
-            
-            <!-- Enhancement Type Icon -->
-            <div class="flex items-center mb-4">
-              <span class="text-3xl mr-3"><%= suggestion.icon %></span>
-              <div class="flex-1">
-                <h3 class="font-bold text-gray-900 group-hover:text-purple-700 transition-colors">
-                  <%= suggestion.title %>
-                </h3>
-              </div>
-              <div class="opacity-0 group-hover:opacity-100 transition-opacity">
-                <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
-              </div>
-            </div>
-            
-            <p class="text-sm text-gray-600 mb-4"><%= suggestion.description %></p>
-            
-            <!-- Portfolio Preview -->
-            <div class="flex items-center text-xs text-gray-500">
-              <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-              </svg>
-              For: <%= get_portfolio_title(suggestion.portfolio_id, @portfolios) %>
-            </div>
-            
-            <!-- Hover Effect -->
-            <div class="absolute inset-0 bg-gradient-to-r from-purple-600/5 to-indigo-600/5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-          </div>
-        <% end %>
-      </div>
-
-      <!-- Active Portfolio Channels -->
-      <%= if length(@user_channels) > 0 do %>
-        <div class="mt-6 pt-6 border-t border-purple-200">
-          <h3 class="font-bold text-gray-900 mb-4 flex items-center">
-            <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-            </svg>
-            Active Collaboration Workspaces
-          </h3>
-          <div class="flex space-x-3 overflow-x-auto pb-2">
-            <%= for {channel, member_count} <- @user_channels do %>
-              <.link 
-                navigate={"/channel/#{channel.slug}"}
-                class="flex-shrink-0 bg-white border border-gray-200 rounded-lg p-3 hover:border-purple-300 hover:shadow-md transition-all min-w-[200px]">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-sm font-medium text-gray-900 truncate"><%= channel.name %></span>
-                  <span class="text-xs text-gray-500"><%= member_count %> members</span>
-                </div>
-                <p class="text-xs text-gray-600 line-clamp-2"><%= channel.description %></p>
-              </.link>
-            <% end %>
-          </div>
-        </div>
-      <% end %>
-    </div>
-  <% end %>
-
-  <!-- Studio Welcome Modal -->
-  <%= if @show_studio_welcome_modal do %>
-    <div class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
-      <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <!-- Background overlay -->
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-            phx-click="hide_studio_welcome"
-            aria-hidden="true"></div>
-
-        <!-- Modal content -->
-        <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
-          <div class="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-8">
-            <div class="flex items-center justify-between text-white">
-              <div>
-                <h2 class="text-2xl font-bold mb-2">Welcome to Studio Collaboration!</h2>
-                <p class="text-purple-100">Turn your solo portfolios into collaborative masterpieces</p>
-              </div>
-              <button 
-                phx-click="hide_studio_welcome"
-                class="text-white hover:text-purple-200 transition-colors">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-          
-          <div class="px-6 py-6">
-            <div class="space-y-6">
-              <!-- How it works -->
-              <div>
-                <h3 class="text-lg font-bold text-gray-900 mb-4">How Portfolio Collaboration Works:</h3>
-                <div class="space-y-4">
-                  <div class="flex items-start space-x-4">
-                    <div class="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                      <span class="text-purple-600 font-bold text-sm">1</span>
-                    </div>
-                    <div>
-                      <h4 class="font-medium text-gray-900">Click an Enhancement</h4>
-                      <p class="text-sm text-gray-600">Choose what you want to improve: voice intro, writing, music, or design</p>
-                    </div>
-                  </div>
-                  
-                  <div class="flex items-start space-x-4">
-                    <div class="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                      <span class="text-purple-600 font-bold text-sm">2</span>
-                    </div>
-                    <div>
-                      <h4 class="font-medium text-gray-900">Get Your Private Studio</h4>
-                      <p class="text-sm text-gray-600">We create a private workspace with the right tools for your enhancement type</p>
-                    </div>
-                  </div>
-                  
-                  <div class="flex items-start space-x-4">
-                    <div class="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                      <span class="text-purple-600 font-bold text-sm">3</span>
-                    </div>
-                    <div>
-                      <h4 class="font-medium text-gray-900">Invite Collaborators</h4>
-                      <p class="text-sm text-gray-600">Invite writers, designers, musicians, or friends to help enhance your portfolio</p>
-                    </div>
-                  </div>
-                  
-                  <div class="flex items-start space-x-4">
-                    <div class="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                      <span class="text-purple-600 font-bold text-sm">4</span>
-                    </div>
-                    <div>
-                      <h4 class="font-medium text-gray-900">Create Together</h4>
-                      <p class="text-sm text-gray-600">Use real-time collaboration tools to create content that elevates your portfolio</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Benefits -->
-              <div class="bg-gray-50 rounded-lg p-4">
-                <h4 class="font-medium text-gray-900 mb-3">Why Collaborate?</h4>
-                <div class="grid grid-cols-2 gap-3 text-sm">
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    Fresh perspectives
-                  </div>
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    Professional quality
-                  </div>
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    Skill development
-                  </div>
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    Network building
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="px-6 py-4 bg-gray-50 flex justify-end space-x-3">
-            <button 
-              phx-click="hide_studio_welcome"
-              class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
-              Got it!
-            </button>
-            <button 
-              phx-click="hide_studio_welcome"
-              class="px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all font-medium">
-              Let's Collaborate
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  <% end %>
-
-  <!-- Create Portfolio Modal (reuse existing modal logic) -->
-  <%= if @show_create_modal do %>
-    <div class="fixed inset-0 z-50 overflow-y-auto">
-      <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:p-0">
-        <div class="fixed inset-0 transition-opacity" phx-click="hide_create_modal">
-          <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
-        </div>
-        
-        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full" phx-click="prevent_close">
-          <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-            <h3 class="text-lg font-medium text-gray-900 mb-4">Create New Portfolio</h3>
-            <p class="text-sm text-gray-600 mb-6">Choose a template to get started with your new portfolio.</p>
-            
-            <!-- Template selection UI here -->
-            <div class="text-center py-8 text-gray-500">
-              Template selection UI would go here...
-            </div>
-          </div>
-          
-          <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-            <button phx-click="hide_create_modal" class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  <% end %>
-
-  <!-- Enhancement Modal -->
-  <%= if @show_enhancement_modal && @selected_enhancement do %>
-    <div class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
-      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
-            phx-click="close_enhancement_modal" aria-hidden="true"></div>
-
-        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-          <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-            <div class="sm:flex sm:items-start">
-              <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-purple-100 sm:mx-0 sm:h-10 sm:w-10">
-                <svg class="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                </svg>
-              </div>
-              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                <h3 class="text-lg leading-6 font-medium text-gray-900">
-                  <%= @selected_enhancement.title %>
-                </h3>
-                <div class="mt-2">
-                  <p class="text-sm text-gray-500">
-                    <%= @selected_enhancement.description %>
-                  </p>
-                  <p class="text-sm text-purple-600 mt-2 font-medium">
-                    Portfolio: <%= @selected_enhancement.portfolio_title %>
-                  </p>
-                  
-                  <!-- Enhancement Details -->
-                  <div class="mt-4 space-y-3">
-                    <div class="flex justify-between text-sm">
-                      <span class="text-gray-600">Estimated Time:</span>
-                      <span class="font-medium"><%= @selected_enhancement.estimated_time %></span>
-                    </div>
-                    
-                    <%= if Map.get(@selected_enhancement, :estimated_improvement) do %>
-                      <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Expected Improvement:</span>
-                        <span class="font-medium text-green-600">+<%= @selected_enhancement.estimated_improvement %>%</span>
-                      </div>
-                    <% end %>
-                    
-                    <div class="mt-4">
-                      <span class="text-sm font-medium text-gray-700">Benefits:</span>
-                      <ul class="mt-1 text-sm text-gray-600 space-y-1">
-                        <%= for benefit <- @selected_enhancement.benefits do %>
-                          <li class="flex items-center">
-                            <svg class="w-4 h-4 text-green-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                            </svg>
-                            <%= benefit %>
-                          </li>
-                        <% end %>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-            <button 
-              phx-click="create_enhancement_channel" 
-              phx-value-suggestion_id={@selected_enhancement.id}
-              phx-value-invite_collaborators="true"
-              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-base font-medium text-white hover:bg-purple-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
-              Start Enhancement
-            </button>
-            <button 
-              phx-click="close_enhancement_modal"
-              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  <% end %>
+  </div>
 </div>
 
-<!-- Helper Functions -->
-<script>
-  // Enhanced relative date function
-  function relative_date(date_string) {
-    if (!date_string) return "recently";
-    
-    try {
-      const date = new Date(date_string);
-      const now = new Date();
-      const diffInSeconds = Math.floor((now - date) / 1000);
+<!-- ============================================================================ -->
+<!-- MODALS AND OVERLAYS -->
+<!-- ============================================================================ -->
+
+<!-- Create Portfolio Modal -->
+<%= if @show_create_modal do %>
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" phx-click="close_create_modal">
+    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4" phx-click-away="close_create_modal">
+      <h2 class="text-xl font-bold text-gray-900 mb-4">Create New Portfolio</h2>
+      <p class="text-gray-600 mb-6">Choose how you'd like to create your portfolio</p>
       
-      if (diffInSeconds < 60) return "just now";
-      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-      if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} days ago`;
-      if (diffInSeconds < 2629746) return `${Math.floor(diffInSeconds / 604800)} weeks ago`;
-      return `${Math.floor(diffInSeconds / 2629746)} months ago`;
-    } catch (error) {
-      return "recently";
-    }
-  }
-
-  // Welcome celebration animations
-  window.addEventListener('DOMContentLoaded', function() {
-    const celebrationModal = document.querySelector('[phx-hook="WelcomeCelebration"]');
-    if (celebrationModal) {
-      // Add confetti effect
-      setTimeout(() => {
-        createConfettiEffect(celebrationModal);
-      }, 500);
-    }
-  });
-
-  function createConfettiEffect(container) {
-    const colors = ['#fbbf24', '#f59e0b', '#3b82f6', '#8b5cf6', '#ef4444', '#10b981'];
-    
-    for (let i = 0; i < 50; i++) {
-      setTimeout(() => {
-        const confetti = document.createElement('div');
-        confetti.style.cssText = `
-          position: absolute;
-          width: 8px;
-          height: 8px;
-          background: ${colors[Math.floor(Math.random() * colors.length)]};
-          border-radius: 50%;
-          pointer-events: none;
-          z-index: 1000;
-          top: 20%;
-          left: ${20 + Math.random() * 60}%;
-          animation: confettifall 3s ease-out forwards;
-        `;
+      <div class="space-y-3">
+        <button phx-click="create_from_template"
+                class="w-full flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+            </svg>
+          </div>
+          <div class="text-left">
+            <p class="font-medium text-gray-900">From Template</p>
+            <p class="text-sm text-gray-600">Start with a professional template</p>
+          </div>
+        </button>
         
-        container.appendChild(confetti);
+        <button phx-click="create_from_resume"
+                class="w-full flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <div class="text-left">
+            <p class="font-medium text-gray-900">From Resume</p>
+            <p class="text-sm text-gray-600">Upload resume and auto-populate</p>
+          </div>
+        </button>
         
-        setTimeout(() => confetti.remove(), 3000);
-      }, i * 50);
-    }
-  }
-
-  // Add CSS animation for confetti
-  if (!document.querySelector('#confetti-animation')) {
-    const style = document.createElement('style');
-    style.id = 'confetti-animation';
-    style.textContent = `
-      @keyframes confettifall {
-        0% {
-          transform: translateY(0) rotate(0deg);
-          opacity: 1;
-        }
-        100% {
-          transform: translateY(300px) rotate(360deg);
-          opacity: 0;
-        }
-      }
+        <button phx-click="create_blank"
+                class="w-full flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-4">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+          </div>
+          <div class="text-left">
+            <p class="font-medium text-gray-900">Start Blank</p>
+            <p class="text-sm text-gray-600">Build from scratch</p>
+          </div>
+        </button>
+      </div>
       
-      .animate-scale-in {
-        animation: scaleIn 0.5s ease-out;
-      }
-      
-      @keyframes scaleIn {
-        0% { transform: scale(0.9); opacity: 0; }
-        100% { transform: scale(1); opacity: 1; }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-</script>
+      <div class="mt-6 flex justify-end">
+        <button phx-click="close_create_modal"
+                class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+<% end %>
 
-<%= if assigns[:portfolio], do: @portfolio.title, else: "Unknown Portfolio" %>
+<!-- Additional modals for other features can be added here -->

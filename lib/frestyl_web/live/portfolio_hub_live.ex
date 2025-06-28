@@ -1,1293 +1,598 @@
-# lib/frestyl_web/live/portfolio_hub_live.ex - CHANNELS & LAB INTEGRATION
+# lib/frestyl_web/live/portfolio_hub_live.ex - COMPREHENSIVE CREATOR COMMAND CENTER
 
 defmodule FrestylWeb.PortfolioHubLive do
   use FrestylWeb, :live_view
 
-  alias Frestyl.{Accounts, Portfolios, Channels, Billing, Lab, Features, Analytics, Studio}
-  alias FrestylWeb.PortfolioHubLive.{Helpers, EnhancementEngine}
+  alias Frestyl.{Accounts, Portfolios, Channels, Billing, Lab, Features, Analytics, Studio, Services, Revenue}
+  alias FrestylWeb.PortfolioHubLive.{Helpers, EnhancementEngine, Components}
 
-
-  # Import helper modules
-  alias FrestylWeb.PortfolioHubLive.Components
-
-  @impl true
+ @impl true
   def mount(params, _session, socket) do
     user = socket.assigns.current_user
-    portfolios = Portfolios.list_user_portfolios(user.id)
-    limits = Portfolios.get_portfolio_limits(user)
 
-    # Enhanced onboarding completion check
-    is_first_visit = check_first_visit(user, params)
-    just_completed_onboarding = Map.get(params, "welcome") == "true"
-    recently_created_portfolio = get_recently_created_portfolio(portfolios)
+    # REPLACE THIS LINE:
+    # account = user.account || %{subscription_tier: "personal"}
+    # WITH THESE LINES:
+    accounts = Accounts.list_user_accounts(user.id)
+    current_account = List.first(accounts) || %{subscription_tier: "personal"}
+    account = current_account  # Keep existing variable for backward compatibility
 
-    # Get user overview and activity with better error handling
-    overview = safe_get_user_overview(user.id)
-    recent_activity = get_enhanced_activity_feed(user.id)
-    recent_activities = get_recent_activities(user.id)
-    collaboration_requests = Helpers.get_collaboration_requests(user.id)
+    # ============================================================================
+    # CORE DATA LOADING (Existing functionality maintained)
+    # ============================================================================
 
-    # Enhanced portfolio stats with better error handling
+    # Portfolio data (existing)
+    portfolios = safe_load_portfolios(user.id)
+    limits = safe_load_limits(user)
     portfolio_stats = calculate_portfolio_stats(portfolios)
     enhancement_suggestions = generate_enhancement_suggestions(portfolios, user)
 
-    # CHANNELS INTEGRATION
-    user_channels = get_user_channels(user)
-    channel_recommendations = get_channel_recommendations(user)
-    trending_channels = get_trending_channels(user)
+    # User overview and activity (existing)
+    overview = safe_get_user_overview(user.id)
+    recent_activity = get_enhanced_activity_feed(user.id)
+    collaboration_requests = Helpers.get_collaboration_requests(user.id)
 
-    # LAB INTEGRATION - Temporarily disabled to fix cast error
-    lab_features = []  # get_lab_features_for_user(user, limits)
-    active_experiments = []  # get_active_experiments(user.id)
-    lab_recommendations = []  # get_lab_recommendations(user, portfolios)
+    # Onboarding state (existing)
+    is_first_visit = check_first_visit(user, params)
+    just_completed_onboarding = Map.get(params, "welcome") == "true"
+    recently_created_portfolio = get_recently_created_portfolio(portfolios)
+    onboarding_state = Helpers.get_onboarding_state(user, portfolios, limits)
 
-    # DISCOVERY & COMMUNITY
-    featured_creators = get_featured_creators(user)
-    collaboration_opportunities = get_collaboration_opportunities(user)
+    # ============================================================================
+    # FEATURE SECTION DATA LOADING (Equal Prominence)
+    # ============================================================================
+
+    # 1. PORTFOLIO STUDIO DATA (Enhanced existing)
+    studio_data = load_studio_data(user, portfolios, account)
+
+    # 2. COLLABORATION HUB DATA (Enhanced existing)
+    collaboration_data = load_collaboration_data(user, account)
+
+    # 3. COMMUNITY CHANNELS DATA (Enhanced existing)
+    channels_data = load_channels_data(user, account)
+
+    # 4. CREATOR LAB DATA (Re-enabled and enhanced)
+    lab_data = load_lab_data(user, portfolios, account)
+
+    # 5. SERVICE DASHBOARD DATA (NEW - Creator+ tiers only)
+    service_data = load_service_data(user, account)
+
+    # 6. REVENUE CENTER DATA (NEW - Professional+ tiers only)
+    revenue_data = load_revenue_data(user, account)
+
+    # ============================================================================
+    # HUB CUSTOMIZATION BASED ON SUBSCRIPTION TIER
+    # ============================================================================
+
+    hub_config = configure_hub_for_subscription(account.subscription_tier)
+    quick_actions = generate_quick_actions(user, account, portfolios)
+
+    # ============================================================================
+    # MOBILE STATE MANAGEMENT (Existing functionality maintained)
+    # ============================================================================
+
+    mobile_state = assign_mobile_state()
+
+    # ============================================================================
+    # SOCKET ASSIGNMENT - Comprehensive Creator Command Center
+    # ============================================================================
 
     socket =
       socket
-      |> assign(:page_title, "Portfolio Hub")
-      |> assign(:portfolios, portfolios)
+      |> assign(:page_title, "Creator Hub")
+
+      # ======== CORE DATA ========
+      |> assign(:user, user)
+      |> assign(:account, account)
+      |> assign(:current_account, current_account)
+      |> assign(:accounts, accounts)
       |> assign(:limits, limits)
-      |> assign(:overview, overview)
+      |> assign(:hub_config, hub_config)
+      |> assign(:quick_actions, quick_actions)
+
+      # ======== PORTFOLIO STUDIO SECTION ========
+      |> assign(:portfolios, portfolios)
       |> assign(:portfolio_stats, portfolio_stats)
-      |> assign(:recent_activity, recent_activity)
+      |> assign(:enhancement_suggestions, enhancement_suggestions)
+      |> assign(:studio_data, studio_data)
+
+      # ======== COLLABORATION HUB SECTION ========
       |> assign(:collaboration_requests, collaboration_requests)
-      |> assign(:collaboration_mode, false)
-      |> assign(:enhancement_suggestions, [])
-      |> assign(:show_enhancement_modal, false)
-      |> assign(:quarterly_reminders, [])
-      |> assign(:show_studio_welcome_modal, false)
-      |> assign(:show_studio_modal, false)          # Main studio modal
-      |> assign(:selected_enhancement, nil)         # Selected enhancement type
-      |> assign(:studio_mode, nil)                  # e.g., "enhancement", "creation"
-      |> assign(:view_mode, "grid")
-      |> assign(:filter_status, "all")
-      |> assign(:show_create_modal, false)
-      |> assign(:show_collaboration_panel, false)
-      # Enhanced onboarding integration
+      |> assign(:collaboration_data, collaboration_data)
+      |> assign(:active_collaborations, collaboration_data.active_collaborations)
+      |> assign(:collaboration_opportunities, collaboration_data.opportunities)
+
+      # ======== COMMUNITY CHANNELS SECTION ========
+      |> assign(:user_channels, channels_data.user_channels)
+      |> assign(:trending_channels, channels_data.trending)
+      |> assign(:channel_recommendations, channels_data.recommendations)
+      |> assign(:featured_creators, channels_data.featured_creators)
+
+      # ======== CREATOR LAB SECTION ========
+      |> assign(:lab_features, lab_data.features)
+      |> assign(:active_experiments, lab_data.active_experiments)
+      |> assign(:lab_recommendations, lab_data.recommendations)
+      |> assign(:experiment_results, lab_data.results)
+
+      # ======== SERVICE DASHBOARD SECTION (Creator+ only) ========
+      |> assign(:service_data, service_data)
+      |> assign(:active_bookings, service_data.active_bookings)
+      |> assign(:service_performance, service_data.performance)
+      |> assign(:upcoming_appointments, service_data.upcoming_appointments)
+      |> assign(:service_revenue, service_data.revenue)
+
+      # ======== REVENUE CENTER SECTION (Professional+ only) ========
+      |> assign(:revenue_data, revenue_data)
+      |> assign(:portfolio_performance, revenue_data.portfolio_performance)
+      |> assign(:total_revenue, revenue_data.total_revenue)
+      |> assign(:revenue_trends, revenue_data.trends)
+      |> assign(:platform_fees, revenue_data.platform_fees)
+      |> assign(:payout_schedule, revenue_data.payout_schedule)
+
+      # ======== USER JOURNEY & ONBOARDING ========
+      |> assign(:recent_activity, recent_activity)
+      |> assign(:onboarding_state, onboarding_state)
       |> assign(:is_first_visit, is_first_visit)
       |> assign(:just_completed_onboarding, just_completed_onboarding)
       |> assign(:recently_created_portfolio, recently_created_portfolio)
       |> assign(:show_welcome_celebration, just_completed_onboarding)
-      |> assign(:onboarding_state, get_onboarding_state(user, portfolios, limits))
-      # CHANNELS INTEGRATION
-      |> assign(:user_channels, user_channels)
-      |> assign(:channel_recommendations, channel_recommendations)
-      |> assign(:trending_channels, trending_channels)
-      |> assign(:show_channels_modal, false)
-      |> assign(:selected_channel, nil)
-      |> assign(:show_channel_create_modal, false)
-      # LAB INTEGRATION
-      |> assign(:lab_features, lab_features)
-      |> assign(:active_experiments, active_experiments)
-      |> assign(:lab_recommendations, lab_recommendations)
+
+      # ======== UI STATE MANAGEMENT ========
+      |> assign(:view_mode, "sections") # "sections", "grid", "list"
+      |> assign(:active_section, determine_default_section(account.subscription_tier))
+      |> assign(:filter_status, "all")
+      |> assign(:show_create_modal, false)
+      |> assign(:show_collaboration_panel, false)
+      |> assign(:show_studio_modal, false)
       |> assign(:show_lab_modal, false)
-      |> assign(:selected_lab_feature, nil)
-      |> assign(:lab_active_tab, "featured")
-      # DISCOVERY
-      |> assign(:featured_creators, featured_creators)
-      |> assign(:collaboration_opportunities, collaboration_opportunities)
-      |> assign(:show_discovery_panel, false)
-      |> assign(:discovery_active_tab, "channels")
-      # Mobile state management
-      |> assign_mobile_state()
+      |> assign(:show_channels_modal, false)
+      |> assign(:show_service_modal, false)
+      |> assign(:show_revenue_modal, false)
+      |> assign(:selected_enhancement, nil)
+      |> assign(:studio_mode, nil)
+
+      # ======== MOBILE STATE ========
+      |> Map.merge(mobile_state)
 
     {:ok, socket}
   end
 
   # ============================================================================
-  # CHANNELS INTEGRATION EVENT HANDLERS
+  # DATA LOADING FUNCTIONS - Equal Feature Prominence
   # ============================================================================
 
-  @impl true
-  def handle_event("show_channels_modal", _params, socket) do
-    {:noreply, assign(socket, :show_channels_modal, true)}
-  end
-
-  @impl true
-  def handle_event("hide_channels_modal", _params, socket) do
-    {:noreply, assign(socket, :show_channels_modal, false)}
-  end
-
-  @impl true
-  def handle_event("join_channel", %{"channel_id" => channel_id}, socket) do
-    user = socket.assigns.current_user
-
-    case Channels.join_channel(channel_id, user.id) do
-      {:ok, _membership} ->
-        channel = Channels.get_channel!(channel_id)
-        updated_channels = [channel | socket.assigns.user_channels]
-
-        {:noreply,
-         socket
-         |> assign(:user_channels, updated_channels)
-         |> put_flash(:info, "Joined #{channel.name}!")
-         |> push_navigate(to: "/channels/#{channel.slug}")}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to join channel: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_event("create_channel_from_portfolio", %{"portfolio_id" => portfolio_id}, socket) do
-    user = socket.assigns.current_user
-    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
-
-    case create_portfolio_collaboration_channel(user, portfolio) do
-      {:ok, channel} ->
-        # Add to user channels
-        updated_channels = [channel | socket.assigns.user_channels]
-
-        {:noreply,
-         socket
-         |> assign(:user_channels, updated_channels)
-         |> assign(:show_channels_modal, false)
-         |> put_flash(:info, "Collaboration channel created for #{portfolio.title}!")
-         |> push_navigate(to: "/channels/#{channel.slug}")}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to create channel: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_event("show_channel_create_modal", _params, socket) do
-    {:noreply, assign(socket, :show_channel_create_modal, true)}
-  end
-
-  @impl true
-  def handle_event("hide_channel_create_modal", _params, socket) do
-    {:noreply, assign(socket, :show_channel_create_modal, false)}
-  end
-
-  @impl true
-  def handle_event("show_studio_modal", params, socket) do
-    mode = Map.get(params, "mode", "general")
-    enhancement_type = Map.get(params, "enhancement_type")
-
-    {:noreply,
-    socket
-    |> assign(:show_studio_modal, true)
-    |> assign(:studio_mode, mode)
-    |> assign(:selected_enhancement, enhancement_type)}
-  end
-
-  @impl true
-  def handle_event("hide_studio_modal", _params, socket) do
-    {:noreply,
-    socket
-    |> assign(:show_studio_modal, false)
-    |> assign(:studio_mode, nil)
-    |> assign(:selected_enhancement, nil)}
-  end
-
-  @impl true
-  def handle_event("show_studio_welcome", _params, socket) do
-    {:noreply, assign(socket, :show_studio_welcome_modal, true)}
-  end
-
-  @impl true
-  def handle_event("hide_studio_welcome", _params, socket) do
-    {:noreply, assign(socket, :show_studio_welcome_modal, false)}
-  end
-
-  @impl true
-  def handle_event("select_enhancement", %{"type" => enhancement_type, "portfolio_id" => portfolio_id}, socket) do
-    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
-
-    {:noreply,
-    socket
-    |> assign(:show_studio_modal, true)
-    |> assign(:studio_mode, "enhancement")
-    |> assign(:selected_enhancement, enhancement_type)
-    |> assign(:selected_portfolio, portfolio)}
-  end
-
-  @impl true
-  def handle_event("create_studio_channel", %{"enhancement_type" => type, "portfolio_id" => portfolio_id}, socket) do
-    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
-
-    # Create a new channel for this enhancement
-    case create_enhancement_channel(socket.assigns.current_user, portfolio, type) do
-      {:ok, channel} ->
-        {:noreply,
-        socket
-        |> assign(:show_studio_modal, false)
-        |> put_flash(:info, "Studio workspace created!")
-        |> push_navigate(to: "/channel/#{channel.slug}")}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to create studio workspace")}
-    end
-  end
-
-  defp create_enhancement_channel(user, portfolio, enhancement_type) do
-    channel_name = "#{portfolio.title} - #{format_enhancement_name(enhancement_type)}"
-
-    channel_attrs = %{
-      name: channel_name,
-      description: "Studio workspace for enhancing #{portfolio.title}",
-      channel_type: "portfolio_#{enhancement_type}",
-      visibility: "private",
-      featured_content: [%{"type" => "portfolio", "id" => portfolio.id}],
-      user_id: user.id
+  defp load_studio_data(user, portfolios, account) do
+    %{
+      total_portfolios: length(portfolios),
+      published_count: Enum.count(portfolios, &(&1.visibility == :public)),
+      draft_count: Enum.count(portfolios, &(&1.visibility == :private)),
+      templates_available: get_available_templates_count(account),
+      enhancement_progress: get_enhancement_progress(portfolios),
+      creation_limits: get_creation_limits(account),
+      recent_creations: get_recent_portfolio_activity(user.id)
     }
-
-    # Create the channel using your Channels context
-    Frestyl.Channels.create_channel(channel_attrs)
   end
 
-  defp format_enhancement_name(type) do
-    case type do
-      "video_introduction" -> "Video Introduction"
-      "content_writing" -> "Content Writing"
-      "music_background" -> "Background Music"
-      "design_review" -> "Design Review"
-      _ -> String.capitalize(type)
-    end
+  defp load_collaboration_data(user, account) do
+    %{
+      active_collaborations: safe_get_active_collaborations(user.id),
+      pending_invites: safe_get_pending_invites(user.id),
+      opportunities: safe_get_collaboration_opportunities(user, account),
+      collaboration_stats: safe_get_collaboration_stats(user.id),
+      mentor_access: Features.FeatureGate.can_access_feature?(account, :mentor_access),
+      peer_network: safe_get_peer_network(user.id),
+      feedback_received: safe_get_recent_feedback(user.id)
+    }
   end
 
-  def handle_event("start_enhancement", %{"suggestion_id" => suggestion_id}, socket) do
-    suggestion = Enum.find(socket.assigns.enhancement_suggestions, &(&1.id == suggestion_id))
+  defp load_channels_data(user, account) do
+    %{
+      user_channels: safe_get_user_channels(user),
+      trending: safe_get_trending_channels(user),
+      recommendations: safe_get_channel_recommendations(user),
+      featured_creators: safe_get_featured_creators(user),
+      community_activity: safe_get_community_activity(user.id),
+      channel_limits: get_channel_limits(account),
+      discovery_feed: safe_get_discovery_feed(user.id)
+    }
+  end
 
-    if suggestion && suggestion.can_collaborate do
-      socket = socket
-      |> assign(:selected_enhancement, suggestion)
-      |> assign(:show_enhancement_modal, true)
-
-      {:noreply, socket}
+  defp load_lab_data(user, portfolios, account) do
+    if Features.FeatureGate.can_access_feature?(account, :creator_lab) do
+      %{
+        features: safe_get_lab_features(user, account),
+        active_experiments: safe_get_active_experiments(user.id),
+        recommendations: safe_get_lab_recommendations(user, portfolios),
+        results: safe_get_experiment_results(user.id),
+        beta_access: get_beta_features(account),
+        ai_insights: safe_get_ai_insights(user.id),
+        feature_requests: safe_get_feature_requests(user.id)
+      }
     else
-      {:noreply, put_flash(socket, :error, "Upgrade your plan to access collaborative enhancements")}
-    end
-  end
-
-  def handle_event("close_enhancement_modal", _params, socket) do
-    socket = socket
-    |> assign(:show_enhancement_modal, false)
-    |> assign(:selected_enhancement, nil)
-
-    {:noreply, socket}
-  end
-
-  def handle_event("create_enhancement_channel", %{"suggestion_id" => suggestion_id, "invite_collaborators" => invite_collaborators}, socket) do
-    suggestion = socket.assigns.selected_enhancement
-    user = socket.assigns.current_user
-
-    # Create portfolio-specific collaboration channel
-    channel_attrs = %{
-      name: "#{suggestion.portfolio_title} - #{suggestion.title}",
-      description: suggestion.description,
-      channel_type: suggestion.type,
-      visibility: "private",
-      user_id: user.id,
-      featured_content: [%{
-        "type" => "portfolio",
-        "id" => suggestion.portfolio_id
-      }]
-    }
-
-    case Channels.create_channel(channel_attrs) do
-      {:ok, channel} ->
-        # Track collaboration usage
-        Billing.UsageTracker.track_usage(user.account, :collaboration_creation, 1, %{
-          enhancement_type: suggestion.type,
-          portfolio_id: suggestion.portfolio_id
-        })
-
-        # Handle collaborator invitations if specified
-        if invite_collaborators do
-          send_enhancement_invitations(channel, suggestion.type, user)
-        end
-
-        # Update enhancement tracking
-        track_enhancement_start(suggestion.portfolio_id, suggestion.type)
-
-        {:noreply,
-         socket
-         |> put_flash(:info, "Enhancement collaboration started! Redirecting to Studio...")
-         |> push_navigate(to: "/studio/#{channel.slug}")}
-
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to create enhancement channel")}
-    end
-  end
-
-    def handle_event("accept_collaboration", %{"request_id" => request_id}, socket) do
-    # Handle collaboration request acceptance
-    case accept_collaboration_request(request_id, socket.assigns.current_user.id) do
-      {:ok, collaboration} ->
-        # Update collaboration requests list
-        updated_requests = Enum.reject(socket.assigns.collaboration_requests, &(&1.id == String.to_integer(request_id)))
-
-        {:noreply,
-        socket
-        |> assign(:collaboration_requests, updated_requests)
-        |> put_flash(:info, "Collaboration request accepted!")
-        |> push_navigate(to: "/studio/#{collaboration.channel_slug}")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to accept collaboration: #{reason}")}
-    end
-  end
-
-  def handle_event("decline_collaboration", %{"request_id" => request_id}, socket) do
-    case decline_collaboration_request(request_id, socket.assigns.current_user.id) do
-      {:ok, _} ->
-        updated_requests = Enum.reject(socket.assigns.collaboration_requests, &(&1.id == String.to_integer(request_id)))
-
-        {:noreply,
-        socket
-        |> assign(:collaboration_requests, updated_requests)
-        |> put_flash(:info, "Collaboration request declined")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to decline collaboration: #{reason}")}
-    end
-  end
-
-  def handle_event("view_all_requests", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/collaboration/requests")}
-  end
-
-  def handle_event("show_upgrade_modal", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/account/subscription")}
-  end
-
-  # ============================================================================
-  # LAB INTEGRATION EVENT HANDLERS
-  # ============================================================================
-
-  @impl true
-  def handle_event("show_lab_modal", _params, socket) do
-    {:noreply, assign(socket, :show_lab_modal, true)}
-  end
-
-  @impl true
-  def handle_event("hide_lab_modal", _params, socket) do
-    {:noreply, assign(socket, :show_lab_modal, false)}
-  end
-
-  @impl true
-  def handle_event("set_lab_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :lab_active_tab, tab)}
-  end
-
-  @impl true
-  def handle_event("start_experiment", %{"feature_id" => feature_id, "portfolio_id" => portfolio_id}, socket) do
-    user = socket.assigns.current_user
-    portfolio = portfolio_id && Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
-
-    case Lab.start_experiment(user, feature_id, portfolio) do
-      {:ok, experiment} ->
-        updated_experiments = [experiment | socket.assigns.active_experiments]
-
-        {:noreply,
-         socket
-         |> assign(:active_experiments, updated_experiments)
-         |> assign(:show_lab_modal, false)
-         |> put_flash(:info, "Lab experiment started!")
-         |> redirect_to_experiment(experiment)}
-
-      {:error, :subscription_required} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "This Lab feature requires a premium subscription.")
-         |> push_navigate(to: "/account/subscription")}
-
-      {:error, :time_limit_exceeded} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "You've reached your Lab time limit for this billing period.")}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to start experiment: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_event("end_experiment", %{"experiment_id" => experiment_id}, socket) do
-    user = socket.assigns.current_user
-
-    case Lab.end_experiment(experiment_id, user.id) do
-      {:ok, _} ->
-        updated_experiments = Enum.reject(socket.assigns.active_experiments,
-          &(&1.id == String.to_integer(experiment_id)))
-
-        {:noreply,
-         socket
-         |> assign(:active_experiments, updated_experiments)
-         |> put_flash(:info, "Experiment ended and data saved.")}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to end experiment: #{reason}")}
-    end
-  end
-
-  # ============================================================================
-  # DISCOVERY INTEGRATION EVENT HANDLERS
-  # ============================================================================
-
-  @impl true
-  def handle_event("show_discovery_panel", _params, socket) do
-    {:noreply, assign(socket, :show_discovery_panel, true)}
-  end
-
-  @impl true
-  def handle_event("hide_discovery_panel", _params, socket) do
-    {:noreply, assign(socket, :show_discovery_panel, false)}
-  end
-
-  @impl true
-  def handle_event("set_discovery_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :discovery_active_tab, tab)}
-  end
-
-  @impl true
-  def handle_event("follow_creator", %{"user_id" => user_id}, socket) do
-    current_user = socket.assigns.current_user
-
-    case Accounts.follow_user(current_user.id, user_id) do
-      {:ok, _follow} ->
-        # Update featured creators to show following status
-        updated_creators = update_creator_follow_status(socket.assigns.featured_creators, user_id, true)
-
-        {:noreply,
-         socket
-         |> assign(:featured_creators, updated_creators)
-         |> put_flash(:info, "Following creator!")}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to follow: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_event("start_collaboration", %{"opportunity_id" => opportunity_id}, socket) do
-    user = socket.assigns.current_user
-
-    case create_collaboration_from_opportunity(user, opportunity_id) do
-      {:ok, channel} ->
-        {:noreply,
-         socket
-         |> assign(:show_discovery_panel, false)
-         |> put_flash(:info, "Collaboration started!")
-         |> push_navigate(to: "/channels/#{channel.slug}")}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to start collaboration: #{reason}")}
-    end
-  end
-
-  # ============================================================================
-  # ENHANCED EXISTING EVENT HANDLERS
-  # ============================================================================
-
-  # Enhanced Studio integration to work with Channels
-  @impl true
-  def handle_event("start_portfolio_enhancement", %{"portfolio_id" => portfolio_id, "type" => enhancement_type}, socket) do
-    user = socket.assigns.current_user
-    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
-
-    case create_enhancement_channel_session(user, portfolio, enhancement_type) do
-      {:ok, channel, session} ->
-        # Track the enhancement creation
-        track_enhancement_created(user.id, portfolio.id, enhancement_type)
-
-        {:noreply,
-         socket
-         |> put_flash(:info, "Enhancement workspace created!")
-         |> push_navigate(to: "/channels/#{channel.slug}/studio/#{session.id}")}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to create enhancement workspace: #{reason}")}
-    end
-  end
-
-  # Keep all existing event handlers unchanged...
-  @impl true
-  def handle_event("show_create_modal", _params, socket) do
-    # Enhanced to suggest Lab templates
-    lab_templates = get_lab_portfolio_templates(socket.assigns.limits)
-
-    socket =
-      socket
-      |> assign(:show_create_modal, true)
-      |> assign(:selected_template, nil)
-      |> assign(:portfolio_title, "")
-      |> assign(:lab_templates, lab_templates)
-
-    {:noreply, socket}
-  end
-
-
-  # ============================================================================
-  # CHANNELS & LAB HELPER FUNCTIONS
-  # ============================================================================
-
-  defp get_user_channels(user) do
-    Channels.list_user_channels(user.id)
-    |> Enum.map(&enhance_channel_data/1)
-  end
-
-  defp get_channel_recommendations(user) do
-    try do
-      alias Frestyl.Channels.Channel
-      alias Frestyl.Repo
-      import Ecto.Query
-
-      # Get some public channels as recommendations
-      query = from c in Channel,
-        where: c.visibility == "public" and c.archived == false,
-        order_by: [desc: c.inserted_at],
-        limit: 5
-
-      channels = Repo.all(query)
-
-      # Transform to the expected format with enhancement
-      channels
-      |> Enum.map(&enhance_channel_data/1)
-      |> Enum.take(3)  # Limit to 3 recommendations
-    rescue
-      _ -> []
-    end
-  end
-
-  defp get_trending_channels(user) do
-    try do
-      alias Frestyl.Channels.Channel
-      alias Frestyl.Repo
-      import Ecto.Query
-
-      # Get some public channels as "trending" channels
-      query = from c in Channel,
-        where: c.visibility == "public" and c.archived == false,
-        order_by: [desc: c.updated_at],  # Order by most recently updated
-        limit: 6
-
-      channels = Repo.all(query)
-
-      # Transform to the expected format with enhancement
-      channels
-      |> Enum.map(&enhance_channel_data/1)
-      |> Enum.take(5)  # Limit to 5 trending channels
-    rescue
-      _ -> []
-    end
-  end
-
-  defp get_lab_features_for_user(user, limits) do
-    base_features = [
       %{
-        id: "bio_generator",
-        name: "AI Bio Generator",
-        description: "Generate compelling creator bios",
-        icon: "✨",
-        category: "content",
-        tier_required: "free",
-        time_limit: get_lab_time_limit(limits, "bio_generator"),
-        estimated_time: "5 min"
-      },
+        features: [],
+        active_experiments: [],
+        recommendations: [],
+        results: [],
+        beta_access: [],
+        ai_insights: %{},
+        feature_requests: [],
+        upgrade_prompt: true
+      }
+    end
+  end
+
+  defp load_service_data(user, account) do
+    if Features.FeatureGate.can_access_feature?(account, :service_dashboard) do
       %{
-        id: "portfolio_layouts",
-        name: "Experimental Layouts",
-        description: "Try cutting-edge portfolio designs",
+        active_bookings: safe_get_active_service_bookings(user.id),
+        upcoming_appointments: safe_get_upcoming_appointments(user.id),
+        service_performance: safe_get_service_performance(user.id),
+        revenue: safe_get_service_revenue(user.id),
+        client_management: safe_get_client_data(user.id),
+        calendar_integration: check_calendar_integration(user.id),
+        service_offerings: safe_get_user_services(user.id),
+        booking_settings: safe_get_booking_settings(user.id)
+      }
+    else
+      %{
+        active_bookings: [],
+        upcoming_appointments: [],
+        service_performance: %{},
+        revenue: %{total: 0, this_month: 0},
+        client_management: %{},
+        calendar_integration: false,
+        service_offerings: [],
+        booking_settings: %{},
+        upgrade_prompt: true,
+        tier_required: "creator"
+      }
+    end
+  end
+
+  defp load_revenue_data(user, account) do
+    if Features.FeatureGate.can_access_feature?(account, :revenue_center) do
+      %{
+        total_revenue: safe_get_total_revenue(user.id),
+        portfolio_performance: safe_get_portfolio_revenue_performance(user.id),
+        trends: safe_get_revenue_trends(user.id),
+        platform_fees: safe_get_platform_fees(user.id),
+        payout_schedule: safe_get_payout_schedule(user.id),
+        analytics: safe_get_revenue_analytics(user.id),
+        tax_documents: safe_get_tax_documents(user.id),
+        billing_integration: check_billing_integration(user.id)
+      }
+    else
+      %{
+        total_revenue: %{amount: 0, currency: "USD"},
+        portfolio_performance: [],
+        trends: [],
+        platform_fees: %{},
+        payout_schedule: %{},
+        analytics: %{},
+        tax_documents: [],
+        billing_integration: false,
+        upgrade_prompt: true,
+        tier_required: "professional"
+      }
+    end
+  end
+
+  # ============================================================================
+  # HUB CONFIGURATION BASED ON SUBSCRIPTION TIER
+  # ============================================================================
+
+  defp configure_hub_for_subscription(tier) do
+    case tier do
+      "personal" ->
+        %{
+          primary_sections: ["portfolio_studio", "collaboration_hub"],
+          secondary_sections: ["community_channels"],
+          hidden_sections: ["service_dashboard", "revenue_center"],
+          upgrade_prompts: ["creator_lab", "service_dashboard", "revenue_center"],
+          max_portfolios: 3,
+          collaboration_limits: %{max_active: 2},
+          feature_focus: "portfolio_creation"
+        }
+
+      "creator" ->
+        %{
+          primary_sections: ["portfolio_studio", "service_dashboard", "collaboration_hub"],
+          secondary_sections: ["community_channels", "creator_lab"],
+          hidden_sections: ["revenue_center"],
+          upgrade_prompts: ["revenue_center"],
+          max_portfolios: 10,
+          collaboration_limits: %{max_active: 10},
+          feature_focus: "service_offering"
+        }
+
+      "professional" ->
+        %{
+          primary_sections: ["revenue_center", "service_dashboard", "portfolio_studio"],
+          secondary_sections: ["creator_lab", "collaboration_hub", "community_channels"],
+          hidden_sections: [],
+          upgrade_prompts: [],
+          max_portfolios: -1,
+          collaboration_limits: %{max_active: -1},
+          feature_focus: "revenue_optimization"
+        }
+
+      "enterprise" ->
+        %{
+          primary_sections: ["revenue_center", "service_dashboard", "portfolio_studio", "creator_lab"],
+          secondary_sections: ["collaboration_hub", "community_channels"],
+          hidden_sections: [],
+          upgrade_prompts: [],
+          max_portfolios: -1,
+          collaboration_limits: %{max_active: -1},
+          feature_focus: "team_management",
+          enterprise_features: ["white_label", "api_access", "custom_domains"]
+        }
+
+      _ -> configure_hub_for_subscription("personal")
+    end
+  end
+
+  defp determine_default_section(tier) do
+    case tier do
+      "personal" -> "portfolio_studio"
+      "creator" -> "service_dashboard"
+      "professional" -> "revenue_center"
+      "enterprise" -> "revenue_center"
+      _ -> "portfolio_studio"
+    end
+  end
+
+  defp generate_quick_actions(user, account, portfolios) do
+    base_actions = [
+      %{
+        id: "create_portfolio",
+        title: "Create Portfolio",
         icon: "🎨",
-        category: "design",
-        tier_required: "pro",
-        time_limit: get_lab_time_limit(limits, "portfolio_layouts"),
-        estimated_time: "15 min"
-      },
-      %{
-        id: "collaboration_cipher",
-        name: "Cipher Collaboration",
-        description: "Anonymous creative partnership",
-        icon: "🔐",
-        category: "collaboration",
-        tier_required: "premium",
-        time_limit: get_lab_time_limit(limits, "collaboration_cipher"),
-        estimated_time: "30 min"
-      },
-      %{
-        id: "ab_testing",
-        name: "Portfolio A/B Testing",
-        description: "Test different versions with real users",
-        icon: "📊",
-        category: "analytics",
-        tier_required: "premium",
-        time_limit: get_lab_time_limit(limits, "ab_testing"),
-        estimated_time: "Ongoing"
-      },
-      %{
-        id: "brainstorm_room",
-        name: "Brainstorm Room",
-        description: "Structured creative ideation sessions",
-        icon: "💡",
-        category: "collaboration",
-        tier_required: "pro",
-        time_limit: get_lab_time_limit(limits, "brainstorm_room"),
-        estimated_time: "45 min"
-      },
-      %{
-        id: "stranger_collab",
-        name: "Stranger Collaboration",
-        description: "Get matched with creators worldwide",
-        icon: "🌍",
-        category: "collaboration",
-        tier_required: "pro",
-        time_limit: get_lab_time_limit(limits, "stranger_collab"),
-        estimated_time: "60 min"
+        description: "Start a new portfolio",
+        action: "show_create_modal",
+        priority: 1
       }
     ]
 
-    # Filter by tier and add availability status
-    base_features
-    |> Enum.filter(&(tier_available?(user, &1.tier_required)))
-    |> Enum.map(&add_availability_status(&1, user))
+    tier_actions = case account.subscription_tier do
+      "creator" ->
+        [
+          %{
+            id: "setup_service",
+            title: "Setup Service",
+            icon: "💼",
+            description: "Create service offering",
+            action: "setup_service",
+            priority: 2
+          }
+        ]
+
+      "professional" ->
+        [
+          %{
+            id: "view_analytics",
+            title: "Revenue Analytics",
+            icon: "📊",
+            description: "View performance data",
+            action: "show_revenue_modal",
+            priority: 1
+          }
+        ]
+
+      _ -> []
+    end
+
+    smart_actions = generate_smart_recommendations(user, portfolios, account)
+
+    (base_actions ++ tier_actions ++ smart_actions)
+    |> Enum.sort_by(& &1.priority)
+    |> Enum.take(6)
   end
 
-  defp get_active_experiments(user_id) do
-    Lab.list_active_experiments(user_id)
-  end
+  defp generate_smart_recommendations(user, portfolios, account) do
+    recommendations = []
 
-  defp get_lab_recommendations(user, portfolios) do
-    [
-      %{
-        id: "bio_for_portfolio",
-        feature_id: "bio_generator",
-        title: "Generate Creator Bio",
-        description: "Add a compelling bio to your latest portfolio",
-        portfolio: List.first(portfolios),
-        urgency: "high"
-      },
-      %{
-        id: "layout_experiment",
-        feature_id: "portfolio_layouts",
-        title: "Try New Layout",
-        description: "Experiment with gallery-style portfolio layout",
-        portfolio: get_most_viewed_portfolio(portfolios),
-        urgency: "medium"
-      }
-    ]
-    |> Enum.filter(& &1.portfolio != nil)
-  end
-
-  defp get_featured_creators(_user) do
-    []  # Return empty list to disable featured creators
-  end
-
-  defp generate_enhancement_suggestions(portfolios) do
-    Enum.map(portfolios, fn portfolio ->
-      %{
-        id: "suggestion_#{portfolio.id}",
-        portfolio_id: portfolio.id,
-        type: "video_introduction",
-        title: "Add Video Introduction",
-        description: "Make your portfolio more engaging with a personal video",
-        priority: 3,
-        estimated_time: "15-30 minutes"
-      }
-    end)
-    |> Enum.take(3)  # Limit to top 3 suggestions
-  end
-
-  defp generate_enhancement_suggestions(portfolios, user) do
-    suggestions = []
-
-    Enum.reduce(portfolios, suggestions, fn portfolio, acc ->
-      quality_score = calculate_portfolio_quality_score(portfolio)
-      completion_data = get_portfolio_completion_data(portfolio)
-
-      portfolio_suggestions = []
-
-      # Voice-over enhancement trigger
-      if needs_voice_enhancement?(portfolio, quality_score) do
-        voice_suggestion = %{
-          id: "voice_#{portfolio.id}",
-          type: "portfolio_voice_over",
-          priority: get_enhancement_priority(quality_score, :voice),
-          portfolio_id: portfolio.id,
-          portfolio_title: portfolio.title,
-          title: "Add Professional Voice Introduction",
-          description: "Create a compelling voice introduction to make your portfolio stand out",
-          estimated_time: "30-45 minutes",
-          collaboration_type: "voice_recording",
-          benefits: ["Increase engagement by 40%", "Personal connection with viewers", "Professional presentation"],
-          can_collaborate: can_access_collaboration?(user, :portfolio_voice_over),
-          completion_percentage: completion_data.voice_completion || 0
-        }
-        portfolio_suggestions = [voice_suggestion | portfolio_suggestions]
+    # Portfolio enhancement suggestions
+    recommendations = if length(portfolios) > 0 do
+      incomplete_portfolios = Enum.filter(portfolios, &portfolio_needs_work?/1)
+      if length(incomplete_portfolios) > 0 do
+        [%{
+          id: "enhance_portfolio",
+          title: "Enhance Portfolio",
+          icon: "✨",
+          description: "Improve portfolio quality",
+          action: "enhance_portfolio",
+          priority: 3
+        } | recommendations]
+      else
+        recommendations
       end
+    else
+      recommendations
+    end
 
-      # Writing enhancement trigger
-      if needs_writing_enhancement?(portfolio, quality_score) do
-        writing_suggestion = %{
-          id: "writing_#{portfolio.id}",
-          type: "portfolio_writing",
-          priority: get_enhancement_priority(quality_score, :writing),
-          portfolio_id: portfolio.id,
-          portfolio_title: portfolio.title,
-          title: "Enhance Content & Descriptions",
-          description: "Collaborate with professional writers to polish your portfolio content",
-          estimated_time: "2-3 hours",
-          collaboration_type: "content_writing",
-          benefits: ["Clear, compelling descriptions", "Better SEO optimization", "Professional tone"],
-          can_collaborate: can_access_collaboration?(user, :portfolio_writing),
-          completion_percentage: completion_data.writing_completion || 0
-        }
-        portfolio_suggestions = [writing_suggestion | portfolio_suggestions]
-      end
+    # Collaboration suggestions
+    recommendations = if Features.FeatureGate.can_access_feature?(account, :real_time_collaboration) do
+      [%{
+        id: "find_collaborators",
+        title: "Find Collaborators",
+        icon: "🤝",
+        description: "Connect with other creators",
+        action: "show_collaboration_panel",
+        priority: 4
+      } | recommendations]
+    else
+      recommendations
+    end
 
-      # Design enhancement trigger
-      if needs_design_enhancement?(portfolio, quality_score) do
-        design_suggestion = %{
-          id: "design_#{portfolio.id}",
-          type: "portfolio_design",
-          priority: get_enhancement_priority(quality_score, :design),
-          portfolio_id: portfolio.id,
-          portfolio_title: portfolio.title,
-          title: "Visual Design Improvements",
-          description: "Work with designers to create stunning visual elements",
-          estimated_time: "1-2 hours",
-          collaboration_type: "design_review",
-          benefits: ["Modern, professional appearance", "Better visual hierarchy", "Increased credibility"],
-          can_collaborate: can_access_collaboration?(user, :portfolio_design),
-          completion_percentage: completion_data.design_completion || 0
-        }
-        portfolio_suggestions = [design_suggestion | portfolio_suggestions]
-      end
-
-      # Music enhancement trigger
-      if needs_music_enhancement?(portfolio, quality_score) do
-        music_suggestion = %{
-          id: "music_#{portfolio.id}",
-          type: "portfolio_music",
-          priority: get_enhancement_priority(quality_score, :music),
-          portfolio_id: portfolio.id,
-          portfolio_title: portfolio.title,
-          title: "Custom Background Music",
-          description: "Add custom background music to create the perfect mood",
-          estimated_time: "45-60 minutes",
-          collaboration_type: "music_creation",
-          benefits: ["Emotional engagement", "Memorable experience", "Professional polish"],
-          can_collaborate: can_access_collaboration?(user, :portfolio_music),
-          completion_percentage: completion_data.music_completion || 0
-        }
-        portfolio_suggestions = [music_suggestion | portfolio_suggestions]
-      end
-
-      acc ++ portfolio_suggestions
-    end)
-    |> Enum.sort_by(& &1.priority, :desc)
-    |> Enum.take(6) # Limit to top 6 suggestions
+    recommendations
   end
 
-
-  defp get_collaboration_opportunities(user) do
-    # Get open collaboration requests from channels and direct invitations
-    [
-      %{
-        id: "collab_1",
-        type: "portfolio_feedback",
-        title: "Looking for UX feedback",
-        creator: "Sarah Chen",
-        skills_needed: ["UX Design", "User Research"],
-        estimated_time: "2 hours",
-        compensation: "Credit in project",
-        urgency: "medium"
-      },
-      %{
-        id: "collab_2",
-        type: "joint_project",
-        title: "Music video collaboration",
-        creator: "Alex Rivera",
-        skills_needed: ["Video Production", "Motion Graphics"],
-        estimated_time: "1 week",
-        compensation: "Revenue share",
-        urgency: "high"
-      }
-    ]
-  end
-
-  defp create_portfolio_collaboration_channel(user, portfolio) do
-    channel_attrs = %{
-      name: "#{portfolio.title} - Collaboration",
-      description: "Collaborative workspace for enhancing #{portfolio.title}",
-      visibility: "private",
-      channel_type: "portfolio_collaboration",
-      color_scheme: %{
-        "primary" => "#8B5CF6",
-        "secondary" => "#EC4899",
-        "accent" => "#F59E0B"
-      },
-      tagline: "Enhancing #{portfolio.title}",
-      social_links: %{
-        "portfolio_url" => "/p/#{portfolio.slug}"
-      },
-      featured_content: [
-        %{"type" => "portfolio", "id" => portfolio.id}
-      ]
-    }
-
-    Channels.create_channel(channel_attrs, user)
-  end
-
-  defp create_enhancement_channel_session(user, portfolio, enhancement_type) do
-    # Create channel first
-    case create_portfolio_collaboration_channel(user, portfolio) do
-      {:ok, channel} ->
-        # Create Studio session in the channel
-        session_attrs = %{
-          title: "#{format_enhancement_type(enhancement_type)} Session",
-          description: "Working on #{enhancement_type} for #{portfolio.title}",
-          session_type: map_enhancement_to_session_type(enhancement_type),
-          channel_id: channel.id,
-          creator_id: user.id,
-          is_public: false
-        }
-
-        case Studio.create_session(session_attrs) do
-          {:ok, session} ->
-            {:ok, channel, session}
-          {:error, reason} ->
-            # Clean up channel if session creation fails
-            Channels.delete_channel(channel.id)
-            {:error, reason}
+  defp get_portfolio_user_account(portfolio) do
+    cond do
+      portfolio.user_id ->
+        case Accounts.get_user(portfolio.user_id) do
+          nil -> nil
+          user ->
+            accounts = Accounts.list_user_accounts(user.id)
+            List.first(accounts)
         end
 
-      {:error, reason} ->
-        {:error, reason}
+      true ->
+        nil
     end
   end
 
-  defp create_collaboration_from_opportunity(user, opportunity_id) do
-    # Find the opportunity and create appropriate collaboration space
-    # This would create a channel or join an existing collaboration
+  defp ensure_current_account(socket) do
+    case socket.assigns[:current_account] do
+      nil ->
+        user = socket.assigns.current_user
+        accounts = Accounts.list_user_accounts(user.id)
+        current_account = List.first(accounts) || %{subscription_tier: "free"}
+        assign(socket, :current_account, current_account)
 
-    # Placeholder implementation
-    channel_attrs = %{
-      name: "Collaboration Project",
-      description: "New collaboration workspace",
-      visibility: "private",
-      channel_type: "collaboration"
-    }
-
-    Channels.create_channel(channel_attrs, user)
-  end
-
-  defp redirect_to_experiment(socket, experiment) do
-    case experiment.feature_id do
-      "bio_generator" ->
-        push_navigate(socket, to: "/lab/bio-generator/#{experiment.id}")
-      "portfolio_layouts" ->
-        push_navigate(socket, to: "/lab/layouts/#{experiment.id}")
-      "collaboration_cipher" ->
-        push_navigate(socket, to: "/lab/cipher/#{experiment.id}")
-      "ab_testing" ->
-        push_navigate(socket, to: "/lab/ab-test/#{experiment.id}")
-      "brainstorm_room" ->
-        push_navigate(socket, to: "/lab/brainstorm/#{experiment.id}")
-      "stranger_collab" ->
-        push_navigate(socket, to: "/lab/stranger-collab/#{experiment.id}")
-      _ ->
-        push_navigate(socket, to: "/lab")
+      _account ->
+        socket
     end
   end
 
-  defp get_lab_portfolio_templates(limits) do
-    base_templates = [
-      %{id: "gallery", name: "Gallery", type: "stable"},
-      %{id: "minimal", name: "Minimal", type: "stable"},
-      %{id: "dashboard", name: "Dashboard", type: "stable"}
-    ]
+  # ============================================================================
+  # SAFE DATA LOADING FUNCTIONS (Error Handling)
+  # ============================================================================
 
-    lab_templates = if tier_available?(%{subscription_tier: limits.subscription_tier}, "pro") do
-      [
-        %{id: "holographic", name: "Holographic", type: "lab", tier: "pro"},
-        %{id: "kinetic", name: "Kinetic", type: "lab", tier: "pro"},
-        %{id: "immersive", name: "Immersive", type: "lab", tier: "premium"}
-      ]
-    else
-      []
-    end
-
-    base_templates ++ lab_templates
-  end
-
-  # Helper functions for tier and time management
-  defp tier_available?(user, required_tier) do
-    current_tier = user.subscription_tier || "free"
-    tier_hierarchy = %{"free" => 0, "pro" => 1, "premium" => 2}
-
-    Map.get(tier_hierarchy, current_tier, 0) >= Map.get(tier_hierarchy, required_tier, 0)
-  end
-
-  defp get_lab_time_limit(user, limits) do
-    # Get subscription tier from user, not from limits
-    subscription_tier = Map.get(user, :subscription_tier, "free")
-
-    case subscription_tier do
-      "pro" -> 60  # 60 minutes for pro users
-      "premium" -> 120  # 120 minutes for premium users
-      _ -> 30  # 30 minutes for free users
-    end
-  rescue
-    _ -> 30  # Default fallback
-  end
-
-#  Also fix get_lab_features_for_user/2 if it has similar issues
-  defp get_lab_features_for_user(user, limits) do
-    # Get subscription tier from user
-    subscription_tier = Map.get(user, :subscription_tier, "free")
-
-    base_features = %{
-      time_limit_minutes: get_lab_time_limit(user, limits),
-      can_export_sessions: subscription_tier != "free",
-      can_invite_collaborators: subscription_tier in ["pro", "premium"],
-      max_concurrent_sessions: case subscription_tier do
-        "premium" -> 5
-        "pro" -> 3
-        _ -> 1
-      end,
-      advanced_tools: subscription_tier == "premium",
-      priority_support: subscription_tier in ["pro", "premium"]
-    }
-
-    # Merge with any additional features from limits if needed
-    Map.merge(base_features, %{
-      collaboration_features: Map.get(limits, :collaboration_features, true),
-      video_recording: Map.get(limits, :video_recording, true)
-    })
-  rescue
-    _ ->
-      # Fallback features for free tier
-      %{
-        time_limit_minutes: 30,
-        can_export_sessions: false,
-        can_invite_collaborators: false,
-        max_concurrent_sessions: 1,
-        advanced_tools: false,
-        priority_support: false,
-        collaboration_features: true,
-        video_recording: true
-      }
-  end
-
-  defp get_portfolio_title(portfolio_id, portfolios) when is_binary(portfolio_id) do
-    get_portfolio_title(String.to_integer(portfolio_id), portfolios)
-  rescue
-    ArgumentError -> "Unknown Portfolio"
-  end
-
-  defp get_portfolio_title(portfolio_id, portfolios) when is_integer(portfolio_id) do
-    case Enum.find(portfolios, &(&1.id == portfolio_id)) do
-      %{title: title} -> title
-      nil -> "Unknown Portfolio"
+  defp safe_load_portfolios(user_id) do
+    try do
+      Portfolios.list_user_portfolios(user_id)
+    rescue
+      _ -> []
     end
   end
 
-  defp get_portfolio_title(_, _), do: "Unknown Portfolio"
-
-  defp add_availability_status(feature, user) do
-    time_used = Lab.get_time_used_this_month(user.id, feature.id)
-    time_remaining = max(0, feature.time_limit - time_used)
-
-    Map.merge(feature, %{
-      time_used: time_used,
-      time_remaining: time_remaining,
-      available: time_remaining > 0 || feature.time_limit == 999
-    })
-  end
-
-
-
-  defp enhance_channel_data({channel, _index}) when is_struct(channel) do
-    # Handle tuple format where the second element might be an index or count
-    enhance_channel_data(channel)
-  end
-
-  defp enhance_channel_data(channel) when is_struct(channel) do
-    %{
-      id: channel.id,
-      name: channel.name,
-      description: channel.description,
-      slug: channel.slug,
-      visibility: channel.visibility,
-      channel_type: channel.channel_type || "general",
-      color_scheme: channel.color_scheme || %{
-        "primary" => "#8B5CF6",
-        "secondary" => "#00D4FF",
-        "accent" => "#FF0080"
-      },
-      tagline: channel.tagline,
-      hero_image_url: channel.hero_image_url,
-      member_count: 0,  # Simplified - replace with actual count if needed
-      activity_score: 0, # Simplified - replace with actual calculation if needed
-      inserted_at: channel.inserted_at,
-      updated_at: channel.updated_at
-    }
-  end
-
-  defp enhance_channel_data(data) do
-    # Fallback for unexpected data format
-    IO.warn("Unexpected data format in enhance_channel_data: #{inspect(data)}")
-    %{
-      id: nil,
-      name: "Unknown Channel",
-      description: nil,
-      slug: "unknown",
-      visibility: "private",
-      channel_type: "general",
-      color_scheme: %{"primary" => "#8B5CF6", "secondary" => "#00D4FF", "accent" => "#FF0080"},
-      tagline: nil,
-      hero_image_url: nil,
-      member_count: 0,
-      activity_score: 0,
-      inserted_at: nil,
-      updated_at: nil
-    }
-  end
-
-  defp enhance_channel_recommendation(channel) do
-    Map.merge(channel, %{
-      member_count: Channels.get_member_count(channel.id),
-      activity_level: Channels.calculate_activity_level(channel.id),
-      recommendation_reason: Channels.get_recommendation_reason(channel.id)
-    })
-  end
-
-  defp enhance_creator_data(creator) do
-    Map.merge(creator, %{
-      portfolio_count: Portfolios.count_user_portfolios(creator.id),
-      follower_count: Accounts.get_follower_count(creator.id),
-      featured_work: Portfolios.get_featured_portfolio(creator.id),
-      is_following: false # This would be checked against current user
-    })
-  end
-
-  defp generate_quarterly_reminders(user, portfolios) do
-    now = DateTime.utc_now()
-
-    [
-      %{
-        id: "reminder_1",
-        type: "portfolio_update",
-        title: "Update Your Portfolio",
-        description: "It's been a while since your last portfolio update. Add your recent work!",
-        due_date: DateTime.add(now, 7, :day),
-        priority: "medium",
-        portfolio_id: List.first(portfolios) && List.first(portfolios).id
-      },
-      %{
-        id: "reminder_2",
-        type: "skills_review",
-        title: "Review Your Skills",
-        description: "Review and update your skills section with new technologies you've learned",
-        due_date: DateTime.add(now, 14, :day),
-        priority: "low",
-        portfolio_id: nil
-      }
-    ]
-    |> Enum.filter(fn reminder ->
-      # Only show relevant reminders
-      case reminder.type do
-        "portfolio_update" -> length(portfolios) > 0
-        _ -> true
-      end
-    end)
-  end
-
-  defp update_creator_follow_status(creators, user_id, following_status) do
-    Enum.map(creators, fn creator ->
-      if creator.id == String.to_integer(user_id) do
-        Map.put(creator, :is_following, following_status)
-      else
-        creator
-      end
-    end)
-  end
-
-  defp get_most_viewed_portfolio(portfolios) do
-    portfolios
-    |> Enum.max_by(&(&1.view_count || 0), fn -> nil end)
-  end
-
-  defp map_enhancement_to_session_type(enhancement_type) do
-    case enhancement_type do
-      "voice_intro" -> "voice_recording"
-      "enhance_writing" -> "collaborative_writing"
-      "background_music" -> "music_creation"
-      "design_feedback" -> "design_review"
-      _ -> "general_collaboration"
+  defp safe_load_limits(user) do
+    try do
+      Portfolios.get_portfolio_limits(user)
+    rescue
+      _ -> %{max_portfolios: 3, max_media_size_mb: 50}
     end
-  end
-
-  defp format_enhancement_type(enhancement_type) do
-    case enhancement_type do
-      "voice_intro" -> "Voice Introduction"
-      "enhance_writing" -> "Writing Enhancement"
-      "background_music" -> "Background Music"
-      "design_feedback" -> "Design Feedback"
-      _ -> String.capitalize(String.replace(enhancement_type, "_", " "))
-    end
-  end
-
-  # Keep all existing helper functions unchanged...
-  defp check_first_visit(user, params) do
-    Map.get(params, "first") == "true" or
-    not user.onboarding_completed or
-    Portfolios.count_user_portfolios(user.id) == 1
-  end
-
-  defp get_recently_created_portfolio(portfolios) do
-    portfolios
-    |> Enum.filter(&created_recently?/1)
-    |> List.first()
-  end
-
-  defp created_recently?(portfolio) do
-    now = DateTime.utc_now()
-
-    # Convert the portfolio's inserted_at to DateTime if it's NaiveDateTime
-    case portfolio.inserted_at do
-      %DateTime{} = dt ->
-        # Check if created within last 24 hours (86400 seconds)
-        DateTime.diff(now, dt, :second) < 86400
-      %NaiveDateTime{} = ndt ->
-        # Convert NaiveDateTime to DateTime assuming UTC
-        portfolio_time = DateTime.from_naive!(ndt, "Etc/UTC")
-        DateTime.diff(now, portfolio_time, :second) < 86400
-      _ ->
-        # Fallback if it's neither type
-        false
-    end
-  rescue
-    # If any error occurs in date conversion, assume not recent
-    _ -> false
   end
 
   defp safe_get_user_overview(user_id) do
     try do
       Portfolios.get_user_portfolio_overview(user_id)
     rescue
-      _ -> %{total_visits: 0, total_portfolios: 0, total_collaborations: 0}
+      _ -> %{total_visits: 0, total_portfolios: 0, total_shares: 0}
     end
   end
 
-  defp build_portfolio_stats(portfolios, user_id) do
-    Enum.map(portfolios, fn portfolio ->
-      stats = safe_get_portfolio_analytics(portfolio.id, user_id)
-      collaborations = get_portfolio_collaborations(portfolio.id)
-      comments = get_portfolio_comments(portfolio.id)
+  defp safe_get_active_collaborations(user_id) do
+    try do
+      # Use existing collaboration infrastructure
+      Channels.get_user_active_collaborations(user_id)
+    rescue
+      _ -> []
+    end
+  end
 
-      {portfolio.id, %{
-        stats: stats,
-        collaborations: collaborations,
-        comments: comments,
-        needs_feedback: length(comments) == 0 && created_recently?(portfolio)
-      }}
+  defp safe_get_user_channels(user) do
+    try do
+      Channels.get_user_channels(user)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_lab_features(user, account) do
+    try do
+      Lab.get_available_features(user, account)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_active_service_bookings(user_id) do
+    try do
+      Services.get_active_bookings(user_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_total_revenue(user_id) do
+    try do
+      Revenue.get_total_user_revenue(user_id)
+    rescue
+      _ -> %{amount: 0, currency: "USD"}
+    end
+  end
+
+  # Add more safe_get functions for other data sources...
+  defp safe_get_pending_invites(user_id), do: []
+  defp safe_get_collaboration_opportunities(user, account), do: []
+  defp safe_get_collaboration_stats(user_id), do: %{}
+  defp safe_get_peer_network(user_id), do: []
+  defp safe_get_recent_feedback(user_id), do: []
+  defp safe_get_trending_channels(user), do: []
+  defp safe_get_channel_recommendations(user), do: []
+  defp safe_get_featured_creators(user), do: []
+  defp safe_get_community_activity(user_id), do: []
+  defp safe_get_discovery_feed(user_id), do: []
+  defp safe_get_active_experiments(user_id), do: []
+  defp safe_get_lab_recommendations(user, portfolios), do: []
+  defp safe_get_experiment_results(user_id), do: []
+  defp safe_get_ai_insights(user_id), do: %{}
+  defp safe_get_feature_requests(user_id), do: []
+  defp safe_get_upcoming_appointments(user_id), do: []
+  defp safe_get_service_performance(user_id), do: %{}
+  defp safe_get_service_revenue(user_id), do: %{total: 0, this_month: 0}
+  defp safe_get_client_data(user_id), do: %{}
+  defp safe_get_user_services(user_id), do: []
+  defp safe_get_booking_settings(user_id), do: %{}
+  defp safe_get_portfolio_revenue_performance(user_id), do: []
+  defp safe_get_revenue_trends(user_id), do: []
+  defp safe_get_platform_fees(user_id), do: %{}
+  defp safe_get_payout_schedule(user_id), do: %{}
+  defp safe_get_revenue_analytics(user_id), do: %{}
+  defp safe_get_tax_documents(user_id), do: []
+
+  # ============================================================================
+  # HELPER FUNCTIONS (Maintained from existing)
+  # ============================================================================
+
+  defp calculate_portfolio_stats(portfolios) do
+    Enum.map(portfolios, fn portfolio ->
+      stats = try do
+        Portfolios.get_portfolio_analytics(portfolio.id, portfolio.user_id)
+      rescue
+        _ -> %{total_visits: 0, unique_visitors: 0, last_visit: nil}
+      end
+      {portfolio.id, stats}
     end) |> Enum.into(%{})
   end
 
-  defp safe_get_portfolio_analytics(portfolio_id, user_id) do
-    try do
-      Portfolios.get_portfolio_analytics(portfolio_id, user_id)
-    rescue
-      _ -> %{total_visits: 0, unique_visitors: 0, shares: 0, comments: 0}
+  defp generate_enhancement_suggestions(portfolios, user) do
+    case portfolios do
+      [] ->
+        []
+
+      portfolios ->
+        portfolios
+        |> Enum.take(3)
+        |> Enum.flat_map(fn portfolio ->
+          quality_score = calculate_portfolio_quality_score(portfolio)
+          generate_portfolio_enhancement_suggestions(portfolio, quality_score, user)
+        end)
+        |> Enum.sort_by(& &1.priority, :desc)
+        |> Enum.take(5)
     end
   end
-
-    @doc """
-  Track enhancement start for billing/analytics
-  """
-  defp track_enhancement_start(portfolio_id, enhancement_type) do
-    case Portfolios.get_portfolio(portfolio_id) do
-      nil -> :ok
-      portfolio ->
-        case get_portfolio_user_account(portfolio) do
-          nil -> :ok
-          account ->
-            Billing.UsageTracker.track_usage(
-              account,
-              :enhancement_session_start,
-              1,
-              %{
-                portfolio_id: portfolio_id,
-                enhancement_type: enhancement_type,
-                started_at: DateTime.utc_now()
-              }
-            )
-        end
-    end
-  end
-
-  @doc """
-  Track enhancement creation
-  """
-  defp track_enhancement_created(user_id, portfolio_id, enhancement_type) do
-    user = Accounts.get_user(user_id)
-    account = user.account || %{subscription_tier: "personal"}
-
-    Billing.UsageTracker.track_usage(
-      account,
-      :enhancement_created,
-      1,
-      %{
-        user_id: user_id,
-        portfolio_id: portfolio_id,
-        enhancement_type: enhancement_type,
-        created_at: DateTime.utc_now()
-      }
-    )
-  end
-
-  @doc """
-  Get portfolio completion data
-  """
-  defp get_portfolio_completion_data(portfolio) do
-    # Use the CompletionTracker if available, otherwise mock data
-    try do
-      Frestyl.Portfolios.CompletionTracker.get_portfolio_completion_data(portfolio.id)
-    rescue
-      _ ->
-        # Fallback mock data
-        %{
-          voice_completion: 0,
-          writing_completion: 0,
-          design_completion: 0,
-          music_completion: 0,
-          overall_completion: 0,
-          last_enhancement: nil,
-          total_enhancements: 0,
-          enhancement_streak: 0,
-          quality_trajectory: %{trend: :new, improvement_points: 0},
-          collaboration_score: 0
-        }
-    end
-  end
-
-  # ============================================================================
-  # QUALITY SCORING FUNCTIONS
-  # ============================================================================
 
   defp calculate_portfolio_quality_score(portfolio) do
-    sections = Portfolios.list_portfolio_sections(portfolio.id)
+    sections = try do
+      Portfolios.list_portfolio_sections(portfolio.id)
+    rescue
+      _ -> []
+    end
 
     # Content completeness (40 points)
     content_score = calculate_content_completeness(sections)
@@ -1319,619 +624,66 @@ defmodule FrestylWeb.PortfolioHubLive do
     }
   end
 
-  defp calculate_content_completeness(sections) do
-    required_sections = ["about", "experience", "projects", "skills"]
-    present_sections = Enum.map(sections, & &1.type)
+  defp generate_portfolio_enhancement_suggestions(portfolio, quality_score, user) do
+    suggestions = []
 
-    completion_rate = length(present_sections) / length(required_sections)
-    (completion_rate * 40) |> min(40) |> round()
-  end
-
-  defp calculate_visual_quality(portfolio, sections) do
-    score = 0
-
-    # Check for hero image
-    score = if portfolio.hero_image_url, do: score + 8, else: score
-
-    # Check for consistent theming
-    score = if has_consistent_theme?(portfolio), do: score + 7, else: score
-
-    # Check for media in sections
-    media_score = count_section_media(sections) |> min(10)
-    score + media_score
-  end
-
-  defp calculate_engagement_elements(portfolio) do
-    score = 0
-
-    # Voice introduction
-    score = if has_voice_intro?(portfolio), do: score + 8, else: score
-
-    # Interactive elements
-    score = if has_interactive_elements?(portfolio), do: score + 6, else: score
-
-    # Social links
-    score = if has_social_links?(portfolio), do: score + 3, else: score
-
-    # Call-to-action
-    score = if has_cta?(portfolio), do: score + 3, else: score
-
-    score
-  end
-
-  defp calculate_professional_polish(portfolio) do
-    score = 0
-
-    # Custom domain
-    score = if has_custom_domain?(portfolio), do: score + 5, else: score
-
-    # Professional email
-    score = if has_professional_contact?(portfolio), do: score + 3, else: score
-
-    # Complete contact information
-    score = if has_complete_contact?(portfolio), do: score + 4, else: score
-
-    # SEO optimization
-    score = if has_seo_optimization?(portfolio), do: score + 3, else: score
-
-    score
-  end
-
-  # ============================================================================
-  # PORTFOLIO CHECK FUNCTIONS
-  # ============================================================================
-
-  defp has_voice_introduction?(sections) do
-    Enum.any?(sections, fn section ->
-      section.type == "voice_intro" ||
-      (section.content && Map.has_key?(section.content, "voice_file"))
-    end)
-  end
-
-  defp assess_content_quality(sections) do
-    content_sections = Enum.filter(sections, &(&1.type in ["about", "experience", "projects"]))
-
-    if length(content_sections) > 0 do
-      avg_length = Enum.reduce(content_sections, 0, fn section, acc ->
-        content_length = get_content_length(section)
-        acc + content_length
-      end) / length(content_sections)
-
-      min(avg_length / 10, 100) |> round()
+    suggestions = if needs_voice_enhancement?(portfolio, quality_score) do
+      [%{
+        type: :voice_over,
+        portfolio_id: portfolio.id,
+        title: "Add Voice Introduction",
+        description: "Record a professional voice introduction to make your portfolio more engaging",
+        priority: get_enhancement_priority(quality_score, :voice),
+        estimated_time: "15-30 minutes",
+        can_access: can_access_enhancement?(user, :voice_over)
+      } | suggestions]
     else
-      0
+      suggestions
     end
-  end
 
-  defp assess_visual_consistency(portfolio) do
-    portfolio.theme != nil && portfolio.customization != nil
-  end
-
-  defp has_professional_media?(sections) do
-    Enum.any?(sections, fn section ->
-      section.content &&
-      (Map.has_key?(section.content, "images") || Map.has_key?(section.content, "media"))
-    end)
-  end
-
-  defp count_engagement_elements(portfolio) do
-    elements = 0
-    elements = if has_voice_intro?(portfolio), do: elements + 1, else: elements
-    elements = if has_social_links?(portfolio), do: elements + 1, else: elements
-    elements = if has_cta?(portfolio), do: elements + 1, else: elements
-    elements = if has_interactive_elements?(portfolio), do: elements + 1, else: elements
-    elements
-  end
-
-  # ============================================================================
-  # HELPER CHECK FUNCTIONS
-  # ============================================================================
-
-  defp has_consistent_theme?(portfolio) do
-    portfolio.theme != nil && portfolio.customization != nil
-  end
-
-  defp count_section_media(sections) do
-    Enum.count(sections, fn section ->
-      section.content &&
-      (Map.has_key?(section.content, "images") ||
-       Map.has_key?(section.content, "media") ||
-       Map.has_key?(section.content, "hero_image"))
-    end)
-  end
-
-  defp has_voice_intro?(portfolio) do
-    false # Mock - implement based on your schema
-  end
-
-  defp has_interactive_elements?(portfolio) do
-    false # Mock - implement based on your schema
-  end
-
-  defp has_social_links?(portfolio) do
-    social_links = portfolio.social_links || %{}
-    map_size(social_links) > 0
-  end
-
-  defp has_cta?(portfolio) do
-    portfolio.contact_info != nil
-  end
-
-  defp has_custom_domain?(portfolio) do
-    false # Mock - implement based on your schema
-  end
-
-  defp has_professional_contact?(portfolio) do
-    contact_info = portfolio.contact_info || %{}
-    map_size(contact_info) > 0
-  end
-
-  defp has_complete_contact?(portfolio) do
-    contact = portfolio.contact_info || %{}
-    Map.has_key?(contact, "email") && Map.has_key?(contact, "phone")
-  end
-
-  defp has_seo_optimization?(portfolio) do
-    portfolio.meta_description != nil
-  end
-
-  defp get_content_length(section) do
-    case section.content do
-      nil -> 0
-      content when is_map(content) ->
-        content
-        |> Map.values()
-        |> Enum.reduce(0, fn value, acc ->
-          if is_binary(value), do: acc + String.length(value), else: acc
-        end)
-      _ -> 0
-    end
-  end
-
-  # ============================================================================
-  # STATISTICS FUNCTIONS
-  # ============================================================================
-
-  defp calculate_portfolio_stats(portfolios) do
-    total_portfolios = length(portfolios)
-    total_views = Enum.sum(Enum.map(portfolios, &get_portfolio_views/1))
-
-    avg_quality = if total_portfolios > 0 do
-      total_quality = Enum.sum(Enum.map(portfolios, fn portfolio ->
-        calculate_portfolio_quality_score(portfolio).total
-      end))
-      Float.round(total_quality / total_portfolios, 1)
+    suggestions = if needs_writing_enhancement?(portfolio, quality_score) do
+      [%{
+        type: :writing,
+        portfolio_id: portfolio.id,
+        title: "Improve Content Quality",
+        description: "Enhance your portfolio sections with professional writing assistance",
+        priority: get_enhancement_priority(quality_score, :writing),
+        estimated_time: "30-60 minutes",
+        can_access: can_access_enhancement?(user, :writing)
+      } | suggestions]
     else
-      0
+      suggestions
     end
 
-    enhancement_breakdown = calculate_enhancement_breakdown(portfolios)
-    enhancement_completion_rate = calculate_overall_enhancement_completion(portfolios)
-
-    %{
-      total_views: total_views,
-      avg_quality_score: avg_quality,
-      enhancement_completion_rate: enhancement_completion_rate,
-      enhancement_breakdown: enhancement_breakdown
-    }
-  end
-
-  defp get_portfolio_views(portfolio) do
-    # Mock - replace with actual view counting
-    :rand.uniform(100)
-  end
-
-  defp calculate_enhancement_breakdown(portfolios) do
-    enhancement_types = ["voice_over", "writing", "design", "music"]
-
-    Enum.map(enhancement_types, fn type ->
-      completed_count = Enum.count(portfolios, &has_completed_enhancement?(&1, type))
-      total_count = length(portfolios)
-      percentage = if total_count > 0, do: Float.round(completed_count / total_count * 100, 1), else: 0
-
-      {type, percentage}
-    end)
-  end
-
-  defp calculate_overall_enhancement_completion(portfolios) do
-    if length(portfolios) > 0 do
-      total_possible = length(portfolios) * 4 # 4 enhancement types
-      total_completed = Enum.reduce(portfolios, 0, fn portfolio, acc ->
-        acc + count_completed_enhancements_for_portfolio(portfolio)
-      end)
-
-      if total_possible > 0 do
-        Float.round(total_completed / total_possible * 100, 1)
-      else
-        0
-      end
+    suggestions = if needs_design_enhancement?(portfolio, quality_score) do
+      [%{
+        type: :design,
+        portfolio_id: portfolio.id,
+        title: "Visual Design Upgrade",
+        description: "Improve the visual appeal and consistency of your portfolio",
+        priority: get_enhancement_priority(quality_score, :design),
+        estimated_time: "45-90 minutes",
+        can_access: can_access_enhancement?(user, :design)
+      } | suggestions]
     else
-      0
+      suggestions
     end
-  end
 
-  defp has_completed_enhancement?(portfolio, enhancement_type) do
-    # Mock - check if portfolio has completed this enhancement type
-    :rand.uniform() > 0.6
-  end
-
-  defp count_completed_enhancements_for_portfolio(portfolio) do
-    # Mock - count completed enhancements for a single portfolio
-    :rand.uniform(4)
-  end
-
-  # ============================================================================
-  # COLLABORATION FUNCTIONS
-  # ============================================================================
-
-  defp accept_collaboration_request(request_id, user_id) do
-    case get_collaboration_request(request_id) do
-      nil -> {:error, "Request not found"}
-      request ->
-        channel_attrs = %{
-          name: "Collaboration: #{request.portfolio}",
-          description: "Collaborative work on #{request.portfolio}",
-          channel_type: "portfolio_#{request.type}",
-          visibility: "private",
-          user_id: request.requester_id
-        }
-
-        case Channels.create_channel(channel_attrs) do
-          {:ok, channel} ->
-            add_user_to_channel(channel.id, request.requester_id, "owner")
-            add_user_to_channel(channel.id, user_id, "collaborator")
-            update_collaboration_request(request_id, %{status: "accepted"})
-            {:ok, %{channel_slug: channel.slug}}
-          error -> error
-        end
-    end
-  end
-
-  defp decline_collaboration_request(request_id, user_id) do
-    case get_collaboration_request(request_id) do
-      nil -> {:error, "Request not found"}
-      request ->
-        update_collaboration_request(request_id, %{
-          status: "declined",
-          declined_by: user_id,
-          declined_at: DateTime.utc_now()
-        })
-    end
-  end
-
-  defp get_collaboration_request(request_id) do
-    # Mock - replace with actual database query
-    %{
-      id: request_id,
-      requester_id: 1,
-      portfolio: "Sample Portfolio",
-      type: "writing",
-      status: "pending"
-    }
-  end
-
-  defp update_collaboration_request(request_id, updates) do
-    # Mock - replace with actual database update
-    IO.puts("Updating collaboration request #{request_id} with #{inspect(updates)}")
-    {:ok, updates}
-  end
-
-  defp add_user_to_channel(channel_id, user_id, role) do
-    # Mock - replace with actual channel membership creation
-    IO.puts("Adding user #{user_id} to channel #{channel_id} as #{role}")
-    :ok
-  end
-
-  # ============================================================================
-  # SERVICE PROVIDER FUNCTIONS
-  # ============================================================================
-
-  defp send_enhancement_invitations(channel, enhancement_type, user) do
-    if Features.FeatureGate.can_access_feature?(user.account, :service_provider_access) do
-      providers = find_enhancement_service_providers(enhancement_type, user.location)
-
-      Enum.each(providers, fn provider ->
-        create_service_provider_invitation(channel, provider, enhancement_type)
-      end)
+    suggestions = if needs_music_enhancement?(portfolio, quality_score) do
+      [%{
+        type: :music,
+        portfolio_id: portfolio.id,
+        title: "Add Background Music",
+        description: "Enhance your portfolio with subtle background music or sound design",
+        priority: get_enhancement_priority(quality_score, :music),
+        estimated_time: "20-40 minutes",
+        can_access: can_access_enhancement?(user, :music)
+      } | suggestions]
     else
-      suggest_service_provider_upgrade(user, enhancement_type)
-    end
-  end
-
-  defp find_enhancement_service_providers(enhancement_type, user_location) do
-    # Mock - replace with actual service provider query
-    []
-  end
-
-  defp create_service_provider_invitation(channel, provider, enhancement_type) do
-    # Mock - replace with actual invitation creation
-    IO.puts("Creating service provider invitation for channel #{channel.id}")
-    :ok
-  end
-
-  defp suggest_service_provider_upgrade(user, enhancement_type) do
-    # Mock - suggest upgrade to access service providers
-    IO.puts("Suggesting upgrade for user #{user.id} to access #{enhancement_type} providers")
-    :ok
-  end
-
-  # ============================================================================
-  # UTILITY FUNCTIONS
-  # ============================================================================
-
-  defp get_portfolio_user_account(portfolio) do
-    cond do
-      portfolio.user && portfolio.user.account ->
-        portfolio.user.account
-
-      portfolio.user_id ->
-        case Accounts.get_user(portfolio.user_id) do
-          nil -> nil
-          user -> user.account
-        end
-
-      true ->
-        nil
-    end
-  end
-
-  defp get_enhanced_activity_feed(user_id) do
-    portfolio_activity = get_portfolio_activity(user_id)
-    channel_activity = get_channel_activity(user_id)
-    lab_activity = get_lab_activity(user_id)
-
-    (portfolio_activity ++ channel_activity ++ lab_activity)
-    |> Enum.sort_by(& &1.timestamp, {:desc, DateTime})
-    |> Enum.take(10)
-  end
-
-  defp get_channel_activity(user_id) do
-    [
-      %{
-        id: "channel_1",
-        type: :channel_joined,
-        user: "You",
-        channel: "UX Design Community",
-        time: "1 hour ago",
-        timestamp: DateTime.utc_now() |> DateTime.add(-1, :hour),
-        description: "joined channel",
-        icon: "🏠"
-      },
-      %{
-        id: "channel_2",
-        type: :collaboration_started,
-        user: "Maria Garcia",
-        channel: "Portfolio Feedback",
-        time: "3 hours ago",
-        timestamp: DateTime.utc_now() |> DateTime.add(-3, :hour),
-        description: "started a collaboration session",
-        icon: "🤝"
-      }
-    ]
-  end
-
-  defp get_lab_activity(user_id) do
-    [
-      %{
-        id: "lab_1",
-        type: :experiment_completed,
-        user: "You",
-        experiment: "Bio Generator",
-        time: "30 minutes ago",
-        timestamp: DateTime.utc_now() |> DateTime.add(-30, :minute),
-        description: "completed bio generation experiment",
-        icon: "⚗️"
-      },
-      %{
-        id: "lab_2",
-        type: :layout_experiment_started,
-        user: "You",
-        experiment: "Holographic Layout",
-        time: "2 days ago",
-        timestamp: DateTime.utc_now() |> DateTime.add(-2, :day),
-        description: "started testing new portfolio layout",
-        icon: "🎨"
-      }
-    ]
-  end
-
-  defp get_portfolio_activity(user_id) do
-    [
-      %{
-        id: "portfolio_1",
-        type: :portfolio_view,
-        user: "Anonymous",
-        portfolio: "My Creative Portfolio",
-        time: "5 minutes ago",
-        timestamp: DateTime.utc_now() |> DateTime.add(-5, :minute),
-        description: "viewed your portfolio",
-        count: 3,
-        icon: "👁️"
-      }
-    ]
-  end
-
-  defp get_collaboration_requests(user_id) do
-    [
-      %{
-        id: 1,
-        user: "Alex Chen",
-        type: "feedback",
-        portfolio: "UX Case Study",
-        message: "Would love feedback on my latest case study",
-        time: "2 hours ago"
-      },
-      %{
-        id: 2,
-        user: "Sarah Miller",
-        type: "collaboration",
-        portfolio: "Music Video Project",
-        message: "Looking for motion graphics collaboration",
-        time: "1 day ago"
-      }
-    ]
-  end
-
-  defp get_portfolio_collaborations(portfolio_id) do
-    [
-      %{user: "Maria", role: "Feedback Provider"},
-      %{user: "John", role: "Co-creator"}
-    ]
-  end
-
-  defp get_portfolio_comments(portfolio_id) do
-    []
-  end
-
-  defp get_onboarding_state(user, portfolios, limits) do
-    %{
-      completed_steps: [],
-      next_steps: ["create_portfolio", "join_channel", "try_lab_feature"],
-      progress: 30
-    }
-  end
-
-  defp assign_mobile_state(socket) do
-    socket
-    |> assign(:show_mobile_menu, false)
-    |> assign(:show_mobile_filters, false)
-    |> assign(:show_mobile_sidebar, false)
-    |> assign(:show_mobile_actions, false)
-    |> assign(:mobile_view_mode, "cards")
-    |> assign(:mobile_filter_active, false)
-    |> assign(:mobile_gesture_enabled, true)
-    |> assign(:active_tab, "overview")
-    |> assign(:selected_template, nil)
-    |> assign(:portfolio_title, "")
-  end
-
-  defp calculate_quick_stats(portfolios, overview) do
-    total_portfolios = length(portfolios)
-    # FIX: Use :total_visits instead of :total_visits
-    total_visits = Map.get(overview, :total_visits, 0)  # Changed from :total_visits
-    public_portfolios = Enum.count(portfolios, &(&1.visibility == :public))
-
-    %{
-      total_portfolios: total_portfolios,
-      total_visits: total_visits,  # This is what the template expects
-      public_portfolios: public_portfolios,
-      completion_rate: calculate_average_completion(portfolios)
-    }
-  end
-
-  defp calculate_average_completion(portfolios) do
-    if length(portfolios) == 0 do
-      0
-    else
-      total_completion = portfolios
-      |> Enum.map(&calculate_portfolio_completion/1)
-      |> Enum.sum()
-
-      round(total_completion / length(portfolios))
-    end
-  end
-
-  defp calculate_portfolio_completion(portfolio) do
-    try do
-      sections = Portfolios.list_portfolio_sections(portfolio.id)
-
-      case length(sections) do
-        0 -> 25  # Base score for having a portfolio
-        section_count ->
-          base_score = 25
-          section_score = min(50, section_count * 10)  # 10 points per section, max 50
-          content_score = 25  # Simplified for now
-          base_score + section_score + content_score
-      end
-    rescue
-      _ -> 25  # Fallback score
-    end
-  end
-
-  defp relative_date(datetime) when is_nil(datetime), do: "Never"
-  defp relative_date(datetime) do
-    current_time = DateTime.utc_now()
-
-    datetime_utc = case datetime do
-      %DateTime{} -> datetime
-      %NaiveDateTime{} ->
-        DateTime.from_naive!(datetime, "Etc/UTC")
-      _ -> current_time
+      suggestions
     end
 
-    case DateTime.diff(current_time, datetime_utc, :second) do
-      diff when diff < 60 -> "Just now"
-      diff when diff < 3600 -> "#{div(diff, 60)} minutes ago"
-      diff when diff < 86400 -> "#{div(diff, 3600)} hours ago"
-      diff when diff < 604800 -> "#{div(diff, 86400)} days ago"
-      _ -> Calendar.strftime(datetime_utc, "%b %d, %Y")
-    end
-  rescue
-    _ -> "Unknown time"
-  end
-
-  # Function 2: get_filtered_portfolios/2 - filters portfolios by status
-  defp get_filtered_portfolios(portfolios, filter_status) when is_list(portfolios) do
-    case filter_status do
-      "all" -> portfolios
-      "public" -> Enum.filter(portfolios, &(&1.visibility == :public))
-      "private" -> Enum.filter(portfolios, &(&1.visibility == :private))
-      "link_only" -> Enum.filter(portfolios, &(&1.visibility == :link_only))
-      "draft" -> Enum.filter(portfolios, &(Map.get(&1, :status) == :draft))
-      _ -> portfolios
-    end
-  end
-  defp get_filtered_portfolios(_, _), do: []
-
-  # Add these at the bottom of your PortfolioHubLive module
-  defp get_lab_features_for_user(_user, _limits), do: []
-  defp get_active_experiments(_user_id), do: []
-  defp get_lab_recommendations(_user, _portfolios), do: []
-
-  # Fix the problematic add_availability_status function
-  defp add_availability_status(feature, _user) do
-    Map.merge(feature, %{
-      time_used: 0,
-      time_remaining: 30,
-      available: true
-    })
-  end
-
-    defp calculate_portfolio_quality_score(portfolio) do
-    sections = Portfolios.list_portfolio_sections(portfolio.id)
-
-    # Base scoring components
-    base_score = 0
-    max_score = 100
-
-    # Content completeness (40 points)
-    content_score = calculate_content_completeness(sections)
-
-    # Visual quality (25 points)
-    visual_score = calculate_visual_quality(portfolio, sections)
-
-    # Engagement elements (20 points)
-    engagement_score = calculate_engagement_elements(portfolio)
-
-    # Professional polish (15 points)
-    polish_score = calculate_professional_polish(portfolio)
-
-    total_score = content_score + visual_score + engagement_score + polish_score
-
-    %{
-      total: min(total_score, max_score),
-      content: content_score,
-      visual: visual_score,
-      engagement: engagement_score,
-      polish: polish_score,
-      breakdown: %{
-        has_voice_intro: has_voice_introduction?(sections),
-        content_quality: assess_content_quality(sections),
-        visual_consistency: assess_visual_consistency(portfolio),
-        professional_media: has_professional_media?(sections),
-        engagement_elements: count_engagement_elements(portfolio)
-      }
-    }
+    suggestions
   end
 
   defp needs_voice_enhancement?(portfolio, quality_score) do
@@ -1967,8 +719,65 @@ defmodule FrestylWeb.PortfolioHubLive do
     base_priority + completion_boost
   end
 
-    defp can_access_collaboration?(user, collaboration_type) do
-    account = user.account || %{subscription_tier: "personal"}
+  # Helper functions for quality assessment:
+  defp calculate_content_completeness(sections) do
+    required_sections = ["about", "experience", "projects", "skills"]
+    present_sections = Enum.map(sections, & &1.type)
+
+    completion_rate = length(present_sections) / length(required_sections)
+    (completion_rate * 40) |> min(40) |> round()
+  end
+
+  defp calculate_visual_quality(portfolio, sections) do
+    score = 0
+
+    # Check for hero image
+    score = if portfolio.hero_image_url, do: score + 8, else: score
+
+    # Check for consistent theming
+    score = if has_consistent_theme?(portfolio), do: score + 7, else: score
+
+    # Check for media in sections
+    media_score = count_section_media(sections) |> min(10)
+    score + media_score
+  end
+
+  defp calculate_engagement_elements(portfolio) do
+    score = 0
+    score = if has_voice_intro?(portfolio), do: score + 5, else: score
+    score = if has_social_links?(portfolio), do: score + 3, else: score
+    score = if has_cta?(portfolio), do: score + 4, else: score
+    score = if has_interactive_elements?(portfolio), do: score + 8, else: score
+    score
+  end
+
+  defp calculate_professional_polish(portfolio) do
+    score = 0
+    score = if has_custom_domain?(portfolio), do: score + 5, else: score
+    score = if has_professional_contact?(portfolio), do: score + 3, else: score
+    score = if has_complete_contact?(portfolio), do: score + 2, else: score
+    score = if has_seo_optimization?(portfolio), do: score + 5, else: score
+    score
+  end
+
+
+  defp can_access_enhancement?(current_account, enhancement_type) do
+    case enhancement_type do
+      :voice_over ->
+        Features.FeatureGate.can_access_feature?(current_account, :voice_recording)
+      :writing ->
+        Features.FeatureGate.can_access_feature?(current_account, :content_assistance)
+      :design ->
+        Features.FeatureGate.can_access_feature?(current_account, :advanced_media)
+      :music ->
+        Features.FeatureGate.can_access_feature?(current_account, :audio_creation)
+      _ ->
+        true
+    end
+  end
+
+  defp can_access_collaboration?(current_account, collaboration_type) do
+    account = current_account || %{subscription_tier: "personal"}
 
     case collaboration_type do
       :portfolio_voice_over ->
@@ -1991,149 +800,1829 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-  # Service provider booking integration
-  defp send_enhancement_invitations(channel, enhancement_type, user) do
+
+
+  defp send_enhancement_invitations(channel, enhancement_type, current_account) do
     # Check if user wants to invite service providers
-    if Features.FeatureGate.can_access_feature?(user.account, :service_provider_access) do
-      # Match with appropriate service providers
-      providers = find_enhancement_service_providers(enhancement_type, user.location)
+    if Features.FeatureGate.can_access_feature?(current_account, :service_provider_access) do
+      providers = find_enhancement_service_providers(enhancement_type, nil)
 
       Enum.each(providers, fn provider ->
         create_service_provider_invitation(channel, provider, enhancement_type)
       end)
     else
-      # Suggest upgrade to access service providers
-      suggest_service_provider_upgrade(user, enhancement_type)
+      suggest_service_provider_upgrade(current_account, enhancement_type)
     end
   end
 
-  defp activity_color(activity_type) do
-    case activity_type do
-      :portfolio_view -> "bg-blue-400"
-      :comment_received -> "bg-green-400"
-      :collaboration_invite -> "bg-purple-400"
-      :feedback_received -> "bg-yellow-400"
-      :share_created -> "bg-indigo-400"
-      :edit_session -> "bg-pink-400"
-      _ -> "bg-gray-400"
+  defp suggest_service_provider_upgrade(current_account, enhancement_type) do
+    # Mock - suggest upgrade to access service providers
+    IO.puts("Suggesting upgrade for account #{current_account.id || "unknown"} to access #{enhancement_type} providers")
+    :ok
+  end
+
+  defp get_enhanced_activity_feed(user_id) do
+    try do
+      Analytics.get_user_activity_feed(user_id, limit: 10)
+    rescue
+      _ -> []
     end
   end
 
-  defp enhancement_color(enhancement_type) do
-    case enhancement_type do
-      "voice_over" -> "bg-blue-500"
-      "writing" -> "bg-green-500"
-      "design" -> "bg-purple-500"
-      "music" -> "bg-pink-500"
-      "quarterly_update" -> "bg-yellow-500"
-      "feedback" -> "bg-indigo-500"
-      _ -> "bg-gray-500"
-    end
+  defp check_first_visit(user, params) do
+    # Implementation for first visit detection
+    false
   end
 
-  # ============================================================================
-  # Supporting Functions for Event Handlers
-  # ============================================================================
+  defp get_recently_created_portfolio(portfolios) do
+    portfolios
+    |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+    |> List.first()
+  end
 
-  defp accept_collaboration_request(request_id, user_id) do
-    # Implementation to accept collaboration request
-    # This would involve creating a channel, setting up permissions, etc.
+  defp assign_mobile_state() do
+    %{
+      mobile_view_mode: false,
+      show_mobile_menu: false,
+      show_mobile_nav: false
+    }
+  end
 
-    # Placeholder implementation
-    case get_collaboration_request(request_id) do
-      nil -> {:error, "Request not found"}
-      request ->
-        # Create collaboration channel
+  @impl true
+  def handle_event("request_enhancement", %{"type" => enhancement_type, "portfolio_id" => portfolio_id}, socket) do
+    current_account = socket.assigns.current_account
+
+    case can_access_collaboration?(current_account, String.to_atom(enhancement_type)) do
+      true ->
+        # Create enhancement request
+        portfolio = Portfolios.get_portfolio!(portfolio_id)
+
+        # Create a collaboration channel for this enhancement
         channel_attrs = %{
-          name: "Collaboration: #{request.portfolio}",
-          description: "Collaborative work on #{request.portfolio}",
-          channel_type: "portfolio_#{request.type}",
+          name: "#{portfolio.title} - #{String.capitalize(enhancement_type)} Enhancement",
+          description: "Collaboration space for #{enhancement_type} enhancement",
           visibility: "private",
-          user_id: request.requester_id
+          user_id: socket.assigns.current_user.id
         }
 
         case Channels.create_channel(channel_attrs) do
           {:ok, channel} ->
-            # Add both users to channel
-            add_user_to_channel(channel.id, request.requester_id, "owner")
-            add_user_to_channel(channel.id, user_id, "collaborator")
+            # Send invitations to relevant service providers
+            send_enhancement_invitations(channel, enhancement_type, current_account)
 
-            # Mark request as accepted
-            update_collaboration_request(request_id, %{status: "accepted"})
+            {:noreply,
+            socket
+            |> put_flash(:info, "Enhancement request created! Invitations sent to qualified providers.")
+            |> assign(:show_enhancement_modal, false)}
 
-            {:ok, %{channel_slug: channel.slug}}
-
-          error -> error
+          {:error, _} ->
+            {:noreply,
+            socket
+            |> put_flash(:error, "Failed to create enhancement request.")
+            |> assign(:show_enhancement_modal, false)}
         end
+
+      false ->
+        # Show upgrade modal
+        {:noreply,
+        socket
+        |> assign(:show_enhancement_modal, false)
+        |> assign(:show_upgrade_modal, true)
+        |> assign(:requested_feature, enhancement_type)}
     end
   end
 
-  defp decline_collaboration_request(request_id, user_id) do
-    # Implementation to decline collaboration request
-    case get_collaboration_request(request_id) do
-      nil -> {:error, "Request not found"}
-      request ->
-        update_collaboration_request(request_id, %{
-          status: "declined",
-          declined_by: user_id,
-          declined_at: DateTime.utc_now()
-        })
-    end
-  end
-
-  defp calculate_portfolio_stats(portfolios) do
-    total_views = Enum.sum(Enum.map(portfolios, &get_portfolio_views/1))
-    avg_quality_score = if length(portfolios) > 0 do
-      total_quality = Enum.sum(Enum.map(portfolios, &calculate_portfolio_quality_score/1))
-      Float.round(total_quality / length(portfolios), 1)
-    else
-      0
-    end
-
-    enhancement_breakdown = calculate_enhancement_breakdown(portfolios)
-    enhancement_completion_rate = calculate_overall_enhancement_completion(portfolios)
-
-    %{
-      total_views: total_views,
-      avg_quality_score: avg_quality_score,
-      enhancement_completion_rate: enhancement_completion_rate,
-      enhancement_breakdown: enhancement_breakdown
-    }
-  end
-
-  defp calculate_enhancement_breakdown(portfolios) do
-    enhancement_types = ["voice_over", "writing", "design", "music"]
-
-    Enum.map(enhancement_types, fn type ->
-      completed_count = Enum.count(portfolios, &has_completed_enhancement?(&1, type))
-      total_count = length(portfolios)
-      percentage = if total_count > 0, do: Float.round(completed_count / total_count * 100, 1), else: 0
-
-      {type, percentage}
+  defp has_voice_introduction?(sections) do
+    Enum.any?(sections, fn section ->
+      section.content && Map.has_key?(section.content, "voice_intro")
     end)
   end
 
-  defp get_recent_activities(user_id) do
-    # Mock activity data - replace with real queries
-    [
-      %{
-        type: :portfolio_view,
-        portfolio: "UX Designer Portfolio",
-        message: "3 new views on",
-        relative_time: "2 hours ago"
-      },
-      %{
-        type: :collaboration_invite,
-        portfolio: "Developer Showcase",
-        message: "Collaboration started on",
-        relative_time: "1 day ago"
-      },
-      %{
-        type: :feedback_received,
-        portfolio: "Creative Director",
-        message: "New feedback received on",
-        relative_time: "2 days ago"
-      }
-    ]
+  defp assess_content_quality(sections) do
+    total_length = Enum.reduce(sections, 0, fn section, acc ->
+      acc + get_content_length(section)
+    end)
+
+    cond do
+      total_length > 1000 -> 20
+      total_length > 500 -> 15
+      total_length > 250 -> 10
+      total_length > 100 -> 5
+      true -> 0
+    end
   end
+
+  defp assess_visual_consistency(portfolio) do
+    portfolio.customization != nil && portfolio.theme != nil
+  end
+
+  defp has_professional_media?(sections) do
+    Enum.any?(sections, fn section ->
+      section.content &&
+      (Map.has_key?(section.content, "images") || Map.has_key?(section.content, "media"))
+    end)
+  end
+
+  defp count_engagement_elements(portfolio) do
+    elements = 0
+    elements = if has_voice_intro?(portfolio), do: elements + 1, else: elements
+    elements = if has_social_links?(portfolio), do: elements + 1, else: elements
+    elements = if has_cta?(portfolio), do: elements + 1, else: elements
+    elements = if has_interactive_elements?(portfolio), do: elements + 1, else: elements
+    elements
+  end
+
+  defp has_consistent_theme?(portfolio) do
+    portfolio.theme != nil && portfolio.customization != nil
+  end
+
+  defp count_section_media(sections) do
+    Enum.count(sections, fn section ->
+      section.content &&
+      (Map.has_key?(section.content, "images") ||
+      Map.has_key?(section.content, "media") ||
+      Map.has_key?(section.content, "hero_image"))
+    end)
+  end
+
+  defp has_voice_intro?(portfolio) do
+    # Check if portfolio has voice introduction
+    false # Mock - implement based on your schema
+  end
+
+  defp has_interactive_elements?(portfolio) do
+    # Check for interactive elements
+    false # Mock - implement based on your schema
+  end
+
+  defp has_social_links?(portfolio) do
+    portfolio.social_links && map_size(portfolio.social_links) > 0
+  end
+
+  defp has_cta?(portfolio) do
+    # Check for call-to-action elements
+    portfolio.contact_info != nil
+  end
+
+  defp has_custom_domain?(portfolio) do
+    # Check if portfolio uses custom domain
+    false # Mock - implement based on your schema
+  end
+
+  defp has_professional_contact?(portfolio) do
+    portfolio.contact_info != nil && portfolio.contact_info != %{}
+  end
+
+  defp has_complete_contact?(portfolio) do
+    contact = portfolio.contact_info || %{}
+    Map.has_key?(contact, "email") && Map.has_key?(contact, "phone")
+  end
+
+  defp has_seo_optimization?(portfolio) do
+    # Check for SEO elements like meta descriptions, titles, etc.
+    portfolio.meta_description != nil
+  end
+
+  defp get_content_length(section) do
+    case section.content do
+      nil -> 0
+      content when is_map(content) ->
+        content
+        |> Map.values()
+        |> Enum.reduce(0, fn value, acc ->
+          if is_binary(value) do
+            acc + String.length(value)
+          else
+            acc
+          end
+        end)
+      _ -> 0
+    end
+  end
+
+  defp can_access_enhancement?(user, enhancement_type) do
+    # For now, return true to avoid feature gate issues
+    true
+  end
+
+  # Mock service provider functions:
+  defp find_enhancement_service_providers(enhancement_type, user_location) do
+    # Mock - replace with actual service provider query
+    []
+  end
+
+  defp create_service_provider_invitation(channel, provider, enhancement_type) do
+    # Mock - replace with actual invitation creation
+    IO.puts("Creating service provider invitation for channel #{channel.id}")
+    :ok
+  end
+
+  # Feature availability helpers
+  defp get_available_templates_count(account), do: 10
+  defp get_enhancement_progress(portfolios), do: %{}
+  defp get_creation_limits(account), do: %{}
+  defp get_recent_portfolio_activity(user_id), do: []
+  defp get_channel_limits(account), do: %{}
+  defp get_beta_features(account), do: []
+  defp check_calendar_integration(user_id), do: false
+  defp check_billing_integration(user_id), do: false
+  defp portfolio_needs_work?(portfolio), do: false
+
+  # ============================================================================
+  # EVENT HANDLERS (To be implemented in next iteration)
+  # ============================================================================
+
+  @impl true
+  def handle_event("switch_section", %{"section" => section}, socket) do
+    {:noreply, assign(socket, :active_section, section)}
+  end
+
+  @impl true
+  def handle_event("toggle_view_mode", %{"mode" => mode}, socket) do
+    {:noreply, assign(socket, :view_mode, mode)}
+  end
+
+  # ============================================================================
+  # MAIN SECTION FUNCTIONS (called directly from template)
+  # ============================================================================
+
+  defp portfolio_studio_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Studio Overview Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Total Portfolios -->
+        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+          <div class="flex items-center">
+            <div class="p-3 bg-purple-100 rounded-lg">
+              <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Total Portfolios</p>
+              <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :total_portfolios, length(@portfolios)) %></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Published Count -->
+        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+          <div class="flex items-center">
+            <div class="p-3 bg-green-100 rounded-lg">
+              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Published</p>
+              <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :published_count, Enum.count(@portfolios, &(&1.visibility == :public))) %></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Drafts -->
+        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+          <div class="flex items-center">
+            <div class="p-3 bg-yellow-100 rounded-lg">
+              <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Drafts</p>
+              <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :draft_count, Enum.count(@portfolios, &(&1.visibility == :private))) %></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Templates Available -->
+        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+          <div class="flex items-center">
+            <div class="p-3 bg-blue-100 rounded-lg">
+              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Templates</p>
+              <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :templates_available, 10) %></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Portfolios Section -->
+      <%= portfolio_grid_section(assigns) %>
+
+      <!-- Enhancement Suggestions -->
+      <%= if @enhancement_suggestions && length(@enhancement_suggestions) > 0 do %>
+        <%= enhancement_suggestions_section(assigns) %>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp revenue_center_section(assigns) do
+    ~H"""
+    <%= if Map.get(@revenue_data, :upgrade_prompt, true) do %>
+      <!-- Upgrade Prompt for Revenue Center -->
+      <div class="bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl p-8 border-2 border-green-200">
+        <div class="text-center">
+          <div class="text-6xl mb-4">📊</div>
+          <h2 class="text-2xl font-bold text-gray-900 mb-4">Revenue Center</h2>
+          <p class="text-gray-600 mb-6">Unlock comprehensive revenue analytics, performance tracking, and financial insights with Professional tier.</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white rounded-lg p-4 border border-green-200">
+              <div class="text-2xl mb-2">💰</div>
+              <h3 class="font-semibold text-gray-900">Revenue Analytics</h3>
+              <p class="text-sm text-gray-600">Detailed earnings and performance metrics</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-green-200">
+              <div class="text-2xl mb-2">📈</div>
+              <h3 class="font-semibold text-gray-900">Growth Tracking</h3>
+              <p class="text-sm text-gray-600">Monitor trends and forecast revenue</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-green-200">
+              <div class="text-2xl mb-2">🧾</div>
+              <h3 class="font-semibold text-gray-900">Tax & Billing</h3>
+              <p class="text-sm text-gray-600">Automated tax documents and billing</p>
+            </div>
+          </div>
+          <button phx-click="upgrade_to_professional"
+                  class="inline-flex items-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all transform hover:scale-105">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Upgrade to Professional
+          </button>
+        </div>
+      </div>
+    <% else %>
+      <!-- Full Revenue Center -->
+      <%= revenue_center_content(assigns) %>
+    <% end %>
+    """
+  end
+
+  defp service_dashboard_section(assigns) do
+    ~H"""
+    <%= if Map.get(@service_data, :upgrade_prompt, true) do %>
+      <!-- Upgrade Prompt for Service Dashboard -->
+      <div class="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl p-8 border-2 border-blue-200">
+        <div class="text-center">
+          <div class="text-6xl mb-4">💼</div>
+          <h2 class="text-2xl font-bold text-gray-900 mb-4">Service Dashboard</h2>
+          <p class="text-gray-600 mb-6">Manage bookings, track revenue, and grow your service business with Creator tier features.</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white rounded-lg p-4 border border-blue-200">
+              <div class="text-2xl mb-2">📅</div>
+              <h3 class="font-semibold text-gray-900">Booking Management</h3>
+              <p class="text-sm text-gray-600">Calendar integration and client scheduling</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-blue-200">
+              <div class="text-2xl mb-2">💰</div>
+              <h3 class="font-semibold text-gray-900">Revenue Tracking</h3>
+              <p class="text-sm text-gray-600">Monitor earnings and payment processing</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-blue-200">
+              <div class="text-2xl mb-2">🎯</div>
+              <h3 class="font-semibold text-gray-900">Performance Analytics</h3>
+              <p class="text-sm text-gray-600">Track success metrics and growth</p>
+            </div>
+          </div>
+          <button phx-click="upgrade_to_creator"
+                  class="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all transform hover:scale-105">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Upgrade to Creator Tier
+          </button>
+        </div>
+      </div>
+    <% else %>
+      <!-- Full Service Dashboard -->
+      <%= service_dashboard_content(assigns) %>
+    <% end %>
+    """
+  end
+
+  defp creator_lab_section(assigns) do
+    ~H"""
+    <%= if Map.get(@lab_data, :upgrade_prompt, true) do %>
+      <!-- Upgrade Prompt for Creator Lab -->
+      <div class="bg-gradient-to-br from-purple-50 to-pink-100 rounded-xl p-8 border-2 border-purple-200">
+        <div class="text-center">
+          <div class="text-6xl mb-4">🧪</div>
+          <h2 class="text-2xl font-bold text-gray-900 mb-4">Creator Lab</h2>
+          <p class="text-gray-600 mb-6">Experiment with cutting-edge features, AI tools, and beta functionality to stay ahead of the curve.</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white rounded-lg p-4 border border-purple-200">
+              <div class="text-2xl mb-2">🤖</div>
+              <h3 class="font-semibold text-gray-900">AI-Powered Tools</h3>
+              <p class="text-sm text-gray-600">Smart content generation and optimization</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-purple-200">
+              <div class="text-2xl mb-2">🔬</div>
+              <h3 class="font-semibold text-gray-900">Beta Features</h3>
+              <p class="text-sm text-gray-600">Early access to experimental functionality</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-purple-200">
+              <div class="text-2xl mb-2">📊</div>
+              <h3 class="font-semibold text-gray-900">Advanced Analytics</h3>
+              <p class="text-sm text-gray-600">Deep insights and performance metrics</p>
+            </div>
+          </div>
+          <button phx-click="upgrade_for_lab"
+                  class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all transform hover:scale-105">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Unlock Creator Lab
+          </button>
+        </div>
+      </div>
+    <% else %>
+      <!-- Full Creator Lab -->
+      <div class="space-y-6">
+        <!-- Lab Overview -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center">
+              <div class="p-3 bg-purple-100 rounded-lg">
+                <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Active Experiments</p>
+                <p class="text-2xl font-bold text-gray-900"><%= length(Map.get(@lab_data, :active_experiments, [])) %></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center">
+              <div class="p-3 bg-pink-100 rounded-lg">
+                <svg class="w-6 h-6 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Beta Features</p>
+                <p class="text-2xl font-bold text-gray-900"><%= length(Map.get(@lab_data, :beta_access, [])) %></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center">
+              <div class="p-3 bg-blue-100 rounded-lg">
+                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">AI Insights</p>
+                <p class="text-2xl font-bold text-gray-900"><%= map_size(Map.get(@lab_data, :ai_insights, %{})) %></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center">
+              <div class="p-3 bg-green-100 rounded-lg">
+                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Completed Tests</p>
+                <p class="text-2xl font-bold text-gray-900"><%= length(Map.get(@lab_data, :results, [])) %></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Available Lab Features -->
+        <%= if @lab_data[:features] && length(@lab_data.features) > 0 do %>
+          <%= lab_features_section(assigns) %>
+        <% end %>
+
+        <!-- Active Experiments -->
+        <%= if @lab_data[:active_experiments] && length(@lab_data.active_experiments) > 0 do %>
+          <%= active_experiments_section(assigns) %>
+        <% end %>
+
+        <!-- AI Insights -->
+        <%= if @lab_data[:ai_insights] && map_size(@lab_data.ai_insights) > 0 do %>
+          <%= ai_insights_section(assigns) %>
+        <% end %>
+      </div>
+    <% end %>
+    """
+  end
+
+  # ============================================================================
+  # ADDITIONAL MISSING HELPER FUNCTIONS
+  # ============================================================================
+
+  defp revenue_center_content(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Revenue Overview Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-green-100 rounded-lg">
+              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Total Revenue</p>
+              <p class="text-2xl font-bold text-gray-900">$<%= Map.get(@revenue_data, :total_revenue, %{amount: 0}) |> Map.get(:amount, 0) %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-blue-100 rounded-lg">
+              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">This Month</p>
+              <p class="text-2xl font-bold text-gray-900">$<%= get_current_month_revenue(Map.get(@revenue_data, :trends, [])) %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-purple-100 rounded-lg">
+              <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Platform Fees</p>
+              <p class="text-2xl font-bold text-gray-900">$<%= Map.get(@revenue_data, :platform_fees, %{}) |> Map.get(:total, 0) %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-yellow-100 rounded-lg">
+              <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Next Payout</p>
+              <p class="text-2xl font-bold text-gray-900"><%= Map.get(@revenue_data, :payout_schedule, %{}) |> Map.get(:next_date, "N/A") %></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Revenue Trends Chart -->
+      <%= revenue_trends_chart(assigns) %>
+
+      <!-- Portfolio Performance -->
+      <%= if @revenue_data[:portfolio_performance] && length(@revenue_data.portfolio_performance) > 0 do %>
+        <%= portfolio_performance_section(assigns) %>
+      <% end %>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # RENDER FUNCTIONS - Add these to the LiveView module
+  # ============================================================================
+
+  # Helper function for humanizing section names
+  defp humanize_section_name(section) do
+    case section do
+      "portfolio_studio" -> "Portfolio Studio"
+      "collaboration_hub" -> "Collaboration Hub"
+      "community_channels" -> "Community Channels"
+      "creator_lab" -> "Creator Lab"
+      "service_dashboard" -> "Service Dashboard"
+      "revenue_center" -> "Revenue Center"
+      _ -> Phoenix.Naming.humanize(section)
+    end
+  end
+
+  # ============================================================================
+  # PORTFOLIO STUDIO SECTION RENDERS
+  # ============================================================================
+
+  defp portfolio_grid_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold text-gray-900">Your Portfolios</h2>
+        <button phx-click="show_create_modal"
+                class="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          Create Portfolio
+        </button>
+      </div>
+
+      <%= if length(@portfolios) > 0 do %>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <%= for portfolio <- @portfolios do %>
+            <div class="group border border-gray-200 rounded-lg hover:shadow-md transition-all duration-200 overflow-hidden">
+              <!-- Portfolio Preview -->
+              <div class={[
+                "w-full h-32 flex items-center justify-center",
+                case portfolio.theme do
+                  "executive" -> "bg-gradient-to-br from-blue-500 to-indigo-600"
+                  "creative" -> "bg-gradient-to-br from-purple-500 to-pink-600"
+                  "developer" -> "bg-gradient-to-br from-green-500 to-teal-600"
+                  _ -> "bg-gradient-to-br from-gray-500 to-gray-600"
+                end
+              ]}>
+                <div class="text-center text-white">
+                  <h4 class="font-bold text-lg"><%= portfolio.title %></h4>
+                  <p class="text-sm opacity-90">/<%= portfolio.slug %></p>
+                </div>
+              </div>
+
+              <!-- Portfolio Info -->
+              <div class="p-4">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="flex-1">
+                    <h3 class="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors">
+                      <%= portfolio.title %>
+                    </h3>
+                    <p class="text-sm text-gray-600 mt-1 line-clamp-2"><%= portfolio.description %></p>
+                  </div>
+                </div>
+
+                <!-- Portfolio Actions -->
+                <div class="flex items-center justify-between">
+                  <div class="flex space-x-2">
+                    <.link href={"/portfolios/#{portfolio.id}/edit"}
+                          class="text-xs px-3 py-1 bg-purple-100 text-purple-700 rounded-full hover:bg-purple-200 transition-colors">
+                      Edit
+                    </.link>
+                    <.link href={"/p/#{portfolio.slug}"} target="_blank"
+                          class="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors">
+                      View
+                    </.link>
+                  </div>
+
+                  <%= if stats = Map.get(@portfolio_stats, portfolio.id) do %>
+                    <div class="text-xs text-gray-500">
+                      <%= Map.get(stats, :total_visits, 0) %> views
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <div class="text-center py-12">
+          <div class="text-6xl mb-4">🎨</div>
+          <h3 class="text-lg font-medium text-gray-900 mb-2">No portfolios yet</h3>
+          <p class="text-gray-600 mb-6">Create your first portfolio to get started</p>
+          <button phx-click="show_create_modal"
+                  class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Create Your First Portfolio
+          </button>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+
+
+  defp enhancement_suggestions_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <h2 class="text-xl font-bold text-gray-900 mb-6">AI Enhancement Suggestions</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <%= for suggestion <- Enum.take(@enhancement_suggestions, 6) do %>
+          <div class="group relative bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-200 hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
+              phx-click="enhance_portfolio"
+              phx-value-type={suggestion.type}
+              phx-value-portfolio_id={suggestion.portfolio_id}>
+
+            <div class="flex items-center mb-3">
+              <span class="text-2xl mr-3"><%= suggestion.icon %></span>
+              <h3 class="font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">
+                <%= suggestion.title %>
+              </h3>
+            </div>
+
+            <p class="text-sm text-gray-600 mb-3"><%= suggestion.description %></p>
+
+            <div class="flex items-center justify-between text-xs text-gray-500">
+              <span>For: <%= Helpers.get_portfolio_title(suggestion.portfolio_id, @portfolios) %></span>
+              <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # COLLABORATION HUB SECTION
+  # ============================================================================
+
+  defp collaboration_hub_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Collaboration Overview -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-blue-100 rounded-lg">
+              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Active Collaborations</p>
+              <p class="text-2xl font-bold text-gray-900"><%= length(@collaboration_data.active_collaborations) %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-green-100 rounded-lg">
+              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Feedback Received</p>
+              <p class="text-2xl font-bold text-gray-900"><%= length(@collaboration_data.feedback_received) %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-purple-100 rounded-lg">
+              <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Peer Network</p>
+              <p class="text-2xl font-bold text-gray-900"><%= length(@collaboration_data.peer_network) %></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Collaboration Requests -->
+      <%= if length(@collaboration_requests) > 0 do %>
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <h2 class="text-xl font-bold text-gray-900 mb-6">Pending Collaboration Requests</h2>
+          <div class="space-y-4">
+            <%= for request <- @collaboration_requests do %>
+              <div class="flex items-center justify-between p-4 border border-purple-200 rounded-lg">
+                <div class="flex items-center">
+                  <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+                    <%= String.first(request.user) %>
+                  </div>
+                  <div class="ml-4">
+                    <p class="font-medium text-gray-900"><%= request.user %></p>
+                    <p class="text-sm text-gray-600">wants to <%= request.type %> on "<%= request.portfolio %>"</p>
+                  </div>
+                </div>
+                <div class="flex space-x-2">
+                  <button phx-click="accept_collaboration" phx-value-request_id={request.id}
+                          class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                    Accept
+                  </button>
+                  <button phx-click="decline_collaboration" phx-value-request_id={request.id}
+                          class="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors">
+                    Decline
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+          <!-- Collaboration Opportunities -->
+      <div class="bg-white rounded-xl p-6 border border-gray-200">
+        <h2 class="text-xl font-bold text-gray-900 mb-6">Find Collaborators</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <%= for opportunity <- Enum.take(@collaboration_data.opportunities, 6) do %>
+            <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
+              <div class="flex items-center mb-3">
+                <div class="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                  <%= String.first(opportunity.creator_name) %>
+                </div>
+                <div class="ml-3">
+                  <p class="font-medium text-gray-900"><%= opportunity.creator_name %></p>
+                  <p class="text-sm text-gray-600"><%= opportunity.expertise %></p>
+                </div>
+              </div>
+              <p class="text-sm text-gray-600 mb-4"><%= opportunity.description %></p>
+              <button phx-click="request_collaboration" phx-value-creator_id={opportunity.creator_id}
+                      class="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                Connect
+              </button>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # COMMUNITY CHANNELS SECTION
+  # ============================================================================
+
+  defp community_channels_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Channels Overview -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-indigo-100 rounded-lg">
+              <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 0h10m-10 0a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V6a2 2 0 00-2-2M7 4h10"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Your Channels</p>
+              <p class="text-2xl font-bold text-gray-900"><%= length(@user_channels) %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-pink-100 rounded-lg">
+              <svg class="w-6 h-6 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Trending</p>
+              <p class="text-2xl font-bold text-gray-900"><%= length(@trending_channels) %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center">
+            <div class="p-3 bg-orange-100 rounded-lg">
+              <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Recommendations</p>
+              <p class="text-2xl font-bold text-gray-900"><%= length(@channel_recommendations) %></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Your Channels -->
+      <%= if length(@user_channels) > 0 do %>
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <h2 class="text-xl font-bold text-gray-900 mb-6">Your Active Channels</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <%= for channel <- @user_channels do %>
+              <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
+                <div class="flex items-center mb-3">
+                  <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center text-white font-bold">
+                    <%= String.first(channel.name) %>
+                  </div>
+                  <div class="ml-3">
+                    <h3 class="font-semibold text-gray-900"><%= channel.name %></h3>
+                    <p class="text-sm text-gray-600"><%= channel.type %></p>
+                  </div>
+                </div>
+                <p class="text-sm text-gray-600 mb-4"><%= channel.description %></p>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-500"><%= channel.member_count %> members</span>
+                  <button phx-click="join_channel" phx-value-channel_id={channel.id}
+                          class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs hover:bg-purple-200 transition-colors">
+                    Open
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Channel Recommendations -->
+      <%= if length(@channel_recommendations) > 0 do %>
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <h2 class="text-xl font-bold text-gray-900 mb-6">Recommended Channels</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <%= for channel <- Enum.take(@channel_recommendations, 6) do %>
+              <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all">
+                <div class="flex items-center mb-3">
+                  <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center text-white font-bold">
+                    <%= String.first(channel.name) %>
+                  </div>
+                  <div class="ml-3">
+                    <h3 class="font-semibold text-gray-900"><%= channel.name %></h3>
+                    <p class="text-sm text-gray-600"><%= channel.category %></p>
+                  </div>
+                </div>
+                <p class="text-sm text-gray-600 mb-4"><%= channel.description %></p>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-500"><%= channel.member_count %> members</span>
+                  <button phx-click="join_channel" phx-value-channel_id={channel.id}
+                          class="px-3 py-1 bg-indigo-600 text-white rounded-full text-xs hover:bg-indigo-700 transition-colors">
+                    Join
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Featured Creators -->
+      <%= if length(@featured_creators) > 0 do %>
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <h2 class="text-xl font-bold text-gray-900 mb-6">Featured Creators</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <%= for creator <- Enum.take(@featured_creators, 8) do %>
+              <div class="text-center p-4 border border-gray-200 rounded-lg hover:shadow-md transition-all">
+                <div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-orange-500 rounded-full mx-auto mb-3 flex items-center justify-center text-white text-xl font-bold">
+                  <%= String.first(creator.name) %>
+                </div>
+                <h3 class="font-semibold text-gray-900 mb-1"><%= creator.name %></h3>
+                <p class="text-sm text-gray-600 mb-3"><%= creator.specialty %></p>
+                <button phx-click="view_creator" phx-value-creator_id={creator.id}
+                        class="w-full px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs hover:bg-gray-200 transition-colors">
+                  View Profile
+                </button>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # CREATOR LAB SECTION
+  # ============================================================================
+
+  defp creator_lab_section(assigns) do
+    ~H"""
+    <%= if @lab_data.upgrade_prompt do %>
+      <!-- Upgrade Prompt for Creator Lab -->
+      <div class="bg-gradient-to-br from-purple-50 to-pink-100 rounded-xl p-8 border-2 border-purple-200">
+        <div class="text-center">
+          <div class="text-6xl mb-4">🧪</div>
+          <h2 class="text-2xl font-bold text-gray-900 mb-4">Creator Lab</h2>
+          <p class="text-gray-600 mb-6">Experiment with cutting-edge features, AI tools, and beta functionality to stay ahead of the curve.</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white rounded-lg p-4 border border-purple-200">
+              <div class="text-2xl mb-2">🤖</div>
+              <h3 class="font-semibold text-gray-900">AI-Powered Tools</h3>
+              <p class="text-sm text-gray-600">Smart content generation and optimization</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-purple-200">
+              <div class="text-2xl mb-2">🔬</div>
+              <h3 class="font-semibold text-gray-900">Beta Features</h3>
+              <p class="text-sm text-gray-600">Early access to experimental functionality</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-purple-200">
+              <div class="text-2xl mb-2">📊</div>
+              <h3 class="font-semibold text-gray-900">Advanced Analytics</h3>
+              <p class="text-sm text-gray-600">Deep insights and performance metrics</p>
+            </div>
+          </div>
+          <button phx-click="upgrade_for_lab"
+                  class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all transform hover:scale-105">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Unlock Creator Lab
+          </button>
+        </div>
+      </div>
+    <% else %>
+      <!-- Full Creator Lab -->
+      <div class="space-y-6">
+        <!-- Lab Overview -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center">
+              <div class="p-3 bg-purple-100 rounded-lg">
+                <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Active Experiments</p>
+                <p class="text-2xl font-bold text-gray-900"><%= length(@lab_data.active_experiments) %></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center">
+              <div class="p-3 bg-pink-100 rounded-lg">
+                <svg class="w-6 h-6 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Beta Features</p>
+                <p class="text-2xl font-bold text-gray-900"><%= length(@lab_data.beta_access) %></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center">
+              <div class="p-3 bg-blue-100 rounded-lg">
+                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">AI Insights</p>
+                <p class="text-2xl font-bold text-gray-900"><%= map_size(@lab_data.ai_insights) %></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl p-6 border border-gray-200">
+            <div class="flex items-center">
+              <div class="p-3 bg-green-100 rounded-lg">
+                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="text-sm font-medium text-gray-600">Completed Tests</p>
+                <p class="text-2xl font-bold text-gray-900"><%= length(@lab_data.results) %></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Available Lab Features -->
+        <%= if length(@lab_data.features) > 0 do %>
+          <%= lab_features_section(assigns) %>
+        <% end %>
+
+        <!-- Active Experiments -->
+        <%= if length(@lab_data.active_experiments) > 0 do %>
+          <%= active_experiments_section(assigns) %>
+        <% end %>
+
+        <!-- AI Insights -->
+        <%= if map_size(@lab_data.ai_insights) > 0 do %>
+          <%= ai_insights_section(assigns) %>
+        <% end %>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp lab_features_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <h2 class="text-xl font-bold text-gray-900 mb-6">Available Lab Features</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <%= for feature <- @lab_data.features do %>
+          <div class="border border-purple-200 rounded-lg p-4 hover:shadow-md transition-all bg-gradient-to-br from-purple-50 to-pink-50">
+            <div class="flex items-center mb-3">
+              <span class="text-2xl mr-3"><%= feature.icon %></span>
+              <div>
+                <h3 class="font-semibold text-gray-900"><%= feature.name %></h3>
+                <span class={[
+                  "text-xs px-2 py-1 rounded-full",
+                  case feature.status do
+                    "beta" -> "bg-yellow-100 text-yellow-700"
+                    "experimental" -> "bg-red-100 text-red-700"
+                    "stable" -> "bg-green-100 text-green-700"
+                    _ -> "bg-gray-100 text-gray-700"
+                  end
+                ]}>
+                  <%= String.capitalize(feature.status) %>
+                </span>
+              </div>
+            </div>
+            <p class="text-sm text-gray-600 mb-4"><%= feature.description %></p>
+            <button phx-click="try_lab_feature" phx-value-feature_id={feature.id}
+                    class="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+              Try Feature
+            </button>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp active_experiments_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <h2 class="text-xl font-bold text-gray-900 mb-6">Your Active Experiments</h2>
+      <div class="space-y-4">
+        <%= for experiment <- @lab_data.active_experiments do %>
+          <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+            <div class="flex items-center">
+              <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="font-medium text-gray-900"><%= experiment.name %></p>
+                <p class="text-sm text-gray-600">Started <%= experiment.start_date %> • <%= experiment.duration %> days remaining</p>
+              </div>
+            </div>
+            <div class="flex items-center space-x-3">
+              <div class="text-sm">
+                <span class="text-gray-600">Progress:</span>
+                <span class="font-medium text-purple-600"><%= experiment.progress %>%</span>
+              </div>
+              <button phx-click="view_experiment" phx-value-id={experiment.id}
+                      class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs hover:bg-purple-200 transition-colors">
+                View Results
+              </button>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp ai_insights_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <h2 class="text-xl font-bold text-gray-900 mb-6">AI Insights</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <%= for {insight_type, insight_data} <- @lab_data.ai_insights do %>
+          <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+            <h3 class="font-semibold text-gray-900 mb-2"><%= Phoenix.Naming.humanize(insight_type) %></h3>
+            <p class="text-sm text-gray-600 mb-3"><%= insight_data.description %></p>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-gray-500">Confidence: <%= insight_data.confidence %>%</span>
+              <button phx-click="apply_ai_insight" phx-value-type={insight_type}
+                      class="px-3 py-1 bg-blue-600 text-white rounded-full text-xs hover:bg-blue-700 transition-colors">
+                Apply
+              </button>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # SERVICE DASHBOARD SECTION
+  # ============================================================================
+
+  defp service_dashboard_section(assigns) do
+    ~H"""
+    <%= if @service_data.upgrade_prompt do %>
+      <!-- Upgrade Prompt for Service Dashboard -->
+      <div class="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl p-8 border-2 border-blue-200">
+        <div class="text-center">
+          <div class="text-6xl mb-4">💼</div>
+          <h2 class="text-2xl font-bold text-gray-900 mb-4">Service Dashboard</h2>
+          <p class="text-gray-600 mb-6">Manage bookings, track revenue, and grow your service business with Creator tier features.</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white rounded-lg p-4 border border-blue-200">
+              <div class="text-2xl mb-2">📅</div>
+              <h3 class="font-semibold text-gray-900">Booking Management</h3>
+              <p class="text-sm text-gray-600">Calendar integration and client scheduling</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-blue-200">
+              <div class="text-2xl mb-2">💰</div>
+              <h3 class="font-semibold text-gray-900">Revenue Tracking</h3>
+              <p class="text-sm text-gray-600">Monitor earnings and payment processing</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-blue-200">
+              <div class="text-2xl mb-2">🎯</div>
+              <h3 class="font-semibold text-gray-900">Performance Analytics</h3>
+              <p class="text-sm text-gray-600">Track success metrics and growth</p>
+            </div>
+          </div>
+          <button phx-click="upgrade_to_creator"
+                  class="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all transform hover:scale-105">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Upgrade to Creator Tier
+          </button>
+        </div>
+      </div>
+    <% else %>
+      <!-- Full Service Dashboard -->
+      <%= service_dashboard_content(assigns) %>
+    <% end %>
+    """
+  end
+
+  # Add this function to portfolio_hub_live.ex
+
+  defp service_dashboard_content(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Service Overview Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+          <div class="flex items-center">
+            <div class="p-3 bg-blue-100 rounded-lg">
+              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Active Bookings</p>
+              <p class="text-2xl font-bold text-gray-900"><%= length(@service_data.active_bookings) %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+          <div class="flex items-center">
+            <div class="p-3 bg-green-100 rounded-lg">
+              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">This Month Revenue</p>
+              <p class="text-2xl font-bold text-gray-900">$<%= @service_data.revenue.this_month %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+          <div class="flex items-center">
+            <div class="p-3 bg-purple-100 rounded-lg">
+              <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Active Clients</p>
+              <p class="text-2xl font-bold text-gray-900"><%= map_size(@service_data.client_management) %></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
+          <div class="flex items-center">
+            <div class="p-3 bg-yellow-100 rounded-lg">
+              <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+              </svg>
+            </div>
+            <div class="ml-4">
+              <p class="text-sm font-medium text-gray-600">Services Offered</p>
+              <p class="text-2xl font-bold text-gray-900"><%= length(@service_data.service_offerings) %></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions Bar -->
+      <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
+        <div class="flex flex-col sm:flex-row items-center justify-between">
+          <div class="flex items-center mb-4 sm:mb-0">
+            <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+            </div>
+            <div>
+              <h3 class="font-semibold text-gray-900">Service Management</h3>
+              <p class="text-sm text-gray-600">Manage your bookings, clients, and service offerings</p>
+            </div>
+          </div>
+          <div class="flex space-x-3">
+            <button phx-click="create_service" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              Add Service
+            </button>
+            <button phx-click="view_calendar" class="px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors">
+              View Calendar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upcoming Appointments -->
+      <%= if length(@service_data.upcoming_appointments) > 0 do %>
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xl font-bold text-gray-900">Upcoming Appointments</h2>
+            <button phx-click="view_all_appointments" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+              View All
+            </button>
+          </div>
+          <div class="space-y-4">
+            <%= for appointment <- Enum.take(@service_data.upcoming_appointments, 5) do %>
+              <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:shadow-sm transition-all">
+                <div class="flex items-center">
+                  <div class={[
+                    "w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm",
+                    case appointment.status do
+                      "confirmed" -> "bg-green-500"
+                      "pending" -> "bg-yellow-500"
+                      "completed" -> "bg-blue-500"
+                      "cancelled" -> "bg-red-500"
+                      _ -> "bg-gray-500"
+                    end
+                  ]}>
+                    <%= String.first(appointment.client_name) %>
+                  </div>
+                  <div class="ml-4">
+                    <div class="flex items-center">
+                      <p class="font-medium text-gray-900 mr-2"><%= appointment.service_name %></p>
+                      <span class={[
+                        "px-2 py-0.5 text-xs rounded-full font-medium",
+                        case appointment.status do
+                          "confirmed" -> "bg-green-100 text-green-700"
+                          "pending" -> "bg-yellow-100 text-yellow-700"
+                          "completed" -> "bg-blue-100 text-blue-700"
+                          "cancelled" -> "bg-red-100 text-red-700"
+                          _ -> "bg-gray-100 text-gray-700"
+                        end
+                      ]}>
+                        <%= String.capitalize(appointment.status) %>
+                      </span>
+                    </div>
+                    <p class="text-sm text-gray-600"><%= appointment.client_name %> • <%= appointment.date %> at <%= appointment.time %></p>
+                    <p class="text-xs text-gray-500"><%= appointment.duration %> minutes • $<%= appointment.amount %></p>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <%= if appointment.meeting_link do %>
+                    <a href={appointment.meeting_link} target="_blank"
+                      class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs hover:bg-green-200 transition-colors">
+                      Join Meeting
+                    </a>
+                  <% end %>
+                  <button phx-click="view_appointment" phx-value-id={appointment.id}
+                          class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs hover:bg-blue-200 transition-colors">
+                    Details
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% else %>
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="text-center py-8">
+            <div class="text-4xl mb-4">📅</div>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No upcoming appointments</h3>
+            <p class="text-gray-600 mb-4">Your appointments will appear here once clients start booking</p>
+            <button phx-click="create_service"
+                    class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              Create Your First Service
+            </button>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Service Offerings Management -->
+      <div class="bg-white rounded-xl p-6 border border-gray-200">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-xl font-bold text-gray-900">Your Services</h2>
+          <button phx-click="create_service"
+                  class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Service
+          </button>
+        </div>
+
+        <%= if length(@service_data.service_offerings) > 0 do %>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <%= for service <- @service_data.service_offerings do %>
+              <div class="group border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
+                  phx-click="view_service_details" phx-value-id={service.id}>
+                <div class="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 class="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                      <%= service.name %>
+                    </h3>
+                    <div class="flex items-center text-sm text-gray-600 mt-1">
+                      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                      </svg>
+                      <%= service.duration %> min
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-lg font-bold text-green-600">$<%= service.price %></span>
+                    <%= if service.booking_count do %>
+                      <p class="text-xs text-gray-500"><%= service.booking_count %> bookings</p>
+                    <% end %>
+                  </div>
+                </div>
+
+                <p class="text-sm text-gray-600 mb-4 line-clamp-2"><%= service.description %></p>
+
+                <!-- Service Stats -->
+                <%= if service.stats do %>
+                  <div class="flex items-center justify-between text-xs text-gray-500 mb-3">
+                    <span class="flex items-center">
+                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                      </svg>
+                      <%= service.stats.rating %>/5
+                    </span>
+                    <span><%= service.stats.total_bookings %> total bookings</span>
+                  </div>
+                <% end %>
+
+                <div class="flex space-x-2">
+                  <button phx-click="edit_service" phx-value-id={service.id}
+                          class="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors font-medium">
+                    Edit
+                  </button>
+                  <button phx-click="view_service_bookings" phx-value-service_id={service.id}
+                          class="flex-1 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 transition-colors font-medium">
+                    Bookings
+                  </button>
+                  <button phx-click="toggle_service_status" phx-value-id={service.id}
+                          class={[
+                            "px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                            if(service.active,
+                              do: "bg-green-100 text-green-700 hover:bg-green-200",
+                              else: "bg-red-100 text-red-700 hover:bg-red-200")
+                          ]}>
+                    <%= if service.active, do: "Active", else: "Inactive" %>
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% else %>
+          <div class="text-center py-12">
+            <div class="text-6xl mb-4">💼</div>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No services yet</h3>
+            <p class="text-gray-600 mb-6">Create your first service offering to start accepting bookings from clients</p>
+            <button phx-click="create_service"
+                    class="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all transform hover:scale-105">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Create Your First Service
+            </button>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Client Management Overview -->
+      <%= if map_size(@service_data.client_management) > 0 do %>
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xl font-bold text-gray-900">Recent Clients</h2>
+            <button phx-click="view_all_clients" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
+              View All Clients
+            </button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <%= for {client_id, client_data} <- Enum.take(@service_data.client_management, 6) do %>
+              <div class="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-all">
+                <div class="flex items-center mb-3">
+                  <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                    <%= String.first(client_data.name) %>
+                  </div>
+                  <div class="ml-3">
+                    <p class="font-medium text-gray-900"><%= client_data.name %></p>
+                    <p class="text-sm text-gray-600"><%= client_data.email %></p>
+                  </div>
+                </div>
+                <div class="text-sm text-gray-600">
+                  <p>Total Bookings: <%= client_data.booking_count %></p>
+                  <p>Last Session: <%= client_data.last_booking_date %></p>
+                  <p class="text-green-600 font-medium">Revenue: $<%= client_data.total_revenue %></p>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Performance Metrics -->
+      <%= if @service_data.performance do %>
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <h2 class="text-xl font-bold text-gray-900 mb-6">Performance Overview</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="text-center p-4 bg-blue-50 rounded-lg">
+              <p class="text-2xl font-bold text-blue-600"><%= @service_data.performance.completion_rate %>%</p>
+              <p class="text-sm text-gray-600">Completion Rate</p>
+            </div>
+            <div class="text-center p-4 bg-green-50 rounded-lg">
+              <p class="text-2xl font-bold text-green-600"><%= @service_data.performance.average_rating %></p>
+              <p class="text-sm text-gray-600">Average Rating</p>
+            </div>
+            <div class="text-center p-4 bg-purple-50 rounded-lg">
+              <p class="text-2xl font-bold text-purple-600"><%= @service_data.performance.repeat_client_rate %>%</p>
+              <p class="text-sm text-gray-600">Repeat Clients</p>
+            </div>
+            <div class="text-center p-4 bg-yellow-50 rounded-lg">
+              <p class="text-2xl font-bold text-yellow-600"><%= @service_data.performance.response_time %></p>
+              <p class="text-sm text-gray-600">Avg Response Time</p>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # REVENUE CENTER HELPER FUNCTIONS
+  # ============================================================================
+
+  defp get_current_month_revenue(trends) when is_list(trends) do
+    case List.first(trends) do
+      %{amount: amount} when is_number(amount) -> amount
+      %{"amount" => amount} when is_number(amount) -> amount
+      _ -> 0
+    end
+  end
+
+  defp get_current_month_revenue(_), do: 0
+
+  defp revenue_trends_chart(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold text-gray-900">Revenue Trends</h2>
+        <div class="flex space-x-2">
+          <button class="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors">
+            7D
+          </button>
+          <button class="px-3 py-1 bg-purple-600 text-white rounded-lg text-sm">
+            30D
+          </button>
+          <button class="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors">
+            90D
+          </button>
+        </div>
+      </div>
+
+      <!-- Chart Placeholder -->
+      <div class="h-64 bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg flex items-center justify-center border-2 border-dashed border-purple-200">
+        <div class="text-center">
+          <svg class="w-12 h-12 text-purple-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+          <p class="text-purple-600 font-medium">Revenue Analytics Chart</p>
+          <p class="text-sm text-purple-500 mt-1">Integrate with your preferred charting library</p>
+        </div>
+      </div>
+
+      <!-- Chart Legend -->
+      <div class="flex items-center justify-center space-x-6 mt-4">
+        <div class="flex items-center">
+          <div class="w-3 h-3 bg-purple-600 rounded-full mr-2"></div>
+          <span class="text-sm text-gray-600">Portfolio Revenue</span>
+        </div>
+        <div class="flex items-center">
+          <div class="w-3 h-3 bg-blue-600 rounded-full mr-2"></div>
+          <span class="text-sm text-gray-600">Service Revenue</span>
+        </div>
+        <div class="flex items-center">
+          <div class="w-3 h-3 bg-green-600 rounded-full mr-2"></div>
+          <span class="text-sm text-gray-600">Other Revenue</span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp portfolio_performance_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold text-gray-900">Portfolio Performance</h2>
+        <button phx-click="view_detailed_performance" class="text-green-600 hover:text-green-700 text-sm font-medium">
+          View Details
+        </button>
+      </div>
+      <div class="space-y-4">
+        <%= for performance <- @revenue_data.portfolio_performance do %>
+          <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:shadow-sm transition-all">
+            <div class="flex items-center">
+              <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+                <%= String.first(safe_get_performance_name(performance)) %>
+              </div>
+              <div class="ml-4">
+                <p class="font-medium text-gray-900"><%= safe_get_performance_name(performance) %></p>
+                <div class="flex items-center text-sm text-gray-600 space-x-4">
+                  <span class="flex items-center">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    <%= safe_get_performance_data(performance, :views, 0) %> views
+                  </span>
+                  <span class="flex items-center">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    <%= safe_get_performance_data(performance, :conversions, 0) %> conversions
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="text-lg font-bold text-green-600">$<%= safe_get_performance_data(performance, :revenue, 0) %></p>
+              <div class="flex items-center text-sm">
+                <%= if safe_get_performance_data(performance, :growth_rate, 0) >= 0 do %>
+                  <svg class="w-3 h-3 mr-1 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                  </svg>
+                  <span class="text-green-600">+<%= safe_get_performance_data(performance, :growth_rate, 0) %>%</span>
+                <% else %>
+                  <svg class="w-3 h-3 mr-1 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/>
+                  </svg>
+                  <span class="text-red-600"><%= safe_get_performance_data(performance, :growth_rate, 0) %>%</span>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # CREATOR LAB HELPER FUNCTIONS
+  # ============================================================================
+
+  defp lab_features_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <h2 class="text-xl font-bold text-gray-900 mb-6">Available Lab Features</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <%= for feature <- @lab_data.features do %>
+          <div class="border border-purple-200 rounded-lg p-4 hover:shadow-md transition-all bg-gradient-to-br from-purple-50 to-pink-50 group">
+            <div class="flex items-center mb-3">
+              <span class="text-2xl mr-3"><%= safe_get_feature_data(feature, :icon, "🧪") %></span>
+              <div>
+                <h3 class="font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">
+                  <%= safe_get_feature_data(feature, :name, "Lab Feature") %>
+                </h3>
+                <span class={[
+                  "text-xs px-2 py-1 rounded-full",
+                  case safe_get_feature_data(feature, :status, "beta") do
+                    "beta" -> "bg-yellow-100 text-yellow-700"
+                    "experimental" -> "bg-red-100 text-red-700"
+                    "stable" -> "bg-green-100 text-green-700"
+                    _ -> "bg-gray-100 text-gray-700"
+                  end
+                ]}>
+                  <%= String.capitalize(safe_get_feature_data(feature, :status, "beta")) %>
+                </span>
+              </div>
+            </div>
+            <p class="text-sm text-gray-600 mb-4"><%= safe_get_feature_data(feature, :description, "No description available") %></p>
+            <button phx-click="try_lab_feature" phx-value-feature_id={safe_get_feature_data(feature, :id, "")}
+                    class="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+              Try Feature
+            </button>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp active_experiments_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <h2 class="text-xl font-bold text-gray-900 mb-6">Your Active Experiments</h2>
+      <div class="space-y-4">
+        <%= for experiment <- @lab_data.active_experiments do %>
+          <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:shadow-sm transition-all">
+            <div class="flex items-center">
+              <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+              </div>
+              <div class="ml-4">
+                <p class="font-medium text-gray-900"><%= safe_get_experiment_data(experiment, :name, "Experiment") %></p>
+                <p class="text-sm text-gray-600">
+                  Started <%= safe_get_experiment_data(experiment, :start_date, "recently") %> •
+                  <%= safe_get_experiment_data(experiment, :duration, "30") %> days remaining
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center space-x-3">
+              <div class="text-sm text-right">
+                <span class="text-gray-600">Progress:</span>
+                <span class="font-medium text-purple-600"><%= safe_get_experiment_data(experiment, :progress, 0) %>%</span>
+              </div>
+              <button phx-click="view_experiment" phx-value-id={safe_get_experiment_data(experiment, :id, "")}
+                      class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs hover:bg-purple-200 transition-colors">
+                View Results
+              </button>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp ai_insights_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl p-6 border border-gray-200">
+      <h2 class="text-xl font-bold text-gray-900 mb-6">AI Insights</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <%= for {insight_type, insight_data} <- @lab_data.ai_insights do %>
+          <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+            <h3 class="font-semibold text-gray-900 mb-2"><%= Phoenix.Naming.humanize(insight_type) %></h3>
+            <p class="text-sm text-gray-600 mb-3"><%= safe_get_insight_data(insight_data, :description, "AI-generated insight") %></p>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-gray-500">Confidence: <%= safe_get_insight_data(insight_data, :confidence, 85) %>%</span>
+              <button phx-click="apply_ai_insight" phx-value-type={insight_type}
+                      class="px-3 py-1 bg-blue-600 text-white rounded-full text-xs hover:bg-blue-700 transition-colors">
+                Apply
+              </button>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # SAFE DATA ACCESS HELPER FUNCTIONS
+  # ============================================================================
+
+  # Safe data access for performance data
+  defp safe_get_performance_name(performance) when is_map(performance) do
+    performance[:portfolio_name] || performance["portfolio_name"] || "Portfolio"
+  end
+
+  defp safe_get_performance_name(_), do: "Portfolio"
+
+  defp safe_get_performance_data(performance, key, default) when is_map(performance) do
+    performance[key] || performance[to_string(key)] || default
+  end
+
+  defp safe_get_performance_data(_, _, default), do: default
+
+  # Safe data access for feature data
+  defp safe_get_feature_data(feature, key, default) when is_map(feature) do
+    feature[key] || feature[to_string(key)] || default
+  end
+
+  defp safe_get_feature_data(_, _, default), do: default
+
+  # Safe data access for experiment data
+  defp safe_get_experiment_data(experiment, key, default) when is_map(experiment) do
+    experiment[key] || experiment[to_string(key)] || default
+  end
+
+  defp safe_get_experiment_data(_, _, default), do: default
+
+  # Safe data access for insight data
+  defp safe_get_insight_data(insight_data, key, default) when is_map(insight_data) do
+    insight_data[key] || insight_data[to_string(key)] || default
+  end
+
+  defp safe_get_insight_data(_, _, default), do: default
 end
