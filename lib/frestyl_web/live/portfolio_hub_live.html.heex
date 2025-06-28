@@ -5,14 +5,130 @@
   <!-- MOBILE HEADER - Enhanced for Creator Hub -->
   <!-- ============================================================================ -->
   
-  <.live_component module={FrestylWeb.PortfolioHubLive.Components} 
-                   id="mobile-header" 
-                   active_section={@active_section}
-                   quick_actions={@quick_actions}
-                   collaboration_requests={@collaboration_requests}
-                   account={@account}
-                   hub_config={@hub_config}
-                   show_mobile_menu={@show_mobile_menu} />
+  <!-- Enhanced Mobile Header for Creator Hub -->
+  <div class="lg:hidden">
+    <!-- Mobile Top Bar with Hub Features -->
+    <div class="border-b border-gray-200 bg-white/95 backdrop-blur-sm sticky top-0 z-50">
+      <div class="px-4 py-3">
+        <div class="flex items-center justify-between">
+          <!-- Logo & Dynamic Title -->
+          <div class="flex items-center space-x-3">
+            <img src="/images/logo.svg" alt="Frestyl" class="w-7 h-7" />
+            <div>
+              <h1 class="text-lg font-bold text-gray-900">Creator Hub</h1>
+              <p class="text-xs text-gray-500"><%= get_active_section_title(@active_section) %></p>
+            </div>
+          </div>
+
+          <!-- Mobile Actions with Subscription Awareness -->
+          <div class="flex items-center space-x-2">
+            <!-- Quick Action Button -->
+            <%= if @quick_actions && length(@quick_actions) > 0 do %>
+              <button
+                phx-click={List.first(@quick_actions).action}
+                class="p-2 bg-purple-100 text-purple-600 rounded-lg transition-colors hover:bg-purple-200"
+                title={List.first(@quick_actions).description}
+              >
+                <span class="text-sm"><%= List.first(@quick_actions).icon %></span>
+              </button>
+            <% end %>
+
+            <!-- Collaboration Bell with Smart Badges -->
+            <button
+              phx-click="toggle_collaboration_panel"
+              class="relative p-2 text-gray-600 hover:text-blue-600 rounded-lg transition-colors"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+              </svg>
+              <%= if @collaboration_requests && length(@collaboration_requests) > 0 do %>
+                <span class="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+                  <%= length(@collaboration_requests) %>
+                </span>
+              <% end %>
+            </button>
+
+            <!-- Revenue Indicator (Professional+ only) -->
+            <%= if @account.subscription_tier in ["professional", "enterprise"] do %>
+              <button
+                phx-click="switch_section" phx-value-section="revenue_center"
+                class="p-2 text-gray-600 hover:text-green-600 rounded-lg transition-colors"
+                title="Revenue Center"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>
+                </svg>
+              </button>
+            <% end %>
+
+            <!-- Mobile Menu Toggle -->
+            <button
+              phx-click="toggle_mobile_menu"
+              class="p-2 text-gray-600 hover:text-gray-900 rounded-lg transition-colors"
+              aria-label="Toggle menu"
+            >
+              <%= if @show_mobile_menu do %>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              <% else %>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+              <% end %>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Section Navigation Drawer -->
+    <%= if @show_mobile_menu do %>
+      <div class="bg-white border-b border-gray-200 shadow-lg">
+        <div class="px-4 py-3 space-y-1">
+          <%= for section <- @hub_config.primary_sections do %>
+            <button
+              phx-click="switch_section"
+              phx-value-section={section}
+              class={[
+                "w-full flex items-center px-3 py-2 rounded-lg text-left transition-colors",
+                if(@active_section == section,
+                  do: "bg-purple-100 text-purple-700",
+                  else: "text-gray-700 hover:bg-gray-100")
+              ]}
+            >
+              <span class="mr-3"><%= get_section_icon(section) %></span>
+              <%= Helpers.humanize_section_name(section) %>
+              <%= if section in @hub_config.upgrade_prompts do %>
+                <span class="ml-auto px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">Pro</span>
+              <% end %>
+            </button>
+          <% end %>
+
+          <!-- Secondary sections -->
+          <%= if length(@hub_config.secondary_sections) > 0 do %>
+            <div class="border-t border-gray-200 mt-3 pt-3">
+              <%= for section <- @hub_config.secondary_sections do %>
+                <button
+                  phx-click="switch_section"
+                  phx-value-section={section}
+                  class={[
+                    "w-full flex items-center px-3 py-2 rounded-lg text-left transition-colors text-sm",
+                    if(@active_section == section,
+                      do: "bg-purple-50 text-purple-600",
+                      else: "text-gray-600 hover:bg-gray-50")
+                  ]}
+                >
+                  <span class="mr-3"><%= get_section_icon(section) %></span>
+                  <%= Helpers.humanize_section_name(section) %>
+                </button>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
 
   <!-- ============================================================================ -->
   <!-- WELCOME CELEBRATION (First-time users) -->

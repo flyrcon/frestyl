@@ -442,14 +442,13 @@ defmodule Frestyl.Features.FeatureGate do
   end
 
   defp get_current_usage(account) do
-    usage = account.current_usage || %{}
-
+    # Return default usage since User struct doesn't have current_usage field
     %{
-      story_count: Map.get(usage, "story_count", 0),
-      storage_used_gb: Map.get(usage, "storage_used_gb", 0),
-      video_minutes_used: Map.get(usage, "video_minutes_used", 0),
-      collaboration_time: Map.get(usage, "collaboration_time", 0),
-      active_collaborators: count_active_collaborators(account)
+      story_count: 0,
+      storage_used_gb: 0,
+      video_minutes_used: 0,
+      collaboration_time: 0,
+      active_collaborators: 0
     }
   end
 
@@ -482,9 +481,8 @@ defmodule Frestyl.Features.FeatureGate do
     end
   end
 
-    defp count_active_collaborators(account) do
-    # Simple implementation - replace with actual query
-    Map.get(account.current_usage || %{}, "active_collaborators", 0)
+  defp count_active_collaborators(_account) do
+    0  # Return 0 since User doesn't track this
   end
 
   defp check_story_limit(limits, usage) do
@@ -525,12 +523,58 @@ defmodule Frestyl.Features.FeatureGate do
   end
 
   defp get_account_limits(account) do
-    case account.subscription_tier do
+    tier = normalize_subscription_tier(account.subscription_tier)
+
+    case tier do
+      :free -> free_limits()           # Add case for free tier
       :personal -> personal_limits()
       :creator -> creator_limits()
       :professional -> professional_limits()
       :enterprise -> enterprise_limits()
+      _ -> free_limits()               # Default to free for unknown tiers
     end
+  end
+
+  defp normalize_subscription_tier(tier) when is_binary(tier) do
+    case tier do
+      "free" -> :free
+      "personal" -> :personal
+      "creator" -> :creator
+      "professional" -> :professional
+      "enterprise" -> :enterprise
+      _ -> :free  # Default to free for unknown string tiers
+    end
+  end
+
+  defp normalize_subscription_tier(tier) when is_atom(tier) do
+    case tier do
+      :free -> :free
+      :personal -> :personal
+      :creator -> :creator
+      :professional -> :professional
+      :enterprise -> :enterprise
+      _ -> :free  # Default to free for unknown atom tiers
+    end
+  end
+
+  defp normalize_subscription_tier(_), do: :free  # Fallback for nil or other types
+
+  # Add free_limits function (most restrictive)
+  defp free_limits do
+    %{
+      max_stories: 1,                    # Very limited for free
+      storage_quota_gb: 0.5,             # 500MB for free
+      max_collaborators: 0,              # No collaborators for free
+      video_recording_minutes: 10,       # 10 minutes max
+      story_type_access: [:personal_narrative], # Only basic story type
+      real_time_collaboration: false,
+      custom_branding: false,
+      analytics_depth: :none,            # No analytics for free
+      cross_account_sharing: :disabled,
+      service_booking_enabled: false,
+      service_calendar_integration: false,
+      service_analytics_enabled: false
+    }
   end
 
   defp personal_limits do

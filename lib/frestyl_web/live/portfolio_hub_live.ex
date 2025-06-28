@@ -117,7 +117,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       # ======== SERVICE DASHBOARD SECTION (Creator+ only) ========
       |> assign(:service_data, service_data)
       |> assign(:active_bookings, service_data.active_bookings)
-      |> assign(:service_performance, service_data.performance)
+      |> assign(:service_performance, service_data.service_performance)
       |> assign(:upcoming_appointments, service_data.upcoming_appointments)
       |> assign(:service_revenue, service_data.revenue)
 
@@ -153,6 +153,10 @@ defmodule FrestylWeb.PortfolioHubLive do
 
       # ======== MOBILE STATE ========
       |> Map.merge(mobile_state)
+      |> assign(:show_mobile_menu, false)     # ADD THIS LINE
+      |> assign(:show_mobile_nav, false)      # ADD THIS LINE
+      |> assign(:mobile_section, "portfolio") # ADD THIS LINE
+      |> assign(:mobile_sidebar_open, false)  # ADD THIS LINE (if needed)
 
     {:ok, socket}
   end
@@ -494,6 +498,20 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
+  defp get_section_icon(section) do
+    []
+  end
+
+  defp get_active_section_title(active_section) do
+    # Implement your logic to return the title
+    case active_section do
+      "overview" -> "Overview"
+      "projects" -> "My Projects"
+      # ... other active sections
+      _ -> "Unknown Section"
+    end
+  end
+
   defp safe_get_user_channels(user) do
     try do
       Channels.get_user_channels(user)
@@ -629,6 +647,7 @@ defmodule FrestylWeb.PortfolioHubLive do
 
     suggestions = if needs_voice_enhancement?(portfolio, quality_score) do
       [%{
+        icon: "microphone",
         type: :voice_over,
         portfolio_id: portfolio.id,
         title: "Add Voice Introduction",
@@ -643,6 +662,7 @@ defmodule FrestylWeb.PortfolioHubLive do
 
     suggestions = if needs_writing_enhancement?(portfolio, quality_score) do
       [%{
+        icon: "pencil",
         type: :writing,
         portfolio_id: portfolio.id,
         title: "Improve Content Quality",
@@ -657,6 +677,7 @@ defmodule FrestylWeb.PortfolioHubLive do
 
     suggestions = if needs_design_enhancement?(portfolio, quality_score) do
       [%{
+        icon: "palette",
         type: :design,
         portfolio_id: portfolio.id,
         title: "Visual Design Upgrade",
@@ -671,6 +692,7 @@ defmodule FrestylWeb.PortfolioHubLive do
 
     suggestions = if needs_music_enhancement?(portfolio, quality_score) do
       [%{
+        icon: "musical-note",
         type: :music,
         portfolio_id: portfolio.id,
         title: "Add Background Music",
@@ -721,10 +743,14 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   # Helper functions for quality assessment:
   defp calculate_content_completeness(sections) do
-    required_sections = ["about", "experience", "projects", "skills"]
-    present_sections = Enum.map(sections, & &1.type)
+    required_sections = [:about, :experience, :projects, :skills]
+    present_sections = Enum.map(sections, & &1.section_type)
 
-    completion_rate = length(present_sections) / length(required_sections)
+    matching_sections = Enum.count(present_sections, fn section_type ->
+      section_type in required_sections
+    end)
+
+    completion_rate = matching_sections / length(required_sections)
     (completion_rate * 40) |> min(40) |> round()
   end
 
@@ -732,7 +758,7 @@ defmodule FrestylWeb.PortfolioHubLive do
     score = 0
 
     # Check for hero image
-    score = if portfolio.hero_image_url, do: score + 8, else: score
+    score = if has_hero_image?(portfolio, sections), do: score + 8, else: score
 
     # Check for consistent theming
     score = if has_consistent_theme?(portfolio), do: score + 7, else: score
@@ -740,6 +766,26 @@ defmodule FrestylWeb.PortfolioHubLive do
     # Check for media in sections
     media_score = count_section_media(sections) |> min(10)
     score + media_score
+  end
+
+  defp has_hero_image?(portfolio, sections) do
+    # Check in customization first
+    customization = portfolio.customization || %{}
+    hero_from_customization = Map.get(customization, "hero_image_url") ||
+                            Map.get(customization, "hero_image") ||
+                            Map.get(customization, "background_image")
+
+    # Check in sections for hero/intro sections
+    hero_from_sections = Enum.any?(sections, fn section ->
+      section.section_type in [:intro, :hero] &&
+      section.content &&
+      (Map.has_key?(section.content, "hero_image") ||
+      Map.has_key?(section.content, "background_image") ||
+      Map.has_key?(section.content, "header_image"))
+    end)
+
+    # Return true if hero image found in either location
+    (hero_from_customization && hero_from_customization != "") || hero_from_sections
   end
 
   defp calculate_engagement_elements(portfolio) do
@@ -894,7 +940,7 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   defp has_voice_introduction?(sections) do
     Enum.any?(sections, fn section ->
-      section.content && Map.has_key?(section.content, "voice_intro")
+      section.content && Map.has_key?(section.content, :voice_intro)
     end)
   end
 
@@ -955,13 +1001,22 @@ defmodule FrestylWeb.PortfolioHubLive do
     false # Mock - implement based on your schema
   end
 
-  defp has_social_links?(portfolio) do
-    portfolio.social_links && map_size(portfolio.social_links) > 0
+ defp has_social_links?(portfolio) do
+    customization = portfolio.customization || %{}
+    social_links = Map.get(customization, "social_links") || %{}
+    map_size(social_links) > 0
   end
 
   defp has_cta?(portfolio) do
-    # Check for call-to-action elements
-    portfolio.contact_info != nil
+    # Check if there's contact info in customization or basic description
+    customization = portfolio.customization || %{}
+    contact_info = Map.get(customization, "contact_info") || %{}
+
+    # Also check if portfolio has description (basic CTA)
+    has_contact = map_size(contact_info) > 0
+    has_description = portfolio.description && String.trim(portfolio.description) != ""
+
+    has_contact || has_description
   end
 
   defp has_custom_domain?(portfolio) do
@@ -970,17 +1025,20 @@ defmodule FrestylWeb.PortfolioHubLive do
   end
 
   defp has_professional_contact?(portfolio) do
-    portfolio.contact_info != nil && portfolio.contact_info != %{}
+    customization = portfolio.customization || %{}
+    contact_info = Map.get(customization, "contact_info") || %{}
+    map_size(contact_info) > 0
   end
 
   defp has_complete_contact?(portfolio) do
-    contact = portfolio.contact_info || %{}
+    customization = portfolio.customization || %{}
+    contact = Map.get(customization, "contact_info") || %{}
     Map.has_key?(contact, "email") && Map.has_key?(contact, "phone")
   end
 
+
   defp has_seo_optimization?(portfolio) do
-    # Check for SEO elements like meta descriptions, titles, etc.
-    portfolio.meta_description != nil
+    portfolio.description != nil && String.trim(portfolio.description) != ""
   end
 
   defp get_content_length(section) do
@@ -1395,6 +1453,183 @@ defmodule FrestylWeb.PortfolioHubLive do
       <!-- Portfolio Performance -->
       <%= if @revenue_data[:portfolio_performance] && length(@revenue_data.portfolio_performance) > 0 do %>
         <%= portfolio_performance_section(assigns) %>
+      <% end %>
+    </div>
+    """
+  end
+
+    # ============================================================================
+  # NEW: NOTIFICATION TOAST COMPONENT
+  # ============================================================================
+
+  def notification_toast(assigns) do
+    ~H"""
+    <div class={[
+      "fixed top-4 right-4 z-50 max-w-sm w-full bg-white rounded-lg shadow-lg border-l-4 p-4 transform transition-all duration-300",
+      case @type do
+        "success" -> "border-green-500"
+        "error" -> "border-red-500"
+        "warning" -> "border-yellow-500"
+        "info" -> "border-blue-500"
+        _ -> "border-gray-300"
+      end,
+      if(@show, do: "translate-x-0 opacity-100", else: "translate-x-full opacity-0")
+    ]}>
+      <div class="flex items-start">
+        <div class={[
+          "flex-shrink-0 w-5 h-5 mr-3 mt-0.5",
+          case @type do
+            "success" -> "text-green-500"
+            "error" -> "text-red-500"
+            "warning" -> "text-yellow-500"
+            "info" -> "text-blue-500"
+            _ -> "text-gray-500"
+          end
+        ]}>
+          <%= case @type do %>
+            <% "success" -> %>
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+            <% "error" -> %>
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            <% "warning" -> %>
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+            <% _ -> %>
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+          <% end %>
+        </div>
+
+        <div class="flex-1">
+          <%= if @title do %>
+            <p class="text-sm font-medium text-gray-900"><%= @title %></p>
+          <% end %>
+          <p class={[
+            "text-sm",
+            if(@title, do: "text-gray-600 mt-1", else: "text-gray-900")
+          ]}>
+            <%= @message %>
+          </p>
+        </div>
+
+        <button
+          phx-click="dismiss_notification"
+          phx-value-id={@id}
+          class="flex-shrink-0 ml-3 text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # NEW: PROGRESS BAR COMPONENT
+  # ============================================================================
+
+  def progress_bar(assigns) do
+    ~H"""
+    <div class="w-full">
+      <%= if @label do %>
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-sm font-medium text-gray-700"><%= @label %></span>
+          <span class="text-sm text-gray-500"><%= @percentage %>%</span>
+        </div>
+      <% end %>
+      <div class="w-full bg-gray-200 rounded-full h-2">
+        <div
+          class={[
+            "h-2 rounded-full transition-all duration-300",
+            case @color do
+              "purple" -> "bg-purple-600"
+              "blue" -> "bg-blue-600"
+              "green" -> "bg-green-600"
+              "yellow" -> "bg-yellow-600"
+              "red" -> "bg-red-600"
+              _ -> "bg-gray-600"
+            end
+          ]}
+          style={"width: #{@percentage}%"}
+        ></div>
+      </div>
+      <%= if @subtitle do %>
+        <p class="text-xs text-gray-500 mt-1"><%= @subtitle %></p>
+      <% end %>
+    </div>
+    """
+  end
+
+    # ============================================================================
+  # NEW: STATS GRID COMPONENT
+  # ============================================================================
+
+  def stats_grid(assigns) do
+    ~H"""
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <%= for stat <- @stats do %>
+        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all duration-300">
+          <div class="flex items-center">
+            <div class={[
+              "p-3 rounded-lg",
+              case stat.color do
+                "purple" -> "bg-purple-100"
+                "blue" -> "bg-blue-100"
+                "green" -> "bg-green-100"
+                "yellow" -> "bg-yellow-100"
+                "red" -> "bg-red-100"
+                "indigo" -> "bg-indigo-100"
+                "pink" -> "bg-pink-100"
+                _ -> "bg-gray-100"
+              end
+            ]}>
+              <%= if stat.icon do %>
+                <span class="text-2xl"><%= stat.icon %></span>
+              <% else %>
+                <svg class={[
+                  "w-6 h-6",
+                  case stat.color do
+                    "purple" -> "text-purple-600"
+                    "blue" -> "text-blue-600"
+                    "green" -> "text-green-600"
+                    "yellow" -> "text-yellow-600"
+                    "red" -> "text-red-600"
+                    "indigo" -> "text-indigo-600"
+                    "pink" -> "text-pink-600"
+                    _ -> "text-gray-600"
+                  end
+                ]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <%= raw(stat.svg_path) %>
+                </svg>
+              <% end %>
+            </div>
+            <div class="ml-4 flex-1">
+              <p class="text-sm font-medium text-gray-600"><%= stat.label %></p>
+              <div class="flex items-baseline">
+                <p class="text-2xl font-bold text-gray-900"><%= stat.value %></p>
+                <%= if stat.change do %>
+                  <span class={[
+                    "ml-2 text-sm font-medium",
+                    if(stat.change >= 0, do: "text-green-600", else: "text-red-600")
+                  ]}>
+                    <%= if stat.change >= 0, do: "+#{stat.change}%", else: "#{stat.change}%" %>
+                  </span>
+                <% end %>
+              </div>
+              <%= if stat.subtitle do %>
+                <p class="text-xs text-gray-500 mt-1"><%= stat.subtitle %></p>
+              <% end %>
+            </div>
+          </div>
+        </div>
       <% end %>
     </div>
     """
