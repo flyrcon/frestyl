@@ -27,6 +27,10 @@ defmodule FrestylWeb.PortfolioLive.New do
     story_type_atom = String.to_atom(story_type)
     available_structures = get_available_structures(story_type_atom)
 
+    # Debug logs
+    IO.inspect(story_type_atom, label: "Selected story type")
+    IO.inspect(available_structures, label: "Available structures")
+
     socket = socket
     |> assign(:selected_story_type, story_type_atom)
     |> assign(:available_structures, available_structures)
@@ -37,7 +41,9 @@ defmodule FrestylWeb.PortfolioLive.New do
 
   def handle_event("narrative_structure_selected", %{"structure" => structure}, socket) do
     structure_atom = String.to_atom(structure)
-    template = Stories.Templates.get_template(socket.assigns.selected_story_type, structure_atom)
+
+    # Create a mock template based on the story type and structure
+    template = create_mock_template(socket.assigns.selected_story_type, structure_atom)
 
     socket = socket
     |> assign(:selected_narrative_structure, structure_atom)
@@ -56,20 +62,192 @@ defmodule FrestylWeb.PortfolioLive.New do
       account_id: socket.assigns.current_account.id
     }
 
-    case Portfolios.create_portfolio(socket.assigns.current_user.id, story_attrs) do
+    # 🔥 FIX: Pass the full user object, not just the ID
+    user = socket.assigns.current_user
+
+    case Portfolios.create_portfolio(user, story_attrs) do
       {:ok, portfolio} ->
         # Apply template
         template = socket.assigns.template_preview
         Stories.Templates.apply_template_to_story(portfolio, template)
 
         {:noreply,
-         socket
-         |> put_flash(:info, "Story created with #{template.name} structure!")
-         |> push_navigate(to: ~p"/portfolios/#{portfolio.id}/edit")}
+        socket
+        |> put_flash(:info, "Story created with #{template.name} structure!")
+        |> push_navigate(to: ~p"/portfolios/#{portfolio.id}/edit")}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, :changeset, changeset)}
+        {:noreply,
+        socket
+        |> assign(:changeset, changeset)
+        |> put_flash(:error, "Failed to create story")}
     end
+  end
+
+  def handle_event("create_portfolio", %{"portfolio" => portfolio_params}, socket) do
+    # Get the current user from socket assigns
+    user = socket.assigns.current_user
+
+    # Prepare portfolio attributes with user association
+    portfolio_attrs = portfolio_params
+    |> Map.put("user_id", user.id)
+    |> Map.put("theme", portfolio_params["theme"] || "executive")
+
+    # Create the portfolio
+    case Portfolios.create_portfolio(user, portfolio_attrs) do
+      {:ok, portfolio} ->
+        {:noreply, socket
+        |> put_flash(:info, "Portfolio created successfully!")
+        |> push_navigate(to: ~p"/portfolios/#{portfolio.id}/edit")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, socket
+        |> assign(:changeset, changeset)
+        |> put_flash(:error, "Failed to create portfolio")}
+    end
+  end
+
+  def handle_event("back_to_basics", _params, socket) do
+    socket = socket
+    |> assign(:step, :basics)
+    |> assign(:selected_narrative_structure, nil)
+    |> assign(:template_preview, nil)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("change_template", _params, socket) do
+    socket = socket
+    |> assign(:step, :basics)
+    |> assign(:selected_narrative_structure, nil)
+    |> assign(:template_preview, nil)
+
+    {:noreply, socket}
+  end
+
+  defp create_template_sections(portfolio, template) do
+    template.chapters
+    |> Enum.with_index()
+    |> Enum.each(fn {chapter, index} ->
+      section_attrs = %{
+        portfolio_id: portfolio.id,
+        title: chapter.title,
+        section_type: chapter.type,
+        position: index,
+        content: get_default_content_for_chapter(chapter),
+        visible: true
+      }
+
+      Portfolios.create_section(section_attrs)
+    end)
+  end
+
+  defp get_default_content_for_chapter(chapter) do
+    case chapter.type do
+      :intro -> %{
+        "headline" => "Welcome to my portfolio",
+        "summary" => "Add your professional summary here...",
+        "location" => "",
+        "website" => ""
+      }
+      :experience -> %{
+        "jobs" => []
+      }
+      :skills -> %{
+        "skills" => [],
+        "skill_categories" => %{}
+      }
+      :projects -> %{
+        "projects" => []
+      }
+      :story -> %{
+        "narrative" => "Tell your story here...",
+        "chapters" => []
+      }
+      :conclusion -> %{
+        "summary" => "Wrap up your story...",
+        "call_to_action" => "Get in touch to learn more"
+      }
+      _ -> %{}
+    end
+  end
+
+  defp create_mock_template(story_type, structure) do
+    %{
+      name: get_template_name(story_type, structure),
+      description: get_template_description(story_type, structure),
+      chapters: get_template_chapters(story_type, structure)
+    }
+  end
+
+  defp get_template_name(story_type, structure) do
+    "#{humanize_atom(story_type)} - #{humanize_atom(structure)}"
+  end
+
+  defp get_template_description(story_type, structure) do
+    case {story_type, structure} do
+      {:professional_showcase, :skills_first} ->
+        "Start with your technical skills and capabilities, then build your professional narrative around them."
+      {:professional_showcase, :chronological} ->
+        "Tell your professional story chronologically, from your early career to your current achievements."
+      {:personal_narrative, :hero_journey} ->
+        "Frame your personal story as a transformative journey with challenges and growth."
+      {:personal_narrative, :chronological} ->
+        "Share your personal story in chronological order, highlighting key life moments."
+      {:case_study, :problem_solution} ->
+        "Present your work as a systematic approach to solving important problems."
+      {:case_study, :before_after} ->
+        "Showcase the dramatic improvements and transformations you've achieved."
+      {:brand_story, :hero_journey} ->
+        "Tell your brand's story as an inspiring journey of overcoming challenges."
+      {:brand_story, :chronological} ->
+        "Chronicle your brand's evolution and growth over time."
+      _ ->
+        "A structured approach to telling your story effectively."
+    end
+  end
+
+  defp get_template_chapters(story_type, structure) do
+    case {story_type, structure} do
+      {:professional_showcase, :skills_first} -> [
+        %{title: "Core Skills & Expertise", type: :skills, purpose: :showcase},
+        %{title: "Professional Experience", type: :experience, purpose: :context},
+        %{title: "Key Projects & Achievements", type: :projects, purpose: :evidence},
+        %{title: "Goals & Future Vision", type: :conclusion, purpose: :forward_looking}
+      ]
+      {:professional_showcase, :chronological} -> [
+        %{title: "Professional Introduction", type: :intro, purpose: :opening},
+        %{title: "Career Journey", type: :experience, purpose: :main_content},
+        %{title: "Skills & Capabilities", type: :skills, purpose: :evidence},
+        %{title: "Looking Forward", type: :conclusion, purpose: :forward_looking}
+      ]
+      {:personal_narrative, :hero_journey} -> [
+        %{title: "The Call to Adventure", type: :intro, purpose: :opening},
+        %{title: "Challenges & Trials", type: :story, purpose: :conflict},
+        %{title: "Transformation & Growth", type: :story, purpose: :resolution},
+        %{title: "Wisdom Gained", type: :conclusion, purpose: :forward_looking}
+      ]
+      {:case_study, :problem_solution} -> [
+        %{title: "The Problem", type: :intro, purpose: :problem_definition},
+        %{title: "The Solution Approach", type: :story, purpose: :methodology},
+        %{title: "Implementation & Results", type: :projects, purpose: :evidence},
+        %{title: "Lessons & Impact", type: :conclusion, purpose: :reflection}
+      ]
+      _ -> [
+        %{title: "Introduction", type: :intro, purpose: :opening},
+        %{title: "Main Content", type: :story, purpose: :main_content},
+        %{title: "Conclusion", type: :conclusion, purpose: :forward_looking}
+      ]
+    end
+  end
+
+  defp humanize_atom(atom) do
+    atom
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
   end
 
   defp get_available_structures(:personal_narrative) do
@@ -191,6 +369,46 @@ defmodule FrestylWeb.PortfolioLive.New do
       name: "Before & After",
       description: "Show dramatic transformation or improvement",
       best_for: "Redesigns, business turnarounds, personal transformations"
+    }
+  end
+
+  defp structure_config(:skills_first) do
+    %{
+      name: "Skills First",
+      description: "Lead with your technical capabilities and expertise",
+      best_for: "Technical professionals, developers, consultants"
+    }
+  end
+
+  # Add this complete get_available_structures function to cover all story types:
+  defp get_available_structures(:personal_narrative) do
+    [:chronological, :hero_journey]
+  end
+
+  defp get_available_structures(:case_study) do
+    [:problem_solution, :before_after]
+  end
+
+  defp get_available_structures(:professional_showcase) do
+    [:chronological, :skills_first]
+  end
+
+  defp get_available_structures(:brand_story) do
+    [:chronological, :hero_journey]
+  end
+
+  # Catch-all for any missing story types
+  defp get_available_structures(_) do
+    [:chronological]
+  end
+
+  # Add a catch-all structure_config to prevent future crashes:
+  defp structure_config(unknown_structure) do
+    IO.warn("Unknown structure: #{inspect(unknown_structure)}")
+    %{
+      name: "Default Structure",
+      description: "A balanced approach to presenting your content",
+      best_for: "General use cases"
     }
   end
 end

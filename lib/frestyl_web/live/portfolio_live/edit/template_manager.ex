@@ -16,57 +16,116 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
   alias Frestyl.Portfolios
   alias Frestyl.Portfolios.Portfolio
 
-  # 🔥 FIX: Add template name normalization to map complex names to valid enum values
+  # 🔥 ENHANCED: Complete template name mapping
   @template_name_mapping %{
-    # Map complex template names to valid database enum values
-    "creative_artistic" => "creative",
-    "creative_designer" => "designer",
-    "professional_executive" => "executive",
-    "professional_corporate" => "corporate",
+    # New complex names -> database enum values
     "minimalist_clean" => "minimalist",
     "minimalist_elegant" => "minimalist",
+    "professional_executive" => "executive",
+    "professional_corporate" => "corporate",
+    "creative_artistic" => "creative",
+    "creative_designer" => "designer",
     "technical_developer" => "developer",
-    "technical_engineer" => "developer"
+    "technical_engineer" => "developer",
+
+    # Story structure mappings
+    "skills_first" => "executive",
+    "chronological" => "designer",
+    "project_focused" => "developer",
+
+    # Legacy mappings
+    "business" => "executive",
+    "portfolio" => "designer",
+    "resume" => "minimalist"
   }
 
+  @reverse_mapping @template_name_mapping
+    |> Enum.group_by(fn {_k, v} -> v end)
+    |> Enum.map(fn {enum_val, mappings} ->
+      {enum_val, mappings |> Enum.map(fn {k, _v} -> k end)}
+    end)
+    |> Enum.into(%{})
+
+  def normalize_template_for_database(template_name) do
+    @template_mappings[template_name] || template_name
+  end
+
   def handle_template_selection(socket, %{"template" => template_key}) do
-    IO.puts("🎨 Selecting template: #{template_key}")
-    IO.puts("🔥 TemplateManager.handle_template_selection called")
-    IO.puts("🔥 Trying to select template: #{template_key}")
-    IO.puts("🔥 Current portfolio theme: #{socket.assigns.portfolio.theme}")
+    # Normalize and validate template name
+    case normalize_and_validate_template(template_key) do
+      {:ok, normalized_name, display_name} ->
+        # Get template configuration
+        template_config = get_safe_template_config(normalized_name)
 
-    # Get enhanced template configuration using existing function
-    template_config = get_enhanced_template_config(template_key)
+        # Update portfolio
+        case Portfolios.update_portfolio(socket.assigns.portfolio, %{
+          theme: normalized_name,
+          customization: template_config
+        }) do
+          {:ok, portfolio} ->
+            {:noreply, socket
+            |> assign(:portfolio, portfolio)
+            |> put_flash(:info, "Template '#{display_name}' applied successfully!")}
 
-    # Update socket assignments
-    socket = socket
-    |> assign(:selected_template, template_key)
-    |> assign(:current_template, template_key)
-    |> assign(:template_config, template_config)
-    |> assign(:customization, template_config)
-    |> assign(:unsaved_changes, true)
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to apply template")}
+        end
 
-    # Generate updated CSS using existing function
-    css = generate_preview_css(template_config, template_key)
-    socket = assign(socket, :preview_css, css)
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, reason)}
+    end
+  end
 
-    # Update portfolio in database
-    case Portfolios.update_portfolio(socket.assigns.portfolio, %{
-      theme: template_key,
-      customization: template_config
-    }) do
-      {:ok, portfolio} ->
-        IO.puts("✅ Portfolio updated successfully! New theme: #{portfolio.theme}")
-        socket
-        |> assign(:portfolio, portfolio)
-        |> assign(:unsaved_changes, false)
-        |> put_flash(:info, "Template '#{get_theme_name(template_key)}' applied successfully!")
+  defp normalize_and_validate_template(template_key) do
+    # Template name mapping
+    normalized = case template_key do
+      "minimalist_clean" -> "minimalist"
+      "minimalist_elegant" -> "minimalist"
+      "professional_executive" -> "executive"
+      "creative_artistic" -> "creative"
+      "technical_developer" -> "developer"
+      _ -> template_key
+    end
 
-      {:error, changeset} ->
-        IO.puts("❌ Portfolio update failed!")
-        IO.inspect(changeset.errors, label: "❌ Errors")
-        socket
-        |> put_flash(:error, "Failed to save template changes")
+    # Validate against allowed themes
+    valid_themes = ["minimalist", "executive", "developer", "designer", "creative", "corporate"]
+
+    if normalized in valid_themes do
+      display_name = String.replace(template_key, "_", " ") |> String.capitalize()
+      {:ok, normalized, display_name}
+    else
+      {:error, "Invalid template selection"}
+    end
+  end
+
+  defp get_safe_template_config(theme) do
+    %{
+      "layout" => get_layout_for_theme(theme),
+      "primary_color" => get_primary_color_for_theme(theme),
+      "secondary_color" => "#64748b",
+      "accent_color" => "#f59e0b"
+    }
+  end
+
+  defp get_layout_for_theme(theme) do
+    case theme do
+      "minimalist" -> "minimal"
+      "executive" -> "dashboard"
+      "developer" -> "terminal"
+      "designer" -> "gallery"
+      "creative" -> "gallery"
+      _ -> "dashboard"
+    end
+  end
+
+  defp get_primary_color_for_theme(theme) do
+    case theme do
+      "minimalist" -> "#000000"
+      "executive" -> "#1e40af"
+      "developer" -> "#059669"
+      "designer" -> "#7c3aed"
+      "creative" -> "#ec4899"
+      _ -> "#3b82f6"
     end
   end
 
@@ -78,27 +137,41 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
   end
 
   # 🔥 FIX: Add normalization function
-  defp normalize_template_name(template_name) do
-    # Check if we have a mapping for this template name
-    case Map.get(@template_name_mapping, template_name) do
+  defp normalize_template_name(template_name) when is_binary(template_name) do
+    # Template name mapping for complex names to valid enum values
+    mapping = %{
+      "minimalist_clean" => "minimalist",
+      "minimalist_elegant" => "minimalist",
+      "professional_executive" => "executive",
+      "professional_corporate" => "corporate",
+      "creative_artistic" => "creative",
+      "creative_designer" => "designer",
+      "technical_developer" => "developer",
+      "technical_engineer" => "developer"
+    }
+
+    # Check direct mapping first
+    case Map.get(mapping, template_name) do
       nil ->
-        # If no mapping found, try to extract a valid name
+        # Pattern matching fallback
         cond do
-          String.contains?(template_name, "creative") -> "creative"
-          String.contains?(template_name, "professional") -> "executive"
-          String.contains?(template_name, "executive") -> "executive"
-          String.contains?(template_name, "minimalist") -> "minimalist"
-          String.contains?(template_name, "technical") -> "developer"
-          String.contains?(template_name, "developer") -> "developer"
-          String.contains?(template_name, "designer") -> "designer"
-          String.contains?(template_name, "corporate") -> "corporate"
-          true -> "executive"  # Default fallback
+          String.contains?(template_name, ["minimalist", "clean", "simple"]) -> "minimalist"
+          String.contains?(template_name, ["executive", "professional", "business"]) -> "executive"
+          String.contains?(template_name, ["creative", "artistic", "visual"]) -> "creative"
+          String.contains?(template_name, ["designer", "portfolio", "showcase"]) -> "designer"
+          String.contains?(template_name, ["developer", "technical", "engineer"]) -> "developer"
+          String.contains?(template_name, ["corporate", "company"]) -> "corporate"
+          String.contains?(template_name, ["consultant", "consulting"]) -> "consultant"
+          String.contains?(template_name, ["academic", "research"]) -> "academic"
+          true -> "executive"  # Safe default
         end
 
       mapped_name ->
         mapped_name
     end
   end
+
+  defp normalize_template_name(template_name), do: to_string(template_name)
 
   defp normalize_template_config(config) when is_map(config) do
     # Convert atom keys to string keys for consistency
@@ -110,6 +183,33 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
   end
 
   defp normalize_template_config(config), do: config || %{}
+
+  defp get_display_name_for_template(template_key) do
+    # Get full display name from available templates
+    available_templates = get_all_templates_safe()
+
+    case Map.get(available_templates, template_key) do
+      %{name: name} -> name
+      _ ->
+        # Generate readable name from key
+        template_key
+        |> String.replace("_", " ")
+        |> String.split()
+        |> Enum.map(&String.capitalize/1)
+        |> Enum.join(" ")
+    end
+  end
+
+  defp is_valid_theme_enum(theme) do
+    # Define valid theme enum values (should match your database schema)
+    valid_themes = [
+      "minimalist", "executive", "developer", "designer",
+      "creative", "corporate", "consultant", "academic"
+    ]
+
+    theme in valid_themes
+  end
+
 
 
   # Add this helper function
@@ -1079,78 +1179,62 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
     end
   end
 
-  def get_enhanced_template_config(theme) do
-    # Try to use the PortfolioTemplates module if it exists, otherwise use fallback
-    base_config = case Code.ensure_loaded(Frestyl.Portfolios.PortfolioTemplates) do
-      {:module, _} ->
-        # Module exists, try to call the function
-        try do
-          apply(Frestyl.Portfolios.PortfolioTemplates, :get_template_config, [theme])
-        rescue
-          UndefinedFunctionError ->
-            get_fallback_template_config(theme)
-          _ ->
-            get_fallback_template_config(theme)
-        end
+  defp get_enhanced_template_config(original_key, normalized_key) do
+    # Get base config from normalized key
+    base_config = get_template_config_safe(normalized_key)
 
-      {:error, _} ->
-        # Module doesn't exist, use fallback
-        get_fallback_template_config(theme)
+    # Enhance with original template's specific features
+    case original_key do
+      "minimalist_clean" ->
+        Map.merge(base_config, %{
+          "layout_style" => "ultra_clean",
+          "typography" => %{"font_weight" => "300", "line_height" => "1.8"}
+        })
+
+      "minimalist_elegant" ->
+        Map.merge(base_config, %{
+          "layout_style" => "elegant",
+          "typography" => %{"font_family" => "Playfair Display", "accent_styling" => true}
+        })
+
+      "professional_executive" ->
+        Map.merge(base_config, %{
+          "header_config" => %{"show_metrics" => true, "show_social" => true},
+          "layout" => "dashboard"
+        })
+
+      "creative_artistic" ->
+        Map.merge(base_config, %{
+          "layout" => "gallery",
+          "animation_level" => "high",
+          "visual_effects" => true
+        })
+
+      _ ->
+        base_config
     end
+  end
 
-    enhanced_configs = %{
-      "minimalist" => %{
-        "layout" => "minimal",
-        "primary_color" => "#000000",
-        "secondary_color" => "#666666",
-        "accent_color" => "#333333",
-        "typography" => %{
-          "font_family" => "Inter",
-          "font_size" => "base",
-          "line_height" => "relaxed"
-        },
-        "spacing" => "comfortable",
-        "card_style" => "flat",
-        "background" => "white",
-        "border_style" => "minimal",
-        "shadow_style" => "none"
-      },
-      "clean" => %{
-        "layout" => "dashboard",
-        "primary_color" => "#2563eb",
-        "secondary_color" => "#64748b",
-        "accent_color" => "#3b82f6",
-        "typography" => %{
-          "font_family" => "Inter",
-          "font_size" => "base",
-          "line_height" => "normal"
-        },
-        "spacing" => "normal",
-        "card_style" => "minimal",
-        "background" => "light_gray",
-        "border_style" => "subtle",
-        "shadow_style" => "soft"
-      },
-      "elegant" => %{
-        "layout" => "gallery",
-        "primary_color" => "#4c1d95",
-        "secondary_color" => "#7c3aed",
-        "accent_color" => "#c084fc",
-        "typography" => %{
-          "font_family" => "Playfair Display",
-          "font_size" => "large",
-          "line_height" => "loose"
-        },
-        "spacing" => "spacious",
-        "card_style" => "elevated",
-        "background" => "gradient_subtle",
-        "border_style" => "elegant",
-        "shadow_style" => "dramatic"
-      }
-    }
+  defp get_all_templates_safe() do
+    # Safe wrapper to get all available templates
+    try do
+      Frestyl.Portfolios.PortfolioTemplates.available_templates()
+    rescue
+      _ -> %{}
+    end
+  end
 
-    # Deep merge base config with enhancements
-    deep_merge_configs(base_config, Map.get(enhanced_configs, theme, %{}))
+  defp get_template_config_safe(template_key) do
+    try do
+      Frestyl.Portfolios.PortfolioTemplates.get_template_config(template_key)
+    rescue
+      _ ->
+        %{
+          "layout" => "dashboard",
+          "primary_color" => "#3b82f6",
+          "secondary_color" => "#64748b"
+        }
+    end
   end
 
   defp get_fallback_template_config(theme) do

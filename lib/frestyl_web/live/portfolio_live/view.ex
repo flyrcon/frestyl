@@ -18,66 +18,47 @@ defmodule FrestylWeb.PortfolioLive.View do
         |> redirect(to: "/")}
 
       {:ok, portfolio} ->
+        # Ensure user is loaded
         portfolio = if Ecto.assoc_loaded?(portfolio.user) do
           portfolio
         else
           Repo.preload(portfolio, :user, force: true)
         end
 
-        if portfolio_accessible?(portfolio) do
-          track_portfolio_visit(portfolio, socket)
+        # 🔥 FIX: Extract video intro and prepare data for hero renderers
+        {intro_video, filtered_sections} = extract_and_prepare_video_data(portfolio.sections || [])
 
-          # 🔥 NEW: Extract intro video and filter sections
-          {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(portfolio.sections || [])
-          # 🔥 ADD THIS DEBUG CODE:
-          IO.inspect(intro_video, label: "🔥 EXTRACTED INTRO VIDEO")
-          IO.inspect(length(filtered_sections), label: "🔥 FILTERED SECTIONS COUNT")
-          IO.inspect(portfolio.sections |> Enum.map(&{&1.title, &1.section_type}), label: "🔥 ALL SECTIONS")
+        # Process customization and template data
+        {template_config, customization_css, template_layout} = process_portfolio_customization_fixed(portfolio)
 
-          {template_config, customization_css, template_layout} = process_portfolio_customization_fixed(portfolio)
+        # 🔥 FIX: Prepare complete data structure for hero renderers
+        social_links = extract_social_links(portfolio)
+        contact_info = extract_contact_info(filtered_sections)
+        portfolio_metrics = calculate_portfolio_metrics(portfolio)
 
-          social_links = extract_social_links_comprehensive(filtered_sections, portfolio.user)
-          contact_info = extract_contact_info_comprehensive(filtered_sections)
+        socket =
+          socket
+          |> assign(:page_title, portfolio.title)
+          |> assign(:portfolio, portfolio)
+          |> assign(:owner, portfolio.user)
+          |> assign(:sections, filtered_sections)
+          |> assign(:social_links, social_links)
+          |> assign(:contact_info, contact_info)
+          |> assign(:customization, portfolio.customization || %{})
+          |> assign(:portfolio_metrics, portfolio_metrics)
+          |> assign(:template_config, template_config)
+          |> assign(:template_theme, normalize_theme(portfolio.theme))
+          |> assign(:template_layout, template_layout)
+          |> assign(:customization_css, customization_css)
+          # 🔥 FIX: Video data for hero renderers
+          |> assign(:intro_video, intro_video)
+          |> assign(:has_intro_video, intro_video != nil)
+          |> assign(:video_url, get_video_url_safe(intro_video))
+          |> assign(:video_content, extract_video_content(intro_video))
+          |> assign(:show_video_modal, false)
+          |> assign(:show_mobile_nav, false)
 
-          # Calculate portfolio metrics
-          portfolio_metrics = %{
-            sections_count: length(filtered_sections),
-            total_projects: calculate_projects_count_simple(filtered_sections),
-            years_experience: calculate_experience_years_simple(filtered_sections)
-          }
-
-          socket =
-            socket
-            |> assign(:page_title, portfolio.title)
-            |> assign(:portfolio, portfolio)
-            |> assign(:owner, portfolio.user)
-            |> assign(:sections, filtered_sections)  # 🔥 UPDATED: Use filtered sections
-            |> assign(:social_links, social_links)  # Add this line
-            |> assign(:contact_info, contact_info)
-            |> assign(:customization, portfolio.customization || %{})
-            |> assign(:portfolio_metrics, portfolio_metrics)
-            |> assign(:template_config, template_config)
-            |> assign(:template_theme, normalize_theme(portfolio.theme))
-            |> assign(:template_layout, template_layout)
-            |> assign(:customization_css, customization_css)
-            |> assign(:intro_video, intro_video)  # 🔥 UPDATED: Use extracted video
-            |> assign(:share, nil)
-            |> assign(:is_shared_view, false)
-            |> assign(:show_stats, false)
-            |> assign(:portfolio_stats, %{})
-            |> assign(:show_video_modal, false)  # ADD THIS LINE
-            |> assign(:show_mobile_nav, false)   # ADD THIS LINE TOO
-            |> assign(:collaboration_enabled, false)
-            |> assign(:feedback_panel_open, false)
-            |> assign(:exporting_resume, false)  # Add this line
-            |> assign(:exporting_pdf, false)
-
-          {:ok, socket}
-        else
-          {:ok, socket
-          |> put_flash(:error, "This portfolio is private")
-          |> redirect(to: "/")}
-        end
+        {:ok, socket}
     end
   end
 
@@ -281,6 +262,44 @@ defmodule FrestylWeb.PortfolioLive.View do
     {intro_video, other_sections}
   end
 
+  defp extract_and_prepare_video_data(sections) do
+    IO.puts("🔥 EXTRACTING VIDEO DATA FOR HERO RENDERERS")
+
+    {video_sections, other_sections} = Enum.split_with(sections, fn section ->
+      is_video_intro_section?(section)
+    end)
+
+    intro_video = case video_sections do
+      [video_section | _] ->
+        content = video_section.content || %{}
+        video_url = Map.get(content, "video_url")
+
+        if video_url && video_url != "" do
+          %{
+            id: video_section.id,
+            title: Map.get(content, "title", "Personal Introduction"),
+            description: Map.get(content, "description", ""),
+            video_url: video_url,
+            filename: Map.get(content, "video_filename"),
+            duration: Map.get(content, "duration", 0),
+            created_at: Map.get(content, "created_at"),
+            section_id: video_section.id,
+            section: video_section,
+            content: content,
+            # 🔥 NEW: Hero renderer compatibility
+            display_in_hero: true,
+            video_type: "introduction"
+          }
+        else
+          nil
+        end
+      [] ->
+        nil
+    end
+
+    {intro_video, other_sections}
+  end
+
   defp is_video_intro_section?(section) do
     result = case section do
       # Check section type and content
@@ -317,54 +336,103 @@ defmodule FrestylWeb.PortfolioLive.View do
 
   @impl true
   def render(assigns) do
-    # 🔥 FIX: Ensure template_layout is properly determined
     theme = assigns.portfolio.theme || "executive"
-    customization = assigns.portfolio.customization || %{}
 
-    # Get template layout from theme and customization
-    template_layout = determine_template_layout(theme, customization)
-
-    # 🔥 NEW: Handle video intro detection and display
-    intro_video_section = assigns[:intro_video_section] || assigns[:intro_video]
-    has_intro_video = intro_video_section != nil
-
-    IO.puts("🔥 RENDERING PORTFOLIO VIEW")
-    IO.puts("🔥 Theme: #{theme}")
-    IO.puts("🔥 Template Layout: #{template_layout}")
-    IO.puts("🔥 Has intro video: #{has_intro_video}")
-
-    if intro_video_section do
-      video_url = get_in(intro_video_section, [:content, "video_url"]) || get_in(intro_video_section, ["content", "video_url"])
-      IO.puts("🔥 Video URL: #{video_url || "NO URL"}")
-    end
-
-    # Update assigns with proper layout and video status
+    # 🔥 FIX: Ensure all hero renderers get the video data they need
     assigns = assigns
-    |> assign(:template_layout, template_layout)
-    |> assign(:intro_video_section, intro_video_section)
-    |> assign(:has_intro_video, has_intro_video)
+    |> assign(:theme, theme)
+    |> assign(:theme_config, get_theme_hero_config(theme, assigns.customization))
 
-    # 🔥 ENHANCED: Choose layout renderer based on video intro presence
-    case {template_layout, has_intro_video} do
-      # Video intro takes precedence - use enhanced layouts
-      {_, true} -> render_video_enhanced_layout(assigns)
+    # Use existing render_theme_specific_header (don't change it)
+    render_theme_specific_header(assigns)
+  end
 
-      # Standard layouts without video
-      {"dashboard", false} -> render_dashboard_layout(assigns)
-      {"gallery", false} -> render_gallery_layout(assigns)
-      {"terminal", false} -> render_terminal_layout(assigns)
-      {"case_study", false} -> render_case_study_layout(assigns)
-      {"minimal", false} -> render_minimal_layout(assigns)
-      {"academic", false} -> render_academic_layout(assigns)
+  defp render_theme_with_video_support(assigns, theme) do
+    # Get the customization CSS
+    css_content = Map.get(assigns, :customization_css, "")
 
-      # Fallback
-      _ ->
-        IO.puts("🔥 FALLBACK: Using #{if has_intro_video, do: "video-enhanced", else: "dashboard"} layout for #{template_layout}")
-        if has_intro_video do
-          render_video_enhanced_layout(assigns)
-        else
-          render_dashboard_layout(assigns)
-        end
+    assigns = assign(assigns, :css_content, css_content)
+
+    ~H"""
+    <%= Phoenix.HTML.raw(@css_content) %>
+
+    <div class="min-h-screen portfolio-bg">
+      <!-- Use existing hero renderer (which handles video) -->
+      <%= render_theme_specific_hero(assigns) %>
+
+      <!-- Portfolio Content Sections -->
+      <div id="portfolio-sections" class="relative">
+        <%= render_sections_grid(assigns) %>
+      </div>
+
+      <!-- Video Modal (if needed) -->
+      <%= if @show_video_modal && @intro_video do %>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 backdrop-blur-sm"
+            phx-click="hide_video_modal">
+          <div class="relative max-w-6xl w-full mx-4 max-h-[90vh]" phx-click-away="hide_video_modal">
+            <button phx-click="hide_video_modal"
+                    class="absolute -top-12 right-0 text-white hover:text-gray-300 z-10">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+            <video controls autoplay class="w-full h-auto rounded-xl shadow-2xl">
+              <source src={get_video_url_from_intro(@intro_video)} type="video/mp4">
+              <source src={get_video_url_from_intro(@intro_video)} type="video/webm">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp render_theme_specific_hero(assigns) do
+    theme = assigns.portfolio.theme || "executive"
+
+    # Pass video data to hero renderers
+    case theme do
+      "executive" -> render_executive_hero(assigns)
+      "developer" -> render_developer_hero(assigns)
+      "designer" -> render_designer_hero(assigns)
+      "consultant" -> render_consultant_hero(assigns)
+      "academic" -> render_academic_hero(assigns)
+      "minimalist" -> render_minimalist_hero(assigns)
+      "creative" -> render_creative_hero(assigns)
+      _ -> render_executive_hero(assigns)  # fallback
+    end
+  end
+
+  # 🔥 HELPER: Extract video data from section
+  defp extract_video_data_from_section(video_section) do
+    content = video_section.content || %{}
+
+    %{
+      id: video_section.id,
+      title: Map.get(content, "title", "Personal Introduction"),
+      description: Map.get(content, "description", ""),
+      video_url: Map.get(content, "video_url"),
+      filename: Map.get(content, "video_filename"),
+      duration: Map.get(content, "duration", 0),
+      section_id: video_section.id,
+      content: content
+    }
+  end
+
+  # 🔥 HELPER: Check if video has valid URL
+  defp has_valid_video_url?(intro_video) do
+    video_url = get_video_url_from_intro(intro_video)
+    video_url != nil && video_url != ""
+  end
+
+  # 🔥 HELPER: Get video URL from intro data
+  defp get_video_url_from_intro(intro_video) do
+    cond do
+      Map.has_key?(intro_video, :video_url) -> Map.get(intro_video, :video_url)
+      Map.has_key?(intro_video, "video_url") -> Map.get(intro_video, "video_url")
+      Map.has_key?(intro_video, :content) -> get_in(intro_video, [:content, "video_url"])
+      true -> nil
     end
   end
 
@@ -466,7 +534,7 @@ defmodule FrestylWeb.PortfolioLive.View do
     if explicit_layout do
       explicit_layout
     else
-      # Map theme to layout
+      # Map theme to layout with proper minimal support
       case theme do
         "executive" -> "dashboard"
         "professional_executive" -> "dashboard"
@@ -479,7 +547,9 @@ defmodule FrestylWeb.PortfolioLive.View do
         "academic" -> "academic"
         "academic_researcher" -> "academic"
         "creative" -> "gallery"
-        "minimalist" -> "minimal"
+        "minimalist" -> "minimal"        # 🔥 FIX: Add minimal support
+        "minimalist_clean" -> "minimal"  # 🔥 FIX: Add minimal variants
+        "minimalist_elegant" -> "minimal"
         _ ->
           IO.puts("🔥 Unknown theme: #{theme}, defaulting to dashboard")
           "dashboard"
@@ -488,13 +558,14 @@ defmodule FrestylWeb.PortfolioLive.View do
   end
 
   defp render_video_intro_hero(assigns) do
-    if assigns.intro_video_section == nil do
+    if assigns.intro_video == nil do
       # Render theme-specific header even without video
       render_theme_specific_header(assigns)
     else
       # Get video data safely
-      video_content = get_video_content_safe(assigns.intro_video_section)
-      video_url = get_video_url_safe(video_content, assigns.intro_video_section)
+      video_content = get_video_content_safe(assigns.intro_video)
+      # 🔥 FIX: Use single parameter function call
+      video_url = get_video_url_safe(assigns.intro_video)
 
       # Get theme and create theme-specific styling
       theme = assigns.portfolio.theme || "executive"
@@ -516,6 +587,7 @@ defmodule FrestylWeb.PortfolioLive.View do
         "minimalist" -> render_minimalist_hero(assigns)
         "consultant" -> render_consultant_hero(assigns)
         "academic" -> render_academic_hero(assigns)
+        "creative" -> render_designer_hero(assigns)  # Use designer as fallback
         _ -> render_executive_hero(assigns)  # fallback
       end
     end
@@ -530,8 +602,8 @@ defmodule FrestylWeb.PortfolioLive.View do
     end)
   end
 
-  defp get_video_content_safe(intro_video_section) do
-    case intro_video_section do
+  defp get_video_content_safe(intro_video) do
+    case intro_video do
       %{section: %{content: content}} -> content
       %{content: content} -> content
       %{"video_url" => _} = content -> content
@@ -545,16 +617,25 @@ defmodule FrestylWeb.PortfolioLive.View do
     end
   end
 
-  defp get_video_url_safe(video_content, intro_video_section) do
-    cond do
-      Map.has_key?(video_content, "video_url") -> Map.get(video_content, "video_url", "")
-      Map.has_key?(video_content, :video_url) -> Map.get(video_content, :video_url, "")
-      Map.has_key?(intro_video_section, :video_url) -> Map.get(intro_video_section, :video_url, "")
-      true -> ""
+  defp get_video_url_safe(intro_video) do
+    case intro_video do
+      nil -> nil
+      %{video_url: url} when is_binary(url) -> url
+      %{"video_url" => url} when is_binary(url) -> url
+      %{content: %{"video_url" => url}} when is_binary(url) -> url
+      %{content: content} when is_map(content) -> Map.get(content, "video_url")
+      _ -> nil
     end
   end
 
-  # 🔥 MISSING: get_theme_hero_config function
+  defp extract_video_content(intro_video) do
+    case intro_video do
+      nil -> %{}
+      %{content: content} when is_map(content) -> content
+      video_data -> video_data
+    end
+  end
+
   defp get_theme_hero_config(theme, customization) do
     base_config = %{
       "primary_color" => get_in(customization, ["primary_color"]) || "#3b82f6",
@@ -562,38 +643,57 @@ defmodule FrestylWeb.PortfolioLive.View do
       "accent_color" => get_in(customization, ["accent_color"]) || "#f59e0b"
     }
 
+    # 🔥 ENHANCE: Add video-specific configuration
+    video_config = %{
+      "video_enabled" => true,
+      "video_position" => "hero",
+      "video_style" => get_video_style_for_theme(theme),
+      "hero_expanded" => true  # Signal to hero renderers that video is present
+    }
+
     theme_specific = case theme do
       "executive" -> %{
         "header_bg" => "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)",
-        "text_color" => "#1e293b"
+        "text_color" => "#1e293b",
+        "video_container" => "bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20"
       }
       "developer" -> %{
         "header_bg" => "linear-gradient(135deg, #1f2937 0%, #111827 100%)",
-        "text_color" => "#f9fafb"
+        "text_color" => "#f9fafb",
+        "video_container" => "bg-green-500/10 backdrop-blur-xl rounded-2xl border border-green-500/20"
       }
       "designer" -> %{
         "header_bg" => "linear-gradient(135deg, #a855f7 0%, #ec4899 100%)",
-        "text_color" => "#ffffff"
-      }
-      "consultant" -> %{
-        "header_bg" => "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)",
-        "text_color" => "#1e293b"
-      }
-      "academic" -> %{
-        "header_bg" => "linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%)",
-        "text_color" => "#374151"
+        "text_color" => "#ffffff",
+        "video_container" => "bg-white/15 backdrop-blur-xl rounded-3xl border border-pink-300/30"
       }
       "minimalist" -> %{
         "header_bg" => "#ffffff",
-        "text_color" => "#111827"
+        "text_color" => "#111827",
+        "video_container" => "bg-gray-50 rounded-lg border border-gray-200"
       }
       _ -> %{
         "header_bg" => "#ffffff",
-        "text_color" => "#374151"
+        "text_color" => "#374151",
+        "video_container" => "bg-white rounded-lg border border-gray-200"
       }
     end
 
-    Map.merge(base_config, theme_specific)
+    base_config
+    |> Map.merge(video_config)
+    |> Map.merge(theme_specific)
+  end
+
+  defp get_video_style_for_theme(theme) do
+    case theme do
+      "executive" -> "professional"
+      "developer" -> "terminal"
+      "designer" -> "artistic"
+      "minimalist" -> "clean"
+      "consultant" -> "corporate"
+      "academic" -> "scholarly"
+      _ -> "default"
+    end
   end
 
   # 🔥 MISSING: render_theme_specific_header function
@@ -1080,6 +1180,24 @@ defmodule FrestylWeb.PortfolioLive.View do
     """
   end
 
+  defp render_theme_specific_hero(assigns) do
+    theme = assigns.portfolio.theme || "executive"
+
+    case theme do
+      "executive" -> render_executive_hero(assigns)
+      "developer" -> render_developer_hero(assigns)
+      "designer" -> render_designer_hero(assigns)
+      "consultant" -> render_consultant_hero(assigns)
+      "academic" -> render_academic_hero(assigns)
+      "minimalist" -> render_minimalist_hero(assigns)
+      # 🔥 FIX: Map creative variations to designer (or create specific render_creative_hero)
+      "creative" -> render_designer_hero(assigns)  # Use designer as fallback
+      "creative_artistic" -> render_designer_hero(assigns)
+      "creative_designer" -> render_designer_hero(assigns)
+      _ -> render_executive_hero(assigns)  # fallback
+    end
+  end
+
   defp render_academic_hero(assigns) do
     ~H"""
     <section class="relative min-h-screen bg-gradient-to-br from-green-50 via-teal-50 to-blue-50 overflow-hidden">
@@ -1291,6 +1409,49 @@ defmodule FrestylWeb.PortfolioLive.View do
     """
   end
 
+  defp render_creative_hero(assigns) do
+    ~H"""
+    <section class="relative min-h-screen bg-gradient-to-br from-purple-600 via-pink-600 to-indigo-600 overflow-hidden">
+      <!-- Creative background elements -->
+      <div class="absolute inset-0">
+        <div class="absolute top-1/4 left-1/4 w-64 h-64 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
+        <div class="absolute bottom-1/3 right-1/4 w-96 h-96 bg-yellow-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      <div class="relative z-10 min-h-screen flex items-center px-6">
+        <div class="max-w-7xl mx-auto text-center">
+          <h1 class="text-5xl lg:text-7xl font-bold text-white mb-6 leading-tight">
+            <%= @portfolio.title %>
+          </h1>
+          <p class="text-xl text-white/90 max-w-3xl mx-auto leading-relaxed mb-12">
+            <%= @portfolio.description %>
+          </p>
+
+          <!-- Video integration point -->
+          <%= if @has_intro_video do %>
+            <div class="relative max-w-4xl mx-auto mb-12">
+              <div class="absolute -inset-4 bg-gradient-to-r from-pink-500 to-violet-500 rounded-2xl blur opacity-75"></div>
+              <div class="relative bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+                <video
+                  controls
+                  class="w-full rounded-xl shadow-2xl">
+                  <source src={@video_url} type="video/mp4">
+                  <source src={@video_url} type="video/webm">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+            </div>
+          <% end %>
+
+          <!-- Contact and social info rendering -->
+          <%= render_contact_info_creative(assigns) %>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+
   defp render_contact_info_executive(assigns) do
     contact_section = get_contact_section(assigns.sections)
     social_links = assigns[:social_links] || %{}
@@ -1373,6 +1534,45 @@ defmodule FrestylWeb.PortfolioLive.View do
     </div>
     """
   end
+
+  defp render_contact_info_creative(assigns) do
+    contact_section = get_contact_section(assigns.sections)
+    social_links = assigns[:social_links] || %{}
+
+    ~H"""
+    <div class="space-y-6">
+      <%= if contact_section do %>
+        <div class="space-y-4">
+          <%= if email = get_in(contact_section.content, ["email"]) do %>
+            <div class="text-center">
+              <a href={"mailto:#{email}"} class="text-white/90 hover:text-white transition-colors text-lg">
+                <%= email %>
+              </a>
+            </div>
+          <% end %>
+          <%= if phone = get_in(contact_section.content, ["phone"]) do %>
+            <div class="text-center">
+              <a href={"tel:#{phone}"} class="text-white/90 hover:text-white transition-colors text-lg">
+                <%= phone %>
+              </a>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+
+      <%= if map_size(social_links) > 0 do %>
+        <div class="flex justify-center space-x-6 pt-8">
+          <%= for {platform, url} <- social_links do %>
+            <a href={url} target="_blank" class="w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all hover:scale-110">
+              <%= render_social_icon(platform) %>
+            </a>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
 
   defp render_contact_info_designer(assigns) do
     contact_section = get_contact_section(assigns.sections)
@@ -1707,6 +1907,22 @@ defmodule FrestylWeb.PortfolioLive.View do
         _ -> nil
       end
     end)
+  end
+
+  defp extract_social_links(portfolio) do
+    # Extract from portfolio.social_links or user data
+    portfolio.social_links || portfolio.user.social_links || %{}
+  end
+
+  defp extract_contact_info(sections) do
+    contact_section = Enum.find(sections, fn section ->
+      section.section_type == :contact || section.section_type == "contact"
+    end)
+
+    case contact_section do
+      nil -> %{}
+      section -> section.content || %{}
+    end
   end
 
   # 🔥 ENHANCED SOCIAL ICON RENDERER WITH MORE PLATFORMS
@@ -2146,59 +2362,70 @@ defmodule FrestylWeb.PortfolioLive.View do
     """
   end
 
-# 🔥 ADD THIS ENHANCED TERMINAL LAYOUT:
-  defp render_terminal_layout(assigns) do
+  # 🔥 ADD THIS ENHANCED TERMINAL LAYOUT:
+  defp render_dashboard_layout(assigns) do
     ~H"""
-    <%= Phoenix.HTML.raw(@customization_css) %>
-
-    <div class="min-h-screen bg-gray-900 text-green-400">
-      <header class="border-b border-gray-700 pt-12">
+    <%= Phoenix.HTML.raw(Map.get(assigns, :customization_css, "")) %>
+    <div class="min-h-screen bg-gray-50">
+      <!-- Dashboard Header -->
+      <header class="bg-white shadow-sm border-b">
         <div class="max-w-7xl mx-auto px-6 py-4">
-          <div class="flex items-center space-x-4">
-            <div class="flex space-x-2">
-              <div class="w-3 h-3 bg-red-500 rounded-full"></div>
-              <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
-              <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+          <div class="flex items-center justify-between">
+            <div>
+              <h1 class="text-3xl font-bold text-gray-900">
+                <%= @portfolio.title %>
+              </h1>
+              <p class="text-gray-600 mt-1">
+                <%= @portfolio.description %>
+              </p>
             </div>
-            <span class="text-gray-300">~/portfolio/<%= String.downcase(String.replace(@portfolio.title, " ", "_")) %></span>
+            <div class="text-right">
+              <span class="text-sm text-gray-500">Portfolio</span>
+            </div>
           </div>
         </div>
       </header>
 
+      <!-- Dashboard Content -->
       <main class="max-w-7xl mx-auto px-6 py-8">
-        <!-- README Section -->
-        <div class="bg-gray-800 rounded-lg mb-6 overflow-hidden">
-          <div class="bg-gray-700 px-4 py-2 text-sm">
-            <span class="text-green-400">$</span>
-            <span class="text-yellow-400 ml-2">cat</span>
-            <span class="text-white ml-2">README.md</span>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <!-- Main Content Area -->
+          <div class="lg:col-span-2 space-y-8">
+            <%= for section <- @sections do %>
+              <section class="bg-white rounded-xl shadow-sm border p-6">
+                <h2 class="text-xl font-semibold text-gray-900 mb-4">
+                  <%= section.title %>
+                </h2>
+                <div class="prose max-w-none">
+                  <%= render_section_content_safe(section) %>
+                </div>
+              </section>
+            <% end %>
           </div>
-          <div class="p-6">
-            <h1 class="text-2xl font-bold text-green-400 mb-4"># <%= @portfolio.title %></h1>
-            <p class="text-gray-300 mb-4"><%= @portfolio.description %></p>
-          </div>
-        </div>
 
-        <!-- Sections as Terminal Commands -->
-        <%= for section <- @sections do %>
-          <div class="bg-gray-800 rounded-lg mb-6 overflow-hidden">
-            <div class="bg-gray-700 px-4 py-2 text-sm">
-              <span class="text-green-400">$</span>
-              <span class="text-yellow-400 ml-2">cat</span>
-              <span class="text-white ml-2"><%= String.downcase(String.replace(section.title, " ", "_")) %>.md</span>
-            </div>
-            <div class="p-6">
-              <h2 class="text-green-400 font-bold mb-4"># <%= section.title %></h2>
-              <div class="text-gray-300">
-                <%= render_section_content_safe(section) %>
+          <!-- Sidebar -->
+          <div class="space-y-6">
+            <div class="bg-white rounded-xl shadow-sm border p-6">
+              <h3 class="font-semibold text-gray-900 mb-4">Quick Info</h3>
+              <div class="space-y-3 text-sm">
+                <div class="flex justify-between">
+                  <span class="text-gray-600">Sections:</span>
+                  <span class="font-medium"><%= length(@sections) %></span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-600">Layout:</span>
+                  <span class="font-medium">Dashboard</span>
+                </div>
               </div>
             </div>
           </div>
-        <% end %>
+        </div>
       </main>
     </div>
     """
   end
+
+
 
   defp render_theme_background_elements(assigns) do
     # Move theme detection to assigns
@@ -5829,27 +6056,27 @@ defmodule FrestylWeb.PortfolioLive.View do
   # 🔥 OTHER LAYOUT RENDERERS
   defp render_gallery_layout(assigns) do
     ~H"""
-    <%= Phoenix.HTML.raw(@customization_css) %>
-    <div class="min-h-screen">
-      <header class="h-screen flex items-center justify-center relative overflow-hidden">
-        <div class="relative text-center z-10">
-          <h1 class="text-6xl lg:text-8xl font-bold mb-6 portfolio-primary">
-            <%= @portfolio.title %>
-          </h1>
-          <p class="text-2xl lg:text-3xl portfolio-secondary opacity-90 max-w-4xl mx-auto leading-relaxed">
-            <%= @portfolio.description %>
-          </p>
-        </div>
+    <%= Phoenix.HTML.raw(Map.get(assigns, :customization_css, "")) %>
+    <div class="min-h-screen bg-white">
+      <!-- Gallery Header -->
+      <header class="text-center py-16 px-6">
+        <h1 class="text-4xl lg:text-6xl font-bold text-gray-900 mb-4">
+          <%= @portfolio.title %>
+        </h1>
+        <p class="text-xl text-gray-600 max-w-3xl mx-auto">
+          <%= @portfolio.description %>
+        </p>
       </header>
 
-      <main class="px-6 py-16">
-        <div class="max-w-7xl mx-auto columns-1 md:columns-2 lg:columns-3 gap-8 space-y-8">
+      <!-- Gallery Content -->
+      <main class="max-w-7xl mx-auto px-6 pb-16">
+        <div class="columns-1 md:columns-2 lg:columns-3 gap-8 space-y-8">
           <%= for section <- @sections do %>
-            <section class="break-inside-avoid portfolio-card p-8 mb-8">
-              <h2 class="text-2xl font-bold mb-6 portfolio-primary">
+            <section class="break-inside-avoid bg-white rounded-xl shadow-lg border p-8 mb-8">
+              <h2 class="text-2xl font-bold text-gray-900 mb-6">
                 <%= section.title %>
               </h2>
-              <div class="portfolio-secondary">
+              <div class="prose max-w-none">
                 <%= render_section_content_safe(section) %>
               </div>
             </section>
@@ -5857,109 +6084,164 @@ defmodule FrestylWeb.PortfolioLive.View do
         </div>
       </main>
     </div>
-
-    <!-- Video Modal -->
-    <%= if @show_video_modal && @intro_video do %>
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 backdrop-blur-sm"
-          phx-click="hide_video_modal">
-        <div class="relative max-w-6xl w-full mx-4 max-h-[90vh]" phx-click-away="hide_video_modal">
-          <!-- Close button -->
-          <button phx-click="hide_video_modal"
-                  class="absolute -top-12 right-0 text-white hover:text-gray-300 z-10">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-
-          <!-- Video player -->
-          <video controls autoplay class="w-full h-auto rounded-xl shadow-2xl">
-            <source src={@intro_video.video_url || get_in(@intro_video, [:content, "video_url"]) || "/uploads/videos/portfolio_intro_3_1750295669.webm"} type="video/mp4">
-            <source src={@intro_video.video_url || get_in(@intro_video, [:content, "video_url"]) || "/uploads/videos/portfolio_intro_3_1750295669.webm"} type="video/webm">
-            Your browser does not support the video tag.
-          </video>
-        </div>
-      </div>
-    <% end %>
     """
   end
 
   defp render_terminal_layout(assigns) do
     ~H"""
-    <%= Phoenix.HTML.raw(@customization_css) %>
-    <div class="min-h-screen">
-      <header class="border-b portfolio-header">
-        <div class="max-w-7xl mx-auto px-6 py-4">
-          <div class="flex items-center space-x-4">
-            <div class="flex space-x-2">
-              <div class="w-3 h-3 bg-red-500 rounded-full"></div>
-              <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
-              <div class="w-3 h-3 bg-green-500 rounded-full"></div>
-            </div>
-            <span class="portfolio-secondary">~/portfolio/<%= String.downcase(String.replace(@portfolio.title, " ", "_")) %></span>
+    <%= Phoenix.HTML.raw(Map.get(assigns, :customization_css, "")) %>
+    <div class="min-h-screen bg-black text-green-400 font-mono">
+      <!-- Terminal Header -->
+      <header class="p-6 border-b border-green-400">
+        <div class="flex items-center space-x-2 mb-4">
+          <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+          <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+          <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+          <span class="ml-4 text-green-400">terminal ~/portfolio</span>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center space-x-2">
+            <span class="text-green-400">$</span>
+            <span class="text-white">cat portfolio.txt</span>
+          </div>
+          <div class="ml-4">
+            <h1 class="text-2xl text-white mb-2">
+              <%= @portfolio.title %>
+            </h1>
+            <p class="text-green-300">
+              <%= @portfolio.description %>
+            </p>
           </div>
         </div>
       </header>
 
-      <main class="max-w-7xl mx-auto px-6 py-8">
-        <div class="terminal-window mb-6">
-          <div class="portfolio-header border-b px-4 py-2">
-            <span class="portfolio-primary">$</span>
-            <span class="portfolio-accent">cat</span>
-            <span class="portfolio-primary">README.md</span>
-          </div>
-          <div class="portfolio-card p-6">
-            <h1 class="text-2xl font-bold portfolio-primary mb-4"># <%= @portfolio.title %></h1>
-            <p class="portfolio-secondary mb-4"><%= @portfolio.description %></p>
-          </div>
-        </div>
-
-        <%= for section <- @sections do %>
-          <div class="terminal-window mb-6">
-            <div class="portfolio-header border-b px-4 py-2">
-              <span class="portfolio-primary">$</span>
-              <span class="portfolio-accent">cat</span>
-              <span class="portfolio-primary"><%= String.downcase(String.replace(section.title, " ", "_")) %>.md</span>
+      <!-- Terminal Content -->
+      <main class="p-6 space-y-8">
+        <%= for {section, index} <- Enum.with_index(@sections) do %>
+          <section class="space-y-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-green-400">$</span>
+              <span class="text-white">cat section_<%= index + 1 %>.txt</span>
             </div>
-            <div class="portfolio-card p-6">
-              <h2 class="portfolio-primary font-bold mb-4"># <%= section.title %></h2>
-              <div class="portfolio-secondary">
+            <div class="ml-4 border-l-2 border-green-400 pl-4">
+              <h2 class="text-xl text-white mb-4">
+                # <%= section.title %>
+              </h2>
+              <div class="text-green-300 space-y-2">
                 <%= render_section_content_safe(section) %>
               </div>
             </div>
-          </div>
+          </section>
         <% end %>
       </main>
     </div>
-
-    <!-- Video Modal -->
-    <%= if @show_video_modal && @intro_video do %>
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 backdrop-blur-sm"
-          phx-click="hide_video_modal">
-        <div class="relative max-w-6xl w-full mx-4 max-h-[90vh]" phx-click-away="hide_video_modal">
-          <!-- Close button -->
-          <button phx-click="hide_video_modal"
-                  class="absolute -top-12 right-0 text-white hover:text-gray-300 z-10">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-
-          <!-- Video player -->
-          <video controls autoplay class="w-full h-auto rounded-xl shadow-2xl">
-            <source src={@intro_video.video_url || get_in(@intro_video, [:content, "video_url"]) || "/uploads/videos/portfolio_intro_3_1750295669.webm"} type="video/mp4">
-            <source src={@intro_video.video_url || get_in(@intro_video, [:content, "video_url"]) || "/uploads/videos/portfolio_intro_3_1750295669.webm"} type="video/webm">
-            Your browser does not support the video tag.
-          </video>
-        </div>
-      </div>
-    <% end %>
     """
   end
 
-  # Other layout renderers (fallback to dashboard)
-  defp render_case_study_layout(assigns), do: render_dashboard_layout(assigns)
-  defp render_minimal_layout(assigns), do: render_dashboard_layout(assigns)
-  defp render_academic_layout(assigns), do: render_dashboard_layout(assigns)
+  defp render_minimal_layout(assigns) do
+    ~H"""
+    <%= Phoenix.HTML.raw(Map.get(assigns, :customization_css, "")) %>
+    <div class="min-h-screen bg-white">
+      <!-- Minimal Header -->
+      <header class="py-16 px-6 text-center border-b">
+        <h1 class="text-4xl lg:text-6xl font-light text-gray-900 mb-4">
+          <%= @portfolio.title %>
+        </h1>
+        <p class="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
+          <%= @portfolio.description %>
+        </p>
+      </header>
+
+      <!-- Minimal Content -->
+      <main class="max-w-4xl mx-auto px-6 py-16">
+        <div class="space-y-16">
+          <%= for section <- @sections do %>
+            <section class="border-b border-gray-100 pb-16 last:border-b-0">
+              <h2 class="text-2xl font-light text-gray-900 mb-8">
+                <%= section.title %>
+              </h2>
+              <div class="prose prose-lg max-w-none text-gray-700">
+                <%= render_section_content_safe(section) %>
+              </div>
+            </section>
+          <% end %>
+        </div>
+      </main>
+    </div>
+    """
+  end
+
+  defp render_case_study_layout(assigns) do
+    ~H"""
+    <%= Phoenix.HTML.raw(Map.get(assigns, :customization_css, "")) %>
+    <div class="min-h-screen bg-gray-50">
+      <!-- Case Study Header -->
+      <header class="bg-white py-16 px-6">
+        <div class="max-w-4xl mx-auto text-center">
+          <h1 class="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
+            <%= @portfolio.title %>
+          </h1>
+          <p class="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+            <%= @portfolio.description %>
+          </p>
+        </div>
+      </header>
+
+      <!-- Case Study Content -->
+      <main class="max-w-4xl mx-auto px-6 py-16">
+        <%= for section <- @sections do %>
+          <section class="mb-16">
+            <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+              <div class="p-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">
+                  <%= section.title %>
+                </h2>
+                <div class="prose prose-lg max-w-none">
+                  <%= render_section_content_safe(section) %>
+                </div>
+              </div>
+            </div>
+          </section>
+        <% end %>
+      </main>
+    </div>
+    """
+  end
+
+  defp render_academic_layout(assigns) do
+    ~H"""
+    <%= Phoenix.HTML.raw(Map.get(assigns, :customization_css, "")) %>
+    <div class="min-h-screen bg-white">
+      <!-- Academic Header -->
+      <header class="py-12 px-6 border-b-2 border-gray-200">
+        <div class="max-w-4xl mx-auto">
+          <h1 class="text-4xl font-serif font-bold text-gray-900 mb-4">
+            <%= @portfolio.title %>
+          </h1>
+          <p class="text-lg text-gray-700 font-serif leading-relaxed">
+            <%= @portfolio.description %>
+          </p>
+        </div>
+      </header>
+
+      <!-- Academic Content -->
+      <main class="max-w-4xl mx-auto px-6 py-12">
+        <div class="space-y-12">
+          <%= for section <- @sections do %>
+            <section class="space-y-6">
+              <h2 class="text-2xl font-serif font-bold text-gray-900 border-b border-gray-300 pb-2">
+                <%= section.title %>
+              </h2>
+              <div class="prose prose-lg max-w-none font-serif text-gray-800">
+                <%= render_section_content_safe(section) %>
+              </div>
+            </section>
+          <% end %>
+        </div>
+      </main>
+    </div>
+    """
+  end
 
   # HELPER FUNCTIONS
   defp normalize_theme(theme) when is_binary(theme) do
@@ -6769,6 +7051,17 @@ defmodule FrestylWeb.PortfolioLive.View do
       true ->
         1.0 # Default assumption
     end
+  end
+
+  defp calculate_portfolio_metrics(portfolio) do
+    # Your existing hero renderers might need metrics data
+    %{
+      total_visits: 0,  # This would come from analytics
+      last_updated: portfolio.updated_at,
+      sections_count: 0,  # This would be calculated
+      has_contact: false,  # This would be determined
+      has_social: map_size(portfolio.social_links || %{}) > 0
+    }
   end
 
   defp parse_date_and_calculate_years(start_date_str, end_date) do

@@ -3,10 +3,21 @@
 defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
   use FrestylWeb, :live_component
 
+  alias Frestyl.Portfolios.PortfolioTemplates
+
+
   @impl true
   def mount(socket) do
     IO.puts("=== VIDEO INTRO COMPONENT MOUNTING ===")
     IO.puts("Component ID: #{socket.assigns[:id] || "NO ID"}")
+
+    header_config = %{
+      header_config: %{
+        video_style: "professional",
+        show_social: true,
+        show_metrics: false
+      }
+    }
 
     socket =
       socket
@@ -19,6 +30,8 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
       |> assign(:camera_status, "initializing")
       |> assign(:countdown_timer, 3)
       |> assign(:countdown_value, 3)
+      |> assign(:video_style_classes, Helpers.get_video_style_classes_safe())
+      |> assign(:header_layout, header_config["layout"] || "centered")
 
     IO.puts("=== COMPONENT MOUNTED WITH ASSIGNS ===")
     {:ok, socket}
@@ -374,6 +387,60 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
       error ->
         {:error, "File save error: #{Exception.message(error)}"}
     end
+  end
+
+    @impl true
+  def update(%{theme: theme} = assigns, socket) do
+    # Update header config based on theme
+    header_config = %{
+      header_config: %{
+        video_style: get_video_style_for_theme(theme),
+        show_social: true,
+        show_metrics: false
+      }
+    }
+
+    socket = socket
+    |> assign(assigns)
+    |> assign(:header_config, header_config)
+    |> update_video_style_classes(header_config)
+
+    {:ok, socket}
+  end
+
+  defp update_video_style_classes(socket, header_config) do
+    video_style_classes = PortfolioTemplates.get_video_style_classes(header_config)
+    assign(socket, :video_style_classes, video_style_classes)
+  end
+
+    @impl true
+  def update(assigns, socket) do
+    {:ok, assign(socket, assigns)}
+  end
+
+  defp get_video_style_for_theme(theme) do
+    case theme do
+      "executive" -> "professional"
+      "professional_executive" -> "executive"
+      "creative_artistic" -> "artistic"
+      "creative_designer" -> "showcase"
+      "technical_developer" -> "terminal"
+      "technical_engineer" -> "technical"
+      "minimalist_clean" -> "minimal"
+      "minimalist_elegant" -> "elegant"
+      _ -> "professional"
+    end
+  end
+
+  defp get_safe_header_config do
+    # Provide a safe default header config
+    %{
+      header_config: %{
+        video_style: "professional",
+        show_social: true,
+        show_metrics: false
+      }
+    }
   end
 
   # Create or update video intro section in portfolio
@@ -962,5 +1029,9 @@ defmodule FrestylWeb.PortfolioLive.VideoIntroComponent do
       </div>
     </div>
     """
+  end
+
+  defp get_video_style_classes_safe() do
+    "rounded-xl border border-gray-200 shadow-lg"  # Safe default
   end
 end

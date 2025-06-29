@@ -1,4 +1,3 @@
-<!-- lib/frestyl_web/live/portfolio_hub_live.html.heex - CORRECTED CREATOR COMMAND CENTER -->
 
 <div class="min-h-screen bg-gray-50">
   <!-- ============================================================================ -->
@@ -98,7 +97,7 @@
               ]}
             >
               <span class="mr-3"><%= get_section_icon(section) %></span>
-              <%= Helpers.humanize_section_name(section) %>
+              <%= FrestylWeb.PortfolioHubLive.Helpers.humanize_section_name(section) %>
               <%= if section in @hub_config.upgrade_prompts do %>
                 <span class="ml-auto px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">Pro</span>
               <% end %>
@@ -120,7 +119,7 @@
                   ]}
                 >
                   <span class="mr-3"><%= get_section_icon(section) %></span>
-                  <%= Helpers.humanize_section_name(section) %>
+                  <%= FrestylWeb.PortfolioHubLive.Helpers.humanize_section_name(section) %>
                 </button>
               <% end %>
             </div>
@@ -180,6 +179,48 @@
         <!-- Quick Actions Panel -->
         <div class="mt-4 lg:mt-0">
           <div class="flex flex-wrap gap-2">
+            <!-- Studio Access -->
+            <button phx-click="show_studio_modal"
+                    class="flex items-center p-4 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-xl hover:from-green-600 hover:to-teal-700 transition-all transform hover:scale-105">
+              <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center mr-4">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                </svg>
+              </div>
+              <div class="text-left">
+                <h3 class="font-semibold">Creative Studio</h3>
+                <p class="text-sm opacity-90">Collaborative workspace</p>
+              </div>
+            </button>
+
+            <!-- Create Portfolio Button -->
+            <button phx-click="show_create_modal"
+                    class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-all">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Create Portfolio
+            </button>
+
+            <!-- Community Channels Button -->
+            <button phx-click="navigate_to_channels"
+                    class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg text-sm font-medium hover:from-purple-700 hover:to-pink-700 transition-all">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+              </svg>
+              Community Channels
+            </button>
+
+            <!-- Collaboration Hub Button -->
+            <button phx-click="switch_section" phx-value-section="collaboration_hub"
+                    class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-sm font-medium hover:from-indigo-700 hover:to-purple-700 transition-all">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+              </svg>
+              Collaboration Hub
+            </button>
+
+            <!-- Keep your existing quick actions if any -->
             <%= for action <- @quick_actions do %>
               <button phx-click={action.action}
                       class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all">
@@ -384,4 +425,60 @@
   </div>
 <% end %>
 
-<!-- Additional modals for other features can be added here -->
+<!-- Studio Modal -->
+<%= if @show_studio_modal do %>
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" phx-click="hide_studio_modal">
+    <div class="bg-white rounded-xl p-6 max-w-lg w-full mx-4" phx-click-away="hide_studio_modal">
+      <h2 class="text-xl font-bold text-gray-900 mb-4">Creative Studio</h2>
+      <p class="text-gray-600 mb-6">Launch a collaborative creative session</p>
+      
+      <div class="grid grid-cols-1 gap-3">
+        <button phx-click="create_studio_session" phx-value-type="voice_recording"
+                class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left">
+          <div class="flex items-center">
+            <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mr-3">
+              🎤
+            </div>
+            <div>
+              <h3 class="font-medium text-gray-900">Voice Recording Session</h3>
+              <p class="text-sm text-gray-600">Record audio for your portfolio</p>
+            </div>
+          </div>
+        </button>
+        
+        <button phx-click="create_studio_session" phx-value-type="collaborative_writing"
+                class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left">
+          <div class="flex items-center">
+            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+              ✍️
+            </div>
+            <div>
+              <h3 class="font-medium text-gray-900">Writing Session</h3>
+              <p class="text-sm text-gray-600">Collaborate on content creation</p>
+            </div>
+          </div>
+        </button>
+        
+        <button phx-click="create_studio_session" phx-value-type="design_review"
+                class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left">
+          <div class="flex items-center">
+            <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+              🎨
+            </div>
+            <div>
+              <h3 class="font-medium text-gray-900">Design Review</h3>
+              <p class="text-sm text-gray-600">Get feedback on visual elements</p>
+            </div>
+          </div>
+        </button>
+      </div>
+      
+      <div class="flex justify-end mt-6">
+        <button phx-click="hide_studio_modal"
+                class="px-4 py-2 text-gray-600 hover:text-gray-700">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+<% end %>

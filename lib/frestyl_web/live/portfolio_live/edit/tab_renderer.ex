@@ -4998,7 +4998,7 @@ defp render_overview_tab(assigns) do
 
             <.live_component
               module={FrestylWeb.PortfolioLive.VideoIntroComponent}
-              id={@video_intro_component_id}
+              id={"video-intro-tab-#{@portfolio.id}"}
               portfolio={@portfolio}
               current_user={@current_user}
             />
@@ -5350,6 +5350,28 @@ def render_enhanced_javascript(assigns) do
 
   defp get_current_background(customization) do
     Map.get(customization, "background", "default")
+  end
+
+  defp get_layout_specific_styles(layout) do
+    case layout do
+      "dashboard" -> """
+        .portfolio-container { display: grid; grid-template-columns: 1fr; gap: 2rem; }
+        .portfolio-section { background: white; border-radius: 8px; padding: 1.5rem; }
+        """
+      "gallery" -> """
+        .portfolio-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+        .portfolio-section { break-inside: avoid; margin-bottom: 1rem; }
+        """
+      "terminal" -> """
+        .portfolio-container { background: #1a1a1a; color: #00ff00; font-family: monospace; }
+        .portfolio-section { border: 1px solid #00ff00; padding: 1rem; margin-bottom: 1rem; }
+        """
+      "minimal" -> """
+        .portfolio-container { max-width: 800px; margin: 0 auto; }
+        .portfolio-section { border-bottom: 1px solid #eee; padding: 2rem 0; }
+        """
+      _ -> ""
+    end
   end
 
   defp get_header_theme_classes(theme, customization) do

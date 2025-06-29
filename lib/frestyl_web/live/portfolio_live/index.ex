@@ -167,29 +167,111 @@ defmodule FrestylWeb.PortfolioLive.Index do
     "#{FrestylWeb.Endpoint.url()}/p/#{token}?collaboration=true"
   end
 
-  def handle_event("create_portfolio_from_onboarding", params, socket) do
-    # Enhanced portfolio creation with onboarding context
-    portfolio_attrs = Map.merge(params, %{
-      "user_id" => socket.assigns.current_user.id,
-      "created_from_onboarding" => true,
-      "onboarding_step" => "portfolio_creation"
-    })
+  def handle_event("create_portfolio", %{"title" => title}, socket) do
+    user = socket.assigns.current_user
 
-    case Portfolios.create_portfolio(portfolio_attrs) do
-      {:ok, portfolio} ->
-        # Mark onboarding progress
-        Accounts.update_onboarding_progress(socket.assigns.current_user, %{
-          portfolio_created: true,
-          current_step: "customization"
-        })
+    # 🔥 FIX: Check portfolio limits FIRST
+    limits = Portfolios.get_portfolio_limits(user)
+    current_count = length(Portfolios.list_user_portfolios(user.id))
 
-        {:noreply,
-        socket
-        |> put_flash(:info, "Portfolio created successfully!")
-        |> push_navigate(to: "/portfolios/hub/welcome?portfolio_id=#{portfolio.id}")}
+    case check_portfolio_creation_limit(limits, current_count) do
+      :allowed ->
+        # Proceed with existing creation logic...
+        case validate_portfolio_title(title) do
+          {:ok, validated_title} ->
+            # Complete portfolio creation code
+            selected_template = socket.assigns.selected_template || "professional_executive"
 
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to create portfolio")}
+            # Map complex template names to valid database enum values
+            theme = map_template_to_valid_theme(selected_template)
+
+            # Generate slug from title
+            base_slug = validated_title
+              |> String.downcase()
+              |> String.replace(~r/[^a-z0-9\s-]/, "")
+              |> String.replace(~r/\s+/, "-")
+              |> String.slice(0, 50)
+
+            slug = if String.length(base_slug) < 5 do
+              "#{base_slug}-portfolio"
+            else
+              base_slug
+            end
+
+            # Get template config
+            template_config = try do
+              PortfolioTemplates.get_template_config(selected_template)
+            rescue
+              _ ->
+                %{
+                  "layout" => "dashboard",
+                  "primary_color" => "#3b82f6",
+                  "secondary_color" => "#64748b",
+                  "accent_color" => "#f59e0b"
+                }
+            end
+
+            portfolio_attrs = %{
+              title: validated_title,
+              slug: slug,
+              theme: theme,
+              customization: template_config,
+              visibility: :private
+            }
+
+            case Portfolios.create_portfolio(user, portfolio_attrs) do
+              {:ok, portfolio} ->
+                # Refresh data
+                portfolios = Portfolios.list_user_portfolios(user.id)
+                can_create = Portfolios.can_create_portfolio?(user)
+
+                overview = try do
+                  Portfolios.get_user_portfolio_overview(user.id)
+                rescue
+                  _ -> %{total_visits: 0, total_portfolios: length(portfolios), total_shares: 0}
+                end
+
+                portfolio_stats = Enum.map(portfolios, fn portfolio ->
+                  stats = try do
+                    Portfolios.get_portfolio_analytics(portfolio.id, user.id)
+                  rescue
+                    _ -> %{total_visits: 0, unique_visitors: 0, last_visit: nil}
+                  end
+                  {portfolio.id, stats}
+                end) |> Enum.into(%{})
+
+                {:noreply,
+                socket
+                |> assign(:portfolios, portfolios)
+                |> assign(:can_create, can_create)
+                |> assign(:overview, overview)
+                |> assign(:portfolio_stats, portfolio_stats)
+                |> assign(:show_create_modal, false)
+                |> assign(:selected_template, nil)
+                |> put_flash(:info, "Portfolio '#{portfolio.title}' created successfully!")
+                |> push_navigate(to: "/portfolios/#{portfolio.id}/edit")}
+
+              {:error, %Ecto.Changeset{} = changeset} ->
+                errors = changeset.errors
+                  |> Enum.map(fn {field, {msg, _}} -> "#{field} #{msg}" end)
+                  |> Enum.join(", ")
+
+                {:noreply, put_flash(socket, :error, "Failed to create portfolio: #{errors}")}
+
+              {:error, reason} ->
+                {:noreply, put_flash(socket, :error, "Failed to create portfolio: #{inspect(reason)}")}
+            end
+
+          {:error, message} ->
+            {:noreply, put_flash(socket, :error, message)}
+        end
+
+      {:blocked, reason} ->
+        # Show upgrade prompt instead of creating
+        {:noreply, socket
+        |> assign(:show_upgrade_modal, true)
+        |> assign(:upgrade_reason, reason)
+        |> put_flash(:warning, reason)}
     end
   end
 
@@ -896,6 +978,15 @@ defmodule FrestylWeb.PortfolioLive.Index do
     end
   end
 
+  defp check_portfolio_creation_limit(limits, current_count) do
+    case limits.max_portfolios do
+      -1 -> :allowed  # Unlimited
+      max_count when current_count >= max_count ->
+        {:blocked, "You've reached your portfolio limit (#{max_count}). Upgrade to create more portfolios."}
+      _ -> :allowed
+    end
+  end
+
   # Helper function to get portfolio stats
   defp get_portfolio_stats(portfolio) do
     # This should return stats from your analytics system
@@ -1547,7 +1638,7 @@ defmodule FrestylWeb.PortfolioLive.Index do
               <!-- Video Intro Component -->
               <.live_component
                 module={FrestylWeb.PortfolioLive.VideoIntroComponent}
-                id={"video-intro-#{@current_portfolio_for_video.id}"}
+                id={"video-intro-index-#{@current_portfolio_for_video.id}"}
                 portfolio={@current_portfolio_for_video}
                 current_user={@current_user}
                 on_cancel="hide_video_intro"

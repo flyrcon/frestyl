@@ -127,6 +127,17 @@ end)
     user -> {:ok, user}
   end
 
+  # Create test user with Creator tier
+{:ok, user} = Frestyl.Accounts.create_user(%{
+  email: "test@example.com",
+  # ... other user fields
+})
+
+{:ok, account} = Frestyl.Accounts.create_account(user, %{
+  subscription_tier: :creator,  # This gives access to Creator Lab
+  name: "Test Account"
+})
+
 # Create sample events
 now = DateTime.utc_now()
 tomorrow = DateTime.add(now, 60 * 60 * 24, :second)

@@ -218,8 +218,15 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
   @impl true
   def handle_event("show_video_intro", _params, socket) do
-    IO.puts("=== SHOW VIDEO INTRO EVENT ===")
-    {:noreply, assign(socket, :show_video_intro, true)}
+    # Apply current template's video styling
+    template_config = socket.assigns.template_config || %{}
+    header_config = template_config["header_config"] || %{}
+
+    {:noreply,
+    socket
+    |> assign(:show_video_intro, true)
+    |> assign(:video_style_classes, get_video_style_classes(header_config))
+    |> assign(:header_layout_active, true)}
   end
 
   # Hide video intro modal
@@ -428,27 +435,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     end
   end
 
-
-  @impl true
-  def handle_event("update_layout", %{"layout" => layout_key}, socket) do
-    current_customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(current_customization, "layout", layout_key)
-
-    case Portfolios.update_portfolio_customization(socket.assigns.portfolio, updated_customization) do
-      {:ok, portfolio} ->
-        {:noreply,
-        socket
-        |> assign(:portfolio, portfolio)
-        |> assign(:customization, updated_customization)
-        |> put_flash(:info, "Layout updated to #{String.capitalize(layout_key)}")}
-
-      {:error, _changeset} ->
-        {:noreply,
-        socket
-        |> put_flash(:error, "Failed to update layout")}
-    end
-  end
-
   @impl true
   def handle_event("update_background", %{"background" => background}, socket) do
     IO.puts("🎛️ Updating background to: #{background}")
@@ -478,53 +464,44 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   def handle_event("update_layout_option", params, socket) do
     option = params["option"]
 
-    # FIXED: Extract value from multiple possible parameter sources
+    # Extract value from multiple possible parameter sources
     value = case params do
       %{"value" => val} when val != "" -> val
-      %{^option => val} when val != "" -> val  # Use the option name as key
+      %{^option => val} when val != "" -> val
       %{"phx-value-value" => val} when val != "" -> val
       _ ->
         IO.puts("❌ No valid value found for layout option #{option}")
         IO.puts("❌ Available params: #{inspect(params)}")
-        nil  # FIXED: Use nil instead of return
+        nil
     end
 
-    # FIXED: Handle nil case properly
-    if value == nil do
-      {:noreply, put_flash(socket, :error, "Invalid layout option value")}
-    else
-      IO.puts("🎛️ Updating layout option: #{option} = #{value}")
-      IO.puts("🎛️ Full params: #{inspect(params)}")
+    # 🔥 FIX: Handle nil case properly (was causing crashes)
+    case value do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Invalid layout option value")}
 
-      # Convert string values to appropriate types
-      processed_value = case value do
-        "true" -> true
-        "false" -> false
-        "single_page" -> "single_page"
-        "multi_page" -> "multi_page"
-        other -> other
-      end
+      valid_value ->
+        IO.puts("🎛️ Updating layout option #{option} to: #{valid_value}")
 
-      current_customization = socket.assigns.customization || %{}
-      updated_customization = Map.put(current_customization, option, processed_value)
+        current_customization = socket.assigns.customization || %{}
+        updated_customization = Map.put(current_customization, option, valid_value)
 
-      case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
-        {:ok, portfolio} ->
-          updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+        case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+          {:ok, portfolio} ->
+            updated_css = generate_layout_css(updated_customization, nil, portfolio.theme)
 
-          {:noreply,
-          socket
-          |> assign(:portfolio, portfolio)
-          |> assign(:customization, updated_customization)
-          |> assign(:preview_css, updated_css)
-          |> assign(:template_layout, get_layout_from_customization(updated_customization))
-          |> assign(:unsaved_changes, false)
-          |> put_flash(:info, "Layout option updated: #{option} = #{processed_value}")
-          |> push_event("layout-option-updated", %{option: option, value: processed_value})}
+            {:noreply,
+            socket
+            |> assign(:portfolio, portfolio)
+            |> assign(:customization, updated_customization)
+            |> assign(:preview_css, updated_css)
+            |> assign(:unsaved_changes, false)
+            |> put_flash(:info, "#{String.capitalize(option)} updated")
+            |> push_event("layout-option-updated", %{option: option, value: valid_value})}
 
-        {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to update layout option")}
-      end
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update #{option}")}
+        end
     end
   end
 
@@ -665,28 +642,29 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   @impl true
   def handle_event("update_layout", params, socket) do
     layout = params["layout"] || params["value"]
-    socket = debug_socket_state(socket, "update_layout")
 
-    IO.puts("🎛️ Updating main layout: #{layout}")
+    IO.puts("🎛️ Updating layout to: #{layout}")
 
     current_customization = socket.assigns.customization || %{}
     updated_customization = Map.put(current_customization, "layout", layout)
 
     case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
       {:ok, portfolio} ->
-        updated_css = generate_portfolio_css(updated_customization, %{}, portfolio.theme)
+        # Generate updated CSS
+        updated_css = generate_layout_css(updated_customization, layout, portfolio.theme)
 
         {:noreply,
-         socket
-         |> assign(:portfolio, portfolio)
-         |> assign(:customization, updated_customization)
-         |> assign(:preview_css, updated_css)
-         |> assign(:template_layout, layout)
-         |> assign(:unsaved_changes, false)
-         |> put_flash(:info, "Layout updated to #{layout}")
-         |> push_event("layout-updated", %{layout: layout})}
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(:preview_css, updated_css)
+        |> assign(:template_layout, layout)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Layout updated to #{format_layout_name(layout)}")
+        |> push_event("layout-updated", %{layout: layout})}
 
-      {:error, _changeset} ->
+      {:error, changeset} ->
+        IO.puts("❌ Layout update failed: #{inspect(changeset.errors)}")
         {:noreply, put_flash(socket, :error, "Failed to update layout")}
     end
   end
@@ -1358,6 +1336,224 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     end
   end
 
+  def handle_event("video_uploaded", %{"section_id" => section_id} = params, socket) do
+    # Your existing video upload logic here...
+    # [Keep existing upload code]
+
+    # 🔥 NEW: Apply video header configuration after successful upload
+    video_section = Enum.find(socket.assigns.sections, &(&1.id == section_id))
+
+    if video_section && is_video_intro_section?(video_section) do
+      IO.puts("🔥 Video uploaded to intro section - applying header config")
+      socket = apply_video_header_config(socket, video_section)
+
+      # Also update the template layout to support video
+      socket = assign(socket, :template_layout, "video_enhanced")
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("activate_video_header", %{"section_id" => section_id}, socket) do
+    video_section = Enum.find(socket.assigns.sections, &(&1.id == section_id))
+
+    if video_section do
+      socket = apply_video_header_config(socket, video_section)
+      {:noreply, put_flash(socket, :info, "Video header activated for #{socket.assigns.portfolio.theme} theme")}
+    else
+      {:noreply, put_flash(socket, :error, "Video section not found")}
+    end
+  end
+
+  defp apply_video_header_config(socket, video_section) do
+    current_portfolio = socket.assigns.portfolio
+    current_theme = current_portfolio.theme || "executive"
+
+    IO.puts("🔥 APPLYING VIDEO HEADER CONFIG for theme: #{current_theme}")
+
+    # Get current template configuration
+    template_config = get_template_config_with_video_support(current_theme)
+
+    # Update customization to include video header config
+    current_customization = current_portfolio.customization || %{}
+
+    updated_customization = current_customization
+      |> Map.merge(template_config["customization"] || %{})
+      |> Map.put("has_video_intro", true)
+      |> Map.put("video_style", get_video_style_for_theme(current_theme))
+      |> Map.put("header_layout", "video_enhanced")
+
+    IO.puts("🔥 Updated customization keys: #{inspect(Map.keys(updated_customization))}")
+
+    # Update portfolio with enhanced config
+    case Portfolios.update_portfolio(current_portfolio, %{
+      customization: updated_customization
+    }) do
+      {:ok, updated_portfolio} ->
+        IO.puts("✅ Video header config applied successfully!")
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(:has_video_intro, true)
+        |> push_event("video_header_activated", %{
+          video_style: get_video_style_for_theme(current_theme),
+          theme: current_theme
+        })
+
+      {:error, changeset} ->
+        IO.puts("❌ Failed to apply video header config: #{inspect(changeset.errors)}")
+        put_flash(socket, :error, "Failed to activate video header configuration")
+    end
+  end
+
+  defp format_layout_name(layout) do
+    case layout do
+      "dashboard" -> "Dashboard"
+      "gallery" -> "Gallery"
+      "timeline" -> "Timeline"
+      "minimal" -> "Minimal"
+      "terminal" -> "Terminal"
+      "case_study" -> "Case Study"
+      "academic" -> "Academic"
+      _ -> String.capitalize(layout || "Dashboard")
+    end
+  end
+
+  defp generate_layout_css(customization, layout, theme) do
+    # Generate CSS based on layout and customization
+    primary_color = Map.get(customization, "primary_color", "#3b82f6")
+    secondary_color = Map.get(customization, "secondary_color", "#64748b")
+    accent_color = Map.get(customization, "accent_color", "#f59e0b")
+
+    layout_styles = case layout do
+      "dashboard" -> """
+        .portfolio-container { display: grid; grid-template-columns: 1fr; gap: 2rem; }
+        .portfolio-section { background: white; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        """
+      "gallery" -> """
+        .portfolio-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+        .portfolio-section { break-inside: avoid; margin-bottom: 1rem; }
+        """
+      "terminal" -> """
+        .portfolio-container { background: #1a1a1a; color: #00ff00; font-family: 'Courier New', monospace; padding: 1rem; }
+        .portfolio-section { border: 1px solid #00ff00; padding: 1rem; margin-bottom: 1rem; background: rgba(0,255,0,0.05); }
+        """
+      "minimal" -> """
+        .portfolio-container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+        .portfolio-section { border-bottom: 1px solid #eee; padding: 2rem 0; }
+        .portfolio-section:last-child { border-bottom: none; }
+        """
+      _ -> ""
+    end
+
+    """
+    <style>
+    :root {
+      --portfolio-primary: #{primary_color};
+      --portfolio-secondary: #{secondary_color};
+      --portfolio-accent: #{accent_color};
+    }
+
+    #{layout_styles}
+
+    .portfolio-primary { color: var(--portfolio-primary); }
+    .portfolio-secondary { color: var(--portfolio-secondary); }
+    .portfolio-accent { color: var(--portfolio-accent); }
+    </style>
+    """
+  end
+
+  defp get_fallback_template_config(theme) do
+    %{
+      "primary_color" => "#3b82f6",
+      "secondary_color" => "#64748b",
+      "accent_color" => "#f59e0b",
+      "layout" => "dashboard",
+      "typography" => %{
+        "font_family" => "Inter"
+      }
+    }
+  end
+
+  defp get_template_config_with_video_support(theme) do
+    base_config = Frestyl.Portfolios.PortfolioTemplates.get_template_config(theme)
+
+    # Enhance base config with video-specific header settings
+    enhanced_header_config = %{
+      show_video: true,
+      video_style: get_video_style_for_theme(theme),
+      show_social: base_config.header_config.show_social || true,
+      show_metrics: base_config.header_config.show_metrics || false,
+      layout_adjustment: "video_hero"
+    }
+
+    Map.put(base_config, :header_config, enhanced_header_config)
+  end
+
+  defp is_video_intro_section?(section) do
+    result = case section do
+      # Check section type and content
+      %{section_type: :media_showcase, content: content} when is_map(content) ->
+        Map.get(content, "video_type") == "introduction"
+
+      %{section_type: "media_showcase", content: content} when is_map(content) ->
+        Map.get(content, "video_type") == "introduction"
+
+      # Check by title
+      %{title: "Video Introduction"} ->
+        true
+
+      %{title: title} when is_binary(title) ->
+        title_lower = String.downcase(title)
+        String.contains?(title_lower, "video") and
+        (String.contains?(title_lower, "intro") or String.contains?(title_lower, "introduction"))
+
+      # Check if content has video_type
+      %{content: content} when is_map(content) ->
+        Map.get(content, "video_type") == "introduction"
+
+      _ ->
+        false
+    end
+
+    if result do
+      IO.puts("🔥 SECTION IS VIDEO INTRO: #{section.title} (#{section.section_type})")
+      IO.puts("🔥 CONTENT KEYS: #{inspect(Map.keys(section.content || %{}))}")
+    end
+
+    result
+  end
+
+  defp get_video_style_for_theme(theme) do
+    case theme do
+      "executive" -> "professional"
+      "professional_executive" -> "executive"
+      "creative_artistic" -> "artistic"
+      "creative_designer" -> "showcase"
+      "technical_developer" -> "terminal"
+      "technical_engineer" -> "technical"
+      "minimalist_clean" -> "minimal"
+      "minimalist_elegant" -> "elegant"
+      _ -> "professional"
+    end
+  end
+
+  defp get_video_style_classes(header_config) do
+    case header_config["video_style"] do
+      "minimal" -> "rounded-lg border border-gray-200"
+      "elegant" -> "rounded-xl border border-slate-200 shadow-lg"
+      "professional" -> "rounded-xl border border-blue-200 shadow-xl"
+      "executive" -> "rounded-xl border border-slate-300 shadow-2xl"
+      "artistic" -> "rounded-2xl border-2 border-purple-300 shadow-2xl"
+      "showcase" -> "rounded-2xl border border-indigo-200 shadow-xl"
+      "terminal" -> "rounded-lg border border-green-500 shadow-lg"
+      "technical" -> "rounded-lg border border-cyan-400 shadow-lg"
+      _ -> "rounded-xl border border-gray-200 shadow-lg"
+    end
+  end
+
   # Helper functions
   defp get_default_title_for_type(type) do
     case type do
@@ -1656,6 +1852,24 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     end
   end
 
+  defp apply_template_header_config(portfolio, template_config) do
+    header_config = template_config["header_config"] || %{}
+
+    # Apply video styling based on template
+    video_classes = case header_config["video_style"] do
+      "minimal" -> "rounded-lg border border-gray-200"
+      "executive" -> "rounded-xl border border-slate-300 shadow-2xl"
+      "artistic" -> "rounded-2xl border-2 border-purple-300 shadow-2xl"
+      _ -> "rounded-xl border border-gray-200 shadow-lg"
+    end
+
+    # Update customization to include header config
+    Map.merge(portfolio.customization || %{}, %{
+      "header_config" => header_config,
+      "video_classes" => video_classes
+    })
+  end
+
   defp format_section_title(section_type) do
     case section_type do
       "intro" -> "Introduction"
@@ -1841,29 +2055,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     # ============================================================================
     # MESSAGE HANDLERS - Template component communication
     # ============================================================================
-
-  @impl true
-  def handle_event("select_template", %{"template" => template_key}, socket) do
-    IO.puts("🔥 Template selection: #{template_key}")
-    IO.puts("🔥 Current theme: #{socket.assigns.portfolio.theme}")
-
-    case Portfolios.update_portfolio(socket.assigns.portfolio, %{theme: template_key}) do
-      {:ok, portfolio} ->
-        IO.puts("✅ Template updated to: #{portfolio.theme}")
-
-        {:noreply,
-        socket
-        |> assign(:portfolio, portfolio)
-        |> put_flash(:info, "Template changed to #{String.capitalize(template_key)}")}
-
-      {:error, changeset} ->
-        IO.puts("❌ Template update failed: #{inspect(changeset.errors)}")
-
-        {:noreply,
-        socket
-        |> put_flash(:error, "Failed to update template")}
-    end
-  end
 
   @impl true
   def handle_info({:preview_template, template_key}, socket) do

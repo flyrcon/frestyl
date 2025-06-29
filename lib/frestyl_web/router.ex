@@ -151,7 +151,7 @@ defmodule FrestylWeb.Router do
 
       # Onboarding routes
     live "/onboarding", OnboardingLive, :index
-    live "/resume-upload", OnboardingLive.ResumeUpload, :upload
+    live "/onboarding/resume-upload", OnboardingLive.ResumeUpload, :upload
 
     # Main dashboard/hub routes - MUST come before generic routes
     live "/", PortfolioHubLive, :index           # Main landing page
@@ -161,6 +161,15 @@ defmodule FrestylWeb.Router do
 
       # Studio routes
     live "/studio", StudioLive.Index, :index
+    live "/studio/:slug", StudioLive.Show, :show
+    live "/studio/:id", StudioLive.Show, :show
+    live "/studio/workspace/:workspace_id", StudioLive.Workspace, :show
+
+    # Story Lab Routes
+    live "/lab", LabLive.Index, :index
+    live "/lab/story-engine", LabLive.StoryEngine, :index
+    live "/lab/templates", LabLive.Templates, :index
+    live "/lab/experiments", LabLive.Experiments, :index
 
     # Portfolio dashboard route
     get "/portfolios/dashboard", PortfolioController, :dashboard

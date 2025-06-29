@@ -8,7 +8,10 @@ defmodule FrestylWeb.PortfolioHubLive do
 
  @impl true
   def mount(params, _session, socket) do
+    IO.puts("=== PORTFOLIO HUB LIVEVIEW MOUNT CALLED ===")
+    IO.inspect(params, label: "MOUNT PARAMS")
     user = socket.assigns.current_user
+    IO.puts("=== USER LOADED ===")
 
     # REPLACE THIS LINE:
     # account = user.account || %{subscription_tier: "personal"}
@@ -52,6 +55,7 @@ defmodule FrestylWeb.PortfolioHubLive do
     channels_data = load_channels_data(user, account)
 
     # 4. CREATOR LAB DATA (Re-enabled and enhanced)
+    lab_access = Features.FeatureGate.can_access_feature?(account, :creator_lab)
     lab_data = load_lab_data(user, portfolios, account)
 
     # 5. SERVICE DASHBOARD DATA (NEW - Creator+ tiers only)
@@ -88,7 +92,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:accounts, accounts)
       |> assign(:limits, limits)
       |> assign(:hub_config, hub_config)
-      |> assign(:quick_actions, quick_actions)
+      |> assign(:quick_actions, get_quick_actions(socket.assigns.current_user))
 
       # ======== PORTFOLIO STUDIO SECTION ========
       |> assign(:portfolios, portfolios)
@@ -139,7 +143,7 @@ defmodule FrestylWeb.PortfolioHubLive do
 
       # ======== UI STATE MANAGEMENT ========
       |> assign(:view_mode, "sections") # "sections", "grid", "list"
-      |> assign(:active_section, determine_default_section(account.subscription_tier))
+      |> assign(:active_section, "portfolio_studio")
       |> assign(:filter_status, "all")
       |> assign(:show_create_modal, false)
       |> assign(:show_collaboration_panel, false)
@@ -280,6 +284,23 @@ defmodule FrestylWeb.PortfolioHubLive do
         tier_required: "professional"
       }
     end
+  end
+
+  defp get_quick_actions(user) do
+    [
+      %{
+        title: "Upload Media",
+        icon: "📸",
+        action: "show_media_upload",
+        description: "Add images or videos"
+      },
+      %{
+        title: "Analytics",
+        icon: "📊",
+        action: "switch_section",
+        description: "View performance"
+      }
+    ]
   end
 
   # ============================================================================
@@ -846,7 +867,190 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
+  @impl true
+  def handle_event("show_create_modal", _params, socket) do
+    IO.puts("=== CREATE MODAL CLICKED ===")
+    {:noreply, assign(socket, :show_create_modal, true)}
+  end
 
+  @impl true
+  def handle_event("close_create_modal", _params, socket) do
+    {:noreply, assign(socket, :show_create_modal, false)}
+  end
+
+  # Portfolio Creation Methods
+  @impl true
+  def handle_event("create_from_template", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/portfolios/new?method=template")}
+  end
+
+  @impl true
+  def handle_event("create_from_resume", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/onboarding/resume-upload")}
+  end
+
+  @impl true
+  def handle_event("create_blank", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/portfolios/new?method=blank")}
+  end
+
+  # Section Switching (for Collaboration Hub)
+  @impl true
+  def handle_event("switch_section", %{"section" => section}, socket) do
+    {:noreply, assign(socket, :active_section, section)}
+  end
+
+  # Mobile Menu Toggle
+  @impl true
+  def handle_event("toggle_mobile_menu", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_mobile_menu, false)
+    {:noreply, assign(socket, :show_mobile_menu, !current_state)}
+  end
+
+  # Collaboration Panel Toggle
+  @impl true
+  def handle_event("toggle_collaboration_panel", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_collaboration_panel, false)
+    {:noreply, assign(socket, :show_collaboration_panel, !current_state)}
+  end
+
+  # Missing Community Channels Event Handlers
+  @impl true
+  def handle_event("show_community_channels", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_channels_modal, true)
+     |> assign(:discovery_active_tab, "channels")}
+  end
+
+  @impl true
+  def handle_event("navigate_to_channels", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/channels")}
+  end
+
+  # Enhanced Portfolio Creation
+  @impl true
+  def handle_event("create_portfolio", %{"title" => title} = params, socket) when title != "" do
+    user = socket.assigns.current_user
+    template = Map.get(params, "template", "professional")
+
+    portfolio_attrs = %{
+      title: String.trim(title),
+      template: template,
+      user_id: user.id,
+      status: "draft",
+      visibility: :private,  # Use atom instead of string
+      slug: Portfolios.generate_slug(title)
+    }
+
+    case Portfolios.create_portfolio(portfolio_attrs, user) do
+      {:ok, portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:show_create_modal, false)
+        |> put_flash(:info, "Portfolio '#{portfolio.title}' created successfully!")
+        |> push_navigate(to: "/portfolios/#{portfolio.id}/edit")}
+
+      {:error, changeset} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Failed to create portfolio")
+        |> assign(:portfolio_changeset, changeset)}
+    end
+  end
+
+  @impl true
+  def handle_event("create_portfolio", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Portfolio title is required")}
+  end
+
+  # Template Selection Handlers
+  @impl true
+  def handle_event("select_template", %{"template" => template}, socket) do
+    {:noreply, assign(socket, :selected_template, template)}
+  end
+
+  @impl true
+  def handle_event("navigate_to_studio", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/studio")}
+  end
+
+  @impl true
+  def handle_event("browse_templates", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/portfolios/templates")}
+  end
+
+  @impl true
+  def handle_event("access_story_lab", _params, socket) do
+    account = socket.assigns.current_account || %{subscription_tier: "personal"}
+
+    # For now, let's just navigate directly to lab features
+    {:noreply, push_navigate(socket, to: "/lab")}
+  end
+
+  # Enhanced Studio Integration
+  @impl true
+  def handle_event("show_studio_modal", _params, socket) do
+    {:noreply, assign(socket, :show_studio_modal, true)}
+  end
+
+  @impl true
+  def handle_event("hide_studio_modal", _params, socket) do
+    {:noreply, assign(socket, :show_studio_modal, false)}
+  end
+
+  @impl true
+  def handle_event("show_studio_welcome", _params, socket) do
+    {:noreply, assign(socket, :show_studio_welcome_modal, true)}
+  end
+
+  @impl true
+  def handle_event("hide_studio_welcome", _params, socket) do
+    {:noreply, assign(socket, :show_studio_welcome_modal, false)}
+  end
+
+  @impl true
+  def handle_event("create_studio_session", %{"type" => session_type}, socket) do
+    # For now, just navigate to the studio route or close modal with message
+    {:noreply,
+    socket
+    |> assign(:show_studio_modal, false)
+    |> put_flash(:info, "Studio sessions coming soon! #{String.capitalize(String.replace(session_type, "_", " "))} will be available in the next update.")
+    |> push_navigate(to: "/studio")}
+  end
+
+  # Navigation Helpers
+  @impl true
+  def handle_event("navigate_to_studio", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/studio")}
+  end
+
+  @impl true
+  def handle_event("prevent_close", _params, socket) do
+    # Prevents modal from closing when clicking inside modal content
+    {:noreply, socket}
+  end
+
+  # Enhanced Welcome Flow
+  @impl true
+  def handle_event("dismiss_welcome", _params, socket) do
+    {:noreply, assign(socket, :show_welcome_celebration, false)}
+  end
+
+  @impl true
+  def handle_event("complete_onboarding_step", %{"step" => step}, socket) do
+    user = socket.assigns.current_user
+
+    # Track onboarding completion
+    case step do
+      "upload_resume" ->
+        {:noreply, push_navigate(socket, to: "/onboarding/upload")}
+      "share_promote" ->
+        {:noreply, push_navigate(socket, to: "/portfolios/share")}
+      _ ->
+        {:noreply, socket}
+    end
+  end
 
   defp send_enhancement_invitations(channel, enhancement_type, current_account) do
     # Check if user wants to invite service providers
@@ -882,8 +1086,37 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   defp get_recently_created_portfolio(portfolios) do
     portfolios
-    |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+    # 🔥 FIX: Use NaiveDateTime.compare instead of DateTime.compare
+    # since inserted_at is a NaiveDateTime struct, not DateTime
+    |> Enum.sort_by(& &1.inserted_at, {:desc, NaiveDateTime})
     |> List.first()
+  end
+
+  # Alternative fix if you want to handle both DateTime and NaiveDateTime:
+  defp get_recently_created_portfolio_safe(portfolios) do
+    portfolios
+    |> Enum.sort_by(fn portfolio ->
+      case portfolio.inserted_at do
+        %DateTime{} = dt -> dt
+        %NaiveDateTime{} = ndt ->
+          # Convert NaiveDateTime to DateTime (assuming UTC)
+          DateTime.from_naive!(ndt, "Etc/UTC")
+        _ ->
+          # Fallback to current time if neither
+          DateTime.utc_now()
+      end
+    end, {:desc, DateTime})
+    |> List.first()
+  end
+
+  # Or the simplest fix - use the raw comparison:
+  defp get_recently_created_portfolio_simple(portfolios) do
+    case portfolios do
+      [] -> nil
+      [portfolio] -> portfolio
+      portfolios ->
+        Enum.max_by(portfolios, & &1.inserted_at, NaiveDateTime)
+    end
   end
 
   defp assign_mobile_state() do
@@ -1075,6 +1308,33 @@ defmodule FrestylWeb.PortfolioHubLive do
     :ok
   end
 
+  # Upgrade event handlers
+  @impl true
+  def handle_event("upgrade_to_creator", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?plan=creator")}
+  end
+
+  @impl true
+  def handle_event("upgrade_to_professional", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?plan=professional")}
+  end
+
+  @impl true
+  def handle_event("upgrade_for_lab", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?feature=creator_lab")}
+  end
+
+  # Add service-related handlers
+  @impl true
+  def handle_event("create_service", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/services/new")}
+  end
+
+  @impl true
+  def handle_event("view_calendar", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/calendar")}
+  end
+
   # Feature availability helpers
   defp get_available_templates_count(account), do: 10
   defp get_enhancement_progress(portfolios), do: %{}
@@ -1085,20 +1345,6 @@ defmodule FrestylWeb.PortfolioHubLive do
   defp check_calendar_integration(user_id), do: false
   defp check_billing_integration(user_id), do: false
   defp portfolio_needs_work?(portfolio), do: false
-
-  # ============================================================================
-  # EVENT HANDLERS (To be implemented in next iteration)
-  # ============================================================================
-
-  @impl true
-  def handle_event("switch_section", %{"section" => section}, socket) do
-    {:noreply, assign(socket, :active_section, section)}
-  end
-
-  @impl true
-  def handle_event("toggle_view_mode", %{"mode" => mode}, socket) do
-    {:noreply, assign(socket, :view_mode, mode)}
-  end
 
   # ============================================================================
   # MAIN SECTION FUNCTIONS (called directly from template)
@@ -1219,164 +1465,6 @@ defmodule FrestylWeb.PortfolioHubLive do
     <% else %>
       <!-- Full Revenue Center -->
       <%= revenue_center_content(assigns) %>
-    <% end %>
-    """
-  end
-
-  defp service_dashboard_section(assigns) do
-    ~H"""
-    <%= if Map.get(@service_data, :upgrade_prompt, true) do %>
-      <!-- Upgrade Prompt for Service Dashboard -->
-      <div class="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl p-8 border-2 border-blue-200">
-        <div class="text-center">
-          <div class="text-6xl mb-4">💼</div>
-          <h2 class="text-2xl font-bold text-gray-900 mb-4">Service Dashboard</h2>
-          <p class="text-gray-600 mb-6">Manage bookings, track revenue, and grow your service business with Creator tier features.</p>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div class="bg-white rounded-lg p-4 border border-blue-200">
-              <div class="text-2xl mb-2">📅</div>
-              <h3 class="font-semibold text-gray-900">Booking Management</h3>
-              <p class="text-sm text-gray-600">Calendar integration and client scheduling</p>
-            </div>
-            <div class="bg-white rounded-lg p-4 border border-blue-200">
-              <div class="text-2xl mb-2">💰</div>
-              <h3 class="font-semibold text-gray-900">Revenue Tracking</h3>
-              <p class="text-sm text-gray-600">Monitor earnings and payment processing</p>
-            </div>
-            <div class="bg-white rounded-lg p-4 border border-blue-200">
-              <div class="text-2xl mb-2">🎯</div>
-              <h3 class="font-semibold text-gray-900">Performance Analytics</h3>
-              <p class="text-sm text-gray-600">Track success metrics and growth</p>
-            </div>
-          </div>
-          <button phx-click="upgrade_to_creator"
-                  class="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all transform hover:scale-105">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-            </svg>
-            Upgrade to Creator Tier
-          </button>
-        </div>
-      </div>
-    <% else %>
-      <!-- Full Service Dashboard -->
-      <%= service_dashboard_content(assigns) %>
-    <% end %>
-    """
-  end
-
-  defp creator_lab_section(assigns) do
-    ~H"""
-    <%= if Map.get(@lab_data, :upgrade_prompt, true) do %>
-      <!-- Upgrade Prompt for Creator Lab -->
-      <div class="bg-gradient-to-br from-purple-50 to-pink-100 rounded-xl p-8 border-2 border-purple-200">
-        <div class="text-center">
-          <div class="text-6xl mb-4">🧪</div>
-          <h2 class="text-2xl font-bold text-gray-900 mb-4">Creator Lab</h2>
-          <p class="text-gray-600 mb-6">Experiment with cutting-edge features, AI tools, and beta functionality to stay ahead of the curve.</p>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div class="bg-white rounded-lg p-4 border border-purple-200">
-              <div class="text-2xl mb-2">🤖</div>
-              <h3 class="font-semibold text-gray-900">AI-Powered Tools</h3>
-              <p class="text-sm text-gray-600">Smart content generation and optimization</p>
-            </div>
-            <div class="bg-white rounded-lg p-4 border border-purple-200">
-              <div class="text-2xl mb-2">🔬</div>
-              <h3 class="font-semibold text-gray-900">Beta Features</h3>
-              <p class="text-sm text-gray-600">Early access to experimental functionality</p>
-            </div>
-            <div class="bg-white rounded-lg p-4 border border-purple-200">
-              <div class="text-2xl mb-2">📊</div>
-              <h3 class="font-semibold text-gray-900">Advanced Analytics</h3>
-              <p class="text-sm text-gray-600">Deep insights and performance metrics</p>
-            </div>
-          </div>
-          <button phx-click="upgrade_for_lab"
-                  class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all transform hover:scale-105">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-            </svg>
-            Unlock Creator Lab
-          </button>
-        </div>
-      </div>
-    <% else %>
-      <!-- Full Creator Lab -->
-      <div class="space-y-6">
-        <!-- Lab Overview -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div class="bg-white rounded-xl p-6 border border-gray-200">
-            <div class="flex items-center">
-              <div class="p-3 bg-purple-100 rounded-lg">
-                <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Active Experiments</p>
-                <p class="text-2xl font-bold text-gray-900"><%= length(Map.get(@lab_data, :active_experiments, [])) %></p>
-              </div>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-xl p-6 border border-gray-200">
-            <div class="flex items-center">
-              <div class="p-3 bg-pink-100 rounded-lg">
-                <svg class="w-6 h-6 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Beta Features</p>
-                <p class="text-2xl font-bold text-gray-900"><%= length(Map.get(@lab_data, :beta_access, [])) %></p>
-              </div>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-xl p-6 border border-gray-200">
-            <div class="flex items-center">
-              <div class="p-3 bg-blue-100 rounded-lg">
-                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">AI Insights</p>
-                <p class="text-2xl font-bold text-gray-900"><%= map_size(Map.get(@lab_data, :ai_insights, %{})) %></p>
-              </div>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-xl p-6 border border-gray-200">
-            <div class="flex items-center">
-              <div class="p-3 bg-green-100 rounded-lg">
-                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"/>
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-600">Completed Tests</p>
-                <p class="text-2xl font-bold text-gray-900"><%= length(Map.get(@lab_data, :results, [])) %></p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Available Lab Features -->
-        <%= if @lab_data[:features] && length(@lab_data.features) > 0 do %>
-          <%= lab_features_section(assigns) %>
-        <% end %>
-
-        <!-- Active Experiments -->
-        <%= if @lab_data[:active_experiments] && length(@lab_data.active_experiments) > 0 do %>
-          <%= active_experiments_section(assigns) %>
-        <% end %>
-
-        <!-- AI Insights -->
-        <%= if @lab_data[:ai_insights] && map_size(@lab_data.ai_insights) > 0 do %>
-          <%= ai_insights_section(assigns) %>
-        <% end %>
-      </div>
     <% end %>
     """
   end
@@ -1765,7 +1853,7 @@ defmodule FrestylWeb.PortfolioHubLive do
             <p class="text-sm text-gray-600 mb-3"><%= suggestion.description %></p>
 
             <div class="flex items-center justify-between text-xs text-gray-500">
-              <span>For: <%= Helpers.get_portfolio_title(suggestion.portfolio_id, @portfolios) %></span>
+              <span>For: <span>For: <%= FrestylWeb.PortfolioHubLive.Helpers.get_portfolio_title(suggestion.portfolio_id, @portfolios) %></span></span>
               <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
               </svg>
@@ -2143,100 +2231,6 @@ defmodule FrestylWeb.PortfolioHubLive do
         <% end %>
       </div>
     <% end %>
-    """
-  end
-
-  defp lab_features_section(assigns) do
-    ~H"""
-    <div class="bg-white rounded-xl p-6 border border-gray-200">
-      <h2 class="text-xl font-bold text-gray-900 mb-6">Available Lab Features</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <%= for feature <- @lab_data.features do %>
-          <div class="border border-purple-200 rounded-lg p-4 hover:shadow-md transition-all bg-gradient-to-br from-purple-50 to-pink-50">
-            <div class="flex items-center mb-3">
-              <span class="text-2xl mr-3"><%= feature.icon %></span>
-              <div>
-                <h3 class="font-semibold text-gray-900"><%= feature.name %></h3>
-                <span class={[
-                  "text-xs px-2 py-1 rounded-full",
-                  case feature.status do
-                    "beta" -> "bg-yellow-100 text-yellow-700"
-                    "experimental" -> "bg-red-100 text-red-700"
-                    "stable" -> "bg-green-100 text-green-700"
-                    _ -> "bg-gray-100 text-gray-700"
-                  end
-                ]}>
-                  <%= String.capitalize(feature.status) %>
-                </span>
-              </div>
-            </div>
-            <p class="text-sm text-gray-600 mb-4"><%= feature.description %></p>
-            <button phx-click="try_lab_feature" phx-value-feature_id={feature.id}
-                    class="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
-              Try Feature
-            </button>
-          </div>
-        <% end %>
-      </div>
-    </div>
-    """
-  end
-
-  defp active_experiments_section(assigns) do
-    ~H"""
-    <div class="bg-white rounded-xl p-6 border border-gray-200">
-      <h2 class="text-xl font-bold text-gray-900 mb-6">Your Active Experiments</h2>
-      <div class="space-y-4">
-        <%= for experiment <- @lab_data.active_experiments do %>
-          <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-            <div class="flex items-center">
-              <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                </svg>
-              </div>
-              <div class="ml-4">
-                <p class="font-medium text-gray-900"><%= experiment.name %></p>
-                <p class="text-sm text-gray-600">Started <%= experiment.start_date %> • <%= experiment.duration %> days remaining</p>
-              </div>
-            </div>
-            <div class="flex items-center space-x-3">
-              <div class="text-sm">
-                <span class="text-gray-600">Progress:</span>
-                <span class="font-medium text-purple-600"><%= experiment.progress %>%</span>
-              </div>
-              <button phx-click="view_experiment" phx-value-id={experiment.id}
-                      class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs hover:bg-purple-200 transition-colors">
-                View Results
-              </button>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    </div>
-    """
-  end
-
-  defp ai_insights_section(assigns) do
-    ~H"""
-    <div class="bg-white rounded-xl p-6 border border-gray-200">
-      <h2 class="text-xl font-bold text-gray-900 mb-6">AI Insights</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <%= for {insight_type, insight_data} <- @lab_data.ai_insights do %>
-          <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-            <h3 class="font-semibold text-gray-900 mb-2"><%= Phoenix.Naming.humanize(insight_type) %></h3>
-            <p class="text-sm text-gray-600 mb-3"><%= insight_data.description %></p>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-gray-500">Confidence: <%= insight_data.confidence %>%</span>
-              <button phx-click="apply_ai_insight" phx-value-type={insight_type}
-                      class="px-3 py-1 bg-blue-600 text-white rounded-full text-xs hover:bg-blue-700 transition-colors">
-                Apply
-              </button>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    </div>
     """
   end
 

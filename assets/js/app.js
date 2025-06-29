@@ -19,6 +19,13 @@ import SortableSections from "./hooks/section_sortable"
 // Import Sortable for drag-and-drop
 import Sortable from 'sortablejs'
 
+// Add safety checks for potentially undefined imports
+const DragDropOutline = window.DragDropOutline || {};
+const CharacterRelationships = window.CharacterRelationships || {};
+const WorldBibleSearch = window.WorldBibleSearch || {};
+const StoryAutoSave = window.StoryAutoSave || {};
+const CollaborativeCursors = window.CollaborativeCursors || {};
+
 // Portfolio Hub Hooks
 export const PortfolioHub = {
   mounted() {
@@ -145,15 +152,21 @@ let Hooks = {
   // Video Recording
   VideoCapture,
 
-  // FIXED: Drag & Drop Hooks from sortable_hooks.js
+  // Drag & Drop Hooks - FIXED: No duplicates
   SortableSections: SortableHooks.SectionSortable,
-  SortableSections: SortableSections,
   SortableMedia: SortableHooks.MediaSortable,
   SortableSkills: SortableHooks.SkillsSortable,
   SortableExperience: SortableHooks.ExperienceSortable,
   SortableEducation: SortableHooks.EducationSortable,
 
-  // Auto Focus Hook - for modal inputs
+  // Portfolio Hub Hook
+  PortfolioHub: PortfolioHub,
+
+  // Mobile Hooks
+  MobileGestures: window.MobilePortfolioHooks?.MobileGestures,
+  MobilePullRefresh: window.MobilePortfolioHooks?.MobilePullRefresh,
+
+  // Auto Focus Hook
   AutoFocus: {
     mounted() {
       setTimeout(() => {
@@ -169,7 +182,6 @@ let Hooks = {
   StoryAutoSave,
   CollaborativeCursors,  
 
-  // FIXED: Single PDF Download Hook
   PdfDownload: {
     mounted() {
       console.log('🎯 PdfDownload hook mounted successfully on element:', this.el.id)
@@ -537,6 +549,49 @@ let Hooks = {
       if (iframe) {
         iframe.src = iframe.src.split('?')[0] + '?preview=true&t=' + Date.now();
       }
+    }
+  },
+
+    // Clipboard Hook
+  Clipboard: {
+    mounted() {
+      this.el.addEventListener('click', async () => {
+        const textToCopy = this.el.dataset.clipboard || this.el.textContent;
+        
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          console.log('✅ Text copied to clipboard');
+          this.pushEvent('clipboard_success', {});
+        } catch (err) {
+          console.error('❌ Failed to copy text:', err);
+          this.fallbackCopy(textToCopy);
+        }
+      });
+    },
+
+    fallbackCopy(text) {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      try {
+        const successful = document.execCommand('copy');
+        if (successful) {
+          console.log('✅ Fallback: Text copied to clipboard');
+          this.pushEvent('clipboard_success', {});
+        } else {
+          console.error('❌ Fallback: Failed to copy text');
+        }
+      } catch (err) {
+        console.error('❌ Fallback: Copy command failed:', err);
+      }
+
+      document.body.removeChild(textArea);
     }
   },
 

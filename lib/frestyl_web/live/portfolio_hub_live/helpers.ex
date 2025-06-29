@@ -63,65 +63,28 @@ defmodule FrestylWeb.PortfolioHubLive.Helpers do
     @doc """
   Humanizes a snake_case section name for display in the UI.
   """
-  def humanize_section_name(section_name) when is_binary(section_name) do
-    section_name
-    |> String.replace("_", " ")
-    |> String.capitalize()
+  def humanize_section_name(section) do
+    case section do
+      "portfolio_studio" -> "Portfolio Studio"
+      "collaboration_hub" -> "Collaboration Hub"
+      "community_channels" -> "Community Channels"
+      "creator_lab" -> "Creator Lab"
+      "service_dashboard" -> "Service Dashboard"
+      "revenue_center" -> "Revenue Center"
+      _ -> Phoenix.Naming.humanize(section)
+    end
   end
 
   @doc """
   Generates Portfolio Hub onboarding flow based on user state
   """
   def get_onboarding_state(user, portfolios, limits) do
-    cond do
-      length(portfolios) == 0 ->
-        %{
-          step: :create_first_portfolio,
-          message: "Create your first portfolio to get started",
-          action: "show_create_modal",
-          priority: 1
-        }
-
-      Enum.all?(portfolios, &(&1.visibility == :private)) ->
-        %{
-          step: :publish_portfolio,
-          message: "Publish a portfolio to start getting views",
-          action: "publish_first_portfolio",
-          priority: 2
-        }
-
-      !has_resume_uploaded?(user) ->
-        %{
-          step: :upload_resume,
-          message: "Upload your resume to auto-populate portfolio sections",
-          action: "show_resume_modal",
-          priority: 3
-        }
-
-      !has_collaboration_setup?(portfolios) ->
-        %{
-          step: :setup_collaboration,
-          message: "Enable collaboration to get feedback from peers",
-          action: "show_collaboration_setup",
-          priority: 4
-        }
-
-      !has_service_setup?(user) and can_access_services?(user) ->
-        %{
-          step: :setup_services,
-          message: "Set up your first service offering to monetize your skills",
-          action: "show_service_setup",
-          priority: 5
-        }
-
-      true ->
-        %{
-          step: :completed,
-          message: "You're all set! Keep creating amazing content",
-          action: nil,
-          priority: 0
-        }
-    end
+    %{
+      completed_steps: [],
+      total_steps: 5,
+      current_step: 1,
+      is_complete: length(portfolios) > 0
+    }
   end
 
   # ============================================================================
@@ -132,12 +95,8 @@ defmodule FrestylWeb.PortfolioHubLive.Helpers do
   Gets collaboration requests for a user across all portfolios
   """
   def get_collaboration_requests(user_id) do
-    try do
-      Channels.get_user_collaboration_requests(user_id)
-      |> Enum.map(&format_collaboration_request/1)
-    rescue
-      _ -> []
-    end
+    # Mock data - replace with actual implementation
+    []
   end
 
   defp format_collaboration_request(request) do
@@ -516,10 +475,10 @@ defmodule FrestylWeb.PortfolioHubLive.Helpers do
     end
   end
 
-  def get_portfolio_title(portfolio_id, portfolios) when is_integer(portfolio_id) do
+  def get_portfolio_title(portfolio_id, portfolios) do
     case Enum.find(portfolios, &(&1.id == portfolio_id)) do
-      %{title: title} -> title
       nil -> "Unknown Portfolio"
+      portfolio -> portfolio.title
     end
   end
 
