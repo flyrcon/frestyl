@@ -129,15 +129,46 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     {:noreply, assign(socket, :active_tab, String.to_atom(tab))}
   end
 
-  # Template-related events - delegate to TemplateManager
+  # 🔥 CRITICAL FIX: Template-related events - ensure single return
   @impl true
   def handle_event("select_template", params, socket) do
-    {:noreply, TemplateManager.handle_template_selection(socket, params)}
+    updated_socket = TemplateManager.handle_template_selection(socket, params)
+    {:noreply, updated_socket}  # Single return wrapper
   end
 
   @impl true
   def handle_event("apply_template", params, socket) do
-    {:noreply, TemplateManager.handle_template_selection(socket, params)}
+    updated_socket = TemplateManager.handle_template_selection(socket, params)
+    {:noreply, updated_socket}  # Single return wrapper
+  end
+
+  @impl true
+  def handle_event("set_customization_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :active_customization_tab, tab)}
+  end
+
+    @impl true
+  def handle_event("update_customization", %{"field" => field, "value" => value} = params, socket) do
+    updated_socket = TemplateManager.handle_customization_update(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("update_primary_color", %{"value" => color}, socket) do
+    updated_socket = TemplateManager.handle_color_update(socket, %{"color_type" => "primary", "value" => color})
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("update_secondary_color", %{"value" => color}, socket) do
+    updated_socket = TemplateManager.handle_color_update(socket, %{"color_type" => "secondary", "value" => color})
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("update_accent_color", %{"value" => color}, socket) do
+    updated_socket = TemplateManager.handle_color_update(socket, %{"color_type" => "accent", "value" => color})
+    {:noreply, updated_socket}
   end
 
   @impl true
@@ -218,21 +249,11 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
   @impl true
   def handle_event("show_video_intro", _params, socket) do
-    # Apply current template's video styling
-    template_config = socket.assigns.template_config || %{}
-    header_config = template_config["header_config"] || %{}
-
-    {:noreply,
-    socket
-    |> assign(:show_video_intro, true)
-    |> assign(:video_style_classes, get_video_style_classes(header_config))
-    |> assign(:header_layout_active, true)}
+    {:noreply, assign(socket, :show_video_intro, true)}
   end
 
-  # Hide video intro modal
   @impl true
   def handle_event("hide_video_intro", _params, socket) do
-    IO.puts("=== HIDE VIDEO INTRO EVENT ===")
     {:noreply, assign(socket, :show_video_intro, false)}
   end
 
@@ -317,12 +338,9 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
   # CRITICAL: Handle video intro completion
   @impl true
-  def handle_info({:video_intro_complete, data}, socket) do
-    IO.puts("=== VIDEO INTRO COMPLETE MESSAGE ===")
-    IO.inspect(data, label: "Video completion data")
-
-    # Reload sections to include the new video intro section
-    updated_sections = try do
+  def handle_info({:video_intro_complete, _data}, socket) do
+    # Reload sections to include new video section
+    sections = try do
       Portfolios.list_portfolio_sections(socket.assigns.portfolio.id)
     rescue
       _ -> socket.assigns.sections
@@ -330,9 +348,9 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
     {:noreply,
      socket
+     |> assign(:sections, sections)
      |> assign(:show_video_intro, false)
-     |> assign(:sections, updated_sections)
-     |> put_flash(:info, "Video introduction saved successfully! It will appear at the top of your portfolio.")}
+     |> put_flash(:info, "Video introduction saved!")}
   end
 
   # Handle timer messages that might leak from component
@@ -404,6 +422,15 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   @impl true
   def handle_event("toggle_preview", _params, socket) do
     {:noreply, assign(socket, :show_preview, !socket.assigns.show_preview)}
+  end
+
+  @impl true
+  def handle_event("refresh_preview", _params, socket) do
+    {:noreply,
+     socket
+     |> push_event("refresh_portfolio_preview", %{
+       timestamp: System.system_time(:millisecond)
+     })}
   end
 
   # Portfolio settings events (simplified)
@@ -680,11 +707,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   end
 
   @impl true
-  def handle_event("refresh_preview", params, socket) do
-    TemplateManager.handle_template_event(socket, "refresh_preview", params)
-  end
-
-  @impl true
   def handle_event("toggle_visibility", %{"id" => section_id}, socket) do
     IO.puts("🔧 Toggle visibility clicked for ID: #{section_id}")
 
@@ -732,144 +754,263 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     end
   end
 
-  @impl true
-  def handle_event("toggle_add_section_dropdown", _params, socket) do
-    current_state = Map.get(socket.assigns, :show_add_section_dropdown, false)
-    IO.puts("🔧 Toggling dropdown from #{current_state} to #{!current_state}")
-    {:noreply, assign(socket, :show_add_section_dropdown, !current_state)}
-  end
-
 
   @impl true
   def handle_event("close_add_section_dropdown", _params, socket) do
     IO.puts("🔧 Closing add section dropdown")
     {:noreply, assign(socket, :show_add_section_dropdown, false)}
   end
-  # Section creation
-  @impl true
-  def handle_event("add_section", %{"type" => section_type}, socket) do
-    IO.puts("🔍 ADD_SECTION: Starting with type: #{section_type}")
-
-    try do
-      # Get the default content with debug
-      title = get_default_title_for_type(section_type)
-      content = get_default_content_for_type(section_type)
-
-      IO.puts("🔍 ADD_SECTION: Title: #{title}")
-      IO.puts("🔍 ADD_SECTION: Content keys: #{inspect(Map.keys(content))}")
-
-      # Create new section
-      section_attrs = %{
-        portfolio_id: socket.assigns.portfolio.id,
-        title: title,
-        section_type: section_type,
-        content: content,
-        position: length(socket.assigns.sections) + 1,
-        visible: true
-      }
-
-      IO.puts("🔍 ADD_SECTION: Attempting to create section...")
-      IO.puts("🔍 ADD_SECTION: Portfolio ID: #{socket.assigns.portfolio.id}")
-      IO.puts("🔍 ADD_SECTION: Section type: #{section_type}")
-
-      case Portfolios.create_section(section_attrs) do
-        {:ok, section} ->
-          IO.puts("✅ ADD_SECTION: Section created successfully!")
-          IO.puts("✅ ADD_SECTION: New section ID: #{section.id}")
-
-          updated_sections = socket.assigns.sections ++ [section]
-          IO.puts("✅ ADD_SECTION: Updated sections count: #{length(updated_sections)}")
-
-          {:noreply,
-          socket
-          |> assign(:sections, updated_sections)
-          |> assign(:show_add_section_dropdown, false)
-          |> put_flash(:info, "#{title} section added successfully!")
-          |> push_event("section-added", %{section_id: section.id, section_type: section_type})}
-
-        {:error, changeset} ->
-          IO.puts("❌ ADD_SECTION: Database error!")
-          IO.puts("❌ ADD_SECTION: Changeset errors: #{inspect(changeset.errors)}")
-
-          # Check for specific constraint errors
-          if changeset.errors[:section_type] do
-            IO.puts("❌ ADD_SECTION: Section type constraint error - '#{section_type}' not allowed in database")
-          end
-
-          errors = changeset.errors
-            |> Enum.map(fn {field, {msg, _}} -> "#{field}: #{msg}" end)
-            |> Enum.join(", ")
-
-          {:noreply,
-          socket
-          |> assign(:show_add_section_dropdown, false)
-          |> put_flash(:error, "Failed to add section: #{errors}")}
-
-        other_result ->
-          IO.puts("❌ ADD_SECTION: Unexpected result: #{inspect(other_result)}")
-          {:noreply,
-          socket
-          |> assign(:show_add_section_dropdown, false)
-          |> put_flash(:error, "Unexpected error adding section")}
-      end
-    rescue
-      error ->
-        IO.puts("❌ ADD_SECTION: Exception caught!")
-        IO.puts("❌ ADD_SECTION: Error: #{Exception.message(error)}")
-        IO.puts("❌ ADD_SECTION: Stacktrace:")
-        IO.puts(Exception.format_stacktrace(__STACKTRACE__))
-
-        {:noreply,
-        socket
-        |> assign(:show_add_section_dropdown, false)
-        |> put_flash(:error, "Error adding section: #{Exception.message(error)}")}
-    end
-  end
 
   # Section editing
   @impl true
-  def handle_event("edit_section", params, socket) do
-    section_id = Map.get(params, "id")
+  def handle_event("cancel_edit", _params, socket) do
+    updated_socket = SectionManager.handle_cancel_edit(socket, %{})
+    {:noreply, updated_socket}
+  end
 
-    IO.puts("🔧 Edit section clicked for ID: #{section_id}")
-    IO.puts("🔧 Full params: #{inspect(params)}")
-
-    if section_id do
-      try do
-        section_id_int = String.to_integer(section_id)
-        section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
-
-        if section do
-          IO.puts("🔧 Section found: #{section.title}")
-
-          # Load section media if needed
-          section_media = try do
-            Portfolios.list_section_media(section_id_int)
-          rescue
-            _ -> []
-          end
-
-          {:noreply,
-          socket
-          |> assign(:section_edit_id, section_id)
-          |> assign(:editing_section, section)
-          |> assign(:section_edit_tab, "content")
-          |> assign(:editing_section_media, section_media)
-          |> assign(:active_tab, :sections)  # Ensure we're on sections tab
-          |> push_event("section-edit-started", %{section_id: section_id_int})}
+  @impl true
+  def handle_event("edit_section", %{"id" => section_id}, socket) do
+    case SectionManager.handle_edit_section(socket, %{"id" => section_id}) do
+      {:ok, updated_socket, event_data} ->
+        # Handle the push_event that SectionManager couldn't do
+        final_socket = if event_data do
+          push_event(updated_socket, event_data.event, event_data.data)
         else
-          IO.puts("🔧 Section not found for ID: #{section_id}")
-          {:noreply, put_flash(socket, :error, "Section not found.")}
+          updated_socket
         end
-      rescue
-        error ->
-          IO.puts("❌ Edit section error: #{Exception.message(error)}")
-          {:noreply, put_flash(socket, :error, "Failed to edit section")}
-      end
-    else
-      IO.puts("🔧 No section ID provided in params: #{inspect(params)}")
-      {:noreply, put_flash(socket, :error, "Invalid section ID.")}
+        {:noreply, final_socket}
+
+      {:error, error_socket, _} ->
+        {:noreply, error_socket}
     end
+  end
+
+  @impl true
+  def handle_event("delete_section", %{"id" => section_id}, socket) do
+    updated_socket = SectionManager.handle_delete_section(socket, %{"id" => section_id})
+    {:noreply, updated_socket}
+  end
+
+
+  @impl true
+  def handle_event("save_section", %{"id" => section_id}, socket) do
+    case SectionManager.handle_save_section(socket, %{"id" => section_id}) do
+      {:ok, updated_socket, event_data} ->
+        # Handle the push_event that SectionManager couldn't do
+        final_socket = if event_data do
+          push_event(updated_socket, event_data.event, event_data.data)
+        else
+          updated_socket
+        end
+        {:noreply, final_socket}
+
+      {:error, error_socket, _} ->
+        {:noreply, error_socket}
+    end
+  end
+
+  @impl true
+  def handle_event("update_section_field", params, socket) do
+    case SectionManager.handle_section_field_update(socket, params) do
+      {:ok, updated_socket, event_data} ->
+        # Handle the push_event that SectionManager couldn't do
+        final_socket = if event_data do
+          push_event(updated_socket, event_data.event, event_data.data)
+        else
+          updated_socket
+        end
+        {:noreply, final_socket}
+
+      {:error, error_socket, event_data} ->
+        # Handle error events too
+        final_socket = if event_data do
+          push_event(error_socket, event_data.event, event_data.data)
+        else
+          error_socket
+        end
+        {:noreply, final_socket}
+
+      # Handle the case where SectionManager returns just a socket (backward compatibility)
+      updated_socket when is_map(updated_socket) ->
+        {:noreply, updated_socket}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_section_visibility", %{"id" => section_id}, socket) do
+    updated_socket = SectionManager.handle_section_visibility_toggle(socket, %{"section_id" => section_id})
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("toggle_video_intro_visibility", %{"section_id" => section_id}, socket) do
+    updated_socket = SectionManager.handle_video_intro_visibility_toggle(socket, %{"section_id" => section_id})
+    {:noreply, updated_socket}
+  end
+
+  # 🔥 FIX: Section reordering
+  @impl true
+  def handle_event("reorder_sections", params, socket) do
+    updated_socket = SectionManager.handle_reorder_sections(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("move_section_up", %{"id" => section_id}, socket) do
+    updated_socket = SectionManager.handle_section_reorder(socket, %{"section_id" => section_id, "direction" => "up"})
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("move_section_down", %{"id" => section_id}, socket) do
+    updated_socket = SectionManager.handle_section_reorder(socket, %{"section_id" => section_id, "direction" => "down"})
+    {:noreply, updated_socket}
+  end
+
+  # 🔥 FIX: Section duplication
+  @impl true
+  def handle_event("duplicate_section", %{"id" => section_id}, socket) do
+    updated_socket = SectionManager.handle_duplicate_section(socket, %{"id" => section_id})
+    {:noreply, updated_socket}
+  end
+
+  # 🔥 FIX: Section creation
+  @impl true
+  def handle_event("add_section", %{"section_type" => section_type, "title" => title}, socket) do
+    updated_socket = SectionManager.handle_section_add(socket, %{"section_type" => section_type, "title" => title})
+    {:noreply, updated_socket}
+  end
+
+  # 🔥 FIX: Media management
+  @impl true
+  def handle_event("upload_media", params, socket) do
+    updated_socket = SectionManager.handle_media_upload(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("attach_media_to_section", params, socket) do
+    updated_socket = SectionManager.handle_attach_media_to_section(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("detach_media_from_section", params, socket) do
+    updated_socket = SectionManager.handle_detach_media_from_section(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("switch_section_edit_tab", %{"tab" => tab}, socket) do
+    IO.puts("🔧 Switching section edit tab to: #{tab}")
+    {:noreply, assign(socket, :section_edit_tab, tab)}
+  end
+
+  # 🔥 FIX: Section templates
+  @impl true
+  def handle_event("apply_section_template", params, socket) do
+    updated_socket = SectionManager.handle_apply_section_template(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("export_section_template", params, socket) do
+    updated_socket = SectionManager.handle_export_section_template(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  # 🔥 FIX: Skills management (if you have skills sections)
+  @impl true
+  def handle_event("add_skill", params, socket) do
+    updated_socket = SectionManager.handle_add_skill(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("remove_skill", params, socket) do
+    updated_socket = SectionManager.handle_remove_skill(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  # 🔥 FIX: Experience management (if you have experience sections)
+  @impl true
+  def handle_event("add_experience_entry", params, socket) do
+    updated_socket = SectionManager.add_experience_entry(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("remove_experience_entry", params, socket) do
+    updated_socket = SectionManager.handle_remove_experience_entry(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("update_experience_field", params, socket) do
+    updated_socket = SectionManager.handle_update_experience_field(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  # 🔥 FIX: Education management (if you have education sections)
+  @impl true
+  def handle_event("add_education_entry", params, socket) do
+    updated_socket = SectionManager.handle_add_education_entry(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("remove_education_entry", params, socket) do
+    updated_socket = SectionManager.handle_remove_education_entry(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("update_education_field", params, socket) do
+    updated_socket = SectionManager.handle_update_education_field(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  # 🔥 FIX: UI state management
+  @impl true
+  def handle_event("toggle_add_section_dropdown", _params, socket) do
+    updated_socket = SectionManager.handle_toggle_add_section_dropdown(socket, %{})
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("show_media_library", params, socket) do
+    updated_socket = SectionManager.handle_show_media_library(socket, params)
+    {:noreply, updated_socket}
+  end
+
+  @impl true
+  def handle_event("hide_media_library", _params, socket) do
+    updated_socket = SectionManager.handle_hide_media_library(socket, %{})
+    {:noreply, updated_socket}
+  end
+
+  # 🔥 FIX: Catch-all for any other unhandled section events
+  @impl true
+  def handle_event(event_name, params, socket) when is_binary(event_name) do
+    IO.puts("🔧 UNHANDLED EVENT: #{event_name}")
+    IO.puts("🔧 Params: #{inspect(params)}")
+
+    # Try to match common patterns
+    cond do
+      String.starts_with?(event_name, "section_") ->
+        IO.puts("🔧 Section-related event, you may need to add a handler for: #{event_name}")
+
+      String.starts_with?(event_name, "media_") ->
+        IO.puts("🔧 Media-related event, you may need to add a handler for: #{event_name}")
+
+      String.starts_with?(event_name, "template_") ->
+        IO.puts("🔧 Template-related event, you may need to add a handler for: #{event_name}")
+
+      true ->
+        IO.puts("🔧 Truly unknown event: #{event_name}")
+    end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -1005,7 +1146,7 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     selected_ids = socket.assigns.selected_media_ids || []
 
     if section_id && length(selected_ids) > 0 do
-      case attach_media_to_section(section_id, selected_ids) do
+      case SectionManager.handle_attach_media_to_section(socket, %{"section_id" => section_id, "media_ids" => selected_ids}) do
         {:ok, attached_count} ->
           editing_section_media = if socket.assigns.section_edit_id == to_string(section_id) do
             Portfolios.list_section_media(section_id)
@@ -1028,257 +1169,58 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     end
   end
 
-  # Section deletion
-  @impl true
-  def handle_event("delete_section", %{"id" => section_id}, socket) do
-    IO.puts("🔧 Delete section clicked for ID: #{section_id}")
-
-    try do
-      section_id_int = String.to_integer(section_id)
-      section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
-
-      if section do
-        case Portfolios.delete_section(section) do
-          {:ok, _} ->
-            updated_sections = Enum.reject(socket.assigns.sections, &(&1.id == section_id_int))
-
-            # Close editor if deleting the currently edited section
-            {edit_id, editing_section, editing_media} =
-              if socket.assigns[:section_edit_id] == section_id do
-                {nil, nil, []}
-              else
-                {socket.assigns[:section_edit_id], socket.assigns[:editing_section], socket.assigns[:editing_section_media] || []}
-              end
-
-            {:noreply,
-             socket
-             |> assign(:sections, updated_sections)
-             |> assign(:section_edit_id, edit_id)
-             |> assign(:editing_section, editing_section)
-             |> assign(:editing_section_media, editing_media)
-             |> put_flash(:info, "Section deleted successfully")
-             |> push_event("section-deleted", %{section_id: section_id_int})}
-
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to delete section")}
-        end
-      else
-        {:noreply, put_flash(socket, :error, "Section not found")}
-      end
-    rescue
-      error ->
-        IO.puts("❌ Delete section error: #{Exception.message(error)}")
-        {:noreply, put_flash(socket, :error, "Failed to delete section")}
-    end
-  end
-
   # Section visibility toggle
   @impl true
   def handle_event("toggle_section_visibility", %{"id" => section_id}, socket) do
-    try do
-      section_id_int = String.to_integer(section_id)
-      section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+    section_id_int = String.to_integer(section_id)
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
 
-      if section do
-        case Portfolios.update_section(section, %{visible: !section.visible}) do
-          {:ok, updated_section} ->
-            updated_sections = Enum.map(socket.assigns.sections, fn s ->
-              if s.id == section_id_int, do: updated_section, else: s
-            end)
+    if section do
+      case Portfolios.update_section(section, %{visible: !section.visible}) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == section_id_int, do: updated_section, else: s
+          end)
 
-            {:noreply,
-            socket
-            |> assign(:sections, updated_sections)
-            |> put_flash(:info, "Section visibility updated")
-            |> push_event("section-visibility-toggled", %{
-              section_id: section_id_int,
-              visible: updated_section.visible
-            })}
+          {:noreply,
+           socket
+           |> assign(:sections, updated_sections)
+           |> put_flash(:info, "Section visibility updated!")}
 
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to update section visibility")}
-        end
-      else
-        {:noreply, put_flash(socket, :error, "Section not found")}
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to update section visibility")}
       end
-    rescue
-      error ->
-        IO.puts("❌ Toggle visibility error: #{Exception.message(error)}")
-        {:noreply, put_flash(socket, :error, "Failed to toggle visibility")}
-    end
-  end
-
-  @impl true
-  def handle_event("duplicate_section", %{"id" => section_id}, socket) do
-    try do
-      section_id_int = String.to_integer(section_id)
-      section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
-
-      if section do
-        case duplicate_section_with_media(section) do
-          {:ok, duplicated_section} ->
-            updated_sections = socket.assigns.sections ++ [duplicated_section]
-
-            {:noreply,
-            socket
-            |> assign(:sections, updated_sections)
-            |> put_flash(:info, "Section duplicated successfully!")
-            |> push_event("section-duplicated", %{
-              original_id: section_id_int,
-              new_id: duplicated_section.id
-            })}
-
-          {:error, reason} ->
-            {:noreply, put_flash(socket, :error, "Failed to duplicate section: #{reason}")}
-        end
-      else
-        {:noreply, put_flash(socket, :error, "Section not found")}
-      end
-    rescue
-      error ->
-      {:noreply, put_flash(socket, :error, "Failed to duplicate section")}
-    end
-  end
-
-  @impl true
-  def handle_event("update_section_field", params, socket) do
-    %{"field" => field, "value" => value, "section-id" => section_id} = params
-
-    IO.puts("🔧 Updating section field: #{field} = #{value} for section #{section_id}")
-
-    try do
-      section_id_int = String.to_integer(section_id)
-      section = socket.assigns.editing_section
-
-      if section && section.id == section_id_int do
-        case Portfolios.update_section(section, %{String.to_atom(field) => value}) do
-          {:ok, updated_section} ->
-            updated_sections = Enum.map(socket.assigns.sections, fn s ->
-              if s.id == section_id_int, do: updated_section, else: s
-            end)
-
-            {:noreply,
-             socket
-             |> assign(:sections, updated_sections)
-             |> assign(:editing_section, updated_section)
-             |> assign(:unsaved_changes, true)  # Mark as having unsaved changes
-             |> push_event("section-field-updated", %{
-               section_id: section_id_int,
-               field: field,
-               value: value
-             })}
-
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to update section field")}
-        end
-      else
-        {:noreply, put_flash(socket, :error, "Section not found or not being edited")}
-      end
-    rescue
-      error ->
-        IO.puts("❌ Update section field error: #{Exception.message(error)}")
-        {:noreply, put_flash(socket, :error, "Failed to update section")}
+    else
+      {:noreply, socket}
     end
   end
 
   @impl true
   def handle_event("update_section_content", params, socket) do
-    %{"field" => field, "value" => value, "section-id" => section_id} = params
-
-    IO.puts("🔧 Updating section content: #{field} = #{value} for section #{section_id}")
-
-    try do
-      section_id_int = String.to_integer(section_id)
-      section = socket.assigns.editing_section
-
-      if section && section.id == section_id_int do
-        current_content = section.content || %{}
-        updated_content = Map.put(current_content, field, value)
-
-        case Portfolios.update_section(section, %{content: updated_content}) do
-          {:ok, updated_section} ->
-            updated_sections = Enum.map(socket.assigns.sections, fn s ->
-              if s.id == section_id_int, do: updated_section, else: s
-            end)
-
-            {:noreply,
-             socket
-             |> assign(:sections, updated_sections)
-             |> assign(:editing_section, updated_section)
-             |> assign(:unsaved_changes, true)  # Mark as having unsaved changes
-             |> push_event("section-content-updated", %{
-               section_id: section_id_int,
-               field: field,
-               value: value
-             })}
-
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to update section content")}
+    case SectionManager.handle_section_content_update(socket, params) do
+      {:ok, updated_socket, event_data} ->
+        # Handle the push_event that SectionManager couldn't do
+        final_socket = if event_data do
+          push_event(updated_socket, event_data.event, event_data.data)
+        else
+          updated_socket
         end
-      else
-        {:noreply, put_flash(socket, :error, "Section not found or not being edited")}
-      end
-    rescue
-      error ->
-        IO.puts("❌ Update section content error: #{Exception.message(error)}")
-        {:noreply, put_flash(socket, :error, "Failed to update section")}
+        {:noreply, final_socket}
+
+      {:error, error_socket, event_data} ->
+        # Handle error events too
+        final_socket = if event_data do
+          push_event(error_socket, event_data.event, event_data.data)
+        else
+          error_socket
+        end
+        {:noreply, final_socket}
     end
   end
 
   @impl true
-  def handle_event("save_section", %{"id" => section_id}, socket) do
-    try do
-      section_id_int = String.to_integer(section_id)
-
-      case Portfolios.get_section!(section_id_int) do
-        nil ->
-          {:noreply, put_flash(socket, :error, "Section not found")}
-
-        current_section ->
-          updated_sections = Enum.map(socket.assigns.sections, fn s ->
-            if s.id == section_id_int, do: current_section, else: s
-          end)
-
-          # 🔥 FIX: Broadcast section update to other LiveViews
-          Phoenix.PubSub.broadcast(
-            Frestyl.PubSub,
-            "portfolio_updates:#{socket.assigns.portfolio.id}",
-            {:section_updated, current_section}
-          )
-
-          {:noreply,
-          socket
-          |> assign(:sections, updated_sections)
-          |> assign(:editing_section, current_section)
-          |> assign(:unsaved_changes, false)
-          |> put_flash(:info, "Section saved successfully!")
-          |> push_event("section-saved", %{section_id: section_id_int})
-          |> push_event("refresh-portfolio-view", %{})}  # 🔥 ADD THIS
-      end
-    rescue
-      error ->
-        IO.puts("❌ Save section error: #{Exception.message(error)}")
-        {:noreply, put_flash(socket, :error, "Failed to save section")}
-    end
-  end
-
-  @impl true
-  def handle_event("cancel_edit", _params, socket) do
-    IO.puts("🔧 Cancel edit clicked")
-    {:noreply,
-     socket
-     |> assign(:section_edit_id, nil)
-     |> assign(:editing_section, nil)
-     |> assign(:editing_section_media, [])
-     |> assign(:section_edit_tab, nil)
-     |> push_event("section-edit-cancelled", %{})}
-  end
-
-  # Section tab switching
-  @impl true
-  def handle_event("switch_section_edit_tab", %{"tab" => tab}, socket) do
-    IO.puts("🔧 Switching section edit tab to: #{tab}")
-    {:noreply, assign(socket, :section_edit_tab, tab)}
+  def handle_event("cancel_section_edit", _params, socket) do
+    {:noreply, assign(socket, :section_edit_id, nil)}
   end
 
   # Resume upload and parsing
@@ -2069,6 +2011,15 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     {:noreply, TemplateManager.handle_template_selection(socket, %{"template" => template_key})}
   end
 
+  @impl true
+  def handle_info({:section_updated, updated_section}, socket) do
+    updated_sections = Enum.map(socket.assigns.sections, fn s ->
+      if s.id == updated_section.id, do: updated_section, else: s
+    end)
+
+    {:noreply, assign(socket, :sections, updated_sections)}
+  end
+
   # Handle file uploads (if available)
   @impl true
   def handle_info({:file_uploaded, file_info}, socket) do
@@ -2323,187 +2274,25 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       PortfolioTemplates.available_templates()
     rescue
       _ ->
-        # Fallback templates if module doesn't exist
-        [
-          {"executive", %{name: "Executive", category: "professional", icon: "💼"}},
-          {"developer", %{name: "Developer", category: "technical", icon: "💻"}},
-          {"designer", %{name: "Designer", category: "creative", icon: "🎨"}},
-          {"consultant", %{name: "Consultant", category: "professional", icon: "📊"}}
-        ]
+        %{
+          "executive" => %{name: "Executive", category: "professional"},
+          "developer" => %{name: "Developer", category: "technical"},
+          "designer" => %{name: "Designer", category: "creative"}
+        }
     end
   end
 
   defp generate_portfolio_css(customization, template_config, theme) do
-    # Extract colors
-    primary_color = customization["primary_color"] || template_config[:primary_color] || "#3b82f6"
-    secondary_color = customization["secondary_color"] || template_config[:secondary_color] || "#64748b"
-    accent_color = customization["accent_color"] || template_config[:accent_color] || "#f59e0b"
-
-    # Extract typography
-    typography = customization["typography"] || template_config[:typography] || %{}
-    font_family = typography["font_family"] || typography[:font_family] || "Inter"
-
-    font_family_css = case font_family do
-      "Inter" -> "'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
-      "Merriweather" -> "'Merriweather', Georgia, serif"
-      "JetBrains Mono" -> "'JetBrains Mono', 'SF Mono', Consolas, monospace"
-      "Playfair Display" -> "'Playfair Display', Georgia, serif"
-      _ -> "'Inter', system-ui, sans-serif"
-    end
-
-    # FIXED: Extract layout options and generate proper CSS
-    layout_style = customization["layout_style"] || "single_page"
-    section_spacing = customization["section_spacing"] || "normal"
-    grid_layout = customization["grid_layout"] || "single"
-    fixed_navigation = customization["fixed_navigation"] || true
-    dark_mode_support = customization["dark_mode_support"] || false
-
-    # Generate layout-specific CSS
-    layout_css = case layout_style do
-      "single_page" -> """
-        .portfolio-container { max-width: 800px; margin: 0 auto; }
-        .portfolio-sections { display: block; }
-        .portfolio-section { margin-bottom: 3rem; }
-        """
-      "multi_page" -> """
-        .portfolio-container { max-width: 1200px; margin: 0 auto; }
-        .portfolio-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 2rem; }
-        .portfolio-section { margin-bottom: 1rem; }
-        """
-      _ -> """
-        .portfolio-container { max-width: 1024px; margin: 0 auto; }
-        .portfolio-sections { display: block; }
-        """
-    end
-
-    # Generate spacing CSS
-    spacing_css = case section_spacing do
-      "compact" -> """
-        .portfolio-section { padding: 1rem; margin-bottom: 1rem; }
-        .section-content { margin-bottom: 0.5rem; }
-        """
-      "normal" -> """
-        .portfolio-section { padding: 2rem; margin-bottom: 2rem; }
-        .section-content { margin-bottom: 1rem; }
-        """
-      "spacious" -> """
-        .portfolio-section { padding: 3rem; margin-bottom: 3rem; }
-        .section-content { margin-bottom: 2rem; }
-        """
-      _ -> """
-        .portfolio-section { padding: 2rem; margin-bottom: 2rem; }
-        """
-    end
-
-    # Generate grid CSS
-    grid_css = case grid_layout do
-      "single" -> """
-        .content-grid { display: block; }
-        .grid-item { width: 100%; }
-        """
-      "two" -> """
-        .content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-        """
-      "three" -> """
-        .content-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-        """
-      "masonry" -> """
-        .content-grid { columns: 3; column-gap: 1rem; }
-        .grid-item { break-inside: avoid; margin-bottom: 1rem; }
-        """
-      _ -> """
-        .content-grid { display: block; }
-        """
-    end
-
-    # Generate navigation CSS
-    nav_css = if fixed_navigation do
-      """
-      .portfolio-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; }
-      .portfolio-content { padding-top: 4rem; }
-      """
-    else
-      """
-      .portfolio-nav { position: relative; }
-      .portfolio-content { padding-top: 0; }
-      """
-    end
-
-    # Generate dark mode CSS
-    dark_mode_css = if dark_mode_support do
-      """
-      @media (prefers-color-scheme: dark) {
-        .portfolio-container { background-color: #1f2937; color: #f9fafb; }
-        .portfolio-section { background-color: #374151; }
-      }
-      """
-    else
-      ""
-    end
+    primary = Map.get(customization, "primary_color", Map.get(template_config, :primary_color, "#3b82f6"))
+    secondary = Map.get(customization, "secondary_color", Map.get(template_config, :secondary_color, "#64748b"))
+    accent = Map.get(customization, "accent_color", Map.get(template_config, :accent_color, "#f59e0b"))
 
     """
     <style>
     :root {
-      --portfolio-primary-color: #{primary_color};
-      --portfolio-secondary-color: #{secondary_color};
-      --portfolio-accent-color: #{accent_color};
-      --portfolio-font-family: #{font_family_css};
-      --portfolio-layout-style: #{layout_style};
-      --portfolio-section-spacing: #{section_spacing};
-      --portfolio-grid-layout: #{grid_layout};
-    }
-
-    /* Apply font to preview areas */
-    .portfolio-preview,
-    .portfolio-preview *,
-    .template-preview-card,
-    .typography-preview {
-      font-family: var(--portfolio-font-family) !important;
-    }
-
-    /* Color classes */
-    .portfolio-primary { color: var(--portfolio-primary-color) !important; }
-    .portfolio-secondary { color: var(--portfolio-secondary-color) !important; }
-    .portfolio-accent { color: var(--portfolio-accent-color) !important; }
-    .portfolio-bg-primary { background-color: var(--portfolio-primary-color) !important; }
-    .portfolio-bg-secondary { background-color: var(--portfolio-secondary-color) !important; }
-    .portfolio-bg-accent { background-color: var(--portfolio-accent-color) !important; }
-
-    /* LAYOUT-SPECIFIC CSS */
-    #{layout_css}
-
-    /* SPACING CSS */
-    #{spacing_css}
-
-    /* GRID CSS */
-    #{grid_css}
-
-    /* NAVIGATION CSS */
-    #{nav_css}
-
-    /* DARK MODE CSS */
-    #{dark_mode_css}
-
-    /* Layout preview styles */
-    .layout-preview {
-      border: 2px solid var(--portfolio-primary-color);
-      border-radius: 8px;
-      padding: 1rem;
-      background: var(--portfolio-bg-primary);
-      color: white;
-      font-family: var(--portfolio-font-family);
-    }
-
-    .layout-preview.single-page {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-
-    .layout-preview.multi-page {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 1rem;
-      max-width: 1200px;
+      --primary-color: #{primary};
+      --secondary-color: #{secondary};
+      --accent-color: #{accent};
     }
     </style>
     """
@@ -2652,21 +2441,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       end)
     rescue
       _ -> :ok  # Continue even if media copying fails
-    end
-  end
-
-  # Media attachment
-  defp attach_media_to_section(section_id, media_ids) do
-    try do
-      attached_count = Enum.reduce(media_ids, 0, fn media_id, acc ->
-        case Portfolios.create_section_media_association(section_id, media_id) do
-          {:ok, _} -> acc + 1
-          {:error, _} -> acc
-        end
-      end)
-      {:ok, attached_count}
-    rescue
-      error -> {:error, Exception.message(error)}
     end
   end
 

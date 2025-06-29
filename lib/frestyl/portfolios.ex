@@ -99,6 +99,247 @@ defmodule Frestyl.Portfolios do
     end
   end
 
+  #######
+    # ============================================================================
+  # ACCOUNT-AWARE PORTFOLIO FUNCTIONS
+  # ============================================================================
+
+  @doc """
+  Get portfolio with account context for editing permissions
+  """
+  def get_portfolio_with_account(portfolio_id) do
+    query = from p in Portfolio,
+      where: p.id == ^portfolio_id,
+      join: a in Accounts.Account, on: a.id == p.account_id,
+      preload: [account: a],
+      select: %{portfolio: p, account: a}
+
+    case Repo.one(query) do
+      nil -> nil
+      result -> result
+    end
+  end
+
+  @doc """
+  Create portfolio within account context
+  """
+  def create_portfolio_for_account(account_id, attrs) do
+    attrs = Map.put(attrs, :account_id, account_id)
+
+    %Portfolio{}
+    |> Portfolio.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  List portfolios for account with monetization data
+  """
+  def list_account_portfolios_with_monetization(account_id) do
+    from(p in Portfolio,
+      where: p.account_id == ^account_id,
+      left_join: s in PortfolioService, on: s.portfolio_id == p.id,
+      left_join: b in Booking, on: b.portfolio_id == p.id,
+      group_by: p.id,
+      select: %{
+        portfolio: p,
+        service_count: count(s.id),
+        booking_count: count(b.id),
+        last_booking: max(b.scheduled_at)
+      },
+      order_by: [desc: p.updated_at]
+    )
+    |> Repo.all()
+  end
+
+  # ============================================================================
+  # MONETIZATION FOUNDATION
+  # ============================================================================
+
+  @doc """
+  Create portfolio service offering
+  """
+  def create_portfolio_service(portfolio_id, attrs) do
+    attrs = Map.put(attrs, :portfolio_id, portfolio_id)
+
+    %PortfolioService{}
+    |> PortfolioService.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Get portfolio booking calendar
+  """
+  def get_portfolio_booking_calendar(portfolio_id, start_date, end_date) do
+    from(b in Booking,
+      where: b.portfolio_id == ^portfolio_id,
+      where: b.scheduled_at >= ^start_date,
+      where: b.scheduled_at <= ^end_date,
+      order_by: [asc: b.scheduled_at]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Get portfolio revenue analytics
+  """
+  def get_portfolio_revenue_analytics(portfolio_id, account) do
+    case account.subscription_tier do
+      tier when tier in ["professional", "enterprise"] ->
+        # Full analytics for premium accounts
+        %{
+          total_revenue: calculate_total_revenue(portfolio_id),
+          monthly_revenue: calculate_monthly_revenue(portfolio_id),
+          top_services: get_top_performing_services(portfolio_id),
+          conversion_rate: calculate_conversion_rate(portfolio_id),
+          client_retention: calculate_client_retention(portfolio_id)
+        }
+
+      tier when tier in ["creator"] ->
+        # Basic analytics for creator accounts
+        %{
+          total_revenue: calculate_total_revenue(portfolio_id),
+          monthly_revenue: calculate_monthly_revenue(portfolio_id),
+          top_services: get_top_performing_services(portfolio_id)
+        }
+
+      _ ->
+        # No analytics for personal accounts
+        %{}
+    end
+  end
+
+  # ============================================================================
+  # STREAMING FOUNDATION
+  # ============================================================================
+
+  @doc """
+  Create streaming session for portfolio
+  """
+  def create_streaming_session(portfolio_id, attrs) do
+    attrs = Map.put(attrs, :portfolio_id, portfolio_id)
+
+    %StreamingSession{}
+    |> StreamingSession.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Get portfolio streaming configuration
+  """
+  def get_portfolio_streaming_config(portfolio_id) do
+    case Repo.get_by(StreamingConfig, portfolio_id: portfolio_id) do
+      nil -> create_default_streaming_config(portfolio_id)
+      config -> config
+    end
+  end
+
+  defp create_default_streaming_config(portfolio_id) do
+    %StreamingConfig{}
+    |> StreamingConfig.changeset(%{
+      portfolio_id: portfolio_id,
+      streaming_key: generate_streaming_key(),
+      rtmp_url: generate_rtmp_url(),
+      max_viewers: 10,
+      recording_enabled: false
+    })
+    |> Repo.insert!()
+  end
+
+  # ============================================================================
+  # BRAND CONTROL FUNCTIONS
+  # ============================================================================
+
+  @doc """
+  Update portfolio with brand constraints validation
+  """
+  def update_portfolio_with_brand_validation(portfolio, attrs, brand_constraints) do
+    # Validate customization against brand constraints
+    validated_attrs = validate_against_brand_constraints(attrs, brand_constraints)
+
+    portfolio
+    |> Portfolio.changeset(validated_attrs)
+    |> Repo.update()
+  end
+
+  defp validate_against_brand_constraints(attrs, constraints) do
+    customization = Map.get(attrs, :customization, %{})
+
+    # Validate colors
+    validated_customization = customization
+    |> validate_color_constraints(constraints)
+    |> validate_font_constraints(constraints)
+    |> validate_layout_constraints(constraints)
+
+    Map.put(attrs, :customization, validated_customization)
+  end
+
+  defp validate_color_constraints(customization, constraints) do
+    primary = Map.get(customization, "primary_color")
+    secondary = Map.get(customization, "secondary_color")
+    accent = Map.get(customization, "accent_color")
+
+    customization
+    |> put_if_valid("primary_color", primary, constraints.primary_colors)
+    |> put_if_valid("secondary_color", secondary, constraints.secondary_colors)
+    |> put_if_valid("accent_color", accent, constraints.accent_colors)
+  end
+
+  defp validate_font_constraints(customization, constraints) do
+    font = Map.get(customization, "font_family")
+    put_if_valid(customization, "font_family", font, constraints.allowed_fonts)
+  end
+
+  defp validate_layout_constraints(customization, constraints) do
+    # Add layout validation as needed
+    customization
+  end
+
+  defp put_if_valid(map, key, value, allowed_values) do
+    if value in allowed_values do
+      Map.put(map, key, value)
+    else
+      map
+    end
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS (Placeholders for future implementation)
+  # ============================================================================
+
+  defp generate_streaming_key do
+    :crypto.strong_rand_bytes(32) |> Base.encode64()
+  end
+
+  defp generate_rtmp_url do
+    "rtmp://stream.frestyl.com/live/"
+  end
+
+  defp calculate_total_revenue(portfolio_id) do
+    # Implementation in future prompt
+    Decimal.new("0.00")
+  end
+
+  defp calculate_monthly_revenue(portfolio_id) do
+    # Implementation in future prompt
+    []
+  end
+
+  defp get_top_performing_services(portfolio_id) do
+    # Implementation in future prompt
+    []
+  end
+
+  defp calculate_conversion_rate(portfolio_id) do
+    # Implementation in future prompt
+    0.0
+  end
+
+  defp calculate_client_retention(portfolio_id) do
+    # Implementation in future prompt
+    0.0
+  end
+  ######
+
   # 🔥 CRITICAL: Transform portfolio_sections to sections with complete content
   defp transform_sections_for_display(portfolio_sections) when is_list(portfolio_sections) do
     IO.puts("🔥 TRANSFORMING #{length(portfolio_sections)} SECTIONS")

@@ -16,27 +16,17 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
   alias Frestyl.Portfolios
   alias Frestyl.Portfolios.Portfolio
 
-  # 🔥 ENHANCED: Complete template name mapping
+  # 🔥 FIX: Add template name normalization to map complex names to valid enum values
   @template_name_mapping %{
-    # New complex names -> database enum values
-    "minimalist_clean" => "minimalist",
-    "minimalist_elegant" => "minimalist",
-    "professional_executive" => "executive",
-    "professional_corporate" => "corporate",
+    # Map complex template names to valid database enum values
     "creative_artistic" => "creative",
     "creative_designer" => "designer",
+    "professional_executive" => "executive",
+    "professional_corporate" => "corporate",
+    "minimalist_clean" => "minimalist",
+    "minimalist_elegant" => "minimalist",
     "technical_developer" => "developer",
-    "technical_engineer" => "developer",
-
-    # Story structure mappings
-    "skills_first" => "executive",
-    "chronological" => "designer",
-    "project_focused" => "developer",
-
-    # Legacy mappings
-    "business" => "executive",
-    "portfolio" => "designer",
-    "resume" => "minimalist"
+    "technical_engineer" => "developer"
   }
 
   @reverse_mapping @template_name_mapping
@@ -51,28 +41,53 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
   end
 
   def handle_template_selection(socket, %{"template" => template_key}) do
-    # Normalize and validate template name
-    case normalize_and_validate_template(template_key) do
-      {:ok, normalized_name, display_name} ->
-        # Get template configuration
-        template_config = get_safe_template_config(normalized_name)
+    IO.puts("🎨 Selecting template: #{template_key}")
+    IO.puts("🔥 TemplateManager.handle_template_selection called")
+    IO.puts("🔥 Trying to select template: #{template_key}")
+    IO.puts("🔥 Current portfolio theme: #{socket.assigns.portfolio.theme}")
 
-        # Update portfolio
-        case Portfolios.update_portfolio(socket.assigns.portfolio, %{
-          theme: normalized_name,
-          customization: template_config
-        }) do
-          {:ok, portfolio} ->
-            {:noreply, socket
-            |> assign(:portfolio, portfolio)
-            |> put_flash(:info, "Template '#{display_name}' applied successfully!")}
+    # Get enhanced template configuration using existing function
+    template_config = get_enhanced_template_config(template_key)
 
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to apply template")}
-        end
+    # Update socket assignments
+    socket = socket
+    |> assign(:selected_template, template_key)
+    |> assign(:current_template, template_key)
+    |> assign(:template_config, template_config)
+    |> assign(:customization, template_config)
+    |> assign(:unsaved_changes, true)
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, reason)}
+    # Generate updated CSS using existing function
+    css = generate_preview_css(template_config, template_key)
+    socket = assign(socket, :preview_css, css)
+
+    # Update portfolio in database
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{
+      theme: template_key,
+      customization: template_config
+    }) do
+      {:ok, portfolio} ->
+        IO.puts("✅ Portfolio updated successfully! New theme: #{portfolio.theme}")
+
+        # 🔥 FIX: Send preview refresh event and return socket directly
+        socket = socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Template '#{get_theme_name(template_key)}' applied successfully!")
+        |> push_event("refresh_portfolio_preview", %{
+          template: template_key,
+          timestamp: System.system_time(:millisecond)
+        })
+
+        socket  # Return socket directly, not {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("❌ Portfolio update failed!")
+        IO.inspect(changeset.errors, label: "❌ Errors")
+
+        socket
+        |> put_flash(:error, "Failed to save template changes")
+        # Return socket directly, not {:noreply, socket}
     end
   end
 
@@ -137,33 +152,20 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
   end
 
   # 🔥 FIX: Add normalization function
-  defp normalize_template_name(template_name) when is_binary(template_name) do
-    # Template name mapping for complex names to valid enum values
-    mapping = %{
-      "minimalist_clean" => "minimalist",
-      "minimalist_elegant" => "minimalist",
-      "professional_executive" => "executive",
-      "professional_corporate" => "corporate",
-      "creative_artistic" => "creative",
-      "creative_designer" => "designer",
-      "technical_developer" => "developer",
-      "technical_engineer" => "developer"
-    }
-
-    # Check direct mapping first
-    case Map.get(mapping, template_name) do
+  defp normalize_template_name(template_name) do
+    # Check if we have a mapping for this template name
+    case Map.get(@template_name_mapping, template_name) do
       nil ->
-        # Pattern matching fallback
+        # If no mapping found, try to extract a valid name
         cond do
-          String.contains?(template_name, ["minimalist", "clean", "simple"]) -> "minimalist"
-          String.contains?(template_name, ["executive", "professional", "business"]) -> "executive"
-          String.contains?(template_name, ["creative", "artistic", "visual"]) -> "creative"
-          String.contains?(template_name, ["designer", "portfolio", "showcase"]) -> "designer"
-          String.contains?(template_name, ["developer", "technical", "engineer"]) -> "developer"
-          String.contains?(template_name, ["corporate", "company"]) -> "corporate"
-          String.contains?(template_name, ["consultant", "consulting"]) -> "consultant"
-          String.contains?(template_name, ["academic", "research"]) -> "academic"
-          true -> "executive"  # Safe default
+          String.contains?(template_name, "creative") -> "creative"
+          String.contains?(template_name, "professional") -> "executive"
+          String.contains?(template_name, "executive") -> "executive"
+          String.contains?(template_name, "minimalist") -> "minimalist"
+          String.contains?(template_name, "technical") -> "developer"
+          String.contains?(template_name, "developer") -> "developer"
+          String.contains?(template_name, "designer") -> "designer"
+          true -> template_name
         end
 
       mapped_name ->
@@ -230,227 +232,40 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
     assign(socket, :preview_css, css)
   end
 
-  defp generate_preview_css(customization, template) do
-    # Extract colors with safe defaults
-    primary_color = get_in(customization, ["primary_color"]) || "#3b82f6"
-    secondary_color = get_in(customization, ["secondary_color"]) || "#64748b"
-    accent_color = get_in(customization, ["accent_color"]) || "#f59e0b"
-
-    # Extract typography
-    typography = customization["typography"] || %{}
-    font_family = typography["font_family"] || "Inter"
-
-    font_family_css = case font_family do
-      "Inter" -> "'Inter', system-ui, sans-serif"
-      "Merriweather" -> "'Merriweather', Georgia, serif"
-      "JetBrains Mono" -> "'JetBrains Mono', 'Fira Code', monospace"
-      "Playfair Display" -> "'Playfair Display', Georgia, serif"
-      _ -> "system-ui, sans-serif"
-    end
+  defp generate_preview_css(customization, theme) do
+    primary = Map.get(customization, "primary_color", "#3b82f6")
+    secondary = Map.get(customization, "secondary_color", "#64748b")
+    accent = Map.get(customization, "accent_color", "#f59e0b")
+    background = Map.get(customization, "background_color", "#ffffff")
+    text = Map.get(customization, "text_color", "#1f2937")
 
     """
-    <style>
+    <style id="portfolio-preview-css">
     :root {
-      --portfolio-primary-color: #{primary_color};
-      --portfolio-secondary-color: #{secondary_color};
-      --portfolio-accent-color: #{accent_color};
-      --portfolio-font-family: #{font_family_css};
+      --primary-color: #{primary};
+      --secondary-color: #{secondary};
+      --accent-color: #{accent};
+      --background-color: #{background};
+      --text-color: #{text};
     }
 
-    /* 🔥 PORTFOLIO CARD FIXED HEIGHT AND SCROLLABLE CONTENT */
+    .portfolio-bg { background-color: var(--background-color); }
+    .text-primary { color: var(--primary-color); }
+    .bg-primary { background-color: var(--primary-color); }
+    .border-primary { border-color: var(--primary-color); }
+    .text-secondary { color: var(--secondary-color); }
+    .bg-secondary { background-color: var(--secondary-color); }
+    .text-accent { color: var(--accent-color); }
+    .bg-accent { background-color: var(--accent-color); }
+    .text-portfolio { color: var(--text-color); }
 
-    /* Base portfolio card with fixed height */
-    .portfolio-card {
-      height: 400px; /* Fixed height for all cards */
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      background: white;
-      border-radius: 12px;
-      padding: 1.5rem;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-      border: 1px solid #e5e7eb;
-      transition: all 0.3s ease;
+    /* Update button colors */
+    .btn-primary {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
     }
-
-    /* Portfolio card header - fixed at top */
-    .portfolio-card-header {
-      flex-shrink: 0; /* Prevent header from shrinking */
-      padding-bottom: 1rem;
-      border-bottom: 1px solid rgba(229, 231, 235, 0.5);
-      margin-bottom: 1rem;
-      min-height: 60px; /* Minimum header height */
-      max-height: 120px; /* Maximum header height */
-    }
-
-    /* Portfolio card content - scrollable area */
-    .portfolio-card-content {
-      flex: 1; /* Take remaining space */
-      overflow-y: auto; /* Enable vertical scrolling */
-      overflow-x: hidden; /* Hide horizontal scrolling */
-      padding-right: 0.5rem; /* Space for scrollbar */
-      margin-right: -0.5rem; /* Offset padding to align content */
-    }
-
-    /* Custom scrollbar styling for webkit browsers */
-    .portfolio-card-content::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .portfolio-card-content::-webkit-scrollbar-track {
-      background: rgba(243, 244, 246, 0.5);
-      border-radius: 3px;
-    }
-
-    .portfolio-card-content::-webkit-scrollbar-thumb {
-      background: rgba(156, 163, 175, 0.7);
-      border-radius: 3px;
-    }
-
-    .portfolio-card-content::-webkit-scrollbar-thumb:hover {
-      background: rgba(107, 114, 128, 0.8);
-    }
-
-    /* Firefox scrollbar styling */
-    .portfolio-card-content {
-      scrollbar-width: thin;
-      scrollbar-color: rgba(156, 163, 175, 0.7) rgba(243, 244, 246, 0.5);
-    }
-
-    /* Card hover effects with fixed height */
-    .portfolio-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1);
-    }
-
-    /* Ensure header content doesn't overflow */
-    .portfolio-card-title {
-      font-size: 1.125rem;
-      line-height: 1.4;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-    }
-
-    .portfolio-card-subtitle {
-      font-size: 0.875rem;
-      opacity: 0.7;
-    }
-
-    /* Ensure content within cards doesn't break layout */
-    .portfolio-card-content * {
-      max-width: 100%;
-      word-wrap: break-word;
-    }
-
-    /* Handle long content gracefully */
-    .portfolio-card-content pre,
-    .portfolio-card-content code {
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .portfolio-card-content img {
-      max-width: 100%;
-      height: auto;
-    }
-
-    /* Layout-specific height adjustments */
-
-    /* Dashboard layout - standard cards */
-    .portfolio-layout-dashboard .portfolio-card {
-      height: 420px;
-    }
-
-    /* Gallery layout - varying heights for masonry effect but with max */
-    .portfolio-layout-gallery .portfolio-card {
-      height: auto;
-      max-height: 500px;
-      min-height: 350px;
-    }
-
-    .portfolio-layout-gallery .portfolio-card-content {
-      max-height: 400px; /* Ensure content doesn't exceed reasonable height */
-    }
-
-    /* Timeline layout - consistent height */
-    .portfolio-layout-timeline .portfolio-card {
-      height: 450px;
-    }
-
-    /* Minimal layout - slightly shorter */
-    .portfolio-layout-minimal .portfolio-card {
-      height: 380px;
-    }
-
-    /* Corporate layout - professional height */
-    .portfolio-layout-corporate .portfolio-card {
-      height: 440px;
-    }
-
-    /* Terminal layout specific adjustments */
-    .terminal-window .portfolio-card {
-      height: 400px;
-    }
-
-    .terminal-window .portfolio-card-content {
-      flex: 1;
-      overflow-y: auto;
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    }
-
-    /* Responsive height adjustments */
-    @media (max-width: 768px) {
-      .portfolio-card {
-        height: 350px; /* Shorter on mobile */
-      }
-
-      .portfolio-layout-dashboard .portfolio-card,
-      .portfolio-layout-timeline .portfolio-card,
-      .portfolio-layout-corporate .portfolio-card {
-        height: 350px;
-      }
-
-      .portfolio-layout-minimal .portfolio-card {
-        height: 320px;
-      }
-
-      .portfolio-layout-gallery .portfolio-card {
-        max-height: 400px;
-        min-height: 300px;
-      }
-    }
-
-    @media (max-width: 480px) {
-      .portfolio-card {
-        height: 320px; /* Even shorter on very small screens */
-      }
-
-      .portfolio-layout-dashboard .portfolio-card,
-      .portfolio-layout-timeline .portfolio-card,
-      .portfolio-layout-corporate .portfolio-card,
-      .portfolio-layout-minimal .portfolio-card {
-        height: 320px;
-      }
-
-      .portfolio-layout-gallery .portfolio-card {
-        max-height: 350px;
-        min-height: 280px;
-      }
-    }
-
-    /* 🔥 EXISTING COLOR AND TYPOGRAPHY STYLES */
-    .portfolio-primary { color: var(--portfolio-primary-color) !important; }
-    .portfolio-secondary { color: var(--portfolio-secondary-color) !important; }
-    .portfolio-accent { color: var(--portfolio-accent-color) !important; }
-    .portfolio-bg-primary { background-color: var(--portfolio-primary-color) !important; }
-    .portfolio-bg-secondary { background-color: var(--portfolio-secondary-color) !important; }
-    .portfolio-bg-accent { background-color: var(--portfolio-accent-color) !important; }
-
-    .portfolio-preview {
-      font-family: var(--portfolio-font-family) !important;
+    .btn-primary:hover {
+      background-color: color-mix(in srgb, var(--primary-color) 90%, black);
     }
     </style>
     """
@@ -501,23 +316,71 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
     {:noreply, updated_socket}
   end
 
-  # Handle color updates
-  defp handle_color_update(socket, %{"field" => field, "value" => value}) do
+  def handle_customization_update(socket, %{"field" => field, "value" => value}) do
+    IO.puts("🎨 Updating customization: #{field} = #{value}")
+
     current_customization = socket.assigns.customization || %{}
     updated_customization = Map.put(current_customization, field, value)
 
-    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+    # Generate new CSS
+    css = generate_preview_css(updated_customization, socket.assigns.portfolio.theme)
+
+    # Update portfolio in database
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{
+      customization: updated_customization
+    }) do
       {:ok, portfolio} ->
         socket
         |> assign(:portfolio, portfolio)
         |> assign(:customization, updated_customization)
-        |> maybe_update_preview_css()
-        |> put_flash(:info, "Colors updated!")
+        |> assign(:preview_css, css)
+        |> assign(:unsaved_changes, false)
+        |> push_event("schedule_preview_refresh", %{
+          delay: 500,
+          timestamp: System.system_time(:millisecond)
+        })
+        # Return socket directly
 
       {:error, _changeset} ->
         socket
-        |> put_flash(:error, "Failed to update colors")
+        |> assign(:customization, updated_customization)
+        |> assign(:preview_css, css)
+        |> assign(:unsaved_changes, true)
+        |> put_flash(:error, "Failed to save changes - will retry")
+        # Return socket directly
     end
+  end
+
+  # Handle color updates
+  def handle_color_update(socket, %{"color_type" => color_type, "value" => color_value}) do
+    IO.puts("🎨 Updating color: #{color_type} = #{color_value}")
+
+    current_customization = socket.assigns.customization || %{}
+    field_name = "#{color_type}_color"
+    updated_customization = Map.put(current_customization, field_name, color_value)
+
+    # Generate new CSS immediately for better UX
+    css = generate_preview_css(updated_customization, socket.assigns.portfolio.theme)
+
+    # Update socket immediately and push to client
+    socket = socket
+    |> assign(:customization, updated_customization)
+    |> assign(:preview_css, css)
+    |> assign(:unsaved_changes, true)
+    |> push_event("update_preview_css", %{css: css})
+    |> push_event("schedule_preview_refresh", %{
+      delay: 300,
+      timestamp: System.system_time(:millisecond)
+    })
+
+    # Async save to database (don't block UI)
+    Task.start(fn ->
+      Portfolios.update_portfolio(socket.assigns.portfolio, %{
+        customization: updated_customization
+      })
+    end)
+
+    socket  # Return socket directly
   end
 
   # Handle scheme updates
@@ -1179,40 +1042,59 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
     end
   end
 
-  defp get_enhanced_template_config(original_key, normalized_key) do
-    # Get base config from normalized key
-    base_config = get_template_config_safe(normalized_key)
+  defp get_enhanced_template_config(template_key) do
+    base_config = %{
+      "primary_color" => "#3b82f6",
+      "secondary_color" => "#64748b",
+      "accent_color" => "#f59e0b",
+      "background_color" => "#ffffff",
+      "text_color" => "#1f2937",
+      "layout" => "dashboard"
+    }
 
-    # Enhance with original template's specific features
-    case original_key do
-      "minimalist_clean" ->
-        Map.merge(base_config, %{
-          "layout_style" => "ultra_clean",
-          "typography" => %{"font_weight" => "300", "line_height" => "1.8"}
-        })
-
-      "minimalist_elegant" ->
-        Map.merge(base_config, %{
-          "layout_style" => "elegant",
-          "typography" => %{"font_family" => "Playfair Display", "accent_styling" => true}
-        })
-
-      "professional_executive" ->
-        Map.merge(base_config, %{
-          "header_config" => %{"show_metrics" => true, "show_social" => true},
-          "layout" => "dashboard"
-        })
-
-      "creative_artistic" ->
-        Map.merge(base_config, %{
-          "layout" => "gallery",
-          "animation_level" => "high",
-          "visual_effects" => true
-        })
-
-      _ ->
-        base_config
+    template_specific = case template_key do
+      "executive" -> %{
+        "primary_color" => "#1e40af",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6",
+        "layout" => "dashboard"
+      }
+      "developer" -> %{
+        "primary_color" => "#059669",
+        "secondary_color" => "#374151",
+        "accent_color" => "#10b981",
+        "layout" => "terminal",
+        "background_color" => "#0f172a",
+        "text_color" => "#e2e8f0"
+      }
+      "designer" -> %{
+        "primary_color" => "#7c3aed",
+        "secondary_color" => "#ec4899",
+        "accent_color" => "#f59e0b",
+        "layout" => "gallery"
+      }
+      "minimalist" -> %{
+        "primary_color" => "#374151",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#059669",
+        "layout" => "minimal"
+      }
+      "consultant" -> %{
+        "primary_color" => "#0891b2",
+        "secondary_color" => "#0284c7",
+        "accent_color" => "#6366f1",
+        "layout" => "case_study"
+      }
+      "academic" -> %{
+        "primary_color" => "#059669",
+        "secondary_color" => "#047857",
+        "accent_color" => "#10b981",
+        "layout" => "academic"
+      }
+      _ -> %{}
     end
+
+    Map.merge(base_config, template_specific)
   end
 
   defp get_all_templates_safe() do
@@ -1348,72 +1230,14 @@ defmodule FrestylWeb.PortfolioLive.Edit.TemplateManager do
 
 
   # ADD this function to get available theme variations:
-  def get_theme_variations do
+  defp get_theme_variations do
     [
-      {"executive", %{
-        name: "Executive",
-        description: "Professional corporate style",
-        category: "business",
-        preview_layout: "dashboard",
-        color_preview: ["#1e40af", "#64748b", "#3b82f6"],
-        features: ["Dashboard Layout", "Corporate Colors", "Professional Typography"]
-      }},
-      {"developer", %{
-        name: "Developer",
-        description: "Technical terminal-inspired design",
-        category: "technical",
-        preview_layout: "timeline",
-        color_preview: ["#059669", "#374151", "#10b981"],
-        features: ["Terminal Style", "Code Friendly", "Dark Mode Ready"]
-      }},
-      {"designer", %{
-        name: "Designer",
-        description: "Creative visual portfolio",
-        category: "creative",
-        preview_layout: "gallery",
-        color_preview: ["#7c3aed", "#ec4899", "#f59e0b"],
-        features: ["Gallery Layout", "Visual Focus", "Creative Colors"]
-      }},
-      {"minimalist", %{
-        name: "Minimalist",
-        description: "Pure simplicity and focus",
-        category: "minimal",
-        preview_layout: "minimal",
-        color_preview: ["#000000", "#666666", "#333333"],
-        features: ["Ultra Clean", "No Distractions", "Typography Focus"]
-      }},
-      {"clean", %{
-        name: "Clean",
-        description: "Modern and organized",
-        category: "minimal",
-        preview_layout: "dashboard",
-        color_preview: ["#2563eb", "#64748b", "#3b82f6"],
-        features: ["Organized Layout", "Subtle Shadows", "Modern Design"]
-      }},
-      {"elegant", %{
-        name: "Elegant",
-        description: "Sophisticated and refined",
-        category: "premium",
-        preview_layout: "gallery",
-        color_preview: ["#4c1d95", "#7c3aed", "#c084fc"],
-        features: ["Luxury Feel", "Premium Typography", "Elegant Spacing"]
-      }},
-      {"consultant", %{
-        name: "Consultant",
-        description: "Strategic business presentation",
-        category: "business",
-        preview_layout: "corporate",
-        color_preview: ["#0891b2", "#0284c7", "#6366f1"],
-        features: ["Case Study Focus", "Business Layout", "Professional"]
-      }},
-      {"academic", %{
-        name: "Academic",
-        description: "Research and education focused",
-        category: "academic",
-        preview_layout: "minimal",
-        color_preview: ["#059669", "#047857", "#10b981"],
-        features: ["Publication Ready", "Research Focus", "Clean Typography"]
-      }}
+      {"executive", %{name: "Executive", category: "professional"}},
+      {"developer", %{name: "Developer", category: "technical"}},
+      {"designer", %{name: "Designer", category: "creative"}},
+      {"minimalist", %{name: "Minimalist", category: "minimal"}},
+      {"consultant", %{name: "Consultant", category: "business"}},
+      {"academic", %{name: "Academic", category: "academic"}}
     ]
   end
 end

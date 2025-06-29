@@ -8,8 +8,6 @@ defmodule FrestylWeb.PortfolioLive.View do
   import Ecto.Query
   alias FrestylWeb.PortfolioLive.Components.EnhancedSkillsDisplay
 
-  # 🔥 FIXED: Handle both public portfolio view and share token view
-  @impl true
   def mount(%{"slug" => slug}, _session, socket) do
     case Portfolios.get_portfolio_by_slug_with_sections_simple(slug) do
       {:error, :not_found} ->
@@ -18,6 +16,12 @@ defmodule FrestylWeb.PortfolioLive.View do
         |> redirect(to: "/")}
 
       {:ok, portfolio} ->
+        # 🔥 CRITICAL: Make sure sections are actually loaded
+        IO.puts("🔥 PORTFOLIO MOUNT DEBUG:")
+        IO.puts("🔥 Portfolio title: #{portfolio.title}")
+        IO.puts("🔥 Raw sections: #{inspect(portfolio.sections)}")
+        IO.puts("🔥 Sections count: #{length(portfolio.sections || [])}")
+
         # Ensure user is loaded
         portfolio = if Ecto.assoc_loaded?(portfolio.user) do
           portfolio
@@ -25,8 +29,26 @@ defmodule FrestylWeb.PortfolioLive.View do
           Repo.preload(portfolio, :user, force: true)
         end
 
-        # 🔥 FIX: Extract video intro and prepare data for hero renderers
-        {intro_video, filtered_sections} = extract_and_prepare_video_data(portfolio.sections || [])
+        # 🔥 CRITICAL FIX: Get sections properly
+        all_sections = portfolio.sections || []
+
+        # Debug sections before filtering
+        IO.puts("🔥 All sections before filtering:")
+        Enum.each(all_sections, fn section ->
+          IO.puts("  - #{section.title} (#{section.section_type}, visible: #{section.visible})")
+        end)
+
+        # 🔥 CRITICAL: Use the corrected function name
+        {intro_video, filtered_sections} = separate_video_intro_and_sections(all_sections)
+
+        # Debug after filtering
+        IO.puts("🔥 After filtering:")
+        IO.puts("🔥 Has intro video: #{if intro_video, do: "YES", else: "NO"}")
+        IO.puts("🔥 Filtered sections count: #{length(filtered_sections)}")
+        IO.puts("🔥 Filtered sections:")
+        Enum.each(filtered_sections, fn section ->
+          IO.puts("  - #{section.title} (#{section.section_type})")
+        end)
 
         # Process customization and template data
         {template_config, customization_css, template_layout} = process_portfolio_customization_fixed(portfolio)
@@ -41,7 +63,8 @@ defmodule FrestylWeb.PortfolioLive.View do
           |> assign(:page_title, portfolio.title)
           |> assign(:portfolio, portfolio)
           |> assign(:owner, portfolio.user)
-          |> assign(:sections, filtered_sections)
+          |> assign(:sections, filtered_sections)               # 🔥 CRITICAL
+          |> assign(:all_sections, all_sections)                # 🔥 CRITICAL
           |> assign(:social_links, social_links)
           |> assign(:contact_info, contact_info)
           |> assign(:customization, portfolio.customization || %{})
@@ -50,102 +73,89 @@ defmodule FrestylWeb.PortfolioLive.View do
           |> assign(:template_theme, normalize_theme(portfolio.theme))
           |> assign(:template_layout, template_layout)
           |> assign(:customization_css, customization_css)
-          # 🔥 FIX: Video data for hero renderers
+          # 🔥 CRITICAL FIX: Video data for hero renderers
           |> assign(:intro_video, intro_video)
+          |> assign(:intro_video_section, intro_video)          # 🔥 CRITICAL
           |> assign(:has_intro_video, intro_video != nil)
           |> assign(:video_url, get_video_url_safe(intro_video))
-          |> assign(:video_content, extract_video_content(intro_video))
+          |> assign(:video_content, get_video_content_safe(intro_video))
           |> assign(:show_video_modal, false)
           |> assign(:show_mobile_nav, false)
+
+        IO.puts("🔥 FINAL SOCKET ASSIGNS:")
+        IO.puts("🔥 sections count: #{length(socket.assigns.sections)}")
+        IO.puts("🔥 has_intro_video: #{socket.assigns.has_intro_video}")
 
         {:ok, socket}
     end
   end
 
   # Handle share token view (collaboration links)
-  @impl true
-  def mount(%{"token" => token} = params, _session, socket) do
-    mount_share_view(token, socket)
+  defp mount_public_view(portfolio, socket) do
+    # Extract video intro and filter sections
+    sections = Map.get(portfolio, :portfolio_sections, [])
+    {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(sections)
+
+    # Process customization and template data
+    {template_config, customization_css, template_layout} = process_portfolio_customization_fixed(portfolio)
+
+    # Prepare data structure
+    social_links = extract_social_links(portfolio)
+    contact_info = extract_contact_info(filtered_sections)
+    portfolio_metrics = calculate_portfolio_metrics(portfolio)
+
+    socket
+    |> assign(:page_title, portfolio.title)
+    |> assign(:portfolio, portfolio)
+    |> assign(:owner, portfolio.user)
+    |> assign(:sections, filtered_sections)
+    |> assign(:all_sections, sections)
+    |> assign(:social_links, social_links)
+    |> assign(:contact_info, contact_info)
+    |> assign(:customization, portfolio.customization || %{})
+    |> assign(:portfolio_metrics, portfolio_metrics)
+    |> assign(:template_config, template_config)
+    |> assign(:template_theme, normalize_theme(portfolio.theme))
+    |> assign(:template_layout, template_layout)
+    |> assign(:customization_css, customization_css)
+    |> assign(:intro_video, intro_video)
+    |> assign(:intro_video_section, intro_video)
+    |> assign(:has_intro_video, intro_video != nil)
+    |> assign(:video_url, get_video_url_safe(intro_video))
+    |> assign(:video_content, get_video_content_safe(intro_video))
+    |> assign(:show_video_modal, false)
+    |> assign(:show_mobile_nav, false)
+    |> assign(:view_type, :public)
   end
 
-  # 🔥 FIXED: Mount public portfolio view with proper section loading
-  defp mount_public_view(slug, socket) do
-    case Portfolios.get_portfolio_by_slug_with_sections_simple(slug) do
-      {:error, :not_found} ->
-        {:ok, socket
-        |> put_flash(:error, "Portfolio not found")
-        |> redirect(to: "/")}
+  defp mount_share_view(portfolio, socket) do
+    # Similar to public view but with sharing-specific settings
+    sections = portfolio.sections || []
+    {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(sections)
 
-      {:ok, portfolio} ->
-        IO.puts("🔥 MOUNTING PORTFOLIO VIEW")
-        IO.puts("🔥 Portfolio theme: #{portfolio.theme}")
-        IO.puts("🔥 Portfolio customization: #{inspect(portfolio.customization)}")
+    # Process customization and template data
+    {template_config, customization_css, template_layout} = process_portfolio_customization_fixed(portfolio)
 
-        # Force preload user if not loaded
-        portfolio = if Ecto.assoc_loaded?(portfolio.user) do
-          portfolio
-        else
-          Repo.preload(portfolio, :user, force: true)
-        end
-
-        # Check if portfolio is publicly accessible
-        if portfolio_accessible?(portfolio) do
-          # 🔥 FIX: Track visit only if we have user info, or track anonymously
-          track_portfolio_visit_safe(portfolio, socket)
-
-          # 🔥 NEW: Extract intro video and filter sections
-          {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(Map.get(portfolio, :portfolio_sections, []))
-
-          # Process customization data
-          {template_config, customization_css, template_layout} = process_portfolio_customization_fixed(portfolio)
-
-          IO.puts("🔥 Generated CSS length: #{String.length(customization_css)}")
-          IO.puts("🔥 Template layout: #{template_layout}")
-
-          social_links = extract_social_links_comprehensive(filtered_sections, portfolio.user)
-          contact_info = extract_contact_info_comprehensive(filtered_sections)
-
-          # Calculate portfolio metrics
-          portfolio_metrics = %{
-            sections_count: length(filtered_sections),
-            total_projects: calculate_projects_count_simple(filtered_sections),
-            years_experience: calculate_experience_years_simple(filtered_sections)
-          }
-
-          socket =
-            socket
-            |> assign(:page_title, portfolio.title)
-            |> assign(:portfolio, portfolio)
-            |> assign(:owner, portfolio.user)
-            |> assign(:sections, filtered_sections)  # 🔥 CHANGED: Use filtered sections
-            |> assign(:social_links, social_links)  # Add this line
-            |> assign(:contact_info, contact_info)
-            |> assign(:customization, portfolio.customization || %{})
-            |> assign(:portfolio_metrics, portfolio_metrics)
-            |> assign(:template_config, template_config)
-            |> assign(:template_theme, normalize_theme(portfolio.theme))
-            |> assign(:template_layout, template_layout)
-            |> assign(:customization_css, customization_css)
-            |> assign(:intro_video, intro_video)  # 🔥 CHANGED: Use extracted video
-            |> assign(:share, nil)
-            |> assign(:is_shared_view, false)
-            |> assign(:show_stats, false)
-            |> assign(:show_video_modal, false)  # ADD THIS LINE
-            |> assign(:show_mobile_nav, false)   # ADD THIS LINE TOO
-            |> assign(:portfolio_stats, %{})
-            |> assign(:collaboration_enabled, false)
-            |> assign(:feedback_panel_open, false)
-            |> assign(:exporting_resume, false)  # Add this line
-            |> assign(:exporting_pdf, false)
-
-
-          {:ok, socket}
-        else
-          {:ok, socket
-          |> put_flash(:error, "This portfolio is private")
-          |> redirect(to: "/")}
-        end
-    end
+    socket
+    |> assign(:page_title, "#{portfolio.title} - Shared Portfolio")
+    |> assign(:portfolio, portfolio)
+    |> assign(:owner, portfolio.user)
+    |> assign(:sections, filtered_sections)
+    |> assign(:all_sections, sections)
+    |> assign(:customization, portfolio.customization || %{})
+    |> assign(:template_config, template_config)
+    |> assign(:template_theme, normalize_theme(portfolio.theme))
+    |> assign(:template_layout, template_layout)
+    |> assign(:customization_css, customization_css)
+    |> assign(:intro_video, intro_video)
+    |> assign(:intro_video_section, intro_video)
+    |> assign(:has_intro_video, intro_video != nil)
+    |> assign(:video_url, get_video_url_safe(intro_video))
+    |> assign(:video_content, get_video_content_safe(intro_video))
+    |> assign(:show_video_modal, false)
+    |> assign(:show_mobile_nav, false)
+    |> assign(:view_type, :share)
+    |> assign(:is_shared_view, true)
   end
 
   # 🔥 NEW: Safe version of track_portfolio_visit that handles nil current_user
@@ -224,57 +234,29 @@ defmodule FrestylWeb.PortfolioLive.View do
     end
   end
 
-  defp extract_intro_video_and_filter_sections(sections) do
-    IO.puts("🔥 EXTRACTING VIDEO INTRO FROM #{length(sections)} SECTIONS")
-
+    defp separate_video_intro_and_sections(sections) do
+    # Filter out video intro sections for separate handling
     {video_sections, other_sections} = Enum.split_with(sections, fn section ->
       is_video_intro_section?(section)
     end)
 
+    # Only show visible sections in main display
+    visible_other_sections = Enum.filter(other_sections, fn section ->
+      Map.get(section, :visible, true)
+    end)
+
+    # Get the first video intro section (should only be one)
     intro_video = case video_sections do
       [video_section | _] ->
         IO.puts("🔥 FOUND VIDEO INTRO SECTION: #{video_section.title}")
+        IO.puts("🔥 Video intro visible: #{video_section.visible}")
         content = video_section.content || %{}
         video_url = Map.get(content, "video_url")
         IO.puts("🔥 VIDEO URL: #{video_url}")
 
-        # 🔥 ENHANCED: Return a consistent structure that matches what we expect
-        %{
-          id: video_section.id,
-          title: Map.get(content, "title", "Personal Introduction"),
-          description: Map.get(content, "description", ""),
-          video_url: video_url,
-          filename: Map.get(content, "video_filename"),
-          duration: Map.get(content, "duration", 0),
-          created_at: Map.get(content, "created_at"),
-          section_id: video_section.id,
-          section: video_section,  # Include full section for compatibility
-          content: content         # 🔥 FIX: Include content at the top level
-        }
-      [] ->
-        IO.puts("🔥 NO VIDEO INTRO SECTION FOUND")
-        nil
-    end
-
-    IO.puts("🔥 INTRO VIDEO RESULT: #{if intro_video, do: "FOUND", else: "NOT FOUND"}")
-    IO.puts("🔥 OTHER SECTIONS COUNT: #{length(other_sections)}")
-
-    {intro_video, other_sections}
-  end
-
-  defp extract_and_prepare_video_data(sections) do
-    IO.puts("🔥 EXTRACTING VIDEO DATA FOR HERO RENDERERS")
-
-    {video_sections, other_sections} = Enum.split_with(sections, fn section ->
-      is_video_intro_section?(section)
-    end)
-
-    intro_video = case video_sections do
-      [video_section | _] ->
-        content = video_section.content || %{}
-        video_url = Map.get(content, "video_url")
-
-        if video_url && video_url != "" do
+        # Only return if visible
+        if Map.get(video_section, :visible, true) do
+          # 🔥 ENHANCED: Return a consistent structure that matches what we expect
           %{
             id: video_section.id,
             title: Map.get(content, "title", "Personal Introduction"),
@@ -284,22 +266,26 @@ defmodule FrestylWeb.PortfolioLive.View do
             duration: Map.get(content, "duration", 0),
             created_at: Map.get(content, "created_at"),
             section_id: video_section.id,
-            section: video_section,
-            content: content,
-            # 🔥 NEW: Hero renderer compatibility
-            display_in_hero: true,
-            video_type: "introduction"
+            section: video_section,  # Include full section for compatibility
+            content: content,        # 🔥 FIX: Include content at the top level
+            visible: video_section.visible
           }
         else
+          IO.puts("🔥 Video intro section exists but is not visible")
           nil
         end
       [] ->
+        IO.puts("🔥 NO VIDEO INTRO SECTION FOUND")
         nil
     end
 
-    {intro_video, other_sections}
+    IO.puts("🔥 INTRO VIDEO RESULT: #{if intro_video, do: "FOUND & VISIBLE", else: "NOT FOUND OR HIDDEN"}")
+    IO.puts("🔥 VISIBLE OTHER SECTIONS COUNT: #{length(visible_other_sections)}")
+
+    {intro_video, visible_other_sections}
   end
 
+  # 🔥 FIX: Improved video intro section detection
   defp is_video_intro_section?(section) do
     result = case section do
       # Check section type and content
@@ -334,17 +320,171 @@ defmodule FrestylWeb.PortfolioLive.View do
     result
   end
 
+  # 🔥 FIX: Safe video content extraction
+  defp get_video_content_safe(intro_video_section) when intro_video_section == nil do
+    %{
+      "video_url" => "",
+      "title" => "Personal Introduction",
+      "description" => "",
+      "duration" => 0
+    }
+  end
+
+  defp get_video_content_safe(intro_video_section) do
+    case intro_video_section do
+      %{section: %{content: content}} when is_map(content) -> content
+      %{content: content} when is_map(content) -> content
+      %{"video_url" => _} = content when is_map(content) -> content
+      video_data when is_map(video_data) ->
+        %{
+          "video_url" => Map.get(video_data, :video_url, ""),
+          "title" => Map.get(video_data, :title, "Personal Introduction"),
+          "description" => Map.get(video_data, :description, ""),
+          "duration" => Map.get(video_data, :duration, 0)
+        }
+      _ ->
+        %{
+          "video_url" => "",
+          "title" => "Personal Introduction",
+          "description" => "",
+          "duration" => 0
+        }
+    end
+  end
+
+  # 🔥 FIX: Safe video URL extraction
+  defp get_video_url_safe(intro_video_section) when intro_video_section == nil, do: ""
+
+  defp get_video_url_safe(intro_video_section) do
+    case intro_video_section do
+      %{video_url: url} when is_binary(url) -> url
+      %{"video_url" => url} when is_binary(url) -> url
+      %{content: %{"video_url" => url}} when is_binary(url) -> url
+      %{section: %{content: %{"video_url" => url}}} when is_binary(url) -> url
+      _ -> ""
+    end
+  end
+
   @impl true
   def render(assigns) do
+    IO.puts("🔥 RENDER CALLED")
+    IO.puts("🔥 Sections in render: #{length(assigns.sections)}")
+    IO.puts("🔥 Has intro video: #{assigns.has_intro_video}")
+    IO.puts("🔥 Template layout: #{assigns.template_layout}")
+
+    # 🔥 FIX: Ensure template_layout is properly determined
     theme = assigns.portfolio.theme || "executive"
+    customization = assigns.portfolio.customization || %{}
 
-    # 🔥 FIX: Ensure all hero renderers get the video data they need
+    # Get template layout from theme and customization
+    template_layout = determine_template_layout(theme, customization)
+
+    # 🔥 NEW: Handle video intro detection and display
+    intro_video_section = assigns[:intro_video_section] || assigns[:intro_video]
+    has_intro_video = intro_video_section != nil
+
+    IO.puts("🔥 RENDERING PORTFOLIO VIEW")
+    IO.puts("🔥 Theme: #{theme}")
+    IO.puts("🔥 Template Layout: #{template_layout}")
+    IO.puts("🔥 Has intro video: #{has_intro_video}")
+    IO.puts("🔥 Display sections count: #{length(assigns.sections)}")
+
+    # Update assigns with proper layout and video status
     assigns = assigns
-    |> assign(:theme, theme)
-    |> assign(:theme_config, get_theme_hero_config(theme, assigns.customization))
+    |> assign(:template_layout, template_layout)
+    |> assign(:intro_video_section, intro_video_section)
+    |> assign(:has_intro_video, has_intro_video)
 
-    # Use existing render_theme_specific_header (don't change it)
-    render_theme_specific_header(assigns)
+    # 🔥 CRITICAL: Always render sections regardless of video intro
+    case {template_layout, has_intro_video} do
+      # Video intro takes precedence - use enhanced layouts
+      {_, true} ->
+        IO.puts("🔥 Rendering video enhanced layout")
+        render_video_enhanced_layout(assigns)
+
+      # Standard layouts without video
+      {"dashboard", false} ->
+        IO.puts("🔥 Rendering dashboard layout")
+        render_dashboard_layout(assigns)
+
+      {"gallery", false} ->
+        IO.puts("🔥 Rendering gallery layout")
+        render_gallery_layout(assigns)
+
+      {"terminal", false} ->
+        IO.puts("🔥 Rendering terminal layout")
+        render_terminal_layout(assigns)
+
+      {"case_study", false} ->
+        IO.puts("🔥 Rendering case study layout")
+        render_case_study_layout(assigns)
+
+      {"minimal", false} ->
+        IO.puts("🔥 Rendering minimal layout")
+        render_minimal_layout(assigns)
+
+      {"academic", false} ->
+        IO.puts("🔥 Rendering academic layout")
+        render_academic_layout(assigns)
+
+      # 🔥 CRITICAL: Fallback that ALWAYS renders sections
+      _ ->
+        IO.puts("🔥 FALLBACK: Rendering basic layout with sections")
+        render_basic_layout_with_sections(assigns)
+    end
+  end
+
+  defp render_basic_layout_with_sections(assigns) do
+    assigns = assigns |> assign(:css_content, Map.get(assigns, :customization_css, ""))
+
+    ~H"""
+    <%= Phoenix.HTML.raw(@css_content) %>
+
+    <div class="min-h-screen portfolio-bg">
+      <!-- Header -->
+      <header class="bg-blue-600 text-white py-16">
+        <div class="max-w-6xl mx-auto px-4 text-center">
+          <h1 class="text-4xl font-bold mb-4"><%= @portfolio.title %></h1>
+          <%= if @portfolio.description do %>
+            <p class="text-xl text-blue-100"><%= @portfolio.description %></p>
+          <% end %>
+        </div>
+      </header>
+
+      <!-- 🔥 CRITICAL: Main Content Sections - GUARANTEED TO RENDER -->
+      <main class="max-w-6xl mx-auto px-4 py-12">
+        <div class="bg-yellow-100 border border-yellow-300 rounded p-4 mb-8">
+          <p><strong>Debug Info:</strong></p>
+          <p>Sections count: <%= length(@sections) %></p>
+          <p>Has intro video: <%= @has_intro_video %></p>
+          <p>Template layout: <%= @template_layout %></p>
+        </div>
+
+        <%= if length(@sections) > 0 do %>
+          <div class="space-y-8">
+            <%= for section <- @sections do %>
+              <section class="bg-white rounded-lg shadow p-8 border-l-4 border-blue-500">
+                <h2 class="text-2xl font-bold mb-4 text-gray-900"><%= section.title %></h2>
+                <p class="text-gray-600 mb-4">Section Type: <%= section.section_type %></p>
+
+                <!-- Render section content -->
+                <div class="prose max-w-none">
+                  <%= render_section_content_safe(section) %>
+                </div>
+              </section>
+            <% end %>
+          </div>
+        <% else %>
+          <div class="text-center py-16">
+            <div class="bg-gray-100 rounded-xl p-8">
+              <h3 class="text-lg font-medium text-gray-900 mb-2">No Sections Found</h3>
+              <p class="text-gray-600">This portfolio doesn't have any sections yet.</p>
+            </div>
+          </div>
+        <% end %>
+      </main>
+    </div>
+    """
   end
 
   defp render_theme_with_video_support(assigns, theme) do
@@ -526,36 +666,7 @@ defmodule FrestylWeb.PortfolioLive.View do
     """
   end
 
-  # 🔥 ADD THIS NEW HELPER FUNCTION (add it anywhere in the view.ex file):
-  defp determine_template_layout(theme, customization) do
-    # First check if layout is explicitly set in customization
-    explicit_layout = customization["layout"] || customization[:layout]
 
-    if explicit_layout do
-      explicit_layout
-    else
-      # Map theme to layout with proper minimal support
-      case theme do
-        "executive" -> "dashboard"
-        "professional_executive" -> "dashboard"
-        "developer" -> "terminal"
-        "technical_developer" -> "terminal"
-        "designer" -> "gallery"
-        "creative_designer" -> "gallery"
-        "consultant" -> "case_study"
-        "business_consultant" -> "case_study"
-        "academic" -> "academic"
-        "academic_researcher" -> "academic"
-        "creative" -> "gallery"
-        "minimalist" -> "minimal"        # 🔥 FIX: Add minimal support
-        "minimalist_clean" -> "minimal"  # 🔥 FIX: Add minimal variants
-        "minimalist_elegant" -> "minimal"
-        _ ->
-          IO.puts("🔥 Unknown theme: #{theme}, defaulting to dashboard")
-          "dashboard"
-      end
-    end
-  end
 
   defp render_video_intro_hero(assigns) do
     if assigns.intro_video == nil do
@@ -1910,18 +2021,33 @@ defmodule FrestylWeb.PortfolioLive.View do
   end
 
   defp extract_social_links(portfolio) do
-    # Extract from portfolio.social_links or user data
-    portfolio.social_links || portfolio.user.social_links || %{}
+    # Extract social links from portfolio customization or user data
+    customization = portfolio.customization || %{}
+
+    Map.get(customization, "social_links", %{
+      "linkedin" => "",
+      "github" => "",
+      "twitter" => "",
+      "website" => ""
+    })
   end
 
   defp extract_contact_info(sections) do
+    # Find contact section and extract contact information
     contact_section = Enum.find(sections, fn section ->
       section.section_type == :contact || section.section_type == "contact"
     end)
 
     case contact_section do
       nil -> %{}
-      section -> section.content || %{}
+      section ->
+        content = section.content || %{}
+        %{
+          "email" => Map.get(content, "email", ""),
+          "phone" => Map.get(content, "phone", ""),
+          "location" => Map.get(content, "location", ""),
+          "website" => Map.get(content, "website", "")
+        }
     end
   end
 
@@ -2599,52 +2725,377 @@ defmodule FrestylWeb.PortfolioLive.View do
     end
   end
 
+  defp render_section_content(section) do
+    content = section.content || %{}
+
+    case section.section_type do
+      :text_content ->
+        render_text_content(content)
+      "text_content" ->
+        render_text_content(content)
+      :intro ->
+        render_intro_content(content)
+      "intro" ->
+        render_intro_content(content)
+      :experience ->
+        render_experience_content(content)
+      "experience" ->
+        render_experience_content(content)
+      :projects ->
+        render_projects_content(content)
+      "projects" ->
+        render_projects_content(content)
+      :skills ->
+        render_skills_content(content)
+      "skills" ->
+        render_skills_content(content)
+      :education ->
+        render_education_content(content)
+      "education" ->
+        render_education_content(content)
+      :contact ->
+        render_contact_content(content)
+      "contact" ->
+        render_contact_content(content)
+      :media_showcase ->
+        render_media_content(content)
+      "media_showcase" ->
+        render_media_content(content)
+      _ ->
+        render_generic_content(content, section)
+    end
+  end
+
+  # ============================================================================
+  # Content renderers for different section types
+  # ============================================================================
+
+  defp render_text_content(content) do
+    text = Map.get(content, "text", Map.get(content, "content", ""))
+    if text != "", do: Phoenix.HTML.raw(text), else: Phoenix.HTML.raw("<p>No content available.</p>")
+  end
+
+  defp render_intro_content(content) do
+    headline = Map.get(content, "headline", "")
+    summary = Map.get(content, "summary", "")
+    location = Map.get(content, "location", "")
+
+    headline_html = if headline != "", do: "<h3 class='text-xl font-semibold mb-2'>#{headline}</h3>", else: ""
+    summary_html = if summary != "", do: "<p class='text-gray-700 mb-4'>#{summary}</p>", else: ""
+    location_html = if location != "", do: "<p class='text-sm text-gray-500'><i class='fas fa-map-marker-alt'></i> #{location}</p>", else: ""
+
+    Phoenix.HTML.raw("""
+    <div class="intro-section">
+      #{headline_html}
+      #{summary_html}
+      #{location_html}
+    </div>
+    """)
+  end
+
+  defp render_experience_content(content) do
+    experiences = Map.get(content, "experiences", Map.get(content, "jobs", []))
+
+    if length(experiences) > 0 do
+      experience_items = Enum.map(experiences, fn exp ->
+        position = Map.get(exp, "position", Map.get(exp, "title", ""))
+        company = Map.get(exp, "company", "")
+        duration = Map.get(exp, "duration", "#{Map.get(exp, "start_date", "")} - #{Map.get(exp, "end_date", "Present")}")
+        description = Map.get(exp, "description", "")
+
+        company_html = if company != "", do: "<p class='text-blue-600 font-medium'>#{company}</p>", else: ""
+        duration_html = if duration != "", do: "<p class='text-sm text-gray-600'>#{duration}</p>", else: ""
+        description_html = if description != "", do: "<p class='mt-2 text-gray-700'>#{description}</p>", else: ""
+
+        """
+        <div class="border-l-4 border-blue-500 pl-4">
+          <h4 class="font-semibold text-lg">#{position}</h4>
+          #{company_html}
+          #{duration_html}
+          #{description_html}
+        </div>
+        """
+      end)
+
+      Phoenix.HTML.raw("""
+      <div class="space-y-6">
+        #{Enum.join(experience_items, "")}
+      </div>
+      """)
+    else
+      Phoenix.HTML.raw("<p>Experience details coming soon...</p>")
+    end
+  end
+
+  defp render_projects_content(content) do
+    projects = Map.get(content, "projects", [])
+
+    if length(projects) > 0 do
+      project_items = Enum.map(projects, fn project ->
+        name = Map.get(project, "name", Map.get(project, "title", ""))
+        description = Map.get(project, "description", "")
+        technologies = Map.get(project, "technologies", [])
+        url = Map.get(project, "url", Map.get(project, "demo_url", ""))
+        github = Map.get(project, "github_url", "")
+
+        description_html = if description != "", do: "<p class='text-gray-600 mb-4'>#{description}</p>", else: ""
+
+        # Handle technologies safely
+        tech_html = if length(technologies) > 0 do
+          tech_spans = Enum.map(technologies, fn tech ->
+            "<span class='px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm'>#{tech}</span>"
+          end)
+          "<div class='flex flex-wrap gap-2 mb-4'>#{Enum.join(tech_spans, "")}</div>"
+        else
+          ""
+        end
+
+        # Handle links safely
+        url_link = if url != "", do: "<a href='#{url}' class='text-blue-600 hover:underline text-sm'>View Project</a>", else: ""
+        github_link = if github != "", do: "<a href='#{github}' class='text-gray-600 hover:underline text-sm'>GitHub</a>", else: ""
+        links_html = if url_link != "" or github_link != "" do
+          "<div class='flex gap-2'>#{url_link}#{github_link}</div>"
+        else
+          ""
+        end
+
+        """
+        <div class="bg-gray-50 rounded-lg p-6">
+          <h4 class="font-semibold text-lg mb-2">#{name}</h4>
+          #{description_html}
+          #{tech_html}
+          #{links_html}
+        </div>
+        """
+      end)
+
+      Phoenix.HTML.raw("""
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        #{Enum.join(project_items, "")}
+      </div>
+      """)
+    else
+      Phoenix.HTML.raw("<p>Projects coming soon...</p>")
+    end
+  end
+
+  defp render_skills_content(content) do
+    skills = Map.get(content, "skills", [])
+    skill_categories = Map.get(content, "skill_categories", %{})
+
+    cond do
+      map_size(skill_categories) > 0 ->
+        category_items = Enum.map(skill_categories, fn {category, category_skills} ->
+          skill_spans = Enum.map(category_skills, fn skill ->
+            skill_name = case skill do
+              %{"name" => name} -> name
+              skill_string -> skill_string
+            end
+
+            proficiency = case skill do
+              %{"proficiency" => prof} -> prof
+              _ -> ""
+            end
+
+            proficiency_class = case proficiency do
+              "expert" -> "bg-green-100 text-green-800"
+              "advanced" -> "bg-blue-100 text-blue-800"
+              "intermediate" -> "bg-yellow-100 text-yellow-800"
+              "beginner" -> "bg-gray-100 text-gray-800"
+              _ -> "bg-blue-100 text-blue-800"
+            end
+
+            "<span class='px-3 py-1 #{proficiency_class} rounded-full text-sm font-medium'>#{skill_name}</span>"
+          end)
+
+          """
+          <div>
+            <h4 class="font-semibold text-lg mb-3">#{category}</h4>
+            <div class="flex flex-wrap gap-2">
+              #{Enum.join(skill_spans, "")}
+            </div>
+          </div>
+          """
+        end)
+
+        Phoenix.HTML.raw("""
+        <div class="space-y-6">
+          #{Enum.join(category_items, "")}
+        </div>
+        """)
+
+      length(skills) > 0 ->
+        skill_spans = Enum.map(skills, fn skill ->
+          skill_name = case skill do
+            %{"name" => name} -> name
+            skill_string -> skill_string
+          end
+          "<span class='px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium'>#{skill_name}</span>"
+        end)
+
+        Phoenix.HTML.raw("""
+        <div class="flex flex-wrap gap-2">
+          #{Enum.join(skill_spans, "")}
+        </div>
+        """)
+
+      true ->
+        Phoenix.HTML.raw("<p>Skills information coming soon...</p>")
+    end
+  end
+
+  defp render_education_content(content) do
+    education = Map.get(content, "education", [])
+
+    if length(education) > 0 do
+      education_items = Enum.map(education, fn edu ->
+        degree = Map.get(edu, "degree", "")
+        field = Map.get(edu, "field", "")
+        institution = Map.get(edu, "institution", "")
+        year = Map.get(edu, "year", Map.get(edu, "end_date", ""))
+
+        degree_with_field = if field != "", do: "#{degree} in #{field}", else: degree
+        institution_html = if institution != "", do: "<p class='text-green-600 font-medium'>#{institution}</p>", else: ""
+        year_html = if year != "", do: "<p class='text-sm text-gray-600'>#{year}</p>", else: ""
+
+        """
+        <div class="border-l-4 border-green-500 pl-4">
+          <h4 class="font-semibold">#{degree_with_field}</h4>
+          #{institution_html}
+          #{year_html}
+        </div>
+        """
+      end)
+
+      Phoenix.HTML.raw("""
+      <div class="space-y-4">
+        #{Enum.join(education_items, "")}
+      </div>
+      """)
+    else
+      Phoenix.HTML.raw("<p>Education details coming soon...</p>")
+    end
+  end
+
+  defp render_contact_content(content) do
+    email = Map.get(content, "email", "")
+    phone = Map.get(content, "phone", "")
+    linkedin = Map.get(content, "linkedin", "")
+    website = Map.get(content, "website", "")
+
+    email_html = if email != "", do: "<p><strong>Email:</strong> <a href='mailto:#{email}' class='text-blue-600'>#{email}</a></p>", else: ""
+    phone_html = if phone != "", do: "<p><strong>Phone:</strong> <a href='tel:#{phone}' class='text-blue-600'>#{phone}</a></p>", else: ""
+    linkedin_html = if linkedin != "", do: "<p><strong>LinkedIn:</strong> <a href='#{linkedin}' class='text-blue-600' target='_blank'>#{linkedin}</a></p>", else: ""
+    website_html = if website != "", do: "<p><strong>Website:</strong> <a href='#{website}' class='text-blue-600' target='_blank'>#{website}</a></p>", else: ""
+
+    Phoenix.HTML.raw("""
+    <div class="bg-blue-50 rounded-lg p-6">
+      <h4 class="font-semibold text-lg mb-4">Get In Touch</h4>
+      <div class="space-y-2">
+        #{email_html}
+        #{phone_html}
+        #{linkedin_html}
+        #{website_html}
+      </div>
+    </div>
+    """)
+  end
+
+  defp render_media_content(content) do
+    media_files = Map.get(content, "media_files", [])
+    description = Map.get(content, "description", "")
+
+    description_html = if description != "", do: "<p class='text-gray-700 mb-6'>#{description}</p>", else: ""
+
+    media_html = if length(media_files) > 0 do
+      media_items = Enum.map(media_files, fn media ->
+        web_path = Map.get(media, "web_path", "")
+        filename = Map.get(media, "original_filename", "Media file")
+        content_type = Map.get(media, "content_type", "")
+
+        cond do
+          String.starts_with?(content_type, "image/") ->
+            "<img src='#{web_path}' alt='#{filename}' class='rounded-lg shadow-sm w-full h-48 object-cover'>"
+          String.starts_with?(content_type, "video/") ->
+            """
+            <video controls class='rounded-lg shadow-sm w-full h-48'>
+              <source src='#{web_path}' type='#{content_type}'>
+            </video>
+            """
+          true ->
+            """
+            <div class='bg-gray-100 rounded-lg p-4 text-center h-48 flex items-center justify-center'>
+              <div>
+                <p class='text-sm text-gray-600'>#{filename}</p>
+                <a href='#{web_path}' class='text-blue-600 text-sm hover:underline'>Download</a>
+              </div>
+            </div>
+            """
+        end
+      end)
+
+      """
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        #{Enum.join(media_items, "")}
+      </div>
+      """
+    else
+      "<p>No media files uploaded yet.</p>"
+    end
+
+    Phoenix.HTML.raw("""
+    <div>
+      #{description_html}
+      #{media_html}
+    </div>
+    """)
+  end
+
+  defp render_generic_content(content, section) do
+    cond do
+      Map.has_key?(content, "text") and Map.get(content, "text") != "" ->
+        Phoenix.HTML.raw(Map.get(content, "text"))
+
+      Map.has_key?(content, "content") and Map.get(content, "content") != "" ->
+        Phoenix.HTML.raw(Map.get(content, "content"))
+
+      Map.has_key?(content, "body") and Map.get(content, "body") != "" ->
+        Phoenix.HTML.raw(Map.get(content, "body"))
+
+      map_size(content) > 0 ->
+        content_keys = Enum.join(Map.keys(content), ", ")
+        content_inspect = inspect(content, pretty: true)
+
+        Phoenix.HTML.raw("""
+        <div class="bg-gray-50 rounded p-4">
+          <p class="text-sm text-gray-600 mb-2">Section Type: #{section.section_type}</p>
+          <p class="text-sm text-gray-500">Content keys: #{content_keys}</p>
+          <details class="mt-2">
+            <summary class="cursor-pointer text-sm text-blue-600">Show Raw Content</summary>
+            <pre class="text-xs mt-2 bg-white p-2 rounded border overflow-auto">#{content_inspect}</pre>
+          </details>
+        </div>
+        """)
+
+      true ->
+        Phoenix.HTML.raw("<p class='text-gray-500 italic'>No content available for this section.</p>")
+    end
+  end
+
   defp render_section_content_safe(section) do
     try do
-      content = section.content || %{}
-
-      case section.section_type do
-        :skills ->
-          render_skills_content_enhanced(content)
-        :experience ->
-          render_experience_content_enhanced(content)
-        :education ->
-          render_education_content_enhanced(content)
-        :projects ->
-          render_projects_content_enhanced(content)
-        :contact ->
-          render_contact_content_enhanced(content)
-        :intro ->
-          render_intro_content_enhanced(content)
-
-        # ADD THESE NEW STORY SECTION CASES:
-        :story ->
-          render_story_content_enhanced(content)
-        :timeline ->
-          render_timeline_content_enhanced(content)
-        :narrative ->
-          render_narrative_content_enhanced(content)
-        :journey ->
-          render_journey_content_enhanced(content)
-
-        # Also handle string versions (in case section_type is stored as string)
-        "story" ->
-          render_story_content_enhanced(content)
-        "timeline" ->
-          render_timeline_content_enhanced(content)
-        "narrative" ->
-          render_narrative_content_enhanced(content)
-        "journey" ->
-          render_journey_content_enhanced(content)
-
-        _ ->
-          render_generic_content_enhanced(content)
-      end
+      render_section_content(section)
     rescue
       _ ->
-        Phoenix.HTML.raw("""
-        <div class="text-gray-500 italic">Content loading...</div>
-        """)
+        content = section.content || %{}
+        case content do
+          %{"text" => text} when is_binary(text) and text != "" ->
+            Phoenix.HTML.raw(text)
+          %{"content" => text} when is_binary(text) and text != "" ->
+            Phoenix.HTML.raw(text)
+          _ ->
+            Phoenix.HTML.raw("<p>Content available - rendering function needs implementation.</p>")
+        end
     end
   end
 
@@ -3087,31 +3538,7 @@ defmodule FrestylWeb.PortfolioLive.View do
   end
   defp normalize_section_type(_), do: :custom
 
-  # 🔥 FIXED: Process portfolio customization with better error handling
-  defp process_portfolio_customization_fixed(portfolio) do
-    IO.puts("🔥 PROCESSING PORTFOLIO CUSTOMIZATION")
-    IO.puts("🔥 Portfolio theme: #{portfolio.theme}")
 
-    # Get base template config from the template system
-    theme = portfolio.theme || "executive"
-    base_template_config = get_safe_template_config(theme)
-
-    # Get user customization from database
-    user_customization = normalize_customization_map(portfolio.customization || %{})
-
-    # Deep merge user customization over template defaults
-    merged_config = deep_merge_maps(base_template_config, user_customization)
-
-    # Determine layout from merged config
-    template_layout = get_template_layout(merged_config, theme)
-
-    # FIXED: Generate CSS variables from merged config with proper template application
-    css_variables = generate_portfolio_css_variables_with_template(merged_config, theme)
-
-    IO.puts("🔥 CSS variables generated: #{String.length(css_variables)} characters")
-
-    {merged_config, css_variables, template_layout}
-  end
 
   defp generate_custom_css(customization) do
     # Basic CSS generation - you can expand this
@@ -3198,293 +3625,201 @@ defmodule FrestylWeb.PortfolioLive.View do
     end
   end
 
-  # 🔥 SAFE: Generate CSS variables with error handling
-  defp generate_portfolio_css_variables_with_template(config, theme) do
-    try do
-      # Extract colors with safe fallbacks
-      primary_color = get_config_value_safe(config, "primary_color", "#3b82f6")
-      secondary_color = get_config_value_safe(config, "secondary_color", "#64748b")
-      accent_color = get_config_value_safe(config, "accent_color", "#f59e0b")
-
-      # Extract typography safely
-      typography = get_config_value_safe(config, "typography", %{})
-      font_family = get_config_value_safe(typography, "font_family", "Inter")
-
-      # Extract background safely
-      background = get_config_value_safe(config, "background", "default")
-
-      # FIXED: Get template-specific classes
-      template_classes = get_template_specific_classes(theme)
-      background_css = get_template_background_css(background, theme)
-
-      """
-      <style>
-      /* 🔥 PORTFOLIO CSS VARIABLES */
-      :root {
-        --portfolio-primary-color: #{primary_color};
-        --portfolio-secondary-color: #{secondary_color};
-        --portfolio-accent-color: #{accent_color};
-        --portfolio-font-family: #{get_font_family_css_safe(font_family)};
-        #{get_background_css_vars_safe(background)}
-      }
-
-      /* 🔥 APPLY VARIABLES TO ELEMENTS */
-      body, html {
-        font-family: var(--portfolio-font-family) !important;
-        color: var(--portfolio-text-color) !important;
-      }
-
-
-      /* 🔥 FIXED HEIGHT PORTFOLIO CARDS WITH SCROLLABLE CONTENT */
-
-      /* Base portfolio card with fixed height */
-      .portfolio-card {
-        height: 400px !important; /* Fixed height for all cards */
-        display: flex !important;
-        flex-direction: column !important;
-        overflow: hidden !important;
-        background-color: white !important;
-      }
-
-      /* Portfolio card title/header - fixed at top */
-      .portfolio-card h2 {
-        flex-shrink: 0 !important; /* Prevent header from shrinking */
-        padding-bottom: 1rem !important;
-        border-bottom: 1px solid rgba(229, 231, 235, 0.5) !important;
-        margin-bottom: 1rem !important;
-      }
-
-      /* Portfolio card content - scrollable area */
-      .portfolio-card .portfolio-secondary {
-        flex: 1 !important; /* Take remaining space */
-        overflow-y: auto !important; /* Enable vertical scrolling */
-        overflow-x: hidden !important; /* Hide horizontal scrolling */
-        padding-right: 0.5rem !important;
-        margin-right: -0.5rem !important;
-      }
-
-      /* Custom scrollbar styling for webkit browsers */
-      .portfolio-card .portfolio-secondary::-webkit-scrollbar {
-        width: 6px;
-      }
-
-      .portfolio-card .portfolio-secondary::-webkit-scrollbar-track {
-        background: rgba(243, 244, 246, 0.5);
-        border-radius: 3px;
-      }
-
-      .portfolio-card .portfolio-secondary::-webkit-scrollbar-thumb {
-        background: rgba(156, 163, 175, 0.7);
-        border-radius: 3px;
-      }
-
-      .portfolio-card .portfolio-secondary::-webkit-scrollbar-thumb:hover {
-        background: rgba(107, 114, 128, 0.8);
-      }
-
-      /* Firefox scrollbar styling */
-      .portfolio-card .portfolio-secondary {
-        scrollbar-width: thin;
-        scrollbar-color: rgba(156, 163, 175, 0.7) rgba(243, 244, 246, 0.5);
-      }
-
-      /* Ensure content within cards doesn't break layout */
-      .portfolio-card .portfolio-secondary * {
-        max-width: 100% !important;
-        word-wrap: break-word !important;
-      }
-
-      /* Handle long content gracefully */
-      .portfolio-card .portfolio-secondary pre,
-      .portfolio-card .portfolio-secondary code {
-        white-space: pre-wrap !important;
-        word-break: break-word !important;
-      }
-
-      .portfolio-card .portfolio-secondary img {
-        max-width: 100% !important;
-        height: auto !important;
-      }
-
-      /* 🔥 SCROLL INDICATORS */
-
-      /* Subtle fade gradient at bottom to indicate more content */
-      .portfolio-card .portfolio-secondary::after {
-        content: '';
-        position: sticky;
-        bottom: 0;
-        display: block;
-        height: 20px;
-        background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.9) 100%);
-        pointer-events: none;
-        margin-top: -20px;
-        z-index: 1;
-        opacity: 1;
-        transition: opacity 0.3s ease;
-      }
-
-      /* Hide fade effect when scrolled to bottom */
-      .portfolio-card .portfolio-secondary.scrolled-to-bottom::after {
-        opacity: 0;
-      }
-
-      /* Subtle shadow at top when scrolled down */
-      .portfolio-card .portfolio-secondary::before {
-        content: '';
-        position: sticky;
-        top: 0;
-        display: block;
-        height: 20px;
-        background: linear-gradient(to bottom, rgba(255, 255, 255, 0.9) 0%, transparent 100%);
-        pointer-events: none;
-        margin-bottom: -20px;
-        z-index: 1;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-      }
-
-      /* Show top shadow when scrolled */
-      .portfolio-card .portfolio-secondary.scrolled::before {
-        opacity: 1;
-      }
-
-      /* Enhanced scrollbar visibility */
-      .portfolio-card .portfolio-secondary:hover::-webkit-scrollbar-thumb {
-        background: rgba(107, 114, 128, 0.9);
-      }
-
-      /* Subtle bounce animation hint */
-      .portfolio-card:hover .portfolio-secondary {
-        animation: subtle-scroll-hint 2s ease-in-out;
-      }
-
-      @keyframes subtle-scroll-hint {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-2px); }
-      }
-
-      /* Visual indicator for overflow content */
-      .portfolio-card.has-overflow::after {
-        content: '⤓';
-        position: absolute;
-        bottom: 1rem;
-        right: 1rem;
-        background: rgba(59, 130, 246, 0.1);
-        color: var(--portfolio-primary-color);
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        opacity: 0.7;
-        animation: pulse-hint 2s infinite;
-        pointer-events: none;
-      }
-
-      @keyframes pulse-hint {
-        0%, 100% { opacity: 0.7; transform: scale(1); }
-        50% { opacity: 1; transform: scale(1.1); }
-      }
-
-      /* Hide scroll hint when actively scrolling */
-      .portfolio-card.has-overflow.scrolling::after {
-        opacity: 0;
-      }
-
-      /* 🔥 FIX VIDEO HERO SECTION HEIGHT AND SPACING */
-      .portfolio-bg {
-        min-height: auto !important;
-      }
-
-      .portfolio-bg > section {
-        min-height: 60vh !important;
-        padding-bottom: 1rem !important;
-      }
-
-      .portfolio-bg #portfolio-sections {
-        margin-top: -3rem !important;
-      }
-
-      /* 🔥 TEMPLATE-SPECIFIC STYLING */
-      #{template_classes}
-
-      /* 🔥 BACKGROUND STYLING */
-      #{background_css}
-
-      /* 🔥 COLOR CLASSES */
-      .portfolio-primary { color: var(--portfolio-primary-color) !important; }
-      .portfolio-secondary { color: var(--portfolio-secondary-color) !important; }
-      .portfolio-accent { color: var(--portfolio-accent-color) !important; }
-      .portfolio-bg-primary { background-color: var(--portfolio-primary-color) !important; }
-      .portfolio-bg-secondary { background-color: var(--portfolio-secondary-color) !important; }
-      .portfolio-bg-accent { background-color: var(--portfolio-accent-color) !important; }
-
-      /* 🔥 HEADER CUSTOMIZATION */
-      .portfolio-header {
-        #{get_template_header_styling(theme)}
-      }
-
-      /* Fix text colors based on template */
-      .text-gray-900 { color: var(--portfolio-text-color) !important; }
-      .text-gray-600 { color: var(--portfolio-secondary-text) !important; }
-      .bg-blue-600 { background-color: var(--portfolio-primary-color) !important; }
-      .text-blue-600 { color: var(--portfolio-primary-color) !important; }
-      </style>
-      """
-    rescue
-      error ->
-        IO.puts("🔥 ERROR generating CSS: #{inspect(error)}")
-        ""
-    end
+  defp extract_intro_video_and_filter_sections(sections) when is_list(sections) do
+    # This is the same as separate_video_intro_and_sections but with different name
+    separate_video_intro_and_sections(sections)
   end
 
+  defp extract_intro_video_and_filter_sections(_), do: {nil, []}
+
+  # 🔥 FIX: Get template-specific CSS classes
   defp get_template_specific_classes(theme) do
     case theme do
       "executive" ->
         """
-        .portfolio-bg { background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); }
-        .portfolio-card { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        /* Executive Theme Styles */
+        .portfolio-bg {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .hero-section {
+          background: var(--primary-color);
+          color: white;
+        }
+        .section-card {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
         """
+
       "developer" ->
         """
-        .portfolio-bg { background: #1f2937; color: #f9fafb; }
-        .portfolio-card { background: #374151; border: 1px solid #4b5563; }
+        /* Developer Theme Styles */
+        body {
+          font-family: 'JetBrains Mono', 'Monaco', 'Menlo', monospace;
+          background-color: #0f172a;
+          color: #e2e8f0;
+        }
+        .portfolio-bg {
+          background-color: #0f172a;
+          color: #e2e8f0;
+        }
+        .hero-section {
+          background: #1e293b;
+          border: 1px solid #334155;
+        }
+        .section-card {
+          background: #1e293b;
+          border: 1px solid #334155;
+          color: #e2e8f0;
+        }
+        .text-primary { color: #10b981; }
+        .terminal-prompt::before {
+          content: "$ ";
+          color: #10b981;
+        }
         """
+
       "designer" ->
         """
-        .portfolio-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .portfolio-card { backdrop-filter: blur(10px); background: rgba(255, 255, 255, 0.1); }
+        /* Designer Theme Styles */
+        body {
+          font-family: 'Inter', system-ui, sans-serif;
+        }
+        .portfolio-bg {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .hero-section {
+          background: linear-gradient(45deg, #7c3aed, #ec4899);
+          color: white;
+        }
+        .section-card {
+          background: white;
+          border-radius: 20px;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+          border: 2px solid transparent;
+          background-clip: padding-box;
+        }
+        .section-card:hover {
+          transform: translateY(-4px);
+          transition: transform 0.3s ease;
+        }
         """
+
+      "minimalist" ->
+        """
+        /* Minimalist Theme Styles */
+        body {
+          font-family: 'Inter', system-ui, sans-serif;
+        }
+        .portfolio-bg {
+          background-color: #ffffff;
+          color: #111827;
+        }
+        .hero-section {
+          background: #ffffff;
+          color: #111827;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .section-card {
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+        }
+        h1, h2, h3 { font-weight: 400; }
+        .minimal-line {
+          height: 1px;
+          background: #e5e7eb;
+          margin: 2rem 0;
+        }
+        """
+
       "consultant" ->
         """
-        .portfolio-bg { background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); }
-        .portfolio-card { border-left: 4px solid var(--portfolio-primary-color); }
+        /* Consultant Theme Styles */
+        body {
+          font-family: 'Inter', system-ui, sans-serif;
+        }
+        .portfolio-bg {
+          background-color: #f9fafb;
+        }
+        .hero-section {
+          background: linear-gradient(135deg, #0891b2 0%, #0284c7 100%);
+          color: white;
+        }
+        .section-card {
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+          border-left: 4px solid var(--primary-color);
+        }
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1.5rem;
+        }
         """
+
       "academic" ->
         """
-        .portfolio-bg { background: linear-gradient(135deg, #f0f9ff 0%, #ecfdf5 100%); }
-        .portfolio-card { border: 1px solid #d1d5db; }
+        /* Academic Theme Styles */
+        body {
+          font-family: 'Crimson Text', Georgia, serif;
+          line-height: 1.7;
+        }
+        .portfolio-bg {
+          background-color: #fefefe;
+          color: #374151;
+        }
+        .hero-section {
+          background: #059669;
+          color: white;
+        }
+        .section-card {
+          background: white;
+          border: 1px solid #d1d5db;
+          border-radius: 8px;
+        }
+        h1, h2, h3 {
+          font-family: 'Crimson Text', Georgia, serif;
+          font-weight: 600;
+        }
+        .academic-citation {
+          font-style: italic;
+          color: #6b7280;
+        }
         """
+
       _ ->
         """
-        .portfolio-bg { background: #ffffff; }
-        .portfolio-card { border: 1px solid #e5e7eb; }
+        /* Default Theme Styles */
+        body {
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+        .portfolio-bg {
+          background-color: #ffffff;
+        }
+        .section-card {
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        }
         """
     end
   end
 
-    defp get_template_background_css(background, theme) do
-    case background do
-      "gradient-ocean" ->
-        ".portfolio-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }"
-      "gradient-sunset" ->
-        ".portfolio-bg { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important; }"
-      "dark-mode" ->
-        ".portfolio-bg { background: #1a1a1a !important; color: #ffffff !important; }"
-      _ ->
-        get_template_specific_classes(theme)
+  # 🔥 FIX: Get template background CSS (used by get_theme_specific_css)
+  defp get_template_background_css(theme, customization) do
+    base_bg = Map.get(customization, "background_color", "#ffffff")
+
+    case theme do
+      "developer" -> "#0f172a"
+      "designer" -> "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+      "minimalist" -> "#ffffff"
+      "consultant" -> "#f9fafb"
+      "academic" -> "#fefefe"
+      "executive" -> base_bg
+      _ -> base_bg
     end
   end
 
@@ -7054,14 +7389,31 @@ defmodule FrestylWeb.PortfolioLive.View do
   end
 
   defp calculate_portfolio_metrics(portfolio) do
-    # Your existing hero renderers might need metrics data
+    # Calculate basic portfolio metrics
+    sections = portfolio.sections || []
+    visible_sections = Enum.filter(sections, & &1.visible)
+
     %{
-      total_visits: 0,  # This would come from analytics
-      last_updated: portfolio.updated_at,
-      sections_count: 0,  # This would be calculated
-      has_contact: false,  # This would be determined
-      has_social: map_size(portfolio.social_links || %{}) > 0
+      total_sections: length(sections),
+      visible_sections: length(visible_sections),
+      completion_rate: calculate_completion_rate(portfolio),
+      last_updated: portfolio.updated_at
     }
+  end
+
+  defp calculate_completion_rate(portfolio) do
+    # Basic completion rate calculation
+    score = 0
+
+    score = if portfolio.title && portfolio.title != "", do: score + 20, else: score
+    score = if portfolio.description && portfolio.description != "", do: score + 20, else: score
+
+    sections = portfolio.sections || []
+    section_score = min(length(sections) * 10, 40)
+    score = score + section_score
+
+    customization = portfolio.customization || %{}
+    if map_size(customization) > 0, do: score + 20, else: score
   end
 
   defp parse_date_and_calculate_years(start_date_str, end_date) do
@@ -7211,7 +7563,178 @@ defmodule FrestylWeb.PortfolioLive.View do
     end
   end
 
-  # Missing helper functions
+    defp process_portfolio_customization_fixed(portfolio) do
+    theme = portfolio.theme || "executive"
+    customization = portfolio.customization || %{}
+
+    # Get template layout from theme and customization
+    template_layout = determine_template_layout(theme, customization)
+
+    # Get enhanced template config
+    template_config = get_enhanced_template_config(theme, customization)
+
+    # Generate CSS for the portfolio
+    customization_css = generate_portfolio_css(portfolio, template_config, theme)
+
+    {template_config, customization_css, template_layout}
+  end
+
+  # 🔥 FIX: Template layout determination
+  defp determine_template_layout(theme, customization) do
+    # Check if layout is explicitly set in customization
+    case Map.get(customization, "layout") do
+      layout when is_binary(layout) and layout != "" -> layout
+      _ ->
+        # Determine layout from theme
+        case theme do
+          "executive" -> "dashboard"
+          "developer" -> "terminal"
+          "designer" -> "gallery"
+          "minimalist" -> "minimal"
+          "consultant" -> "case_study"
+          "academic" -> "academic"
+          _ -> "dashboard"  # Default fallback
+        end
+    end
+  end
+
+  # 🔥 FIX: Enhanced template configuration
+  defp get_enhanced_template_config(theme, customization) do
+    base_config = %{
+      "primary_color" => "#3b82f6",
+      "secondary_color" => "#64748b",
+      "accent_color" => "#f59e0b",
+      "background_color" => "#ffffff",
+      "text_color" => "#1f2937",
+      "layout" => "dashboard"
+    }
+
+    template_specific = case theme do
+      "executive" -> %{
+        "primary_color" => "#1e40af",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6",
+        "layout" => "dashboard"
+      }
+      "developer" -> %{
+        "primary_color" => "#059669",
+        "secondary_color" => "#374151",
+        "accent_color" => "#10b981",
+        "layout" => "terminal",
+        "background_color" => "#0f172a",
+        "text_color" => "#e2e8f0"
+      }
+      "designer" -> %{
+        "primary_color" => "#7c3aed",
+        "secondary_color" => "#ec4899",
+        "accent_color" => "#f59e0b",
+        "layout" => "gallery"
+      }
+      "minimalist" -> %{
+        "primary_color" => "#374151",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#059669",
+        "layout" => "minimal"
+      }
+      "consultant" -> %{
+        "primary_color" => "#0891b2",
+        "secondary_color" => "#0284c7",
+        "accent_color" => "#6366f1",
+        "layout" => "case_study"
+      }
+      "academic" -> %{
+        "primary_color" => "#059669",
+        "secondary_color" => "#047857",
+        "accent_color" => "#10b981",
+        "layout" => "academic"
+      }
+      _ -> %{}
+    end
+
+    # Merge base config with template-specific and user customization
+    base_config
+    |> Map.merge(template_specific)
+    |> Map.merge(customization)
+  end
+
+  # 🔥 FIX: Enhanced CSS generation
+  defp generate_portfolio_css(portfolio, template_config, theme) do
+    customization = portfolio.customization || %{}
+
+    # Merge template config with user customization
+    colors = Map.merge(template_config, customization)
+
+    primary = Map.get(colors, "primary_color", "#3b82f6")
+    secondary = Map.get(colors, "secondary_color", "#64748b")
+    accent = Map.get(colors, "accent_color", "#f59e0b")
+    background = Map.get(colors, "background_color", "#ffffff")
+    text = Map.get(colors, "text_color", "#1f2937")
+
+    """
+    <style>
+    :root {
+      --primary-color: #{primary};
+      --secondary-color: #{secondary};
+      --accent-color: #{accent};
+      --background-color: #{background};
+      --text-color: #{text};
+    }
+
+    .portfolio-bg {
+      background-color: var(--background-color);
+      color: var(--text-color);
+    }
+
+    .text-primary { color: var(--primary-color); }
+    .bg-primary { background-color: var(--primary-color); }
+    .border-primary { border-color: var(--primary-color); }
+    .text-secondary { color: var(--secondary-color); }
+    .bg-secondary { background-color: var(--secondary-color); }
+    .text-accent { color: var(--accent-color); }
+    .bg-accent { background-color: var(--accent-color); }
+    .text-portfolio { color: var(--text-color); }
+
+    /* Ensure good contrast */
+    .bg-primary, .bg-secondary, .bg-accent {
+      color: white;
+    }
+
+    /* Template-specific styles */
+    #{get_theme_specific_css(theme)}
+    </style>
+    """
+  end
+
+  # 🔥 FIX: Theme-specific CSS
+  defp get_theme_specific_css(theme) do
+    case theme do
+      "developer" ->
+        """
+        body { font-family: 'JetBrains Mono', 'Monaco', 'Menlo', monospace; }
+        .portfolio-bg { background-color: #0f172a; color: #e2e8f0; }
+        """
+      "designer" ->
+        """
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        .portfolio-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        """
+      "minimalist" ->
+        """
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        .portfolio-bg { background-color: #ffffff; }
+        section { border: none; box-shadow: none; }
+        """
+      "academic" ->
+        """
+        body { font-family: 'Crimson Text', Georgia, serif; }
+        .portfolio-bg { background-color: #fefefe; }
+        """
+      _ ->
+        """
+        body { font-family: system-ui, -apple-system, sans-serif; }
+        """
+    end
+  end
 
   defp render_skills_content_only(assigns) do
     skill_categories = assigns.skill_categories || %{}
@@ -7263,4 +7786,8 @@ defmodule FrestylWeb.PortfolioLive.View do
         """)
     end
   end
+
+  defp normalize_theme(theme) when is_binary(theme), do: theme
+  defp normalize_theme(theme) when is_atom(theme), do: Atom.to_string(theme)
+  defp normalize_theme(_), do: "executive"
 end

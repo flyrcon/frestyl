@@ -1083,6 +1083,53 @@ liveSocket.connect();
 // Expose for debugging
 window.liveSocket = liveSocket;
 
+// Enhanced LiveView event listeners for better UX
+window.addEventListener('phx:section-added', (e) => {
+  console.log('📝 Section added:', e.detail);
+  const newSection = document.querySelector(`[data-section-id="${e.detail.section_id}"]`);
+  if (newSection) {
+    newSection.classList.add('bg-green-50', 'border-green-300');
+    newSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Remove highlight after 3 seconds
+    setTimeout(() => {
+      newSection.classList.remove('bg-green-50', 'border-green-300');
+    }, 3000);
+  }
+});
+
+window.addEventListener('phx:section-saved', (e) => {
+  console.log('💾 Section saved:', e.detail);
+  const section = document.querySelector(`[data-section-id="${e.detail.section_id}"]`);
+  if (section) {
+    section.classList.add('bg-green-50', 'border-green-300');
+    setTimeout(() => {
+      section.classList.remove('bg-green-50', 'border-green-300');
+    }, 2000);
+  }
+});
+
+window.addEventListener('phx:section-edit-started', (e) => {
+  console.log('✏️ Section edit started:', e.detail);
+  const section = document.querySelector(`[data-section-id="${e.detail.section_id}"]`);
+  if (section) {
+    section.classList.add('ring-2', 'ring-blue-300', 'bg-blue-50');
+  }
+});
+
+window.addEventListener('phx:section-edit-cancelled', (e) => {
+  console.log('❌ Section edit cancelled');
+  document.querySelectorAll('.section-item').forEach(section => {
+    section.classList.remove('ring-2', 'ring-blue-300', 'bg-blue-50');
+  });
+});
+
+// Prevent any residual form submission issues
+window.addEventListener('beforeunload', function(e) {
+  // Don't show confirmation for LiveView navigation
+  return undefined;
+});
+
 // Global template utilities
 window.PortfolioTemplates = {
   // Refresh all previews
@@ -1112,16 +1159,90 @@ window.PortfolioTemplates = {
 console.log('✅ Frestyl Portfolio app.js loaded with FIXED drag & drop hooks');
 
 document.addEventListener('DOMContentLoaded', function() {
-  console.log("🚀 Portfolio app initialized with SortableJS support");
-  
-  // Global click handlers for better responsiveness
-  document.addEventListener('click', function(e) {
-    if (e.target.matches('button, .btn, [phx-click]')) {
-      e.target.style.transform = 'scale(0.95)';
-      setTimeout(() => {
-        e.target.style.transform = 'scale(1)';
-      }, 100);
-    }
+  // Enhanced form handling to prevent page refresh
+  document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Form handling initialized');
+
+    // Prevent ALL form submissions that don't have phx-submit
+    document.addEventListener('submit', function(e) {
+      const form = e.target;
+      
+      // Allow LiveView forms with phx-submit to be handled by LiveView
+      if (form && form.hasAttribute('phx-submit')) {
+        console.log('✅ LiveView form submission allowed');
+        return; // Let LiveView handle it
+      }
+      
+      // Allow forms with data-allow-submit to submit normally
+      if (form && form.hasAttribute('data-allow-submit')) {
+        console.log('✅ Form with data-allow-submit allowed');
+        return;
+      }
+      
+      // Prevent all other form submissions
+      console.log('❌ Preventing form submission to avoid page refresh');
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Try to find a submit button and trigger a LiveView event instead
+      const submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn && submitBtn.hasAttribute('phx-click')) {
+        console.log('🔄 Triggering LiveView event instead');
+        submitBtn.click();
+      }
+      
+      return false;
+    });
+
+    // Enhanced button click handling for section actions
+    document.addEventListener('click', function(e) {
+      const button = e.target.closest('button');
+      
+      if (button) {
+        // Handle add section buttons
+        if (button.hasAttribute('phx-click') && button.getAttribute('phx-click').includes('add_section')) {
+          console.log('🔧 Add section button clicked');
+          e.preventDefault();
+          // Let LiveView handle the phx-click
+          return;
+        }
+        
+        // Handle edit section buttons
+        if (button.hasAttribute('phx-click') && button.getAttribute('phx-click').includes('edit_section')) {
+          console.log('🔧 Edit section button clicked');
+          e.preventDefault();
+          // Let LiveView handle the phx-click
+          return;
+        }
+        
+        // Handle save section buttons
+        if (button.hasAttribute('phx-click') && button.getAttribute('phx-click').includes('save_section')) {
+          console.log('🔧 Save section button clicked');
+          e.preventDefault();
+          // Let LiveView handle the phx-click
+          return;
+        }
+      }
+    });
+
+    // Auto-close dropdowns when clicking outside
+    document.addEventListener('click', function(e) {
+      const dropdowns = document.querySelectorAll('[phx-click="toggle_add_section_dropdown"]');
+      
+      dropdowns.forEach(dropdown => {
+        const dropdownMenu = dropdown.nextElementSibling;
+        
+        if (dropdownMenu && 
+            !dropdown.contains(e.target) && 
+            !dropdownMenu.contains(e.target) &&
+            !dropdownMenu.classList.contains('hidden')) {
+          
+          // Trigger close event
+          const closeEvent = new CustomEvent('phx:close-dropdown');
+          dropdown.dispatchEvent(closeEvent);
+        }
+      });
+    });
   });
   
   // Auto-save indicators

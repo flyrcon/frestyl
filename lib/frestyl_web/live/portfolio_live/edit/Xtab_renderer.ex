@@ -26,13 +26,60 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
   end
 
   def render_main_layout(assigns) do
-    theme_classes = HelperFunctions.get_theme_classes(assigns.customization, assigns.portfolio)
-    assigns = assign(assigns, :theme_classes, theme_classes)
+    # 🔥 CRITICAL FIX: Get edit-specific theme classes, not portfolio template classes
+    edit_theme_classes = get_edit_interface_classes()
+    assigns = assign(assigns, :edit_theme_classes, edit_theme_classes)
 
     ~H"""
-    <div class="min-h-screen bg-gray-50">
-      <!-- Header -->
-      <%= render_header(assigns) %>
+    <!-- 🔥 CRITICAL: CSS isolation for edit interface -->
+    <style>
+    /* Edit interface CSS - isolated from portfolio template styles */
+    .edit-interface {
+      /* Reset any template styling that might leak */
+      background-color: #f9fafb !important;
+      color: #111827 !important;
+      font-family: system-ui, -apple-system, sans-serif !important;
+    }
+
+    .edit-interface .edit-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+      color: white !important;
+    }
+
+    .edit-interface .edit-tabs button {
+      background-color: rgba(255, 255, 255, 0.1) !important;
+      color: rgba(255, 255, 255, 0.8) !important;
+      border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    }
+
+    .edit-interface .edit-tabs button.active {
+      background-color: rgba(255, 255, 255, 0.2) !important;
+      color: white !important;
+      border-color: rgba(255, 255, 255, 0.3) !important;
+    }
+
+    .edit-interface .edit-content {
+      background-color: white !important;
+      color: #374151 !important;
+    }
+
+    /* Ensure template preview CSS doesn't affect edit interface */
+    .edit-interface * {
+      color: inherit;
+      background: inherit;
+    }
+
+    /* Template preview is isolated to iframe */
+    .template-preview-iframe {
+      border: none;
+      width: 100%;
+      height: 100%;
+    }
+    </style>
+
+    <div class="min-h-screen edit-interface">
+      <!-- 🔥 FIXED: Edit Header with CSS isolation -->
+      <%= render_edit_header(assigns) %>
 
       <!-- Main Content -->
       <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -40,8 +87,8 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
           <%= render_preview_section(assigns) %>
         <% end %>
 
-        <!-- Tab Content -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <!-- Tab Content - CSS isolated -->
+        <div class="edit-content bg-white rounded-xl shadow-sm border border-gray-200">
           <%= case @active_tab do %>
             <% :overview -> %>
               <%= render_overview_tab(assigns) %>
@@ -61,6 +108,8 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     </div>
     """
   end
+
+
 
   # ============================================================================
   # HEADER RENDERER
@@ -153,6 +202,77 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
     """
   end
 
+  defp render_edit_header(assigns) do
+    ~H"""
+    <header class="edit-header">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center py-4">
+          <div class="flex items-center space-x-4">
+            <.link navigate="/portfolios" class="text-white/80 hover:text-white transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+              </svg>
+            </.link>
+
+            <div>
+              <h1 class="text-2xl font-bold text-white">
+                Edit Portfolio
+              </h1>
+              <p class="text-white/80 text-sm mt-1">
+                <span class="font-medium"><%= @portfolio.title %></span>
+                <%= if assigns[:unsaved_changes] do %>
+                  <span class="ml-2 inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-yellow-500/20 text-yellow-200 border border-yellow-400/30">
+                    <div class="w-2 h-2 rounded-full mr-1 animate-pulse bg-yellow-400"></div>
+                    Unsaved changes
+                  </span>
+                <% end %>
+              </p>
+            </div>
+          </div>
+
+          <!-- 🔥 FIXED: Edit Interface Tabs - CSS Isolated -->
+          <nav class="edit-tabs flex space-x-1">
+            <%= for {tab_key, tab_name} <- [
+              {:overview, "Overview"},
+              {:sections, "Sections"},
+              {:design, "Design"},
+              {:settings, "Settings"}
+            ] do %>
+              <button phx-click="change_tab"
+                      phx-value-tab={tab_key}
+                      class={[
+                        "px-4 py-2 rounded-lg font-medium transition-all duration-200",
+                        if(@active_tab == tab_key, do: "active", else: "")
+                      ]}>
+                <%= tab_name %>
+              </button>
+            <% end %>
+          </nav>
+
+          <!-- Actions -->
+          <div class="flex items-center space-x-3">
+            <%= if @show_preview do %>
+              <button phx-click="toggle_preview"
+                      class="px-4 py-2 bg-white/20 text-white rounded-lg font-medium hover:bg-white/30 transition-all">
+                Hide Preview
+              </button>
+            <% else %>
+              <button phx-click="toggle_preview"
+                      class="px-4 py-2 bg-white/20 text-white rounded-lg font-medium hover:bg-white/30 transition-all">
+                Preview
+              </button>
+            <% end %>
+
+            <.link navigate={"/p/#{@portfolio.slug}"} target="_blank"
+                  class="px-4 py-2 bg-white text-purple-600 rounded-lg font-medium hover:bg-gray-100 transition-all">
+              View Live
+            </.link>
+          </div>
+        </div>
+      </div>
+    </header>
+    """
+  end
 
   def render_settings_tab(assigns) do
     ~H"""
@@ -2011,194 +2131,194 @@ defmodule FrestylWeb.PortfolioLive.Edit.TabRenderer do
   end
 
   defp render_education_fields(assigns) do
-  content = assigns.editing_section.content || %{}
-  education_entries = get_in(content, ["education"]) || []
-  assigns = assign(assigns, :education_entries, education_entries)
+    content = assigns.editing_section.content || %{}
+    education_entries = get_in(content, ["education"]) || []
+    assigns = assign(assigns, :education_entries, education_entries)
 
-  ~H"""
-  <div class="space-y-6">
-    <!-- Education Section Header -->
-    <div class="flex items-center justify-between">
-      <div>
-        <h4 class="text-lg font-semibold text-gray-900 flex items-center">
-          <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0v5m0-5h-.01M12 14l-9 5m9-5l9 5"/>
-          </svg>
-          Education Entries
-        </h4>
-        <p class="text-sm text-gray-600 mt-1">Add your educational background including degrees, certifications, and coursework</p>
-      </div>
-
-      <button type="button"
-              phx-click="add_education_entry"
-              phx-value-section-id={@editing_section.id}
-              class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center space-x-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-        </svg>
-        <span>Add Education</span>
-      </button>
-    </div>
-
-    <!-- Education Entries -->
-    <%= if length(@education_entries) > 0 do %>
-      <div class="space-y-6">
-        <%= for {education, index} <- Enum.with_index(@education_entries) do %>
-          <div class="education-entry bg-purple-50 border border-purple-200 rounded-xl p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h5 class="text-md font-semibold text-purple-900">Education Entry #<%= index + 1 %></h5>
-              <button type="button"
-                      phx-click="remove_education_entry"
-                      phx-value-section-id={@editing_section.id}
-                      phx-value-index={index}
-                      data-confirm="Remove this education entry?"
-                      class="text-red-600 hover:text-red-700 text-sm font-medium">
-                Remove
-              </button>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <!-- Institution -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Institution</label>
-                <input type="text"
-                      value={Map.get(education, "institution", "")}
-                      phx-blur="update_education_field"
-                      phx-value-field="institution"
-                      phx-value-section-id={@editing_section.id}
-                      phx-value-index={index}
-                      placeholder="University Name"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
-              </div>
-
-              <!-- Degree -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Degree</label>
-                <input type="text"
-                      value={Map.get(education, "degree", "")}
-                      phx-blur="update_education_field"
-                      phx-value-field="degree"
-                      phx-value-section-id={@editing_section.id}
-                      phx-value-index={index}
-                      placeholder="Bachelor of Science"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
-              </div>
-
-              <!-- Field of Study -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Field of Study</label>
-                <input type="text"
-                      value={Map.get(education, "field", "")}
-                      phx-blur="update_education_field"
-                      phx-value-field="field"
-                      phx-value-section-id={@editing_section.id}
-                      phx-value-index={index}
-                      placeholder="Computer Science"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
-              </div>
-
-              <!-- Location -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Location</label>
-                <input type="text"
-                      value={Map.get(education, "location", "")}
-                      phx-blur="update_education_field"
-                      phx-value-field="location"
-                      phx-value-section-id={@editing_section.id}
-                      phx-value-index={index}
-                      placeholder="City, State"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
-              </div>
-
-              <!-- Start Date -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
-                <input type="text"
-                      value={Map.get(education, "start_date", "")}
-                      phx-blur="update_education_field"
-                      phx-value-field="start_date"
-                      phx-value-section-id={@editing_section.id}
-                      phx-value-index={index}
-                      placeholder="August 2020"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
-              </div>
-
-              <!-- End Date -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">End Date</label>
-                <input type="text"
-                      value={Map.get(education, "end_date", "")}
-                      phx-blur="update_education_field"
-                      phx-value-field="end_date"
-                      phx-value-section-id={@editing_section.id}
-                      phx-value-index={index}
-                      placeholder="May 2024"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
-              </div>
-
-              <!-- Status -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                <select phx-change="update_education_field"
-                        phx-value-field="status"
-                        phx-value-section-id={@editing_section.id}
-                        phx-value-index={index}
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
-                  <option value="Completed" selected={Map.get(education, "status", "Completed") == "Completed"}>Completed</option>
-                  <option value="In Progress" selected={Map.get(education, "status") == "In Progress"}>In Progress</option>
-                  <option value="Deferred" selected={Map.get(education, "status") == "Deferred"}>Deferred</option>
-                </select>
-              </div>
-
-              <!-- GPA -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">GPA (Optional)</label>
-                <input type="text"
-                      value={Map.get(education, "gpa", "")}
-                      phx-blur="update_education_field"
-                      phx-value-field="gpa"
-                      phx-value-section-id={@editing_section.id}
-                      phx-value-index={index}
-                      placeholder="3.8"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
-              </div>
-            </div>
-
-            <!-- Description -->
-            <div class="mt-4">
-              <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
-              <textarea phx-blur="update_education_field"
-                        phx-value-field="description"
-                        phx-value-section-id={@editing_section.id}
-                        phx-value-index={index}
-                        rows="3"
-                        placeholder="Honors, awards, relevant details..."
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"><%= Map.get(education, "description", "") %></textarea>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    <% else %>
-      <!-- Empty State -->
-      <div class="text-center py-12 bg-purple-50 rounded-xl border-2 border-dashed border-purple-300">
-        <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0v5m0-5h-.01M12 14l-9 5m9-5l9 5"/>
-          </svg>
+    ~H"""
+    <div class="space-y-6">
+      <!-- Education Section Header -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h4 class="text-lg font-semibold text-gray-900 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0v5m0-5h-.01M12 14l-9 5m9-5l9 5"/>
+            </svg>
+            Education Entries
+          </h4>
+          <p class="text-sm text-gray-600 mt-1">Add your educational background including degrees, certifications, and coursework</p>
         </div>
-        <h3 class="text-lg font-semibold text-gray-900 mb-2">No education entries yet</h3>
-        <p class="text-gray-600 mb-6">Add your educational background to showcase your qualifications</p>
+
         <button type="button"
                 phx-click="add_education_entry"
                 phx-value-section-id={@editing_section.id}
-                class="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors font-medium">
-          Add Your First Education Entry
+                class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors font-medium flex items-center space-x-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          <span>Add Education</span>
         </button>
       </div>
-    <% end %>
-  </div>
-  """
-end
+
+      <!-- Education Entries -->
+      <%= if length(@education_entries) > 0 do %>
+        <div class="space-y-6">
+          <%= for {education, index} <- Enum.with_index(@education_entries) do %>
+            <div class="education-entry bg-purple-50 border border-purple-200 rounded-xl p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h5 class="text-md font-semibold text-purple-900">Education Entry #<%= index + 1 %></h5>
+                <button type="button"
+                        phx-click="remove_education_entry"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        data-confirm="Remove this education entry?"
+                        class="text-red-600 hover:text-red-700 text-sm font-medium">
+                  Remove
+                </button>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Institution -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Institution</label>
+                  <input type="text"
+                        value={Map.get(education, "institution", "")}
+                        phx-blur="update_education_field"
+                        phx-value-field="institution"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="University Name"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                </div>
+
+                <!-- Degree -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Degree</label>
+                  <input type="text"
+                        value={Map.get(education, "degree", "")}
+                        phx-blur="update_education_field"
+                        phx-value-field="degree"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="Bachelor of Science"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                </div>
+
+                <!-- Field of Study -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Field of Study</label>
+                  <input type="text"
+                        value={Map.get(education, "field", "")}
+                        phx-blur="update_education_field"
+                        phx-value-field="field"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="Computer Science"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                </div>
+
+                <!-- Location -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Location</label>
+                  <input type="text"
+                        value={Map.get(education, "location", "")}
+                        phx-blur="update_education_field"
+                        phx-value-field="location"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="City, State"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                </div>
+
+                <!-- Start Date -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                  <input type="text"
+                        value={Map.get(education, "start_date", "")}
+                        phx-blur="update_education_field"
+                        phx-value-field="start_date"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="August 2020"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                </div>
+
+                <!-- End Date -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                  <input type="text"
+                        value={Map.get(education, "end_date", "")}
+                        phx-blur="update_education_field"
+                        phx-value-field="end_date"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="May 2024"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                </div>
+
+                <!-- Status -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <select phx-change="update_education_field"
+                          phx-value-field="status"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                    <option value="Completed" selected={Map.get(education, "status", "Completed") == "Completed"}>Completed</option>
+                    <option value="In Progress" selected={Map.get(education, "status") == "In Progress"}>In Progress</option>
+                    <option value="Deferred" selected={Map.get(education, "status") == "Deferred"}>Deferred</option>
+                  </select>
+                </div>
+
+                <!-- GPA -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">GPA (Optional)</label>
+                  <input type="text"
+                        value={Map.get(education, "gpa", "")}
+                        phx-blur="update_education_field"
+                        phx-value-field="gpa"
+                        phx-value-section-id={@editing_section.id}
+                        phx-value-index={index}
+                        placeholder="3.8"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500" />
+                </div>
+              </div>
+
+              <!-- Description -->
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea phx-blur="update_education_field"
+                          phx-value-field="description"
+                          phx-value-section-id={@editing_section.id}
+                          phx-value-index={index}
+                          rows="3"
+                          placeholder="Honors, awards, relevant details..."
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"><%= Map.get(education, "description", "") %></textarea>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <!-- Empty State -->
+        <div class="text-center py-12 bg-purple-50 rounded-xl border-2 border-dashed border-purple-300">
+          <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0v5m0-5h-.01M12 14l-9 5m9-5l9 5"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-gray-900 mb-2">No education entries yet</h3>
+          <p class="text-gray-600 mb-6">Add your educational background to showcase your qualifications</p>
+          <button type="button"
+                  phx-click="add_education_entry"
+                  phx-value-section-id={@editing_section.id}
+                  class="bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors font-medium">
+            Add Your First Education Entry
+          </button>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
 
   defp render_skills_fields(assigns) do
     ~H"""
@@ -3343,127 +3463,151 @@ defp render_overview_tab(assigns) do
 
   # Add this to your existing tab_renderer.ex - Complete Design Tab Implementation
 
-  defp render_design_tab(assigns) do
+  def render_design_tab(assigns) do
     ~H"""
-    <div class="p-8 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
-      <!-- Real-time CSS injection -->
-      <%= if assigns[:preview_css] do %>
-        <%= Phoenix.HTML.raw(assigns.preview_css) %>
-      <% end %>
-
-      <div class="flex items-center justify-between mb-8">
-        <div>
-          <h2 class="text-2xl font-bold text-gray-900">Design & Templates</h2>
-          <p class="text-gray-600 mt-1">Customize your portfolio's appearance with real-time preview</p>
+    <div class="p-8">
+      <div class="max-w-6xl mx-auto">
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-gray-900">Design & Templates</h2>
+            <p class="text-gray-600 mt-1">Customize your portfolio's appearance and layout</p>
+          </div>
         </div>
 
-        <div class="flex space-x-3">
-          <button phx-click="toggle_preview"
-                  class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <%= if assigns[:show_preview], do: "Hide Preview", else: "Show Preview" %>
-          </button>
-
-          <.link href={~p"/p/#{@portfolio.slug}"} target="_blank"
-                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            View Live
-          </.link>
-        </div>
-      </div>
-
-      <!-- Customization Navigation -->
-      <div class="mb-8">
-        <nav class="flex space-x-1 bg-white rounded-lg p-1 shadow-sm">
-          <%= for {tab_key, tab_name} <- [
-            {"templates", "Templates"},
-            {"colors", "Colors"},
-            {"typography", "Typography"},
-            {"layout", "Layout"},
-            {"advanced", "Advanced"}
-          ] do %>
-            <button phx-click="set_customization_tab"
-                    phx-value-tab={tab_key}
-                    class={[
-                      "px-4 py-2 rounded-md text-sm font-medium transition-colors",
-                      if(@active_customization_tab == tab_key,
-                        do: "bg-blue-100 text-blue-700",
-                        else: "text-gray-500 hover:text-gray-700")
-                    ]}>
-              <%= tab_name %>
-            </button>
-          <% end %>
-        </nav>
-      </div>
-
-      <!-- Tab Content -->
-      <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <!-- Customization Panel -->
-        <div class="xl:col-span-2 space-y-6">
-          <%= case @active_customization_tab do %>
-            <% "templates" -> %>
-              <%= render_templates_section(assigns) %>
-            <% "colors" -> %>
-              <%= render_colors_section(assigns) %>
-            <% "typography" -> %>
-              <%= render_typography_section(assigns) %>
-            <% "layout" -> %>
-              <%= render_layout_section(assigns) %>
-            <% "advanced" -> %>
-              <%= render_advanced_section(assigns) %>
-          <% end %>
+        <!-- Customization Tabs -->
+        <div class="mb-8">
+          <nav class="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit">
+            <%= for {tab_key, tab_name} <- [
+              {"templates", "Templates"},
+              {"colors", "Colors"},
+              {"typography", "Typography"},
+              {"layout", "Layout"},
+              {"advanced", "Advanced"}
+            ] do %>
+              <button phx-click="set_customization_tab"
+                      phx-value-tab={tab_key}
+                      class={[
+                        "px-4 py-2 rounded-md font-medium transition-colors text-sm",
+                        if(@active_customization_tab == tab_key,
+                          do: "bg-white text-gray-900 shadow-sm",
+                          else: "text-gray-600 hover:text-gray-900")
+                      ]}>
+                <%= tab_name %>
+              </button>
+            <% end %>
+          </nav>
         </div>
 
-        <!-- Live Preview -->
-        <div class="xl:col-span-1">
-          <div class="sticky top-8">
-            <div class="bg-white rounded-xl shadow-sm border p-6">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">Live Preview</h3>
+        <!-- Split Layout: Controls + Preview -->
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+          <!-- Customization Panel -->
+          <div class="xl:col-span-2 space-y-6">
+            <%= case @active_customization_tab do %>
+              <% "templates" -> %>
+                <%= render_templates_section(assigns) %>
+              <% "colors" -> %>
+                <%= render_colors_section(assigns) %>
+              <% "typography" -> %>
+                <%= render_typography_section(assigns) %>
+              <% "layout" -> %>
+                <%= render_layout_section(assigns) %>
+              <% "advanced" -> %>
+                <%= render_advanced_section(assigns) %>
+            <% end %>
+          </div>
 
-              <div class="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden">
-                <iframe
-                  id="design-preview"
-                  src={~p"/p/#{@portfolio.slug}?preview=true&template=#{@selected_template}&t=#{:os.system_time(:millisecond)}"}
-                  class="w-full h-full border-0 scale-75 origin-top-left"
-                  style="width: 133.33%; height: 133.33%;"
-                  frameborder="0">
-                </iframe>
-              </div>
+          <!-- 🔥 FIXED: Live Preview with isolated iframe -->
+          <div class="xl:col-span-1">
+            <div class="sticky top-8">
+              <div class="bg-white rounded-xl shadow-sm border p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Live Preview</h3>
 
-              <div class="mt-4 flex space-x-2">
-                <.link href={~p"/p/#{@portfolio.slug}"} target="_blank"
-                      class="flex-1 text-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
-                  Full Preview
-                </.link>
-                <button phx-click="refresh_preview"
-                        class="px-3 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors">
-                  Refresh
-                </button>
+                <div class="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden">
+                  <iframe
+                    id="design-preview"
+                    src={~p"/p/#{@portfolio.slug}?preview=true&template=#{@selected_template}&t=#{:os.system_time(:millisecond)}"}
+                    class="template-preview-iframe scale-75 origin-top-left"
+                    style="width: 133.33%; height: 133.33%;"
+                    frameborder="0">
+                  </iframe>
+                </div>
+
+                <div class="mt-4 flex space-x-2">
+                  <.link href={~p"/p/#{@portfolio.slug}"} target="_blank"
+                        class="flex-1 text-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
+                    Full Preview
+                  </.link>
+                  <button phx-click="refresh_preview"
+                          class="px-3 py-2 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200 transition-colors">
+                    Refresh
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
+
+        <!-- 🔥 FIXED: JavaScript for Live Updates -->
+        <script>
+          // Prevent template CSS from affecting edit interface
+          document.addEventListener('DOMContentLoaded', function() {
+            // Isolate iframe content
+            const iframe = document.getElementById("design-preview");
+            if (iframe) {
+              iframe.onload = function() {
+                // Ensure iframe content doesn't affect parent
+                try {
+                  iframe.contentDocument.body.style.isolation = 'isolate';
+                } catch (e) {
+                  // Cross-origin, ignore
+                }
+              };
+            }
+          });
+
+          // 🔥 FIXED: Refresh preview when template changes
+          window.addEventListener("phx:refresh_portfolio_preview", (e) => {
+            const iframe = document.getElementById("design-preview");
+            if (iframe) {
+              const baseUrl = iframe.src.split('?')[0];
+              iframe.src = baseUrl +
+                "?preview=true&template=" + (e.detail.template || '<%= @selected_template %>') +
+                "&t=" + Date.now();
+            }
+          });
+
+          // 🔥 FIXED: Schedule preview refresh for styling changes
+          let refreshTimeout;
+          window.addEventListener("phx:schedule_preview_refresh", (e) => {
+            clearTimeout(refreshTimeout);
+            refreshTimeout = setTimeout(() => {
+              const iframe = document.getElementById("design-preview");
+              if (iframe) {
+                iframe.src = iframe.src.split('?')[0] + "?preview=true&t=" + Date.now();
+              }
+            }, e.detail.delay || 500);
+          });
+
+          // 🔥 FIXED: Update preview CSS immediately
+          window.addEventListener("phx:update_preview_css", (e) => {
+            // This will update the iframe content if accessible
+            try {
+              const iframe = document.getElementById("design-preview");
+              if (iframe && iframe.contentDocument) {
+                const existingStyle = iframe.contentDocument.getElementById('portfolio-preview-css');
+                if (existingStyle) {
+                  existingStyle.innerHTML = e.detail.css;
+                }
+              }
+            } catch (e) {
+              // Cross-origin restriction, will refresh instead
+              window.dispatchEvent(new CustomEvent("phx:schedule_preview_refresh", {
+                detail: { delay: 300 }
+              }));
+            }
+          });
+        </script>
       </div>
-
-      <!-- JavaScript for Live Updates -->
-      <script>
-        // Refresh preview when template changes
-        window.addEventListener("phx:template-changed", (e) => {
-          const iframe = document.getElementById("design-preview");
-          if (iframe) {
-            iframe.src = iframe.src.split('?')[0] +
-              "?preview=true&template=" + e.detail.template +
-              "&t=" + Date.now();
-          }
-        });
-
-        // Refresh preview when customization changes
-        window.addEventListener("phx:customization-changed", (e) => {
-          const iframe = document.getElementById("design-preview");
-          if (iframe) {
-            iframe.src = iframe.src.split('?')[0] +
-              "?preview=true&t=" + Date.now();
-          }
-        });
-      </script>
     </div>
     """
   end
@@ -3490,11 +3634,20 @@ defp render_overview_tab(assigns) do
           <button phx-click="select_template"
                   phx-value-template={template_key}
                   class={[
-                    "relative p-4 rounded-xl border-2 transition-all duration-300 hover:shadow-lg group",
+                    "template-preview-card relative p-4 rounded-xl border-2 transition-all duration-300 hover:shadow-lg group",
                     if(@portfolio.theme == template_key,
                       do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
                       else: "border-gray-200 hover:border-gray-400")
                   ]}>
+
+            <!-- Selection Indicator -->
+            <%= if @portfolio.theme == template_key do %>
+              <div class="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+              </div>
+            <% end %>
 
             <!-- Template Preview -->
             <div class="h-24 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg mb-3 flex items-center justify-center">
@@ -3508,39 +3661,32 @@ defp render_overview_tab(assigns) do
             <!-- Color Preview -->
             <div class="flex space-x-1">
               <%= for color <- template_config.color_preview do %>
-                <div class="w-3 h-3 rounded-full" style={"background-color: #{color}"}></div>
+                <div class="w-4 h-4 rounded-full" style={"background-color: #{color}"}></div>
               <% end %>
             </div>
 
-            <!-- Selection Indicator -->
-            <%= if @portfolio.theme == template_key do %>
-              <div class="absolute top-2 right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                </svg>
-              </div>
-            <% end %>
+            <!-- Loading indicator -->
+            <div class="template-loading absolute inset-0 bg-white/80 rounded-xl hidden items-center justify-center">
+              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            </div>
           </button>
         <% end %>
       </div>
 
-      <!-- Apply Template Button -->
-      <%= if @selected_template && @selected_template != @portfolio.theme do %>
-        <div class="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <div class="flex items-center justify-between">
+      <%= if @portfolio.theme do %>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div class="flex items-center space-x-2">
+            <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
             <div>
-              <h4 class="font-medium text-blue-900">
-                Apply <%= get_template_name(@selected_template) %>?
-              </h4>
-              <p class="text-blue-700 text-sm">
-                This will change your portfolio's layout and default styling.
+              <p class="text-sm font-medium text-blue-900">
+                Current template: <span class="font-bold"><%= get_template_display_name(@portfolio.theme) %></span>
+              </p>
+              <p class="text-xs text-blue-700 mt-1">
+                Templates affect layout, colors, and typography. Changes are applied immediately.
               </p>
             </div>
-            <button phx-click="apply_template"
-                    phx-value-template={@selected_template}
-                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              Apply Template
-            </button>
           </div>
         </div>
       <% end %>
@@ -3548,73 +3694,89 @@ defp render_overview_tab(assigns) do
     """
   end
 
-  defp render_template_mini_preview(template_key) do
-    case template_key do
-      "executive" ->
-        Phoenix.HTML.raw("""
-        <div class="space-y-1">
-          <div class="h-2 bg-blue-600 rounded w-16"></div>
-          <div class="grid grid-cols-3 gap-1">
-            <div class="h-3 bg-blue-200 rounded"></div>
-            <div class="h-3 bg-blue-300 rounded"></div>
-            <div class="h-3 bg-blue-200 rounded"></div>
+  defp render_colors_section(assigns) do
+    customization = assigns.customization || %{}
+
+    ~H"""
+    <div class="bg-white rounded-xl shadow-sm border p-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-6">Color Scheme</h3>
+
+      <!-- Color Controls -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <!-- Primary Color -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
+          <div class="flex items-center space-x-3">
+            <input type="color"
+                   value={Map.get(customization, "primary_color", "#3b82f6")}
+                   phx-change="update_primary_color"
+                   class="w-12 h-12 rounded-lg border-2 border-gray-300 cursor-pointer">
+            <input type="text"
+                   value={Map.get(customization, "primary_color", "#3b82f6")}
+                   phx-change="update_primary_color"
+                   class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
           </div>
         </div>
-        """)
 
-      "developer" ->
-        Phoenix.HTML.raw("""
-        <div class="bg-gray-900 p-2 rounded text-green-400 text-xs font-mono">
-          <div>$ portfolio</div>
-          <div class="text-green-300">ready</div>
-        </div>
-        """)
-
-      "designer" ->
-        Phoenix.HTML.raw("""
-        <div class="grid grid-cols-2 gap-1 h-full">
-          <div class="bg-purple-400 rounded"></div>
-          <div class="space-y-1">
-            <div class="bg-pink-400 rounded h-2"></div>
-            <div class="bg-orange-400 rounded h-1"></div>
+        <!-- Secondary Color -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
+          <div class="flex items-center space-x-3">
+            <input type="color"
+                   value={Map.get(customization, "secondary_color", "#64748b")}
+                   phx-change="update_secondary_color"
+                   class="w-12 h-12 rounded-lg border-2 border-gray-300 cursor-pointer">
+            <input type="text"
+                   value={Map.get(customization, "secondary_color", "#64748b")}
+                   phx-change="update_secondary_color"
+                   class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
           </div>
         </div>
-        """)
 
-      "minimalist" ->
-        Phoenix.HTML.raw("""
-        <div class="space-y-2 text-center">
-          <div class="h-1 bg-black rounded w-12 mx-auto"></div>
-          <div class="h-1 bg-gray-600 rounded w-8 mx-auto"></div>
-          <div class="h-1 bg-gray-400 rounded w-10 mx-auto"></div>
-        </div>
-        """)
-
-      "consultant" ->
-        Phoenix.HTML.raw("""
-        <div class="space-y-1">
-          <div class="h-1 bg-blue-500 rounded w-full"></div>
-          <div class="grid grid-cols-2 gap-1">
-            <div class="h-4 bg-blue-100 rounded"></div>
-            <div class="h-4 bg-blue-100 rounded"></div>
+        <!-- Accent Color -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
+          <div class="flex items-center space-x-3">
+            <input type="color"
+                   value={Map.get(customization, "accent_color", "#f59e0b")}
+                   phx-change="update_accent_color"
+                   class="w-12 h-12 rounded-lg border-2 border-gray-300 cursor-pointer">
+            <input type="text"
+                   value={Map.get(customization, "accent_color", "#f59e0b")}
+                   phx-change="update_accent_color"
+                   class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
           </div>
         </div>
-        """)
+      </div>
 
-      "academic" ->
-        Phoenix.HTML.raw("""
-        <div class="space-y-2 text-center">
-          <div class="h-1 bg-emerald-600 rounded w-14 mx-auto"></div>
-          <div class="h-1 bg-emerald-400 rounded w-10 mx-auto"></div>
-          <div class="h-1 bg-emerald-300 rounded w-12 mx-auto"></div>
+      <!-- Color Schemes -->
+      <div class="mb-6">
+        <h4 class="text-sm font-medium text-gray-700 mb-3">Pre-built Schemes</h4>
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <%= for {scheme_name, scheme_colors} <- [
+            {"professional", ["#1e40af", "#64748b", "#3b82f6"]},
+            {"creative", ["#7c3aed", "#ec4899", "#f59e0b"]},
+            {"warm", ["#dc2626", "#ea580c", "#f59e0b"]},
+            {"cool", ["#0891b2", "#0284c7", "#6366f1"]},
+            {"minimal", ["#374151", "#6b7280", "#059669"]}
+          ] do %>
+            <button phx-click="update_color_scheme"
+                    phx-value-scheme={scheme_name}
+                    class="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors group">
+              <div class="flex space-x-1 mb-2">
+                <%= for color <- scheme_colors do %>
+                  <div class="w-4 h-4 rounded-full" style={"background-color: #{color}"}></div>
+                <% end %>
+              </div>
+              <p class="text-xs font-medium text-gray-700 group-hover:text-gray-900">
+                <%= String.capitalize(scheme_name) %>
+              </p>
+            </button>
+          <% end %>
         </div>
-        """)
-
-      _ ->
-        Phoenix.HTML.raw("""
-        <div class="w-6 h-6 bg-gray-400 rounded mx-auto"></div>
-        """)
-    end
+      </div>
+    </div>
+    """
   end
 
   # ============================================================================
@@ -3622,88 +3784,84 @@ defp render_overview_tab(assigns) do
   # ============================================================================
 
   defp render_colors_section(assigns) do
-    ~H"""
-    <div class="space-y-6">
-      <!-- Color Schemes -->
-      <div class="bg-white rounded-xl shadow-sm border p-6">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Color Schemes</h3>
+    customization = assigns.customization || %{}
 
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-          <%= for {scheme_name, scheme_colors} <- color_schemes() do %>
-            <button phx-click="update_color_scheme"
-                    phx-value-scheme={scheme_name}
-                    class="p-4 border rounded-lg hover:shadow-md transition-all group">
-              <div class="flex space-x-2 mb-2">
-                <%= for color <- scheme_colors do %>
-                  <div class="w-6 h-6 rounded-full" style={"background-color: #{color}"}></div>
-                <% end %>
-              </div>
-              <div class="text-sm font-medium text-gray-700 group-hover:text-gray-900">
-                <%= String.capitalize(scheme_name) %>
-              </div>
-            </button>
-          <% end %>
+    ~H"""
+    <div class="bg-white rounded-xl shadow-sm border p-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-6">Color Scheme</h3>
+
+      <!-- Color Controls -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <!-- Primary Color -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
+          <div class="flex items-center space-x-3">
+            <input type="color"
+                   value={Map.get(customization, "primary_color", "#3b82f6")}
+                   phx-change="update_primary_color"
+                   class="w-12 h-12 rounded-lg border-2 border-gray-300 cursor-pointer">
+            <input type="text"
+                   value={Map.get(customization, "primary_color", "#3b82f6")}
+                   phx-change="update_primary_color"
+                   class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
+          </div>
+        </div>
+
+        <!-- Secondary Color -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
+          <div class="flex items-center space-x-3">
+            <input type="color"
+                   value={Map.get(customization, "secondary_color", "#64748b")}
+                   phx-change="update_secondary_color"
+                   class="w-12 h-12 rounded-lg border-2 border-gray-300 cursor-pointer">
+            <input type="text"
+                   value={Map.get(customization, "secondary_color", "#64748b")}
+                   phx-change="update_secondary_color"
+                   class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
+          </div>
+        </div>
+
+        <!-- Accent Color -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
+          <div class="flex items-center space-x-3">
+            <input type="color"
+                   value={Map.get(customization, "accent_color", "#f59e0b")}
+                   phx-change="update_accent_color"
+                   class="w-12 h-12 rounded-lg border-2 border-gray-300 cursor-pointer">
+            <input type="text"
+                   value={Map.get(customization, "accent_color", "#f59e0b")}
+                   phx-change="update_accent_color"
+                   class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
+          </div>
         </div>
       </div>
 
-      <!-- Individual Colors -->
-      <div class="bg-white rounded-xl shadow-sm border p-6">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Custom Colors</h3>
-
-        <div class="space-y-4">
-          <!-- Primary Color -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
-            <div class="flex items-center space-x-3">
-              <input type="color"
-                    value={get_customization_value(@customization, "primary_color", "#3b82f6")}
-                    phx-change="update_color"
-                    phx-value-field="primary_color"
-                    class="w-12 h-10 border border-gray-300 rounded-md cursor-pointer" />
-              <input type="text"
-                    value={get_customization_value(@customization, "primary_color", "#3b82f6")}
-                    phx-change="update_color"
-                    phx-value-field="primary_color"
-                    class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono" />
-              <div class="w-12 h-10 rounded-md border portfolio-bg-primary"></div>
-            </div>
-          </div>
-
-          <!-- Secondary Color -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
-            <div class="flex items-center space-x-3">
-              <input type="color"
-                    value={get_customization_value(@customization, "secondary_color", "#64748b")}
-                    phx-change="update_color"
-                    phx-value-field="secondary_color"
-                    class="w-12 h-10 border border-gray-300 rounded-md cursor-pointer" />
-              <input type="text"
-                    value={get_customization_value(@customization, "secondary_color", "#64748b")}
-                    phx-change="update_color"
-                    phx-value-field="secondary_color"
-                    class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono" />
-              <div class="w-12 h-10 rounded-md border portfolio-bg-secondary"></div>
-            </div>
-          </div>
-
-          <!-- Accent Color -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
-            <div class="flex items-center space-x-3">
-              <input type="color"
-                    value={get_customization_value(@customization, "accent_color", "#f59e0b")}
-                    phx-change="update_color"
-                    phx-value-field="accent_color"
-                    class="w-12 h-10 border border-gray-300 rounded-md cursor-pointer" />
-              <input type="text"
-                    value={get_customization_value(@customization, "accent_color", "#f59e0b")}
-                    phx-change="update_color"
-                    phx-value-field="accent_color"
-                    class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono" />
-              <div class="w-12 h-10 rounded-md border portfolio-bg-accent"></div>
-            </div>
-          </div>
+      <!-- Color Schemes -->
+      <div class="mb-6">
+        <h4 class="text-sm font-medium text-gray-700 mb-3">Pre-built Schemes</h4>
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <%= for {scheme_name, scheme_colors} <- [
+            {"professional", ["#1e40af", "#64748b", "#3b82f6"]},
+            {"creative", ["#7c3aed", "#ec4899", "#f59e0b"]},
+            {"warm", ["#dc2626", "#ea580c", "#f59e0b"]},
+            {"cool", ["#0891b2", "#0284c7", "#6366f1"]},
+            {"minimal", ["#374151", "#6b7280", "#059669"]}
+          ] do %>
+            <button phx-click="update_color_scheme"
+                    phx-value-scheme={scheme_name}
+                    class="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors group">
+              <div class="flex space-x-1 mb-2">
+                <%= for color <- scheme_colors do %>
+                  <div class="w-4 h-4 rounded-full" style={"background-color: #{color}"}></div>
+                <% end %>
+              </div>
+              <p class="text-xs font-medium text-gray-700 group-hover:text-gray-900">
+                <%= String.capitalize(scheme_name) %>
+              </p>
+            </button>
+          <% end %>
         </div>
       </div>
     </div>
@@ -5344,6 +5502,82 @@ def render_enhanced_javascript(assigns) do
     end
   end
 
+  defp get_edit_interface_classes do
+    %{
+      header: "bg-gradient-to-r from-indigo-600 to-purple-600",
+      nav_link: "text-white/80 hover:text-white",
+      title: "text-white",
+      subtitle: "text-white/80"
+    }
+  end
+
+  defp render_template_mini_preview(template_key) do
+    case template_key do
+      "executive" ->
+        """
+        <div class="text-center">
+          <div class="w-8 h-1 bg-blue-500 mb-1 mx-auto"></div>
+          <div class="w-6 h-1 bg-gray-300 mx-auto"></div>
+        </div>
+        """
+      "developer" ->
+        """
+        <div class="text-center font-mono text-xs">
+          <div class="text-green-500">$</div>
+          <div class="w-8 h-1 bg-green-500 mx-auto"></div>
+        </div>
+        """
+      "designer" ->
+        """
+        <div class="grid grid-cols-2 gap-1">
+          <div class="w-3 h-3 bg-purple-500 rounded"></div>
+          <div class="w-3 h-3 bg-pink-500 rounded"></div>
+          <div class="w-3 h-3 bg-yellow-500 rounded"></div>
+          <div class="w-3 h-3 bg-purple-300 rounded"></div>
+        </div>
+        """
+      "minimalist" ->
+        """
+        <div class="text-center">
+          <div class="w-8 h-1 bg-gray-800 mb-1 mx-auto"></div>
+          <div class="w-6 h-1 bg-gray-400 mx-auto"></div>
+        </div>
+        """
+      "consultant" ->
+        """
+        <div class="text-center">
+          <div class="w-8 h-1 bg-blue-600 mb-1 mx-auto"></div>
+          <div class="w-4 h-1 bg-blue-400 mb-1 mx-auto"></div>
+          <div class="w-6 h-1 bg-blue-300 mx-auto"></div>
+        </div>
+        """
+      "academic" ->
+        """
+        <div class="text-center">
+          <div class="w-2 h-8 bg-green-600 mx-auto mb-1"></div>
+          <div class="w-6 h-1 bg-green-400 mx-auto"></div>
+        </div>
+        """
+      _ ->
+        """
+        <div class="w-8 h-8 bg-gray-400 rounded"></div>
+        """
+    end
+    |> Phoenix.HTML.raw()
+  end
+
+  defp get_template_display_name(theme) do
+    case theme do
+      "executive" -> "Executive"
+      "developer" -> "Developer"
+      "designer" -> "Designer"
+      "minimalist" -> "Minimalist"
+      "consultant" -> "Consultant"
+      "academic" -> "Academic"
+      _ -> String.capitalize(theme)
+    end
+  end
+
   defp get_current_font(customization) do
     get_in(customization, ["typography", "font_family"]) || "Inter"
   end
@@ -5750,4 +5984,10 @@ end
         end
     end
   end
+
+  defp render_typography_section(assigns), do: ~H"<div>Typography controls</div>"
+  defp render_layout_section(assigns), do: ~H"<div>Layout controls</div>"
+  defp render_advanced_section(assigns), do: ~H"<div>Advanced controls</div>"
+  defp render_preview_section(assigns), do: ~H"<div>Preview section</div>"
+  defp render_modals(assigns), do: ~H""
 end
