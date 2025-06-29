@@ -4,8 +4,9 @@
 defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   use FrestylWeb, :live_view
 
-  alias Frestyl.{Portfolios, Accounts, Billing}
   alias FrestylWeb.PortfolioLive.Components.{SectionEditor, MediaLibrary, VideoRecorder}
+  alias Frestyl.Portfolios.{Portfolios, Accounts, Billing, ContentBlock, ContentBlockBuilder, MonetizationSetting, StreamingIntegration, TemplateSystem}
+
 
   # ============================================================================
   # MOUNT - Account-Aware Foundation
@@ -16,8 +17,8 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     user = socket.assigns.current_user
 
     # Load portfolio with account context
-    case load_portfolio_with_account(portfolio_id, user) do
-      {:ok, portfolio, account} ->
+    case load_portfolio_with_account_and_blocks(portfolio_id, user) do
+      {:ok, portfolio, account, content_blocks} ->
         # Account-based feature permissions
         features = get_account_features(account)
         limits = get_account_limits(account)
@@ -37,7 +38,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         socket = socket
         |> assign_core_data(portfolio, account, user)
         |> assign_features_and_limits(features, limits)
-        |> assign_content_data(sections, media_library)
+        |> assign_content_data(sections, media_library, content_blocks)
         |> assign_monetization_data(monetization_data, streaming_config)
         |> assign_design_system(available_layouts, brand_constraints)
         |> assign_ui_state()
@@ -77,11 +78,15 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   defp assign_content_data(socket, sections, media_library) do
     socket
-    |> assign(:sections, sections)
-    |> assign(:media_library, media_library)
-    |> assign(:section_count, length(sections))
-    |> assign(:editing_section, nil)
-    |> assign(:editing_mode, :overview)
+      |> assign(:sections, sections)
+      |> assign(:media_library, media_library)
+      |> assign(:content_blocks, content_blocks)
+      |> assign(:section_count, length(sections))
+      |> assign(:content_block_count, count_total_blocks(content_blocks))
+      |> assign(:editing_section, nil)
+      |> assign(:editing_block, nil)
+      |> assign(:editing_mode, :overview)
+      |> assign(:block_builder_open, false)
   end
 
   defp assign_monetization_data(socket, monetization_data, streaming_config) do
@@ -125,6 +130,31 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
           {:error, :unauthorized}
         end
     end
+  end
+
+  defp load_portfolio_with_account_and_blocks(portfolio_id, user) do
+    case Portfolios.get_portfolio_with_account(portfolio_id) do
+      nil ->
+        {:error, :not_found}
+
+      %{portfolio: portfolio, account: account} ->
+        if can_edit_portfolio?(portfolio, account, user) do
+          # Load content blocks organized by section
+          content_blocks = load_content_blocks_by_section(portfolio_id)
+          {:ok, portfolio, account, content_blocks}
+        else
+          {:error, :unauthorized}
+        end
+    end
+  end
+
+  defp load_content_blocks_by_section(portfolio_id) do
+    sections = Portfolios.list_portfolio_sections(portfolio_id)
+
+    Enum.reduce(sections, %{}, fn section, acc ->
+      blocks = Portfolios.list_content_blocks_for_section(section.id)
+      Map.put(acc, section.id, blocks)
+    end)
   end
 
   defp can_edit_portfolio?(portfolio, account, user) do
@@ -379,6 +409,55 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
+  @impl true
+  def handle_event("create_content_block", %{"section_id" => section_id, "block_type" => block_type}, socket) do
+    case create_new_content_block(section_id, block_type, socket.assigns.user) do
+      {:ok, block} ->
+        updated_blocks = update_section_blocks_cache(socket.assigns.content_blocks, section_id, block)
+
+        {:noreply,
+        socket
+        |> assign(:content_blocks, updated_blocks)
+        |> assign(:editing_block, block)
+        |> assign(:editing_mode, :block_detail)
+        |> put_flash(:info, "Content block created successfully")}
+
+      {:error, changeset} ->
+        errors = format_errors(changeset)
+        {:noreply, put_flash(socket, :error, "Failed to create block: #{errors}")}
+    end
+  end
+
+  @impl true
+  def handle_event("edit_content_block", %{"block_id" => block_id}, socket) do
+    case Portfolios.get_content_block!(block_id) do
+      block ->
+        {:noreply,
+        socket
+        |> assign(:editing_block, block)
+        |> assign(:editing_mode, :block_detail)}
+    rescue
+      Ecto.NoResultsError ->
+        {:noreply, put_flash(socket, :error, "Content block not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("open_block_builder", %{"section_id" => section_id}, socket) do
+    available_blocks = get_available_block_types()
+
+    {:noreply,
+    socket
+    |> assign(:block_builder_open, true)
+    |> assign(:block_builder_section_id, section_id)
+    |> assign(:available_block_types, available_blocks)}
+  end
+
+  @impl true
+  def handle_event("close_block_builder", _params, socket) do
+    {:noreply, assign(socket, :block_builder_open, false)}
+  end
+
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
@@ -399,6 +478,65 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> Enum.map(fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
     |> Enum.join("; ")
   end
+
+  defp create_new_content_block(section_id, block_type, user) do
+    next_position = get_next_block_position(section_id)
+
+    Portfolios.create_content_block(%{
+      block_uuid: Ecto.UUID.generate(),
+      block_type: String.to_atom(block_type),
+      position: next_position,
+      portfolio_section_id: section_id,
+      content_data: get_default_content_for_block_type(block_type),
+      media_limit: get_default_media_limit(block_type)
+    })
+  end
+
+  defp get_available_block_types do
+    [
+      %{type: "text", name: "Text Block", description: "Rich text content"},
+      %{type: "responsibility", name: "Responsibility", description: "Job responsibility with media"},
+      %{type: "skill_item", name: "Skill", description: "Individual skill with proficiency"},
+      %{type: "project_card", name: "Project", description: "Project showcase card"},
+      %{type: "service_package", name: "Service Package", description: "Packaged service offering"},
+      %{type: "booking_widget", name: "Booking Widget", description: "Calendar booking integration"}
+    ]
+  end
+
+  defp update_section_blocks_cache(cache, section_id, new_block) do
+    current_blocks = Map.get(cache, section_id, [])
+    Map.put(cache, section_id, [new_block | current_blocks])
+  end
+
+  defp count_total_blocks(content_blocks) do
+    content_blocks
+    |> Map.values()
+    |> List.flatten()
+    |> length()
+  end
+
+  defp get_next_block_position(section_id) do
+    blocks = Portfolios.list_content_blocks_for_section(section_id)
+    case blocks do
+      [] -> 0
+      blocks ->
+        blocks
+        |> Enum.map(& &1.position)
+        |> Enum.max()
+        |> Kernel.+(1)
+    end
+  end
+
+  defp get_default_content_for_block_type("text"), do: %{"content" => ""}
+  defp get_default_content_for_block_type("responsibility"), do: %{"text" => "", "impact_metrics" => []}
+  defp get_default_content_for_block_type("skill_item"), do: %{"name" => "", "proficiency" => "intermediate"}
+  defp get_default_content_for_block_type("service_package"), do: %{"name" => "", "price" => 0}
+  defp get_default_content_for_block_type(_), do: %{}
+
+  defp get_default_media_limit("text"), do: 2
+  defp get_default_media_limit("project_card"), do: 8
+  defp get_default_media_limit(_), do: 3
+
 
   # Placeholder functions for implementation in subsequent prompts
   defp load_portfolio_sections(portfolio_id), do: Portfolios.list_portfolio_sections(portfolio_id)
