@@ -127,6 +127,16 @@
         </div>
       </div>
     <% end %>
+
+    <!-- Smart Navigation Integration -->
+    <.live_component 
+      module={FrestylWeb.Components.SmartNavComponent}
+      id="smart-nav"
+      current_user={@current_user}
+      current_context="hub"
+      portfolios={@portfolios}
+      lab_data={@lab_data}
+      studio_data={@studio_data} />
   </div>
 
   <!-- ============================================================================ -->
@@ -281,7 +291,7 @@
                 </div>
                 <div class="ml-4">
                   <p class="text-sm font-medium text-gray-600">Total Portfolios</p>
-                  <p class="text-2xl font-bold text-gray-900"><%= @studio_data.total_portfolios %></p>
+                  <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :total_portfolios, 0) %></p>
                 </div>
               </div>
             </div>
@@ -296,7 +306,7 @@
                 </div>
                 <div class="ml-4">
                   <p class="text-sm font-medium text-gray-600">Published</p>
-                  <p class="text-2xl font-bold text-gray-900"><%= @studio_data.published_count %></p>
+                  <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :published_count, 0) %></p>
                 </div>
               </div>
             </div>

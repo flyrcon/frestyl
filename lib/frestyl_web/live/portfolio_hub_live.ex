@@ -3,6 +3,9 @@
 defmodule FrestylWeb.PortfolioHubLive do
   use FrestylWeb, :live_view
 
+  import Phoenix.LiveView.Helpers
+  import Phoenix.Component
+
   alias Frestyl.{Accounts, Portfolios, Channels, Billing, Lab, Features, Analytics, Studio, Services, Revenue}
   alias FrestylWeb.PortfolioHubLive.{Helpers, EnhancementEngine, Components}
 
@@ -113,6 +116,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:featured_creators, channels_data.featured_creators)
 
       # ======== CREATOR LAB SECTION ========
+      |> assign(:lab_data, lab_data)
       |> assign(:lab_features, lab_data.features)
       |> assign(:active_experiments, lab_data.active_experiments)
       |> assign(:lab_recommendations, lab_data.recommendations)
@@ -166,7 +170,7 @@ defmodule FrestylWeb.PortfolioHubLive do
   end
 
   # ============================================================================
-  # DATA LOADING FUNCTIONS - Equal Feature Prominence
+  # PORTFOLIO ENHANCEMENTS
   # ============================================================================
 
   defp load_studio_data(user, portfolios, account) do
@@ -174,6 +178,210 @@ defmodule FrestylWeb.PortfolioHubLive do
       total_portfolios: length(portfolios),
       published_count: Enum.count(portfolios, &(&1.visibility == :public)),
       draft_count: Enum.count(portfolios, &(&1.visibility == :private)),
+
+      # Existing keys:
+      quick_integrations: get_available_integrations(account),
+      studio_ready_portfolios: filter_studio_ready_portfolios(portfolios),
+      recent_edits: get_recent_portfolio_edits(user.id),
+      studio_features: get_studio_features_for_account(account),
+      analytics_summary: get_studio_analytics_summary(user.id),
+
+      # Additional useful keys:
+      templates_available: get_available_templates_count(account),
+      enhancement_progress: get_enhancement_progress(portfolios),
+      creation_limits: get_creation_limits(account),
+      recent_creations: get_recent_portfolio_activity(user.id)
+    }
+  end
+
+  defp filter_studio_ready_portfolios(portfolios) do
+    Enum.filter(portfolios, fn portfolio ->
+      # Safe check for loaded associations
+      sections_loaded = case Ecto.assoc_loaded?(portfolio.sections) do
+        true -> not is_nil(portfolio.sections) and length(portfolio.sections || []) > 0
+        false -> false  # If not loaded, assume not ready
+      end
+
+      # 🔥 FIX: Change portfolio.status to portfolio.visibility
+      # Check if portfolio has necessary content for studio features
+      has_sufficient_content?(portfolio) and
+      portfolio.visibility in [:public, :private] and  # Use visibility instead of status
+      sections_loaded
+    end)
+  end
+
+  defp get_available_integrations(account) do
+    # Return available integrations based on account tier/permissions
+    base_integrations = [
+      %{
+        id: "linkedin",
+        name: "LinkedIn",
+        description: "Share portfolio directly to LinkedIn",
+        icon: "linkedin",
+        enabled: true,
+        category: "social"
+      },
+      %{
+        id: "github",
+        name: "GitHub",
+        description: "Connect GitHub repositories",
+        icon: "github",
+        enabled: true,
+        category: "development"
+      },
+      %{
+        id: "dribbble",
+        name: "Dribbble",
+        description: "Import projects from Dribbble",
+        icon: "dribbble",
+        enabled: account.subscription_tier != "personal",
+        category: "design"
+      },
+      %{
+        id: "behance",
+        name: "Behance",
+        description: "Import projects from Behance",
+        icon: "behance",
+        enabled: account.subscription_tier != "personal",
+        category: "design"
+      },
+      %{
+        id: "figma",
+        name: "Figma",
+        description: "Import Figma designs and prototypes",
+        icon: "figma",
+        enabled: account.subscription_tier in ["creator", "creator_plus"],
+        category: "design"
+      }
+    ]
+
+    # Filter based on account permissions
+    Enum.filter(base_integrations, & &1.enabled)
+  end
+
+  defp text_heavy_without_audio?(portfolio) do
+    # Safe handling of sections association
+    sections = case Ecto.assoc_loaded?(portfolio.sections) do
+      true -> portfolio.sections || []
+      false -> []
+    end
+
+    # Count text-heavy sections
+    text_sections = Enum.count(sections, fn section ->
+      section.section_type in [:about, :experience, :education, :skills, :testimonials] and
+      has_significant_text_content?(section)
+    end)
+
+    # Check if portfolio has audio content
+    has_audio = Enum.any?(sections, fn section ->
+      media_items = get_in(section, [:content, "media_items"]) || []
+
+      Enum.any?(media_items, fn item ->
+        case item do
+          %{"type" => "audio"} -> true
+          %{"file_type" => file_type} when is_binary(file_type) ->
+            String.contains?(String.downcase(file_type), "audio")
+          _ -> false
+        end
+      end)
+    end)
+
+    # Portfolio is text-heavy without audio if it has 3+ text sections and no audio
+    text_sections >= 3 and not has_audio
+  end
+
+  defp missing_story_structure?(portfolio) do
+    # Safe handling of sections association
+    sections = case Ecto.assoc_loaded?(portfolio.sections) do
+      true -> portfolio.sections || []
+      false -> []
+    end
+
+    section_types = Enum.map(sections, & &1.section_type)
+
+    # Check for basic story structure elements
+    has_intro = :intro in section_types or :about in section_types
+    has_journey = :experience in section_types or :projects in section_types
+    has_skills_showcase = :skills in section_types
+    has_conclusion = :contact in section_types or :call_to_action in section_types
+
+    # Missing key story elements (need at least 3 of 4)
+    story_elements = [has_intro, has_journey, has_skills_showcase, has_conclusion]
+    present_elements = Enum.count(story_elements, & &1)
+
+    present_elements < 3
+  end
+
+  defp get_smart_enhancement_suggestions(portfolios, user) do
+    portfolios
+    |> Enum.flat_map(&analyze_portfolio_for_enhancements(&1, user))
+    |> Enum.take(3) # Top 3 suggestions
+  end
+
+  defp analyze_portfolio_for_enhancements(portfolio, user) do
+    suggestions = []
+
+    # Check for missing story structure
+    suggestions = if missing_story_structure?(portfolio) do
+      [%{
+        type: :story_structure,
+        title: "Improve Story Flow",
+        description: "Add sections to create a compelling narrative arc",
+        priority: :high,
+        action: "Add missing sections",
+        icon: "document-text"
+      } | suggestions]
+    else
+      suggestions
+    end
+
+    # Check for text-heavy without audio
+    suggestions = if text_heavy_without_audio?(portfolio) do
+      [%{
+        type: :audio_enhancement,
+        title: "Add Voice Elements",
+        description: "Consider adding audio introductions or voice notes",
+        priority: :medium,
+        action: "Record audio content",
+        icon: "microphone"
+      } | suggestions]
+    else
+      suggestions
+    end
+
+    # Additional enhancement checks
+    suggestions = if needs_visual_polish?(portfolio) do
+      [%{
+        type: :visual_polish,
+        title: "Enhance Visual Appeal",
+        description: "Add more images, improve layout consistency",
+        priority: :medium,
+        action: "Upload media",
+        icon: "photograph"
+      } | suggestions]
+    else
+      suggestions
+    end
+
+    suggestions
+  end
+
+  # ============================================================================
+  # DATA LOADING FUNCTIONS - Equal Feature Prominence
+  # ============================================================================
+
+  defp load_studio_data(user, portfolios, account) do
+    %{
+      total_portfolios: length(portfolios),
+      # 🔥 FIX: Use visibility instead of status
+      published_count: Enum.count(portfolios, &(&1.visibility == :public)),
+      draft_count: Enum.count(portfolios, &(&1.visibility == :private)),
+
+      quick_integrations: get_available_integrations(account),
+      studio_ready_portfolios: filter_studio_ready_portfolios(portfolios),
+      recent_edits: get_recent_portfolio_edits(user.id),
+      studio_features: get_studio_features_for_account(account),
+      analytics_summary: get_studio_analytics_summary(user.id),
       templates_available: get_available_templates_count(account),
       enhancement_progress: get_enhancement_progress(portfolios),
       creation_limits: get_creation_limits(account),
@@ -302,6 +510,57 @@ defmodule FrestylWeb.PortfolioHubLive do
       }
     ]
   end
+
+  defp has_sufficient_content?(portfolio) do
+    # 🔥 SAFE CHECK: Handle NotLoaded associations
+    sections = case Ecto.assoc_loaded?(portfolio.sections) do
+      true -> portfolio.sections || []
+      false -> []
+    end
+
+    content_sections = Enum.count(sections, fn section ->
+      content = section.content || %{}
+
+      # Check for meaningful text content
+      text_content = [
+        content["description"],
+        content["summary"],
+        content["content"],
+        content["bio"]
+      ]
+      |> Enum.filter(&is_binary/1)
+      |> Enum.join(" ")
+      |> String.trim()
+
+      has_text = String.length(text_content) > 50
+
+      # Check for media content
+      media_items = content["media_items"] || []
+      has_media = length(media_items) > 0
+
+      has_text or has_media
+    end)
+
+    content_sections >= 2
+  end
+
+  # Helper function to check if section has significant text content
+  defp has_significant_text_content?(section) do
+    content = section.content || %{}
+
+    text_fields = ["description", "summary", "content", "bio", "responsibilities", "achievements"]
+
+    total_text =
+      text_fields
+      |> Enum.map(&(content[&1] || ""))
+      |> Enum.filter(&is_binary/1)
+      |> Enum.join(" ")
+      |> String.trim()
+      |> String.length()
+
+    total_text > 200
+  end
+
 
   # ============================================================================
   # HUB CONFIGURATION BASED ON SUBSCRIPTION TIER
@@ -482,15 +741,64 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
+    defp get_recent_portfolio_edits(user_id) do
+    # Implementation to get recent portfolio edits
+    []
+  end
+
+  defp get_studio_features_for_account(account) do
+    # Implementation to get available studio features
+    %{
+      ai_assistant: true,
+      collaboration: account.subscription_tier != "personal",
+      analytics: account.subscription_tier in ["creator", "creator_plus"],
+      custom_themes: account.subscription_tier == "creator_plus"
+    }
+  end
+
+  defp get_studio_analytics_summary(user_id) do
+    # Implementation to get analytics summary
+    %{
+      total_views: 0,
+      engagement_rate: 0,
+      conversion_rate: 0
+    }
+  end
+
+  defp needs_visual_polish?(portfolio) do
+    sections = portfolio.sections || []
+
+    sections_with_media = Enum.count(sections, fn section ->
+      media_items = get_in(section, [:content, "media_items"]) || []
+      length(media_items) > 0
+    end)
+
+    # Needs visual polish if less than half the sections have media
+    sections_with_media < (length(sections) / 2)
+  end
+
   # ============================================================================
   # SAFE DATA LOADING FUNCTIONS (Error Handling)
   # ============================================================================
 
   defp safe_load_portfolios(user_id) do
     try do
-      Portfolios.list_user_portfolios(user_id)
+      # Use the existing Portfolios context instead of writing your own query
+      portfolios = Portfolios.list_user_portfolios(user_id)
+
+      # Ensure sections are preloaded
+      portfolios
+      |> Enum.map(fn portfolio ->
+        case Ecto.assoc_loaded?(portfolio.sections) do
+          true -> portfolio
+          false -> Frestyl.Repo.preload(portfolio, :sections)
+        end
+      end)
     rescue
-      _ -> []
+      error ->
+        require Logger
+        Logger.error("Failed to load portfolios for user #{user_id}: #{inspect(error)}")
+        []
     end
   end
 
@@ -579,6 +887,7 @@ defmodule FrestylWeb.PortfolioHubLive do
   defp safe_get_active_experiments(user_id), do: []
   defp safe_get_lab_recommendations(user, portfolios), do: []
   defp safe_get_experiment_results(user_id), do: []
+  defp get_beta_features(_account), do: []
   defp safe_get_ai_insights(user_id), do: %{}
   defp safe_get_feature_requests(user_id), do: []
   defp safe_get_upcoming_appointments(user_id), do: []
@@ -1335,10 +1644,58 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, push_navigate(socket, to: "/calendar")}
   end
 
+  defp get_enhancement_progress(portfolios) do
+    if length(portfolios) == 0 do
+      %{completed: 0, total: 0, percentage: 0}
+    else
+      total_enhancements = length(portfolios) * 5  # 5 potential enhancements per portfolio
+      completed = Enum.reduce(portfolios, 0, fn portfolio, acc ->
+        enhancements_count = count_portfolio_enhancements(portfolio)
+        acc + enhancements_count
+      end)
+
+      percentage = if total_enhancements > 0, do: round(completed / total_enhancements * 100), else: 0
+
+      %{
+        completed: completed,
+        total: total_enhancements,
+        percentage: percentage
+      }
+    end
+  end
+
+  defp get_available_templates_count(account) do
+    case account.subscription_tier do
+      "personal" -> 3
+      "creator" -> 8
+      "creator_plus" -> 15
+      _ -> 3
+    end
+  end
+
+  defp count_portfolio_enhancements(portfolio) do
+    enhancements = 0
+
+    # Check for various enhancements
+    enhancements = if portfolio.theme && portfolio.theme != "default", do: enhancements + 1, else: enhancements
+    enhancements = if map_size(portfolio.customization || %{}) > 0, do: enhancements + 1, else: enhancements
+    enhancements = if length(portfolio.sections || []) > 3, do: enhancements + 1, else: enhancements
+    enhancements = if portfolio.custom_css && String.length(portfolio.custom_css) > 0, do: enhancements + 1, else: enhancements
+    enhancements = if portfolio.visibility == :public, do: enhancements + 1, else: enhancements
+
+    enhancements
+  end
+
+  defp get_creation_limits(account) do
+    case account.subscription_tier do
+      "personal" -> %{max_portfolios: 2, max_sections_per_portfolio: 8, max_media_per_section: 5}
+      "creator" -> %{max_portfolios: 10, max_sections_per_portfolio: 15, max_media_per_section: 15}
+      "creator_plus" -> %{max_portfolios: 50, max_sections_per_portfolio: 25, max_media_per_section: 25}
+      _ -> %{max_portfolios: 2, max_sections_per_portfolio: 8, max_media_per_section: 5}
+    end
+  end
+
   # Feature availability helpers
-  defp get_available_templates_count(account), do: 10
-  defp get_enhancement_progress(portfolios), do: %{}
-  defp get_creation_limits(account), do: %{}
   defp get_recent_portfolio_activity(user_id), do: []
   defp get_channel_limits(account), do: %{}
   defp get_beta_features(account), do: []

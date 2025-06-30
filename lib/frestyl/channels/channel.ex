@@ -187,6 +187,58 @@ defmodule Frestyl.Channels.Channel do
     |> Repo.update()
   end
 
+  def create_portfolio_enhancement_channel(portfolio, enhancement_type, user) do
+    channel_name = "#{portfolio.title} - #{String.capitalize(enhancement_type)}"
+
+    channel_attrs = %{
+      name: channel_name,
+      description: get_enhancement_description(enhancement_type),
+      channel_type: "portfolio_#{enhancement_type}",
+      visibility: "private",
+      user_id: user.id,
+      # Link to portfolio for context
+      metadata: %{
+        portfolio_id: portfolio.id,
+        enhancement_type: enhancement_type,
+        created_from: "portfolio_editor"
+      }
+    }
+
+    with {:ok, channel} <- create_channel(channel_attrs),
+        :ok <- setup_channel_tools(channel, enhancement_type) do
+      {:ok, channel}
+    end
+  end
+
+  defp update_channel_tools(channel, tools_config) do
+    # Update the channel with the new tools configuration
+    channel
+    |> Ecto.Changeset.change(tools: tools_config)
+    |> Repo.update()
+  end
+
+  # Add portfolio-specific tool configurations
+  defp setup_channel_tools(channel, "story_enhancement") do
+    tools_config = get_portfolio_channel_tools("portfolio_writing")
+    update_channel_tools(channel, tools_config)
+  end
+
+  defp setup_channel_tools(channel, "music_integration") do
+    tools_config = get_portfolio_channel_tools("portfolio_music")
+    update_channel_tools(channel, tools_config)
+  end
+
+  defp get_enhancement_description(enhancement_type) do
+    case enhancement_type do
+      :ai_assistant -> "AI-powered assistant for enhanced productivity"
+      :analytics -> "Advanced analytics and reporting tools"
+      :automation -> "Automated workflow and task management"
+      :collaboration -> "Enhanced team collaboration features"
+      :integration -> "Third-party service integrations"
+      _ -> "Enhanced channel functionality"
+    end
+  end
+
   @doc """
   Gets the default Studio tools configuration for portfolio channel types.
   """

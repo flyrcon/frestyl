@@ -1,0 +1,936 @@
+<!-- lib/frestyl_web/live/portfolio_live/portfolio_editor.html.heex -->
+<!-- ENHANCED WITH LIVE PREVIEW FUNCTIONALITY -->
+
+<div class="min-h-screen bg-gray-50">
+  <!-- ENHANCED Header -->
+  <div class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center py-4">
+        <!-- Portfolio Title -->
+        <div class="flex items-center space-x-4">
+          <.link navigate="/portfolios" class="text-gray-500 hover:text-gray-700">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </.link>
+          <div>
+            <h1 class="text-xl font-semibold text-gray-900">
+              <%= @portfolio.title %>
+            </h1>
+            <p class="text-sm text-gray-500">Portfolio Editor</p>
+          </div>
+        </div>
+
+        <!-- ENHANCED Actions with all missing buttons -->
+        <div class="flex items-center space-x-3">
+          <!-- Live Preview Toggle -->
+          <button 
+            phx-click="toggle_live_preview"
+            class={"inline-flex items-center px-3 py-2 border rounded-md shadow-sm text-sm font-medium #{if @show_live_preview, do: "border-blue-500 text-blue-700 bg-blue-50", else: "border-gray-300 text-gray-700 bg-white hover:bg-gray-50"}"}>
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            <%= if @show_live_preview, do: "Hide Preview", else: "Live Preview" %>
+          </button>
+
+          <!-- Mobile/Desktop Toggle (only show when preview is active) -->
+          <%= if @show_live_preview do %>
+            <button 
+              phx-click="toggle_preview_mobile"
+              class={"inline-flex items-center px-2 py-2 border rounded-md text-sm font-medium #{if @preview_mobile_view, do: "border-blue-500 text-blue-700 bg-blue-50", else: "border-gray-300 text-gray-700 bg-white hover:bg-gray-50"}"}>
+              <%= if @preview_mobile_view do %>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+              <% else %>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                </svg>
+              <% end %>
+            </button>
+          <% end %>
+
+          <!-- FIXED: Share Button -->
+          <button 
+            phx-click="share_portfolio"
+            class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 shadow-sm">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
+            </svg>
+            Share
+          </button>
+
+          <!-- FIXED: Enhanced Save Status -->
+          <%= if assigns[:unsaved_changes] do %>
+            <div class="flex items-center text-yellow-600">
+              <svg class="w-4 h-4 mr-1 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-sm">Unsaved changes</span>
+            </div>
+          <% else %>
+            <div class="flex items-center text-green-600">
+              <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-sm">All changes saved</span>
+            </div>
+          <% end %>
+
+          <!-- FIXED: Save Button -->
+          <button 
+            phx-click="save_portfolio"
+            class={"inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition-all #{if assigns[:unsaved_changes], do: "bg-green-600 text-white hover:bg-green-700", else: "bg-gray-200 text-gray-700 hover:bg-gray-300"}"}>
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+            </svg>
+            <%= if assigns[:unsaved_changes], do: "Save Changes", else: "Saved" %>
+          </button>
+
+          <!-- FIXED: Enhanced Menu Dropdown -->
+          <div class="relative" phx-click-away="close_main_menu">
+            <button type="button"
+                    phx-click="toggle_main_menu"
+                    class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+              </svg>
+            </button>
+
+            <%= if assigns[:show_main_menu] do %>
+              <div class="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                <!-- Media/Attachments Option -->
+                <button type="button"
+                        phx-click="open_media_library"
+                        class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                  <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                  Media & Attachments
+                </button>
+
+                <!-- Import Resume Option -->
+                <button type="button"
+                        phx-click="import_resume"
+                        class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                  <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+                  </svg>
+                  Import Resume
+                </button>
+
+                <!-- Video Intro Option -->
+                <%= if assigns[:video_intro] do %>
+                  <button type="button"
+                          phx-click="edit_video_intro"
+                          class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                    <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    Edit Video Intro
+                  </button>
+                <% else %>
+                  <button type="button"
+                          phx-click="add_video_intro"
+                          class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                    <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                    </svg>
+                    Add Video Intro
+                  </button>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+
+          <!-- Publish Button -->
+          <button 
+            phx-click="publish_portfolio"
+            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+            Publish
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- ENHANCED LAYOUT: Side-by-side when preview is active -->
+    <div class={"grid gap-6 #{if @show_live_preview, do: "grid-cols-1 xl:grid-cols-3", else: "grid-cols-1 lg:grid-cols-4"}"}>
+      
+        <!-- LIVE PREVIEW IFRAME (only show when active) -->
+        <%= if @show_live_preview do %>
+        <div class="xl:col-span-1 order-2 xl:order-1">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-md font-semibold text-gray-900">Live Preview</h3>
+                <div class="flex items-center space-x-2">
+                <span class="text-xs text-gray-500">
+                    <%= if @preview_mobile_view, do: "Mobile", else: "Desktop" %>
+                </span>
+                <div class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" title="Live updating"></div>
+                </div>
+            </div>
+            
+            <!-- Preview Container - SMALLER -->
+            <div class="border rounded-lg overflow-hidden bg-gray-50" style="height: 450px;">
+              <iframe 
+                id="live-preview-frame"
+                src={build_preview_url(@portfolio, @customization)}
+                class="w-full h-full border-0 transform scale-90 origin-top-left"
+                style="width: 111%; height: 111%;"
+                frameborder="0"
+                title="Portfolio Live Preview">
+              </iframe>
+            </div>
+            
+            <!-- Preview Controls -->
+            <div class="flex items-center justify-between mt-2 text-xs">
+                <button 
+                phx-click="toggle_preview_mobile"
+                class={"flex items-center space-x-1 px-2 py-1 rounded #{if @preview_mobile_view, do: "bg-blue-100 text-blue-700", else: "bg-gray-100 text-gray-600"}"}>
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <%= if @preview_mobile_view do %>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    <% else %>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                    <% end %>
+                </svg>
+                <span><%= if @preview_mobile_view, do: "Mobile", else: "Desktop" %></span>
+                </button>
+                
+                <button 
+                phx-click="toggle_live_preview"
+                class="flex items-center space-x-1 px-2 py-1 rounded bg-red-100 text-red-600 hover:bg-red-200">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+                <span>Close</span>
+                </button>
+            </div>
+            </div>
+        </div>
+        <% end %>
+      
+      <!-- EDITOR CONTENT -->
+      <div class={"#{if @show_live_preview, do: "xl:col-span-2 order-1 xl:order-2", else: "lg:col-span-4"}"}>
+        <div class="grid gap-6 lg:grid-cols-4">
+          
+          <!-- Sidebar -->
+          <div class="lg:col-span-1">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <!-- Tab Navigation -->
+              <nav class="space-y-1">
+                <button 
+                  phx-click="change_tab" 
+                  phx-value-tab="overview"
+                  class={"w-full text-left px-3 py-2 rounded-md text-sm font-medium #{if @active_tab == :overview, do: "bg-blue-100 text-blue-700", else: "text-gray-600 hover:text-gray-900 hover:bg-gray-50"}"}>
+                  Overview
+                </button>
+                <button 
+                  phx-click="change_tab" 
+                  phx-value-tab="content"
+                  class={"w-full text-left px-3 py-2 rounded-md text-sm font-medium #{if @active_tab == :content, do: "bg-blue-100 text-blue-700", else: "text-gray-600 hover:text-gray-900 hover:bg-gray-50"}"}>
+                  Content
+                </button>
+                <button 
+                  phx-click="change_tab" 
+                  phx-value-tab="design"
+                  class={"w-full text-left px-3 py-2 rounded-md text-sm font-medium #{if @active_tab == :design, do: "bg-blue-100 text-blue-700", else: "text-gray-600 hover:text-gray-900 hover:bg-gray-50"}"}>
+                  Design
+                </button>
+                <button 
+                  phx-click="change_tab" 
+                  phx-value-tab="settings"
+                  class={"w-full text-left px-3 py-2 rounded-md text-sm font-medium #{if @active_tab == :settings, do: "bg-blue-100 text-blue-700", else: "text-gray-600 hover:text-gray-900 hover:bg-gray-50"}"}>
+                  Settings
+                </button>
+              </nav>
+            </div>
+          </div>
+
+          <!-- Main Content -->
+          <div class="lg:col-span-3">
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+              
+              <!-- Tab Content -->
+              <%= case @active_tab do %>
+                <% :overview -> %>
+                  <div class="p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Overview</h2>
+                    
+                    <!-- Portfolio Basic Info -->
+                    <div class="space-y-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                        <input 
+                          type="text" 
+                          value={@portfolio.title}
+                          phx-change="update_title"
+                          phx-value-field="title"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                        <textarea 
+                          phx-change="update_description"
+                          phx-value-field="description"
+                          rows="3"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= @portfolio.description %></textarea>
+                      </div>
+                      
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Visibility</label>
+                        <select 
+                          phx-change="update_visibility"
+                          phx-value-field="visibility"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                          <option value="public" selected={@portfolio.visibility == :public}>Public</option>
+                          <option value="link_only" selected={@portfolio.visibility == :link_only}>Link Only</option>
+                          <option value="private" selected={@portfolio.visibility == :private}>Private</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                <% :content -> %>
+                  <div class="p-6">
+                    <div class="flex justify-between items-center mb-4">
+                      <h2 class="text-lg font-semibold text-gray-900">Content Sections</h2>
+                      
+                      <!-- Add Section Dropdown -->
+                      <div class="relative" phx-click-away="close_add_section_dropdown">
+                        <button 
+                          phx-click="toggle_add_section_dropdown"
+                          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                          </svg>
+                          Add Section
+                          <svg class={["w-4 h-4 ml-2 transition-transform", if(assigns[:show_add_section_dropdown], do: "rotate-180", else: "rotate-0")]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                          </svg>
+                        </button>
+
+                        <%= if assigns[:show_add_section_dropdown] do %>
+                          <div class="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
+                            <div class="px-4 py-2 border-b border-gray-100">
+                              <h3 class="text-sm font-semibold text-gray-900">Choose Section Type</h3>
+                            </div>
+                            
+                            <%= for {section_type, section_info} <- get_section_types() do %>
+                              <button type="button"
+                                      phx-click="add_section"
+                                      phx-value-section_type={section_type}
+                                      class="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-start space-x-3 transition-colors">
+                                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                  <span class="text-lg"><%= section_info.emoji %></span>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                  <div class="font-medium text-gray-900"><%= section_info.title %></div>
+                                  <div class="text-sm text-gray-500"><%= section_info.description %></div>
+                                </div>
+                              </button>
+                            <% end %>
+                          </div>
+                        <% end %>
+                      </div>
+                    </div>
+                    
+                    <!-- Sections List with All Controls -->
+                    <div class="space-y-4" id="sortable-sections">
+                      <%= for {section, index} <- Enum.with_index(@sections) do %>
+                        <div class="border border-gray-200 rounded-lg bg-white shadow-sm hover:shadow-md transition-all" id={"section-#{section.id}"}>
+                          <div class="p-4">
+                            <div class="flex justify-between items-center">
+                              <!-- Left: Drag Handle + Section Info -->
+                              <div class="flex items-center space-x-4">
+                                <!-- Drag Handle for Sortability -->
+                                <div class="drag-handle cursor-move p-2 text-gray-400 hover:text-gray-600" title="Drag to reorder">
+                                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16"/>
+                                  </svg>
+                                </div>
+
+                                <!-- Section Info -->
+                                <div class="flex items-center space-x-3">
+                                  <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                    <span class="text-lg"><%= get_section_emoji(section.section_type) %></span>
+                                  </div>
+                                  <div>
+                                    <h3 class="font-medium text-gray-900"><%= section.title || "Untitled Section" %></h3>
+                                    <div class="flex items-center space-x-2 text-sm text-gray-500">
+                                      <span><%= format_section_type(section.section_type) %></span>
+                                      <span>•</span>
+                                      <span>Position <%= index + 1 %></span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <!-- Right: Action Buttons -->
+                              <div class="flex items-center space-x-2">
+                                <!-- Toggle Visibility Button -->
+                                <button type="button"
+                                        phx-click="toggle_section_visibility"
+                                        phx-value-section-id={section.id}
+                                        class={[
+                                          "p-2 rounded-lg transition-colors",
+                                          if(section.visible, 
+                                             do: "text-green-600 bg-green-50 hover:bg-green-100", 
+                                             else: "text-gray-400 bg-gray-50 hover:bg-gray-100")
+                                        ]}
+                                        title={if(section.visible, do: "Hide section", else: "Show section")}>
+                                  <%= if section.visible do %>
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                  <% else %>
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
+                                    </svg>
+                                  <% end %>
+                                </button>
+
+                                <!-- Media Button -->
+                                <button type="button"
+                                        phx-click="manage_section_media"
+                                        phx-value-section-id={section.id}
+                                        class="p-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                                        title="Manage media">
+                                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                  </svg>
+                                </button>
+
+                                <!-- Copy/Duplicate Button -->
+                                <button type="button"
+                                        phx-click="duplicate_section"
+                                        phx-value-section-id={section.id}
+                                        class="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                                        title="Duplicate section">
+                                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                  </svg>
+                                </button>
+
+                                <!-- Edit Button -->
+                                <button 
+                                  phx-click="edit_section" 
+                                  phx-value-section-id={section.id}
+                                  class="px-3 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">
+                                  Edit
+                                </button>
+
+                                <!-- Delete Button -->
+                                <button 
+                                  phx-click="delete_section" 
+                                  phx-value-id={section.id}
+                                  data-confirm="Are you sure you want to delete this section? This action cannot be undone."
+                                  class="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                                  title="Delete section">
+                                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+
+                            <!-- Section Content Preview -->
+                            <div class="mt-4 text-sm text-gray-600">
+                              <%= if section.content && map_size(section.content) > 0 do %>
+                                <div class="bg-gray-50 rounded-lg p-3">
+                                  <%= get_section_preview(section) %>
+                                </div>
+                              <% else %>
+                                <div class="text-gray-400 italic">No content added yet</div>
+                              <% end %>
+                            </div>
+
+                            <!-- Section Status -->
+                            <div class="mt-3 flex items-center justify-between text-xs text-gray-500">
+                              <div class="flex items-center space-x-3">
+                                <span class="flex items-center space-x-1">
+                                  <div class={[
+                                    "w-2 h-2 rounded-full",
+                                    if(section.visible, do: "bg-green-500", else: "bg-gray-400")
+                                  ]}></div>
+                                  <span><%= if section.visible, do: "Visible", else: "Hidden" %></span>
+                                </span>
+                                <span>Updated: <%= format_relative_time(section.updated_at) %></span>
+                              </div>
+                              <div class="text-gray-400">
+                                <span>Drag to reorder</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      <% end %>
+                      
+                      <%= if Enum.empty?(@sections) do %>
+                        <div class="text-center py-12">
+                          <div class="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
+                          </div>
+                          <h3 class="text-lg font-medium text-gray-900 mb-2">Ready to Build Your Portfolio?</h3>
+                          <p class="text-gray-600 mb-6">Start by adding your first section. Choose from professional templates like Experience, Skills, Projects, and more.</p>
+                          <button 
+                            phx-click="toggle_add_section_dropdown"
+                            class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                            Add Your First Section
+                          </button>
+                        </div>
+                      <% end %>
+                    </div>
+                  </div>
+
+                <% :design -> %>
+                  <div class="p-6">
+                    <div class="flex justify-between items-center mb-4">
+                      <h2 class="text-lg font-semibold text-gray-900">Design & Layout</h2>
+                      <%= if @show_live_preview do %>
+                        <div class="flex items-center text-green-600">
+                          <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
+                          <span class="text-sm">Live preview active</span>
+                        </div>
+                      <% end %>
+                    </div>
+                    
+                    <!-- Theme Selection -->
+                    <div class="mb-6">
+                      <label class="block text-sm font-medium text-gray-700 mb-2">Theme</label>
+                      <div class="grid grid-cols-3 gap-3">
+                        <%= for theme <- ["minimal", "professional", "creative"] do %>
+                          <button 
+                            phx-click={if @show_live_preview, do: "change_theme_live", else: "change_theme"}
+                            phx-value-theme={theme}
+                            class={"p-3 border rounded-lg text-center transition-all #{if @portfolio.theme == theme, do: "border-blue-500 bg-blue-50 text-blue-700", else: "border-gray-200 hover:border-gray-300"}"}>
+                            <div class="font-medium"><%= String.capitalize(theme) %></div>
+                            <div class="text-xs text-gray-500 mt-1">
+                              <%= case theme do %>
+                                <% "minimal" -> %> Clean & Simple
+                                <% "professional" -> %> Business Ready
+                                <% "creative" -> %> Bold & Artistic
+                              <% end %>
+                            </div>
+                          </button>
+                        <% end %>
+                      </div>
+                    </div>
+                    
+                    <!-- Color Customization -->
+                    <div class="mb-6">
+                      <label class="block text-sm font-medium text-gray-700 mb-2">Colors</label>
+                      <div class="grid grid-cols-2 gap-4">
+                        <div>
+                          <label class="block text-xs text-gray-500 mb-1">Primary Color</label>
+                          <div class="flex items-center space-x-2">
+                            <input 
+                              type="color" 
+                              value={Map.get(@customization || %{}, "primary_color", "#374151")}
+                              phx-change={if @show_live_preview, do: "update_color_live", else: "update_color"}
+                              phx-value-field="primary_color"
+                              class="w-12 h-10 border border-gray-300 rounded cursor-pointer">
+                            <input 
+                              type="text" 
+                              value={Map.get(@customization || %{}, "primary_color", "#374151")}
+                              phx-change={if @show_live_preview, do: "update_color_live", else: "update_color"}
+                              phx-value-field="primary_color"
+                              class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md">
+                          </div>
+                        </div>
+                        <div>
+                          <label class="block text-xs text-gray-500 mb-1">Accent Color</label>
+                          <div class="flex items-center space-x-2">
+                            <input 
+                              type="color" 
+                              value={Map.get(@customization || %{}, "accent_color", "#059669")}
+                              phx-change={if @show_live_preview, do: "update_color_live", else: "update_color"}
+                              phx-value-field="accent_color"
+                              class="w-12 h-10 border border-gray-300 rounded cursor-pointer">
+                            <input 
+                              type="text" 
+                              value={Map.get(@customization || %{}, "accent_color", "#059669")}
+                              phx-change={if @show_live_preview, do: "update_color_live", else: "update_color"}
+                              phx-value-field="accent_color"
+                              class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md">
+                          </div>
+                        </div>
+                        <div>
+                          <label class="block text-xs text-gray-500 mb-1">Secondary Color</label>
+                          <div class="flex items-center space-x-2">
+                            <input 
+                              type="color" 
+                              value={Map.get(@customization || %{}, "secondary_color", "#6b7280")}
+                              phx-change={if @show_live_preview, do: "update_color_live", else: "update_color"}
+                              phx-value-field="secondary_color"
+                              class="w-12 h-10 border border-gray-300 rounded cursor-pointer">
+                            <input 
+                              type="text" 
+                              value={Map.get(@customization || %{}, "secondary_color", "#6b7280")}
+                              phx-change={if @show_live_preview, do: "update_color_live", else: "update_color"}
+                              phx-value-field="secondary_color"
+                              class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md">
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- Layout Options -->
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-2">Layout Style</label>
+                      <select 
+                        phx-change={if @show_live_preview, do: "update_layout_live", else: "update_layout"}
+                        phx-value-field="layout"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md">
+                        <option value="minimal" selected={Map.get(@customization || %{}, "layout") == "minimal"}>Minimal - Clean single column</option>
+                        <option value="dashboard" selected={Map.get(@customization || %{}, "layout") == "dashboard"}>Dashboard - Grid layout</option>
+                        <option value="gallery" selected={Map.get(@customization || %{}, "layout") == "gallery"}>Gallery - Masonry style</option>
+                      </select>
+                    </div>
+
+                    <!-- Live Preview Tip -->
+                    <%= if not @show_live_preview do %>
+                      <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div class="flex">
+                          <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                            </svg>
+                          </div>
+                          <div class="ml-3">
+                            <h3 class="text-sm font-medium text-blue-800">Enable Live Preview</h3>
+                            <div class="mt-2 text-sm text-blue-700">
+                              <p>See your design changes in real-time by clicking the "Live Preview" button above!</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+
+                <% :settings -> %>
+                  <div class="p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Settings</h2>
+                    
+                    <!-- Account Information -->
+                    <div class="mb-6">
+                      <h3 class="text-sm font-medium text-gray-900 mb-2">Account</h3>
+                      <p class="text-sm text-gray-600">
+                        Subscription: <span class="font-medium"><%= String.capitalize(Map.get(@account, :subscription_tier, "personal")) %></span>
+                      </p>
+                    </div>
+                    
+                    <!-- Monetization (SAFE ACCESS) -->
+                    <%= if Map.get(@monetization_data, :streaming_enabled, false) || Map.get(@account, :subscription_tier, "personal") in ["creator", "professional", "enterprise"] do %>
+                      <div class="mb-6">
+                        <h3 class="text-sm font-medium text-gray-900 mb-2">Monetization</h3>
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                          <p class="text-sm text-green-700">
+                            Monetization features are enabled for your account.
+                          </p>
+                        </div>
+                      </div>
+                    <% else %>
+                      <div class="mb-6">
+                        <h3 class="text-sm font-medium text-gray-900 mb-2">Monetization</h3>
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                          <p class="text-sm text-yellow-700">
+                            Upgrade to enable monetization features.
+                          </p>
+                        </div>
+                      </div>
+                    <% end %>
+                    
+                    <!-- Streaming (if available) -->
+                    <%= if Map.get(@monetization_data, :streaming_enabled, false) do %>
+                      <div class="mb-6">
+                        <h3 class="text-sm font-medium text-gray-900 mb-2">Live Streaming</h3>
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <p class="text-sm text-blue-700">
+                            Live streaming features are available for your account.
+                          </p>
+                          <%= if Map.get(@monetization_data, :streaming_key) do %>
+                            <div class="mt-2 text-xs text-blue-600">
+                              <strong>Streaming Key:</strong> 
+                              <code class="bg-blue-100 px-1 rounded">****-****-****</code>
+                            </div>
+                          <% end %>
+                        </div>
+                      </div>
+                    <% end %>
+                    
+                    <!-- Danger Zone -->
+                    <div class="border-t border-gray-200 pt-6">
+                      <h3 class="text-sm font-medium text-red-900 mb-2">Danger Zone</h3>
+                      <button 
+                        phx-click="delete_portfolio"
+                        data-confirm="Are you sure you want to delete this portfolio? This action cannot be undone."
+                        class="inline-flex items-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50">
+                        Delete Portfolio
+                      </button>
+                    </div>
+                  </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <!-- Share Modal -->
+    <%= if assigns[:show_share_modal] do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" phx-click="close_share_modal">
+        <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4" phx-click-away="close_share_modal">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900">Share Portfolio</h3>
+            <button type="button" phx-click="close_share_modal" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Portfolio URL</label>
+              <div class="flex">
+                <input type="text" 
+                      value={assigns[:share_url] || ""} 
+                      readonly
+                      class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg bg-gray-50 text-gray-700 text-sm">
+                <button type="button"
+                        onclick="navigator.clipboard.writeText(this.previousElementSibling.value); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 1500)"
+                        class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-r-lg hover:bg-blue-700 transition-colors">
+                  Copy
+                </button>
+              </div>
+            </div>
+            
+            <div class="flex space-x-3">
+              <button type="button"
+                      onclick="window.open('https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(document.querySelector('input[readonly]').value), '_blank')"
+                      class="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                Share on LinkedIn
+              </button>
+              <button type="button"
+                      onclick="window.open('https://twitter.com/intent/tweet?url=' + encodeURIComponent(document.querySelector('input[readonly]').value) + '&text=Check out my portfolio!', '_blank')"
+                      class="flex-1 px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-900 transition-colors">
+                Share on Twitter
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+  <!-- Media Library Modal (if you want to add this later) -->
+  <%= if assigns[:show_media_library] do %>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" phx-click="close_media_library">
+      <div class="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto" phx-click-away="close_media_library">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">Media Library</h3>
+          <button type="button" phx-click="close_media_library" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="text-center py-8">
+          <div class="w-16 h-16 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <h4 class="text-lg font-medium text-gray-900 mb-2">Media Library</h4>
+          <p class="text-gray-600 mb-6">Upload and manage your portfolio media files</p>
+          <button class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+            Upload Files
+          </button>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Resume Import Modal (if you want to add this later) -->
+  <%= if assigns[:show_resume_import_modal] do %>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" phx-click="close_resume_import">
+      <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4" phx-click-away="close_resume_import">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">Import Resume</h3>
+          <button type="button" phx-click="close_resume_import" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="text-center py-8">
+          <div class="w-16 h-16 bg-green-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+            </svg>
+          </div>
+          <h4 class="text-lg font-medium text-gray-900 mb-2">Import Your Resume</h4>
+          <p class="text-gray-600 mb-6">Upload your resume to automatically populate portfolio sections</p>
+          <button class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
+            Choose File
+          </button>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Video Intro Modal (if you want to add this later) -->
+  <%= if assigns[:show_video_intro] do %>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" phx-click="close_video_intro">
+      <div class="bg-white rounded-xl p-6 max-w-2xl w-full mx-4" phx-click-away="close_video_intro">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">Video Introduction</h3>
+          <button type="button" phx-click="close_video_intro" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="text-center py-8">
+          <div class="w-16 h-16 bg-red-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <h4 class="text-lg font-medium text-gray-900 mb-2">Video Introduction</h4>
+          <p class="text-gray-600 mb-6">Record or upload a video introduction for your portfolio</p>
+          <div class="flex space-x-3 justify-center">
+            <button class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
+              Record Video
+            </button>
+            <button class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors">
+              Upload Video
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+</div>
+
+<!-- JavaScript for Live Preview Communication -->
+<script>
+  // Handle iframe communication for live preview
+  window.addEventListener('DOMContentLoaded', function() {
+    const previewFrame = document.getElementById('live-preview-frame');
+    
+    if (previewFrame) {
+      // Listen for messages from the preview iframe
+      window.addEventListener('message', function(event) {
+        if (event.data.type === 'preview-ready') {
+          console.log('Live preview is ready');
+        }
+      });
+      
+      // Send initial data to preview when it loads
+      previewFrame.addEventListener('load', function() {
+        // Preview will automatically subscribe to PubSub updates
+        console.log('Live preview iframe loaded');
+      });
+    }
+  });
+
+  // Enhanced color picker behavior
+  document.addEventListener('DOMContentLoaded', function() {
+    const colorInputs = document.querySelectorAll('input[type="color"]');
+    const textInputs = document.querySelectorAll('input[type="text"]');
+    
+    // Sync color picker with text input
+    colorInputs.forEach(function(colorInput) {
+      const field = colorInput.getAttribute('phx-value-field');
+      const textInput = document.querySelector(`input[type="text"][phx-value-field="${field}"]`);
+      
+      if (textInput) {
+        colorInput.addEventListener('input', function() {
+          textInput.value = this.value;
+        });
+        
+        textInput.addEventListener('input', function() {
+          if (this.value.match(/^#[0-9A-F]{6}$/i)) {
+            colorInput.value = this.value;
+          }
+        });
+      }
+    });
+  });
+
+  window.addEventListener('phx:customization-changed', (e) => {
+    console.log('Customization changed:', e.detail);
+    const iframe = document.getElementById('live-preview-frame');
+    if (iframe) {
+      // Force iframe refresh with new customization
+      const currentSrc = iframe.src.split('?')[0];
+      const newParams = new URLSearchParams();
+      newParams.set('customization', JSON.stringify(e.detail.customization));
+      newParams.set('t', Date.now());
+      iframe.src = currentSrc + '?' + newParams.toString();
+    }
+  });
+
+  window.addEventListener('phx:template-changed', (e) => {
+    console.log('Template changed:', e.detail);
+    const iframe = document.getElementById('live-preview-frame');
+    if (iframe) {
+      const currentSrc = iframe.src.split('?')[0];
+      const newParams = new URLSearchParams();
+      newParams.set('theme', e.detail.template);
+      newParams.set('t', Date.now());
+      iframe.src = currentSrc + '?' + newParams.toString();
+    }
+  });
+</script>
+
+<style>
+  /* Enhanced transition effects for live preview mode */
+  .transition-all {
+    transition: all 0.2s ease-in-out;
+  }
+  
+  /* Live preview indicator animation */
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+  
+  .animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  /* Color input styling */
+  input[type="color"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+  }
+  
+  input[type="color"]::-webkit-color-swatch {
+    border-radius: 4px;
+    border: 1px solid #d1d5db;
+  }
+  
+  input[type="color"]::-moz-color-swatch {
+    border-radius: 4px;
+    border: 1px solid #d1d5db;
+  }
+</style>

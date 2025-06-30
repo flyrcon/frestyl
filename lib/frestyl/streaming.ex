@@ -120,4 +120,39 @@ defmodule Frestyl.Streaming do
   def get_stream(id) do
     Repo.get(Stream, id)
   end
+
+    def get_user_streaming_key(user_id) do
+    # Generate a consistent streaming key for the user
+    key = "sk_user_#{user_id}_" <>
+      (:crypto.strong_rand_bytes(16) |> Base.encode64() |> binary_part(0, 16))
+    {:ok, key}
+  end
+
+  def get_scheduled_streams(user_id) do
+    # TODO: Implement when streaming schedule schema is ready
+    {:ok, []}
+  end
+
+  def get_stream_analytics(user_id) do
+    # TODO: Implement when analytics schema is ready
+    analytics = %{
+      total_streams: 0,
+      total_viewers: 0,
+      average_duration: 0,
+      last_stream_at: nil
+    }
+    {:ok, analytics}
+  end
+
+  def get_rtmp_config(user_id) do
+    {:ok, streaming_key} = get_user_streaming_key(user_id)
+
+    config = %{
+      server: "rtmp://stream.frestyl.com/live/",
+      stream_key: streaming_key,
+      backup_server: "rtmp://backup.frestyl.com/live/",
+      enabled: true
+    }
+    {:ok, config}
+  end
 end

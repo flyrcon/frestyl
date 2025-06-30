@@ -90,4 +90,20 @@ defmodule FrestylWeb.Telemetry do
       # {FrestylWeb, :count_users, []}
     ]
   end
+
+    def track_portfolio_editor_load(portfolio_id, load_time_ms) do
+    :telemetry.execute(
+      [:frestyl, :portfolio_editor, :load],
+      %{duration: load_time_ms},
+      %{portfolio_id: portfolio_id}
+    )
+  end
+
+  def track_integration_usage(integration_type, portfolio_id) do
+    :telemetry.execute(
+      [:frestyl, :integration, :used],
+      %{count: 1},
+      %{type: integration_type, portfolio_id: portfolio_id}
+    )
+  end
 end

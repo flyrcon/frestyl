@@ -1,0 +1,163 @@
+<!-- lib/frestyl_web/live/portfolio_live/show.html.heex -->
+
+<div class="min-h-screen bg-gray-50">
+  <!-- Header -->
+  <div class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center py-4">
+        <!-- Portfolio Title -->
+        <div class="flex items-center space-x-4">
+          <.link navigate="/portfolios" class="text-gray-500 hover:text-gray-700">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </.link>
+          <div>
+            <h1 class="text-xl font-semibold text-gray-900">
+              <%= @portfolio.title %>
+            </h1>
+            <p class="text-sm text-gray-500">
+              by <%= if Ecto.assoc_loaded?(@portfolio.user) do %>
+                <%= @portfolio.user.name || @portfolio.user.username || "Unknown" %>
+              <% else %>
+                Unknown
+              <% end %>
+            </p>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center space-x-3">
+          <%= if @can_export do %>
+            <button 
+              phx-click="toggle_export_panel"
+              class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              Export
+            </button>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Portfolio Header -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+      <h2 class="text-2xl font-bold text-gray-900 mb-2"><%= @portfolio.title %></h2>
+      <%= if @portfolio.description do %>
+        <p class="text-gray-600 mb-4"><%= @portfolio.description %></p>
+      <% end %>
+      
+      <div class="flex items-center space-x-4 text-sm text-gray-500">
+        <span>
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+          </svg>
+          <%= String.capitalize(to_string(@portfolio.visibility)) %>
+        </span>
+        <span>
+          <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+          </svg>
+          Theme: <%= String.capitalize(@portfolio.theme || "default") %>
+        </span>
+      </div>
+    </div>
+
+    <!-- Portfolio Sections -->
+    <div class="space-y-6">
+      <h3 class="text-lg font-semibold text-gray-900">Portfolio Sections (<%= length(@sections) %>)</h3>
+      
+      <%= if length(@sections) > 0 do %>
+        <%= for section <- @sections do %>
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div class="flex justify-between items-start mb-4">
+              <div>
+                <h4 class="text-xl font-semibold text-gray-900"><%= section.title || "Untitled Section" %></h4>
+                <p class="text-sm text-gray-500">Type: <%= String.capitalize(to_string(section.section_type)) %></p>
+              </div>
+              <div class="flex items-center space-x-2">
+                <%= if Map.get(section, :visible, true) do %>
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Visible
+                  </span>
+                <% else %>
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    Hidden
+                  </span>
+                <% end %>
+              </div>
+            </div>
+            
+            <!-- Section Content -->
+            <div class="prose prose-sm max-w-none">
+              <%= render_section_content_safe(section) %>
+            </div>
+          </div>
+        <% end %>
+      <% else %>
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+          <h3 class="text-lg font-medium text-gray-900 mb-2">No sections yet</h3>
+          <p class="text-gray-500">This portfolio doesn't have any sections added yet.</p>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <!-- Export Panel (if shown) -->
+  <%= if assigns[:show_export_panel] do %>
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Export Portfolio</h3>
+            <button 
+              phx-click="toggle_export_panel"
+              class="text-gray-400 hover:text-gray-600">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="space-y-4">
+            <button 
+              phx-click="export_portfolio" 
+              phx-value-format="pdf"
+              class="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              Export as PDF
+            </button>
+            
+            <button 
+              phx-click="export_portfolio" 
+              phx-value-format="html"
+              class="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+              </svg>
+              Export as HTML
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+</div>
+
+<script>
+  // Basic interactions
+  document.addEventListener('DOMContentLoaded', function() {
+    console.log('Portfolio show page loaded');
+  });
+</script>

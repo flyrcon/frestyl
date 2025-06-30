@@ -1,19 +1,462 @@
-# lib/frestyl/portfolios.ex - FIXED VERSION
-
 defmodule Frestyl.Portfolios do
   @moduledoc """
-  The Portfolios context - FIXED to properly handle section loading and display.
+  Enhanced Portfolios context with social integration and four-tier privacy system.
+  Seamlessly integrated with existing functionality.
   """
 
   import Ecto.Query, warn: false
+  require Logger  # 🔥 ADD THIS LINE
+
   alias Frestyl.Repo
-  alias Frestyl.Portfolios.{CustomDomain, Portfolio, PortfolioSection, PortfolioMedia,
-                          PortfolioShare, PortfolioVisit, PortfolioService, StreamingConfig}
+  alias Frestyl.Portfolios.{
+    CustomDomain, Portfolio, PortfolioSection, PortfolioMedia,
+    PortfolioShare, PortfolioVisit, PortfolioService, StreamingConfig
+  }
+
+  # 🔥 ADD THESE CONDITIONAL ALIASES - They won't break if models don't exist yet
   alias Frestyl.Accounts.User
   alias Frestyl.Streaming.StreamingSession
 
+  # 🔥 CONDITIONAL: Only alias social models if they exist
+  if Code.ensure_loaded?(Frestyl.Portfolios.SocialIntegration) do
+    alias Frestyl.Portfolios.{
+      SocialIntegration, SocialPost, AccessRequest, SharingAnalytic
+    }
+    alias Frestyl.Portfolios.Social
+  end
 
-  # 🔥 FIXED: Get portfolio by slug with complete section data for public view
+    # ============================================================================
+  # 🔥 NEW: ENHANCED PORTFOLIO ACCESS CONTROL
+  # ============================================================================
+
+  def get_portfolio_with_access_check(identifier, user \\ nil, access_token \\ nil) do
+    cond do
+      is_slug?(identifier) ->
+        get_portfolio_by_slug_with_privacy_check(identifier, user, access_token)
+      is_share_token?(identifier) ->
+        get_portfolio_by_share_token_with_privacy_check(identifier, user)
+      true ->
+        {:error, :invalid_identifier}
+    end
+  end
+
+  def get_portfolio(portfolio_id) do
+    try do
+      get_portfolio!(portfolio_id)
+    rescue
+      Ecto.NoResultsError -> nil
+    end
+  end
+
+  defp is_slug?(identifier) do
+    String.length(identifier) < 64 and String.match?(identifier, ~r/^[a-z0-9-]+$/)
+  end
+
+  defp is_share_token?(identifier) do
+    String.length(identifier) >= 64
+  end
+
+  def get_portfolio_by_slug_with_privacy_check(slug, user, access_token) do
+    query = from p in Portfolio,
+      where: p.slug == ^slug,
+      preload: [
+        :user,
+        portfolio_sections: [portfolio_media: []],
+        social_integrations: [:social_posts],
+        access_requests: []
+      ]
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      portfolio -> check_portfolio_access(portfolio, user, access_token)
+    end
+  end
+
+  def get_portfolio_by_share_token_with_privacy_check(token, user) do
+    query = from s in PortfolioShare,
+      where: s.token == ^token,
+      join: p in Portfolio, on: p.id == s.portfolio_id,
+      preload: [
+        portfolio: [
+          :user,
+          portfolio_sections: [portfolio_media: []],
+          social_integrations: [:social_posts]
+        ]
+      ]
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      share -> check_share_access(share.portfolio, share, user)
+    end
+  end
+
+  def list_user_portfolios_with_sections(user_id) do
+    Portfolio
+    |> where([p], p.user_id == ^user_id)
+    |> preload([:sections])
+    |> order_by([p], desc: p.updated_at)
+    |> Repo.all()
+  end
+
+  defp check_portfolio_access(portfolio, user, access_token) do
+    case portfolio.visibility do
+      :public ->
+        {:ok, portfolio, :public_access}
+
+      :link_only ->
+        {:ok, portfolio, :link_access}
+
+      :request_only ->
+        check_request_access(portfolio, user, access_token)
+
+      :private ->
+        check_private_access(portfolio, user)
+    end
+  end
+
+  defp check_request_access(portfolio, user, access_token) do
+    cond do
+      is_portfolio_owner?(portfolio, user) ->
+        {:ok, portfolio, :owner_access}
+
+      valid_access_token?(portfolio.id, access_token) ->
+        {:ok, portfolio, :token_access}
+
+      true ->
+        {:error, :access_request_required, portfolio}
+    end
+  end
+
+  defp check_private_access(portfolio, user) do
+    cond do
+      is_portfolio_owner?(portfolio, user) ->
+        {:ok, portfolio, :owner_access}
+
+      is_collaborator?(portfolio, user) ->
+        {:ok, portfolio, :collaborator_access}
+
+      true ->
+        {:error, :access_denied}
+    end
+  end
+
+  defp check_share_access(portfolio, share, user) do
+    cond do
+      share_expired?(share) ->
+        {:error, :share_expired}
+
+      share.approved or is_portfolio_owner?(portfolio, user) ->
+        increment_share_view_count(share.token)
+        {:ok, portfolio, :share_access}
+
+      true ->
+        {:error, :share_not_approved}
+    end
+  end
+
+  defp is_portfolio_owner?(portfolio, user) do
+    user && portfolio.user_id == user.id
+  end
+
+  defp is_collaborator?(portfolio, user) do
+    user && portfolio.collaboration_settings &&
+    user.id in Map.get(portfolio.collaboration_settings, "collaborator_ids", [])
+  end
+
+  defp valid_access_token?(portfolio_id, access_token) do
+    case access_token do
+      nil -> false
+      token ->
+        case Social.get_access_request_by_token(token) do
+          nil -> false
+          request -> request.portfolio_id == portfolio_id
+        end
+    end
+  end
+
+  defp share_expired?(share) do
+    share.expires_at && DateTime.compare(DateTime.utc_now(), share.expires_at) == :gt
+  end
+
+  # ============================================================================
+  # 🔥 NEW: SOCIAL SECTION CREATION & MANAGEMENT
+  # ============================================================================
+
+  def create_social_section(portfolio_id, user_id) do
+    case get_social_section(portfolio_id) do
+      nil ->
+        create_new_social_section(portfolio_id)
+      existing_section ->
+        {:ok, existing_section}
+    end
+  end
+
+  defp get_social_section(portfolio_id) do
+    PortfolioSection
+    |> where([s], s.portfolio_id == ^portfolio_id and s.section_type == "social")
+    |> Repo.one()
+  end
+
+  defp create_new_social_section(portfolio_id) do
+    max_position = get_max_section_position(portfolio_id)
+
+    attrs = %{
+      portfolio_id: portfolio_id,
+      title: "Social & Professional Profiles",
+      section_type: "social",
+      position: max_position + 1,
+      content: %{
+        "layout" => "unified_cards",
+        "show_follower_counts" => true,
+        "show_recent_posts" => true,
+        "auto_refresh" => true,
+        "max_posts_per_platform" => 3,
+        "display_style" => "modern_cards"
+      },
+      visible: true
+    }
+
+    create_section(attrs)
+  end
+
+  def update_social_section_content(section_id, integrations_data) do
+    section = get_section!(section_id)
+
+    updated_content = Map.merge(section.content || %{}, %{
+      "platforms" => integrations_data,
+      "last_updated" => DateTime.utc_now() |> DateTime.to_iso8601()
+    })
+
+    update_section(section, %{content: updated_content})
+  end
+
+  def refresh_social_section_data(portfolio_id) do
+    with social_section when not is_nil(social_section) <- get_social_section(portfolio_id),
+         integrations <- Social.list_portfolio_social_integrations(portfolio_id) do
+
+      Enum.each(integrations, &Social.sync_integration_posts/1)
+
+      integrations_data = Enum.map(integrations, fn integration ->
+        recent_posts = Social.list_social_posts(integration.id, integration.max_posts)
+
+        %{
+          platform: integration.platform,
+          username: integration.username,
+          display_name: integration.display_name,
+          profile_url: integration.profile_url,
+          avatar_url: integration.avatar_url,
+          follower_count: integration.follower_count,
+          bio: integration.bio,
+          verified: integration.verified,
+          recent_posts: Enum.map(recent_posts, &format_post_for_display/1),
+          last_sync_at: integration.last_sync_at,
+          public_visibility: integration.public_visibility
+        }
+      end)
+
+      update_social_section_content(social_section.id, integrations_data)
+    else
+      nil -> {:error, :social_section_not_found}
+      error -> error
+    end
+  end
+
+  defp format_post_for_display(post) do
+    %{
+      id: post.id,
+      content: truncate_content(post.content, 150),
+      media_urls: post.media_urls || [],
+      post_url: post.post_url,
+      posted_at: post.posted_at,
+      post_type: post.post_type,
+      likes_count: post.likes_count,
+      comments_count: post.comments_count,
+      shares_count: post.shares_count,
+      hashtags: post.hashtags || []
+    }
+  end
+
+  defp truncate_content(content, max_length) when is_binary(content) do
+    if String.length(content) > max_length do
+      String.slice(content, 0, max_length) <> "..."
+    else
+      content
+    end
+  end
+  defp truncate_content(content, _), do: content || ""
+
+  # ============================================================================
+  # 🔥 NEW: PRIVACY SETTINGS MANAGEMENT
+  # ============================================================================
+
+  def update_portfolio_privacy_settings(portfolio_id, privacy_settings, user_id) do
+    portfolio = get_portfolio!(portfolio_id)
+
+    if portfolio.user_id == user_id do
+      validated_settings = validate_and_merge_privacy_settings(portfolio.privacy_settings, privacy_settings)
+      update_portfolio(portfolio, %{privacy_settings: validated_settings})
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  defp validate_and_merge_privacy_settings(current_settings, new_settings) do
+    default_settings = %{
+      "allow_search_engines" => false,
+      "show_in_discovery" => false,
+      "require_login_to_view" => false,
+      "watermark_images" => false,
+      "disable_right_click" => false,
+      "track_visitor_analytics" => true,
+      "allow_social_sharing" => true,
+      "show_contact_info" => true,
+      "allow_downloads" => false
+    }
+
+    current_settings
+    |> Map.merge(default_settings, fn _k, v1, v2 -> v1 || v2 end)
+    |> Map.merge(new_settings)
+    |> Enum.filter(fn {k, _v} -> k in Map.keys(default_settings) end)
+    |> Enum.into(%{})
+  end
+
+  def update_portfolio_visibility(portfolio_id, visibility, user_id) do
+    portfolio = get_portfolio!(portfolio_id)
+
+    if portfolio.user_id == user_id do
+      case visibility do
+        vis when vis in [:public, :link_only, :request_only, :private] ->
+          update_portfolio(portfolio, %{visibility: visibility})
+        _ ->
+          {:error, :invalid_visibility}
+      end
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  def get_portfolio_privacy_summary(portfolio) do
+    settings = portfolio.privacy_settings || %{}
+
+    %{
+      visibility: portfolio.visibility,
+      searchable: Map.get(settings, "allow_search_engines", false),
+      discoverable: Map.get(settings, "show_in_discovery", false),
+      requires_login: Map.get(settings, "require_login_to_view", false),
+      social_sharing_enabled: Map.get(settings, "allow_social_sharing", true),
+      contact_info_visible: Map.get(settings, "show_contact_info", true),
+      downloads_allowed: Map.get(settings, "allow_downloads", false),
+      analytics_enabled: Map.get(settings, "track_visitor_analytics", true)
+    }
+  end
+
+  # ============================================================================
+  # 🔥 NEW: SHARING & ANALYTICS FUNCTIONS
+  # ============================================================================
+
+  def create_portfolio_share_with_analytics(portfolio_id, share_params, user_id) do
+    portfolio = get_portfolio!(portfolio_id)
+
+    if portfolio.user_id == user_id do
+      case create_share(Map.put(share_params, "portfolio_id", portfolio_id)) do
+        {:ok, share} ->
+          Social.track_event(portfolio_id, :portfolio_shared, %{
+            platform: share_params["platform"] || "direct_link",
+            user_id: user_id,
+            share_id: share.id
+          })
+          {:ok, share}
+        error ->
+          error
+      end
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  def track_portfolio_visit_with_analytics(portfolio, visitor_data) do
+    visit_attrs = %{
+      portfolio_id: portfolio.id,
+      ip_address: visitor_data[:ip_address],
+      user_agent: visitor_data[:user_agent],
+      referrer: visitor_data[:referrer],
+      user_id: visitor_data[:user_id]
+    }
+
+    create_visit(visit_attrs)
+
+    privacy_settings = portfolio.privacy_settings || %{}
+    if Map.get(privacy_settings, "track_visitor_analytics", true) do
+      Social.track_event(portfolio.id, :portfolio_viewed, %{
+        ip_address: visitor_data[:ip_address],
+        user_agent: visitor_data[:user_agent],
+        referrer_url: visitor_data[:referrer],
+        session_id: visitor_data[:session_id],
+        visitor_id: visitor_data[:visitor_id],
+        device_type: visitor_data[:device_type],
+        browser: visitor_data[:browser],
+        country: visitor_data[:country],
+        city: visitor_data[:city]
+      })
+    end
+  end
+
+  def track_social_share_click(portfolio_id, platform, visitor_data) do
+    Social.track_event(portfolio_id, :social_share_clicked, Map.merge(visitor_data, %{
+      platform: platform
+    }))
+  end
+
+  def track_contact_info_view(portfolio_id, visitor_data) do
+    Social.track_event(portfolio_id, :contact_info_viewed, visitor_data)
+  end
+
+  def track_section_view(portfolio_id, section_id, visitor_data) do
+    Social.track_event(portfolio_id, :section_viewed, Map.merge(visitor_data, %{
+      section_id: section_id
+    }))
+  end
+
+  def get_portfolio_analytics_dashboard(portfolio_id, user_id, date_range \\ 30) do
+    portfolio = get_portfolio!(portfolio_id)
+
+    if portfolio.user_id == user_id do
+      analytics = Social.get_portfolio_analytics(portfolio_id, date_range)
+
+      portfolio_metrics = %{
+        total_sections: count_portfolio_sections(portfolio_id),
+        social_integrations: count_social_integrations(portfolio_id),
+        active_shares: count_active_shares(portfolio_id),
+        pending_access_requests: count_pending_access_requests(portfolio_id)
+      }
+
+      Map.merge(analytics, %{portfolio_metrics: portfolio_metrics})
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  defp count_social_integrations(portfolio_id) do
+    SocialIntegration
+    |> where([s], s.portfolio_id == ^portfolio_id and s.sync_status == :active)
+    |> select([s], count(s.id))
+    |> Repo.one()
+  end
+
+  defp count_active_shares(portfolio_id) do
+    PortfolioShare
+    |> where([s], s.portfolio_id == ^portfolio_id and (is_nil(s.expires_at) or s.expires_at > ^DateTime.utc_now()))
+    |> select([s], count(s.id))
+    |> Repo.one()
+  end
+
+  defp count_pending_access_requests(portfolio_id) do
+    AccessRequest
+    |> where([r], r.portfolio_id == ^portfolio_id and r.status == :pending)
+    |> select([r], count(r.id))
+    |> Repo.one()
+  end
+
   def get_portfolio_by_slug_with_sections_simple(slug) do
     IO.puts("🔥 LOADING PORTFOLIO: #{slug}")
 
@@ -55,7 +498,6 @@ defmodule Frestyl.Portfolios do
     end
   end
 
-  # 🔥 FIXED: Get portfolio by share token with complete section data
   def get_portfolio_by_share_token_simple(token) do
     IO.puts("🔥 LOADING SHARED PORTFOLIO: #{token}")
 
@@ -65,7 +507,9 @@ defmodule Frestyl.Portfolios do
       preload: [
         portfolio: [
           :user,
-          portfolio_sections: [portfolio_media: []]
+          portfolio_sections: [portfolio_media: []],
+          # 🔥 NEW: Include social integrations in shares
+          social_integrations: [:social_posts]
         ]
       ]
 
@@ -79,7 +523,6 @@ defmodule Frestyl.Portfolios do
         IO.puts("🔥 SHARED PORTFOLIO FOUND: #{portfolio.title}")
         IO.puts("🔥 RAW SECTIONS COUNT: #{length(portfolio.portfolio_sections)}")
 
-        # 🔥 CRITICAL: Transform to expected structure
         normalized_portfolio = %{
           id: portfolio.id,
           title: portfolio.title,
@@ -88,11 +531,16 @@ defmodule Frestyl.Portfolios do
           theme: portfolio.theme,
           customization: portfolio.customization,
           visibility: portfolio.visibility,
+          # 🔥 NEW: Include privacy and social settings
+          privacy_settings: portfolio.privacy_settings,
+          social_integration: portfolio.social_integration,
+          contact_info: portfolio.contact_info,
           inserted_at: portfolio.inserted_at,
           updated_at: portfolio.updated_at,
           user: portfolio.user,
-          # 🔥 KEY FIX: Map portfolio_sections to sections with complete data
-          sections: transform_sections_for_display(portfolio.portfolio_sections)
+          sections: transform_sections_for_display(portfolio.portfolio_sections),
+          # 🔥 NEW: Include transformed social integrations
+          social_integrations: transform_social_integrations(portfolio.social_integrations || [])
         }
 
         IO.puts("🔥 SHARED NORMALIZED SECTIONS COUNT: #{length(normalized_portfolio.sections)}")
@@ -112,13 +560,15 @@ defmodule Frestyl.Portfolios do
   def get_portfolio_with_account(portfolio_id) do
     query = from p in Portfolio,
       where: p.id == ^portfolio_id,
-      join: a in Accounts.Account, on: a.id == p.account_id,
-      preload: [account: a],
-      select: %{portfolio: p, account: a}
+      preload: [:user]
 
     case Repo.one(query) do
       nil -> nil
-      result -> result
+      portfolio ->
+        accounts = Frestyl.Accounts.list_user_accounts(portfolio.user.id)
+        account = List.first(accounts) || %{subscription_tier: "personal"}
+
+        %{portfolio: portfolio, account: account}
     end
   end
 
@@ -730,11 +1180,17 @@ defmodule Frestyl.Portfolios do
       weekly_visits = get_weekly_visits(portfolio_id)
       share_stats = get_share_stats(portfolio_id)
 
+      # 🔥 NEW: Include social integration data
+      social_stats = get_social_integration_stats(portfolio_id)
+
       %{
         views: total_visits,
         weekly_visits: weekly_visits,
         shares: share_stats.total_shares,
         active_shares: share_stats.active_shares,
+        # 🔥 NEW: Social engagement metrics
+        social_platforms: social_stats.platform_count,
+        social_engagement: social_stats.total_engagement,
         last_updated: portfolio.updated_at,
         created_at: portfolio.inserted_at
       }
@@ -745,9 +1201,38 @@ defmodule Frestyl.Portfolios do
           weekly_visits: 0,
           shares: 0,
           active_shares: 0,
+          social_platforms: 0,
+          social_engagement: 0,
           last_updated: nil,
           created_at: nil
         }
+    end
+  end
+
+  defp get_social_integration_stats(portfolio_id) do
+    try do
+      integrations = SocialIntegration
+      |> where([s], s.portfolio_id == ^portfolio_id and s.sync_status == :active)
+      |> Repo.all()
+
+      total_engagement = Enum.reduce(integrations, 0, fn integration, acc ->
+        posts = SocialPost
+        |> where([p], p.social_integration_id == ^integration.id)
+        |> Repo.all()
+
+        post_engagement = Enum.reduce(posts, 0, fn post, post_acc ->
+          post_acc + (post.likes_count || 0) + (post.comments_count || 0) + (post.shares_count || 0)
+        end)
+
+        acc + post_engagement
+      end)
+
+      %{
+        platform_count: length(integrations),
+        total_engagement: total_engagement
+      }
+    rescue
+      _ -> %{platform_count: 0, total_engagement: 0}
     end
   end
 
@@ -764,6 +1249,74 @@ defmodule Frestyl.Portfolios do
     rescue
       _ -> %{total_shares: 0, active_shares: 0}
     end
+  end
+
+  defp get_max_section_position(portfolio_id) do
+    PortfolioSection
+    |> where([s], s.portfolio_id == ^portfolio_id)
+    |> select([s], max(s.position))
+    |> Repo.one() || 0
+  end
+
+  defp transform_social_integrations(integrations) when is_list(integrations) do
+    Enum.map(integrations, fn integration ->
+      recent_posts = Enum.take(integration.social_posts || [], integration.max_posts || 3)
+
+      %{
+        id: integration.id,
+        platform: integration.platform,
+        username: integration.username,
+        display_name: integration.display_name,
+        profile_url: integration.profile_url,
+        avatar_url: integration.avatar_url,
+        follower_count: integration.follower_count,
+        bio: integration.bio,
+        verified: integration.verified,
+        show_recent_posts: integration.show_recent_posts,
+        show_follower_count: integration.show_follower_count,
+        show_bio: integration.show_bio,
+        public_visibility: integration.public_visibility,
+        last_sync_at: integration.last_sync_at,
+        sync_status: integration.sync_status,
+        recent_posts: Enum.map(recent_posts, &format_post_for_display/1)
+      }
+    end)
+  end
+  defp transform_social_integrations(_), do: []
+
+  # 🔥 MISSING: Format social posts for display
+  defp format_post_for_display(post) do
+    %{
+      id: post.id,
+      content: truncate_content(post.content, 150),
+      media_urls: post.media_urls || [],
+      post_url: post.post_url,
+      posted_at: post.posted_at,
+      post_type: post.post_type,
+      likes_count: post.likes_count,
+      comments_count: post.comments_count,
+      shares_count: post.shares_count,
+      hashtags: post.hashtags || []
+    }
+  end
+
+  # 🔥 MISSING: Truncate content helper
+  defp truncate_content(content, max_length) when is_binary(content) do
+    if String.length(content) > max_length do
+      String.slice(content, 0, max_length) <> "..."
+    else
+      content
+    end
+  end
+  defp truncate_content(content, _), do: content || ""
+
+  # 🔥 MISSING: Check if any Social models are available
+  # Add this check at the top of functions that use Social models
+  defp social_models_available? do
+    Code.ensure_loaded?(Frestyl.Portfolios.SocialIntegration) and
+    Code.ensure_loaded?(Frestyl.Portfolios.SocialPost) and
+    Code.ensure_loaded?(Frestyl.Portfolios.AccessRequest) and
+    Code.ensure_loaded?(Frestyl.Portfolios.SharingAnalytic)
   end
 
   # Utility functions for portfolio management

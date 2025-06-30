@@ -26,6 +26,169 @@ const WorldBibleSearch = window.WorldBibleSearch || {};
 const StoryAutoSave = window.StoryAutoSave || {};
 const CollaborativeCursors = window.CollaborativeCursors || {};
 
+const PortfolioEditorHooks = {
+  // ============================================================================
+  // SORTABLE SECTIONS - DRAG & DROP FUNCTIONALITY
+  // ============================================================================
+  SortableSections: {
+    mounted() {
+      console.log("📝 SortableSections hook mounted");
+      this.initializeDragAndDrop();
+    },
+
+    updated() {
+      // Reinitialize when sections are added/removed
+      this.initializeDragAndDrop();
+    },
+
+    initializeDragAndDrop() {
+      const sections = this.el.querySelectorAll('.border.border-gray-200.rounded-lg');
+      
+      sections.forEach((section, index) => {
+        const dragHandle = section.querySelector('.drag-handle');
+        if (dragHandle) {
+          section.draggable = true;
+          section.dataset.index = index;
+          
+          section.addEventListener('dragstart', this.handleDragStart.bind(this));
+          section.addEventListener('dragover', this.handleDragOver.bind(this));
+          section.addEventListener('drop', this.handleDrop.bind(this));
+          section.addEventListener('dragend', this.handleDragEnd.bind(this));
+        }
+      });
+    },
+
+    handleDragStart(e) {
+      this.draggedElement = e.target.closest('.border.border-gray-200.rounded-lg');
+      this.draggedIndex = parseInt(this.draggedElement.dataset.index);
+      this.draggedElement.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+    },
+
+    handleDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      
+      const dropTarget = e.target.closest('.border.border-gray-200.rounded-lg');
+      if (dropTarget && dropTarget !== this.draggedElement) {
+        dropTarget.style.borderColor = '#3b82f6';
+        dropTarget.style.backgroundColor = '#eff6ff';
+      }
+    },
+
+    handleDrop(e) {
+      e.preventDefault();
+      const dropTarget = e.target.closest('.border.border-gray-200.rounded-lg');
+      
+      if (dropTarget && dropTarget !== this.draggedElement) {
+        const dropIndex = parseInt(dropTarget.dataset.index);
+        
+        if (this.draggedIndex !== dropIndex) {
+          this.pushEvent("reorder_sections", {
+            old_index: this.draggedIndex,
+            new_index: dropIndex
+          });
+        }
+      }
+      
+      // Reset styles
+      const sections = this.el.querySelectorAll('.border.border-gray-200.rounded-lg');
+      sections.forEach(section => {
+        section.style.borderColor = '';
+        section.style.backgroundColor = '';
+      });
+    },
+
+    handleDragEnd(e) {
+      if (this.draggedElement) {
+        this.draggedElement.style.opacity = '';
+      }
+      
+      // Reset all section styles
+      const sections = this.el.querySelectorAll('.border.border-gray-200.rounded-lg');
+      sections.forEach(section => {
+        section.style.borderColor = '';
+        section.style.backgroundColor = '';
+      });
+    }
+  },
+
+  // ============================================================================
+  // COPY TO CLIPBOARD FUNCTIONALITY
+  // ============================================================================
+  CopyToClipboard: {
+    mounted() {
+      this.el.addEventListener('click', () => {
+        const textToCopy = this.el.dataset.copy || this.el.previousElementSibling.value;
+        
+        navigator.clipboard.writeText(textToCopy).then(() => {
+          this.showCopySuccess();
+        }).catch(() => {
+          this.fallbackCopy(textToCopy);
+        });
+      });
+    },
+
+    showCopySuccess() {
+      const originalText = this.el.textContent;
+      this.el.textContent = 'Copied!';
+      this.el.classList.add('bg-green-600');
+      
+      setTimeout(() => {
+        this.el.textContent = originalText;
+        this.el.classList.remove('bg-green-600');
+      }, 1500);
+    },
+
+    fallbackCopy(text) {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      this.showCopySuccess();
+    }
+  }
+};
+
+// ============================================================================
+// GLOBAL PORTFOLIO EDITOR UTILITIES
+// ============================================================================
+window.PortfolioEditor = {
+  init() {
+    this.setupGlobalKeyboardShortcuts();
+    this.setupClickOutsideHandlers();
+  },
+
+  setupGlobalKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      // Only trigger if not in an input field
+      if (e.target.matches('input, textarea, select')) return;
+      
+      // Ctrl/Cmd + S to save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        const saveButton = document.querySelector('[phx-click="save_portfolio"]');
+        if (saveButton) saveButton.click();
+      }
+    });
+  },
+
+  setupClickOutsideHandlers() {
+    // Handle dropdown closing
+    document.addEventListener('click', (e) => {
+      // Close add section dropdown if clicking outside
+      if (!e.target.closest('[phx-click="toggle_add_section_dropdown"]') && 
+          !e.target.closest('.absolute.right-0.mt-2')) {
+        // Trigger close event if dropdown is open
+        const closeButton = document.querySelector('[phx-click="close_add_section_dropdown"]');
+        if (closeButton) closeButton.click();
+      }
+    });
+  }
+};
+
 // Portfolio Hub Hooks
 export const PortfolioHub = {
   mounted() {
@@ -151,6 +314,7 @@ let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("
 let Hooks = {
   // Video Recording
   VideoCapture,
+  ...PortfolioEditorHooks,
 
   // Drag & Drop Hooks - FIXED: No duplicates
   SortableSections: SortableHooks.SectionSortable,
@@ -1071,6 +1235,8 @@ let liveSocket = new LiveSocket("/live", Socket, {
   }
 });
 
+export { PortfolioEditorHooks };
+
 // Enhanced progress bar
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"});
 
@@ -1244,6 +1410,9 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   });
+
+  window.PortfolioEditor.init();
+  console.log('🚀 Portfolio Editor initialized successfully');
   
   // Auto-save indicators
   let saveTimeout;

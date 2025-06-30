@@ -1,4 +1,5 @@
-# lib/frestyl/portfolios/portfolio.ex
+# lib/frestyl/portfolios/portfolio.ex - Enhanced with Four-Tier Privacy System
+
 defmodule Frestyl.Portfolios.Portfolio do
   use Ecto.Schema
   import Ecto.Changeset
@@ -7,7 +8,63 @@ defmodule Frestyl.Portfolios.Portfolio do
     field :title, :string
     field :slug, :string
     field :description, :string
-    field :visibility, Ecto.Enum, values: [:public, :private, :link_only], default: :link_only
+
+    # 🔥 ENHANCED: Four-tier privacy system
+    field :visibility, Ecto.Enum, values: [
+      :public,        # Discoverable and accessible to everyone
+      :link_only,     # Accessible via direct URL only
+      :request_only,  # Requires approval to view
+      :private        # Owner and invited collaborators only
+    ], default: :link_only
+
+    # 🔥 NEW: Privacy controls
+    field :privacy_settings, :map, default: %{
+      "allow_search_engines" => false,
+      "show_in_discovery" => false,
+      "require_login_to_view" => false,
+      "watermark_images" => false,
+      "disable_right_click" => false,
+      "track_visitor_analytics" => true,
+      "allow_social_sharing" => true,
+      "show_contact_info" => true,
+      "allow_downloads" => false
+    }
+
+    # 🔥 NEW: Social integration settings
+    field :social_integration, :map, default: %{
+      "enabled_platforms" => [],
+      "auto_sync" => false,
+      "last_sync_at" => nil,
+      "sync_frequency" => "daily", # daily, weekly, manual
+      "show_follower_counts" => true,
+      "show_recent_posts" => true,
+      "max_posts_per_platform" => 3
+    }
+
+    # 🔥 NEW: Contact information with privacy controls
+    field :contact_info, :map, default: %{
+      "email" => nil,
+      "phone" => nil,
+      "website" => nil,
+      "location" => nil,
+      "linkedin" => nil,
+      "twitter" => nil,
+      "instagram" => nil,
+      "github" => nil,
+      "show_email" => false,
+      "show_phone" => false,
+      "show_location" => false
+    }
+
+    # 🔥 NEW: Request access settings
+    field :access_request_settings, :map, default: %{
+      "enabled" => true,
+      "require_message" => true,
+      "auto_approve_connections" => false,
+      "notification_email" => nil,
+      "custom_message" => "Please provide a brief introduction and reason for accessing this portfolio."
+    }
+
     field :expires_at, :utc_datetime
     field :approval_required, :boolean, default: false
     field :theme, :string, default: "default"
@@ -28,7 +85,29 @@ defmodule Frestyl.Portfolios.Portfolio do
       "fixed_navigation" => true,
       "dark_mode_support" => false
     }
-    # NEW: Story-specific fields
+
+    field :audio_settings, :map, default: %{
+      "background_music_enabled" => false,
+      "background_music_url" => nil,
+      "voice_intro_enabled" => false,
+      "voice_intro_url" => nil,
+      "auto_play_policy" => "hover"
+    }
+
+    field :monetization_settings, :map, default: %{
+      "enabled" => false,
+      "services" => [],
+      "pricing_tiers" => [],
+      "booking_enabled" => false
+    }
+
+    field :brand_enforcement, :map, default: %{
+      "enforce_brand" => false,
+      "locked_elements" => [],
+      "custom_brand_config" => %{}
+    }
+
+    # Story-specific fields
     field :story_type, Ecto.Enum, values: [
       :personal_narrative, :professional_showcase, :brand_story,
       :case_study, :creative_portfolio, :educational_content
@@ -53,190 +132,151 @@ defmodule Frestyl.Portfolios.Portfolio do
     has_many :portfolio_media, Frestyl.Portfolios.PortfolioMedia
     has_many :portfolio_visits, Frestyl.Portfolios.PortfolioVisit
     has_many :portfolio_shares, Frestyl.Portfolios.PortfolioShare
+    has_many :access_requests, Frestyl.Portfolios.AccessRequest
+    has_many :social_integrations, Frestyl.Portfolios.SocialIntegration
+    has_many :sharing_analytics, Frestyl.Portfolios.SharingAnalytic
     has_many :story_chapters, Frestyl.Stories.Chapter
     has_many :services, Frestyl.Services.Service
 
     timestamps()
   end
 
-  def story_changeset(portfolio, attrs) do
-    portfolio
-    |> cast(attrs, [
-      :title, :description, :story_type, :narrative_structure,
-      :target_audience, :story_tags, :collaboration_settings
-    ])
-    |> validate_required([:title, :account_id])
-    |> validate_length(:title, min: 1, max: 255)
-    |> calculate_estimated_read_time()
-  end
-
-  defp calculate_estimated_read_time(changeset) do
-    # Simple estimation: 200 words per minute
-    description = get_change(changeset, :description) || ""
-    word_count = String.split(description) |> length()
-    read_time = div(word_count, 200) |> max(1)
-
-    put_change(changeset, :estimated_read_time, read_time)
-  end
-
   def changeset(portfolio, attrs) do
     portfolio
-    |> cast(attrs, [:title, :slug, :account_type, :sharing_permissions, :cross_account_sharing,
-                    :description, :visibility, :expires_at,
-                    :approval_required, :require_approval, :theme, :custom_css,
-                    :user_id, :allow_resume_export, :resume_template, :resume_config,
-                    :customization])
+    |> cast(attrs, [
+      :title, :slug, :account_type, :sharing_permissions, :cross_account_sharing,
+      :description, :visibility, :privacy_settings, :social_integration,
+      :contact_info, :access_request_settings, :expires_at,
+      :approval_required, :require_approval, :theme, :custom_css,
+      :user_id, :allow_resume_export, :resume_template, :resume_config,
+      :customization
+    ])
     |> validate_required([:title, :slug])
     |> validate_length(:title, min: 3, max: 100)
     |> validate_length(:description, max: 500)
-    |> validate_length(:slug, min: 5, max: 50)
-    |> validate_slug()
-    |> validate_format(:slug, ~r/^[a-z0-9-]+$/, message: "must contain only lowercase letters, numbers, and hyphens")
-    |> validate_inclusion(:account_type, [:personal, :professional, :enterprise])
-    |> validate_inclusion(:visibility, [:public, :private, :link_only])
-    |> validate_inclusion(:theme, [
-      "default", "creative", "corporate", "minimalist",
-      "executive", "developer", "designer", "consultant", "academic",
-      "artist", "entrepreneur", "freelancer", "photographer", "writer",
-      "marketing", "healthcare"
-    ])
-    |> validate_inclusion(:resume_template, ["ats_friendly", "modern", "creative"])
-    |> validate_customization()
-    |> unique_constraint(:slug, message: "This URL is already taken")
+    |> validate_length(:slug, min: 3, max: 50)
+    |> validate_format(:slug, ~r/^[a-z0-9-]+$/, message: "can only contain lowercase letters, numbers, and hyphens")
+    |> validate_inclusion(:visibility, [:public, :link_only, :request_only, :private])
+    |> unique_constraint(:slug)
+    |> validate_slug_not_reserved()
+    |> validate_privacy_settings()
+    |> validate_social_integration()
+    |> validate_contact_info()
   end
 
-  def get_portfolio_by_slug(slug) do
-    case Repo.get_by(Portfolio, slug: slug) do
-      nil -> {:error, :not_found}
-      portfolio -> {:ok, portfolio}
-    end
-  end
+  # 🔥 NEW: Privacy settings validation
+  defp validate_privacy_settings(changeset) do
+    case get_change(changeset, :privacy_settings) do
+      nil -> changeset
+      settings when is_map(settings) ->
+        required_keys = [
+          "allow_search_engines", "show_in_discovery", "require_login_to_view",
+          "watermark_images", "disable_right_click", "track_visitor_analytics",
+          "allow_social_sharing", "show_contact_info", "allow_downloads"
+        ]
 
-  defp validate_slug(changeset) do
-    case get_change(changeset, :slug) do
-      nil ->
-        # If no slug provided, generate one from title
-        case get_change(changeset, :title) do
-          nil -> changeset
-          title -> put_change(changeset, :slug, generate_slug_from_title(title))
+        if Enum.all?(required_keys, &Map.has_key?(settings, &1)) do
+          changeset
+        else
+          add_error(changeset, :privacy_settings, "missing required privacy settings")
         end
-
-      slug ->
-        changeset
-        |> validate_slug_format(slug)
-        |> put_change(:slug, normalize_slug(slug))
+      _ ->
+        add_error(changeset, :privacy_settings, "must be a valid map")
     end
   end
 
-  defp validate_customization(changeset) do
-    validate_change(changeset, :customization, fn :customization, customization ->
-      case customization do
-        %{} = custom when is_map(custom) ->
-          # Validate that customization is a map with expected keys
-          valid_color_schemes = ["purple-pink", "blue-cyan", "green-teal", "orange-red", "gray-slate"]
-          valid_layout_styles = ["single_page", "multi_page"]
-          valid_section_spacing = ["compact", "normal", "spacious"]
-          valid_font_styles = ["inter", "merriweather", "roboto", "playfair"]
+  # 🔥 NEW: Social integration validation
+  defp validate_social_integration(changeset) do
+    case get_change(changeset, :social_integration) do
+      nil -> changeset
+      settings when is_map(settings) ->
+        platforms = Map.get(settings, "enabled_platforms", [])
+        valid_platforms = ["linkedin", "twitter", "instagram", "github", "tiktok"]
 
-          errors = []
+        if Enum.all?(platforms, &(&1 in valid_platforms)) do
+          changeset
+        else
+          add_error(changeset, :social_integration, "contains invalid social platforms")
+        end
+      _ ->
+        add_error(changeset, :social_integration, "must be a valid map")
+    end
+  end
 
-          # Validate color_scheme
-          color_scheme = Map.get(custom, "color_scheme", "purple-pink")
-          errors = if color_scheme in valid_color_schemes do
-            errors
+  # 🔥 NEW: Contact info validation
+  defp validate_contact_info(changeset) do
+    case get_change(changeset, :contact_info) do
+      nil -> changeset
+      contact when is_map(contact) ->
+        changeset
+        |> validate_email_format(contact)
+        |> validate_social_urls(contact)
+      _ ->
+        add_error(changeset, :contact_info, "must be a valid map")
+    end
+  end
+
+  defp validate_email_format(changeset, contact) do
+    case Map.get(contact, "email") do
+      nil -> changeset
+      "" -> changeset
+      email when is_binary(email) ->
+        if String.match?(email, ~r/^[^\s]+@[^\s]+\.[^\s]+$/) do
+          changeset
+        else
+          add_error(changeset, :contact_info, "email format is invalid")
+        end
+      _ ->
+        add_error(changeset, :contact_info, "email must be a string")
+    end
+  end
+
+  defp validate_social_urls(changeset, contact) do
+    social_fields = ["linkedin", "twitter", "instagram", "github", "website"]
+
+    Enum.reduce(social_fields, changeset, fn field, acc ->
+      case Map.get(contact, field) do
+        nil -> acc
+        "" -> acc
+        url when is_binary(url) ->
+          if String.match?(url, ~r/^https?:\/\/.+/) do
+            acc
           else
-            [{:customization, "invalid color scheme"} | errors]
+            add_error(acc, :contact_info, "#{field} must be a valid URL")
           end
-
-          # Validate layout_style
-          layout_style = Map.get(custom, "layout_style", "single_page")
-          errors = if layout_style in valid_layout_styles do
-            errors
-          else
-            [{:customization, "invalid layout style"} | errors]
-          end
-
-          # Validate section_spacing
-          section_spacing = Map.get(custom, "section_spacing", "normal")
-          errors = if section_spacing in valid_section_spacing do
-            errors
-          else
-            [{:customization, "invalid section spacing"} | errors]
-          end
-
-          # Validate font_style
-          font_style = Map.get(custom, "font_style", "inter")
-          errors = if font_style in valid_font_styles do
-            errors
-          else
-            [{:customization, "invalid font style"} | errors]
-          end
-
-          errors
         _ ->
-          [{:customization, "must be a map"}]
+          add_error(acc, :contact_info, "#{field} must be a string")
       end
     end)
   end
 
-  defp validate_slug_format(changeset, slug) do
-    changeset
-    |> validate_length(:slug, min: 3, max: 50, message: "URL must be between 3 and 50 characters")
-    |> validate_format(:slug, ~r/^[a-z0-9-]+$/, message: "URL can only contain lowercase letters, numbers, and hyphens")
-    |> validate_format(:slug, ~r/^[a-z0-9]/, message: "URL must start with a letter or number")
-    |> validate_format(:slug, ~r/[a-z0-9]$/, message: "URL must end with a letter or number")
-    |> validate_format(:slug, ~r/^(?!.*--)/, message: "URL cannot contain consecutive hyphens")
-    |> validate_exclusion(:slug, reserved_slugs(), message: "This URL is reserved and cannot be used")
-  end
-
-  defp normalize_slug(slug) do
-    slug
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9-]/, "")
-    |> String.replace(~r/-+/, "-")
-    |> String.trim("-")
-  end
-
-  defp generate_slug_from_title(title) do
-    base_slug = title
-                |> String.downcase()
-                |> String.replace(~r/[^a-z0-9\s-]/, "")
-                |> String.replace(~r/\s+/, "-")
-                |> String.replace(~r/-+/, "-")
-                |> String.trim("-")
-                |> (fn s ->
-                  if String.length(s) > 50 do
-                    String.slice(s, 0, 50) |> String.trim("-")
-                  else
-                    s
-                  end
-                end).()
-
-    # Add random suffix to ensure uniqueness (keeping your existing pattern)
-    "#{base_slug}-#{:rand.uniform(1000)}"
+  # Existing validation helpers
+  defp validate_slug_not_reserved(changeset) do
+    case get_change(changeset, :slug) do
+      nil -> changeset
+      slug ->
+        if slug in reserved_slugs() do
+          add_error(changeset, :slug, "is reserved and cannot be used")
+        else
+          changeset
+        end
+    end
   end
 
   # Reserved slugs that cannot be used by users
   defp reserved_slugs do
     [
-    # Existing system routes from your router
-    "dashboard", "channels", "chat", "media", "events", "analytics",
-    "invite", "collaborations", "profile", "settings", "search",
-    "subscriptions", "broadcasts", "sessions", "users", "portfolios",
-    "login", "logout", "register", "api", "uploads", "p",
+      # System routes
+      "dashboard", "channels", "chat", "media", "events", "analytics",
+      "invite", "collaborations", "profile", "settings", "search",
+      "subscriptions", "broadcasts", "sessions", "users", "portfolios",
+      "login", "logout", "register", "api", "uploads", "p", "admin",
 
-    # Auth routes
-    "login", "logout", "register", "signup", "signin", "auth", "oauth",
+      # Social platforms to avoid confusion
+      "linkedin", "twitter", "instagram", "github", "tiktok", "facebook",
 
-    # System routes
-    "admin", "api", "www", "app", "account", "help", "support", "about",
-    "contact", "privacy", "terms", "blog", "news", "home", "index",
-    "billing", "tickets", "my-tickets",
-
-    # File/asset routes
-    "static", "assets", "images", "css", "js", "uploads", "files",
-    "download", "downloads", "share", "public", "private", "dev", "test",
-    "staging", "production", "demo", "example", "sample", "template"
+      # Common portfolio paths
+      "about", "contact", "resume", "cv", "portfolio", "work", "projects"
     ]
   end
 end

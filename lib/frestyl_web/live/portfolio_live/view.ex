@@ -3084,20 +3084,256 @@ defmodule FrestylWeb.PortfolioLive.View do
 
   defp render_section_content_safe(section) do
     try do
-      render_section_content(section)
+      content = section.content || %{}
+
+      # Simple content extraction that works with your existing data
+      case normalize_section_type_simple(section.section_type) do
+        :intro ->
+          render_intro_simple(content)
+        :experience ->
+          render_experience_simple(content)
+        :education ->
+          render_education_simple(content)
+        :skills ->
+          render_skills_simple(content)
+        :projects ->
+          render_projects_simple(content)
+        :featured_project ->
+          render_featured_project_simple(content)
+        :achievements ->
+          render_achievements_simple(content)
+        :case_study ->
+          render_case_study_simple(content)
+        :testimonial ->
+          render_testimonial_simple(content)
+        :contact ->
+          render_contact_simple(content)
+        _ ->
+          render_generic_simple(content)
+      end
     rescue
       _ ->
-        content = section.content || %{}
-        case content do
-          %{"text" => text} when is_binary(text) and text != "" ->
-            Phoenix.HTML.raw(text)
-          %{"content" => text} when is_binary(text) and text != "" ->
-            Phoenix.HTML.raw(text)
-          _ ->
-            Phoenix.HTML.raw("<p>Content available - rendering function needs implementation.</p>")
-        end
+        Phoenix.HTML.raw("<p class=\"text-gray-400\">Loading content...</p>")
     end
   end
+
+  defp render_intro_simple(content) do
+    headline = get_simple_value(content, ["headline", "title"])
+    summary = get_simple_value(content, ["summary", "description", "bio"])
+    location = get_simple_value(content, ["location"])
+
+    parts = []
+    parts = if headline != "", do: parts ++ ["<h3 class=\"text-lg font-semibold mb-2\">#{Phoenix.HTML.html_escape(headline)}</h3>"], else: parts
+    parts = if summary != "", do: parts ++ ["<p class=\"mb-3\">#{Phoenix.HTML.html_escape(summary)}</p>"], else: parts
+    parts = if location != "", do: parts ++ ["<p class=\"text-sm\">📍 #{Phoenix.HTML.html_escape(location)}</p>"], else: parts
+
+    if length(parts) > 0 do
+      Phoenix.HTML.raw(Enum.join(parts, ""))
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Introduction content...</p>")
+    end
+  end
+
+  defp render_experience_simple(content) do
+    jobs = get_simple_value(content, ["jobs", "experiences"])
+
+    if is_list(jobs) and length(jobs) > 0 do
+      job_html = Enum.take(jobs, 3) |> Enum.map(fn job ->
+        title = get_simple_value(job, ["title", "position"])
+        company = get_simple_value(job, ["company", "organization"])
+
+        """
+        <div class="mb-3">
+          <div class="font-semibold">#{Phoenix.HTML.html_escape(title)}</div>
+          <div class="text-sm text-gray-600">#{Phoenix.HTML.html_escape(company)}</div>
+        </div>
+        """
+      end) |> Enum.join("")
+
+      Phoenix.HTML.raw(job_html)
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Experience details...</p>")
+    end
+  end
+
+  defp render_education_simple(content) do
+    education = get_simple_value(content, ["education", "degrees"])
+
+    if is_list(education) and length(education) > 0 do
+      edu_html = Enum.take(education, 2) |> Enum.map(fn edu ->
+        degree = get_simple_value(edu, ["degree", "title"])
+        school = get_simple_value(edu, ["school", "institution"])
+
+        """
+        <div class="mb-2">
+          <div class="font-semibold">#{Phoenix.HTML.html_escape(degree)}</div>
+          <div class="text-sm text-gray-600">#{Phoenix.HTML.html_escape(school)}</div>
+        </div>
+        """
+      end) |> Enum.join("")
+
+      Phoenix.HTML.raw(edu_html)
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Education details...</p>")
+    end
+  end
+
+  defp render_skills_simple(content) do
+    skills = get_simple_value(content, ["skills"])
+
+    if is_list(skills) and length(skills) > 0 do
+      skills_html = Enum.take(skills, 8) |> Enum.map(fn skill ->
+        skill_name = if is_binary(skill), do: skill, else: to_string(skill)
+        "<span class=\"inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded mr-2 mb-1\">#{Phoenix.HTML.html_escape(skill_name)}</span>"
+      end) |> Enum.join("")
+
+      Phoenix.HTML.raw("<div class=\"flex flex-wrap\">#{skills_html}</div>")
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Skills list...</p>")
+    end
+  end
+
+  defp render_projects_simple(content) do
+    projects = get_simple_value(content, ["projects"])
+
+    if is_list(projects) and length(projects) > 0 do
+      project_html = Enum.take(projects, 2) |> Enum.map(fn project ->
+        title = get_simple_value(project, ["title", "name"])
+        description = get_simple_value(project, ["description", "summary"])
+
+        """
+        <div class="mb-2">
+          <div class="font-semibold">#{Phoenix.HTML.html_escape(title)}</div>
+          #{if description != "", do: "<p class=\"text-sm text-gray-600\">#{Phoenix.HTML.html_escape(String.slice(description, 0, 80))}...</p>", else: ""}
+        </div>
+        """
+      end) |> Enum.join("")
+
+      more_text = if length(projects) > 2, do: "<p class=\"text-xs text-gray-500\">+#{length(projects) - 2} more projects</p>", else: ""
+
+      Phoenix.HTML.raw(project_html <> more_text)
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Project showcase...</p>")
+    end
+  end
+
+  defp render_featured_project_simple(content) do
+    title = get_simple_value(content, ["title", "name"])
+    description = get_simple_value(content, ["description", "summary"])
+
+    parts = []
+    parts = if title != "", do: parts ++ ["<h3 class=\"font-semibold mb-2\">#{Phoenix.HTML.html_escape(title)}</h3>"], else: parts
+    parts = if description != "", do: parts ++ ["<p class=\"text-sm\">#{Phoenix.HTML.html_escape(description)}</p>"], else: parts
+
+    if length(parts) > 0 do
+      Phoenix.HTML.raw(Enum.join(parts, ""))
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Featured project details...</p>")
+    end
+  end
+
+  defp render_achievements_simple(content) do
+    achievements = get_simple_value(content, ["achievements", "awards"])
+
+    if is_list(achievements) and length(achievements) > 0 do
+      achievements_html = Enum.take(achievements, 3) |> Enum.map(fn achievement ->
+        title = if is_binary(achievement), do: achievement, else: to_string(achievement)
+        "<div class=\"flex items-center mb-1\"><span class=\"mr-2\">🏆</span><span class=\"text-sm\">#{Phoenix.HTML.html_escape(title)}</span></div>"
+      end) |> Enum.join("")
+
+      Phoenix.HTML.raw(achievements_html)
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Achievements and awards...</p>")
+    end
+  end
+
+  defp render_case_study_simple(content) do
+    title = get_simple_value(content, ["title"])
+    overview = get_simple_value(content, ["overview", "summary"])
+
+    parts = []
+    parts = if title != "", do: parts ++ ["<h3 class=\"font-semibold mb-2\">#{Phoenix.HTML.html_escape(title)}</h3>"], else: parts
+    parts = if overview != "", do: parts ++ ["<p class=\"text-sm\">#{Phoenix.HTML.html_escape(String.slice(overview, 0, 120))}...</p>"], else: parts
+
+    if length(parts) > 0 do
+      Phoenix.HTML.raw(Enum.join(parts, ""))
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Case study details...</p>")
+    end
+  end
+
+  defp render_testimonial_simple(content) do
+    testimonials = get_simple_value(content, ["testimonials"])
+
+    if is_list(testimonials) and length(testimonials) > 0 do
+      testimonial = List.first(testimonials)
+      quote = get_simple_value(testimonial, ["quote", "text"])
+      author = get_simple_value(testimonial, ["author", "name"])
+
+      if quote != "" do
+        Phoenix.HTML.raw("""
+        <blockquote class="italic text-gray-600 border-l-4 border-blue-500 pl-4">
+          "#{Phoenix.HTML.html_escape(String.slice(quote, 0, 100))}..."
+          #{if author != "", do: "<cite class=\"block text-sm text-gray-500 mt-1\">— #{Phoenix.HTML.html_escape(author)}</cite>", else: ""}
+        </blockquote>
+        """)
+      else
+        Phoenix.HTML.raw("<p class=\"text-gray-400\">Client testimonial...</p>")
+      end
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Client testimonials...</p>")
+    end
+  end
+
+  defp render_contact_simple(content) do
+    email = get_simple_value(content, ["email"])
+    phone = get_simple_value(content, ["phone"])
+    location = get_simple_value(content, ["location"])
+
+    parts = []
+    parts = if email != "", do: parts ++ ["<div class=\"flex items-center mb-1\"><span class=\"mr-2\">📧</span><span class=\"text-sm\">#{Phoenix.HTML.html_escape(email)}</span></div>"], else: parts
+    parts = if phone != "", do: parts ++ ["<div class=\"flex items-center mb-1\"><span class=\"mr-2\">📞</span><span class=\"text-sm\">#{Phoenix.HTML.html_escape(phone)}</span></div>"], else: parts
+    parts = if location != "", do: parts ++ ["<div class=\"flex items-center mb-1\"><span class=\"mr-2\">📍</span><span class=\"text-sm\">#{Phoenix.HTML.html_escape(location)}</span></div>"], else: parts
+
+    if length(parts) > 0 do
+      Phoenix.HTML.raw(Enum.join(parts, ""))
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Contact information...</p>")
+    end
+  end
+
+  defp render_generic_simple(content) do
+    # Try to find any meaningful content
+    description = get_simple_value(content, ["description", "summary", "content", "text"])
+
+    if description != "" do
+      Phoenix.HTML.raw("<p class=\"text-sm\">#{Phoenix.HTML.html_escape(String.slice(description, 0, 150))}#{if String.length(description) > 150, do: "...", else: ""}</p>")
+    else
+      Phoenix.HTML.raw("<p class=\"text-gray-400\">Section content...</p>")
+    end
+  end
+
+  # Simple helper functions
+  defp get_simple_value(content, keys) when is_list(keys) do
+    Enum.find_value(keys, "", fn key ->
+      case Map.get(content, key) do
+        nil -> nil
+        "" -> nil
+        value when is_binary(value) -> String.trim(value)
+        value when is_list(value) -> value
+        value when is_map(value) -> value
+        value -> to_string(value)
+      end
+    end)
+  end
+
+  defp get_simple_value(content, key) when is_binary(key) do
+    get_simple_value(content, [key])
+  end
+
+  defp normalize_section_type_simple(type) when is_atom(type), do: type
+  defp normalize_section_type_simple(type) when is_binary(type), do: String.to_atom(type)
+  defp normalize_section_type_simple(_), do: :generic
 
   defp render_story_content_enhanced(content) do
     chapters = Map.get(content, "chapters", [])
@@ -4774,8 +5010,6 @@ defmodule FrestylWeb.PortfolioLive.View do
   def handle_event("close_print_preview", _params, socket) do
     {:noreply, assign(socket, :show_print_preview, false)}
   end
-
-
 
   # Add these message handlers:
 
@@ -6724,6 +6958,323 @@ defmodule FrestylWeb.PortfolioLive.View do
     end
   end
 
+    defp render_footer_video(assigns) do
+    if assigns.intro_video do
+      ~H"""
+      <div class="mt-12 bg-gray-900 rounded-2xl overflow-hidden">
+        <div class="aspect-video relative">
+          <%= if @intro_video.video_url do %>
+            <video
+              class="w-full h-full object-cover"
+              controls
+              poster={@intro_video.thumbnail_url}
+              preload="metadata">
+              <source src={@intro_video.video_url} type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+          <% else %>
+            <!-- Fallback for missing video -->
+            <div class="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center">
+              <div class="text-center text-white">
+                <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <p class="text-lg font-medium">Video Introduction</p>
+                <p class="text-sm opacity-75">Coming Soon</p>
+              </div>
+            </div>
+          <% end %>
+
+          <!-- Video overlay with title -->
+          <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
+            <h3 class="text-white text-xl font-bold mb-2">
+              <%= @intro_video.title || "Introduction Video" %>
+            </h3>
+            <%= if @intro_video.description do %>
+              <p class="text-white/90 text-sm">
+                <%= @intro_video.description %>
+              </p>
+            <% end %>
+          </div>
+        </div>
+      </div>
+      """
+    else
+      ~H""
+    end
+  end
+
+  defp render_about_video(assigns) do
+    if assigns.intro_video do
+      ~H"""
+      <div class="mb-8">
+        <div class="aspect-video bg-gray-100 rounded-xl overflow-hidden shadow-lg">
+          <%= if @intro_video.video_url do %>
+            <video
+              class="w-full h-full object-cover"
+              controls
+              poster={@intro_video.thumbnail_url}
+              preload="metadata">
+              <source src={@intro_video.video_url} type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+          <% else %>
+            <!-- Fallback when no video URL -->
+            <div class="w-full h-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+              <div class="text-center text-gray-600">
+                <svg class="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                <p class="font-medium">Personal Introduction</p>
+                <p class="text-sm">Video coming soon</p>
+              </div>
+            </div>
+          <% end %>
+        </div>
+
+        <!-- Video caption/description -->
+        <%= if @intro_video.title || @intro_video.description do %>
+          <div class="mt-4 text-center">
+            <%= if @intro_video.title do %>
+              <h4 class="font-semibold text-gray-900 mb-1">
+                <%= @intro_video.title %>
+              </h4>
+            <% end %>
+            <%= if @intro_video.description do %>
+              <p class="text-gray-600 text-sm">
+                <%= @intro_video.description %>
+              </p>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+      """
+    else
+      ~H""
+    end
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS FOR VIDEO HANDLING
+  # ============================================================================
+
+  # Helper function to safely get video duration
+  defp get_video_duration(intro_video) when is_map(intro_video) do
+    case intro_video do
+      %{duration: duration} when is_number(duration) -> format_duration(duration)
+      _ -> nil
+    end
+  end
+  defp get_video_duration(_), do: nil
+
+  # Helper function to format video duration
+  defp format_duration(seconds) when is_number(seconds) do
+    minutes = div(seconds, 60)
+    remaining_seconds = rem(seconds, 60)
+    "#{minutes}:#{String.pad_leading(Integer.to_string(remaining_seconds), 2, "0")}"
+  end
+  defp format_duration(_), do: "0:00"
+
+  # Helper function to check if video has valid URL
+  defp has_valid_video_url?(intro_video) when is_map(intro_video) do
+    case intro_video do
+      %{video_url: url} when is_binary(url) and url != "" -> true
+      _ -> false
+    end
+  end
+  defp has_valid_video_url?(_), do: false
+
+  # Helper function to get video thumbnail with fallback
+  defp get_video_thumbnail(intro_video) when is_map(intro_video) do
+    case intro_video do
+      %{thumbnail_url: url} when is_binary(url) and url != "" -> url
+      _ -> "/images/video-placeholder.jpg"  # Default placeholder
+    end
+  end
+  defp get_video_thumbnail(_), do: "/images/video-placeholder.jpg"
+
+  # Alternative render function with more features
+  defp render_enhanced_video_intro(assigns) do
+    if assigns.intro_video && has_valid_video_url?(assigns.intro_video) do
+      ~H"""
+      <div class="relative mb-8">
+        <div class="aspect-video bg-black rounded-xl overflow-hidden shadow-2xl">
+          <video
+            class="w-full h-full object-cover"
+            controls
+            poster={get_video_thumbnail(@intro_video)}
+            preload="metadata"
+            controlsList="nodownload"
+            disablePictureInPicture={false}>
+            <source src={@intro_video.video_url} type="video/mp4" />
+            <p class="text-white p-4">
+              Your browser doesn't support HTML video. Here is a
+              <a href={@intro_video.video_url} class="underline">link to the video</a> instead.
+            </p>
+          </video>
+
+          <!-- Play button overlay (optional) -->
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+              <svg class="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Video metadata -->
+        <div class="mt-4 flex items-center justify-between text-sm text-gray-600">
+          <div class="flex items-center space-x-4">
+            <%= if get_video_duration(@intro_video) do %>
+              <span class="flex items-center">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <%= get_video_duration(@intro_video) %>
+              </span>
+            <% end %>
+
+            <span class="flex items-center">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+              Video Introduction
+            </span>
+          </div>
+        </div>
+      </div>
+      """
+    else
+      ~H""
+    end
+  end
+
+  # ============================================================================
+  # YOUR EXISTING render_positioned_video_intro FUNCTION SHOULD LOOK LIKE THIS:
+  # ============================================================================
+
+  defp render_positioned_video_intro(assigns) do
+    if assigns.intro_video do
+      case assigns.intro_video.position do
+        :footer ->
+          render_footer_video(assigns)
+        :about ->
+          render_about_video(assigns)
+        :hero ->
+          render_enhanced_video_intro(assigns)
+        _ ->
+          render_about_video(assigns)  # Default fallback
+      end
+    else
+      ~H""
+    end
+  end
+
+  defp render_hero_video(assigns) do
+    ~H"""
+    <div class="hero-video-section bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white py-20">
+      <div class="container mx-auto px-6 lg:px-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <!-- Text Content -->
+          <div class="order-2 lg:order-1">
+            <h1 class="text-5xl lg:text-6xl font-bold mb-6 leading-tight">
+              <%= @portfolio.title %>
+            </h1>
+            <p class="text-xl text-purple-100 mb-8 leading-relaxed">
+              <%= @portfolio.description || "Welcome to my professional portfolio" %>
+            </p>
+
+            <!-- Video Play Button -->
+            <button phx-click="show_video_modal"
+                    class="inline-flex items-center px-8 py-4 bg-white text-purple-900 font-semibold rounded-xl hover:bg-purple-50 transition-all duration-200 shadow-lg hover:shadow-xl">
+              <svg class="w-6 h-6 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+              </svg>
+              Watch My Introduction
+              <span class="ml-2 text-sm text-purple-600">(<%= format_video_duration(@intro_video.duration) %>)</span>
+            </button>
+          </div>
+
+          <!-- Video Thumbnail -->
+          <div class="order-1 lg:order-2">
+            <div class="relative group cursor-pointer" phx-click="show_video_modal">
+              <div class="aspect-w-16 aspect-h-9 rounded-2xl overflow-hidden shadow-2xl">
+                <%= if @intro_video.thumbnail_url do %>
+                  <img src={@intro_video.thumbnail_url} alt="Video preview"
+                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <% else %>
+                  <div class="w-full h-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+                    <svg class="w-24 h-24 text-white opacity-80" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                    </svg>
+                  </div>
+                <% end %>
+              </div>
+
+              <!-- Play Overlay -->
+              <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 rounded-2xl group-hover:bg-opacity-30 transition-all duration-200">
+                <div class="w-20 h-20 bg-white bg-opacity-90 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                  <svg class="w-8 h-8 text-purple-900 ml-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Video Quality Badge -->
+            <div class="mt-4 text-center">
+              <span class="inline-flex items-center px-3 py-1 bg-white bg-opacity-20 text-white text-sm font-medium rounded-full">
+                🎥 <%= @intro_video.quality || "HD" %> Quality
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_sidebar_video(assigns) do
+    ~H"""
+    <div class="fixed right-6 bottom-6 z-40 w-80 bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200">
+      <div class="p-4">
+        <h3 class="font-semibold text-gray-900 mb-3">Personal Introduction</h3>
+
+        <div class="relative group cursor-pointer" phx-click="show_video_modal">
+          <div class="aspect-w-16 aspect-h-9 rounded-lg overflow-hidden">
+            <%= if @intro_video.thumbnail_url do %>
+              <img src={@intro_video.thumbnail_url} alt="Video preview"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+            <% else %>
+              <div class="w-full h-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+                <svg class="w-12 h-12 text-white opacity-80" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                </svg>
+              </div>
+            <% end %>
+          </div>
+
+          <!-- Play Button Overlay -->
+          <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 rounded-lg group-hover:bg-opacity-30 transition-all duration-200">
+            <div class="w-12 h-12 bg-white bg-opacity-90 rounded-full flex items-center justify-center">
+              <svg class="w-4 h-4 text-purple-900 ml-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3 text-center">
+          <span class="text-sm text-gray-600">
+            <%= format_video_duration(@intro_video.duration) %> • <%= @intro_video.quality || "HD" %>
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   # 🔥 ENHANCED MOBILE NAVIGATION WITH FLOATING ACTION BUTTON
   defp render_enhanced_mobile_navigation(assigns) do
     theme = assigns.portfolio.theme || "executive"
@@ -7755,34 +8306,6 @@ defmodule FrestylWeb.PortfolioLive.View do
           </div>
           <p class="text-gray-500">No skills added yet</p>
         </div>
-        """)
-    end
-  end
-
-  defp render_section_content_safe(section) do
-    try do
-      content = section.content || %{}
-
-      case section.section_type do
-        :skills ->
-          render_skills_content_enhanced(content)
-        :experience ->
-          render_experience_content_enhanced(content)
-        :education ->
-          render_education_content_enhanced(content)
-        :projects ->
-          render_projects_content_enhanced(content)
-        :contact ->
-          render_contact_content_enhanced(content)
-        :intro ->
-          render_intro_content_enhanced(content)
-        _ ->
-          render_generic_content_enhanced(content)
-      end
-    rescue
-      _ ->
-        Phoenix.HTML.raw("""
-        <div class="text-gray-500 italic">Content loading...</div>
         """)
     end
   end

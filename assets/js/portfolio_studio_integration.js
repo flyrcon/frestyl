@@ -490,6 +490,75 @@ export const PortfolioStudioIntegration = {
   }
 };
 
+// Connect Studio content to Portfolio Editor
+window.addEventListener('phx:audio_added', (e) => {
+  const { type, url } = e.detail;
+  
+  if (type === 'background') {
+    PortfolioStudioIntegration.setupBackgroundMusic(url);
+  } else if (type === 'voice_intro') {
+    PortfolioStudioIntegration.setupVoiceIntro(url);
+  }
+});
+
+const PortfolioStudioIntegration = {
+  // ... existing methods ...
+  
+  setupBackgroundMusic(url) {
+    // Create background audio element
+    const audio = new Audio(url);
+    audio.loop = true;
+    audio.volume = 0.3;
+    
+    // Add hover controls
+    const portfolio = document.querySelector('[data-portfolio-viewer]');
+    if (portfolio) {
+      portfolio.addEventListener('mouseenter', () => {
+        audio.play().catch(() => {
+          // Handle autoplay restrictions
+          this.showAudioPrompt(audio);
+        });
+      });
+      
+      portfolio.addEventListener('mouseleave', () => {
+        audio.pause();
+      });
+    }
+  },
+  
+  setupVoiceIntro(url) {
+    // Add voice intro button to portfolio
+    const introBtn = document.createElement('button');
+    introBtn.className = 'voice-intro-btn fixed top-4 right-4 bg-purple-600 text-white p-3 rounded-full shadow-lg hover:bg-purple-700 transition-all';
+    introBtn.innerHTML = '🎙️';
+    introBtn.title = 'Play Voice Introduction';
+    
+    introBtn.addEventListener('click', () => {
+      this.playVoiceIntro(url);
+    });
+    
+    document.body.appendChild(introBtn);
+  },
+  
+  showAudioPrompt(audio) {
+    // Show user-friendly audio permission prompt
+    const prompt = document.createElement('div');
+    prompt.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-white p-4 rounded-lg shadow-lg border z-50';
+    prompt.innerHTML = `
+      <div class="text-center">
+        <div class="text-2xl mb-2">🎵</div>
+        <p class="text-sm text-gray-600 mb-3">This portfolio has background music</p>
+        <button onclick="this.closest('.fixed').remove(); arguments[0].play();" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700">
+          Play Music
+        </button>
+      </div>
+    `;
+    
+    document.body.appendChild(prompt);
+    setTimeout(() => prompt.remove(), 5000);
+  }
+};
+
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {

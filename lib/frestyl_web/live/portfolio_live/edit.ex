@@ -113,12 +113,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     {:ok, socket}
   end
 
-  @impl true
-  def render(assigns) do
-    # Use the comprehensive TabRenderer for the main layout
-    TabRenderer.render_main_layout(assigns)
-  end
-
   # ============================================================================
   # EVENT HANDLERS - Delegating to appropriate managers
   # ============================================================================
@@ -129,46 +123,9 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     {:noreply, assign(socket, :active_tab, String.to_atom(tab))}
   end
 
-  # 🔥 CRITICAL FIX: Template-related events - ensure single return
-  @impl true
-  def handle_event("select_template", params, socket) do
-    updated_socket = TemplateManager.handle_template_selection(socket, params)
-    {:noreply, updated_socket}  # Single return wrapper
-  end
-
-  @impl true
-  def handle_event("apply_template", params, socket) do
-    updated_socket = TemplateManager.handle_template_selection(socket, params)
-    {:noreply, updated_socket}  # Single return wrapper
-  end
-
   @impl true
   def handle_event("set_customization_tab", %{"tab" => tab}, socket) do
     {:noreply, assign(socket, :active_customization_tab, tab)}
-  end
-
-    @impl true
-  def handle_event("update_customization", %{"field" => field, "value" => value} = params, socket) do
-    updated_socket = TemplateManager.handle_customization_update(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("update_primary_color", %{"value" => color}, socket) do
-    updated_socket = TemplateManager.handle_color_update(socket, %{"color_type" => "primary", "value" => color})
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("update_secondary_color", %{"value" => color}, socket) do
-    updated_socket = TemplateManager.handle_color_update(socket, %{"color_type" => "secondary", "value" => color})
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("update_accent_color", %{"value" => color}, socket) do
-    updated_socket = TemplateManager.handle_color_update(socket, %{"color_type" => "accent", "value" => color})
-    {:noreply, updated_socket}
   end
 
   @impl true
@@ -761,232 +718,10 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     {:noreply, assign(socket, :show_add_section_dropdown, false)}
   end
 
-  # Section editing
-  @impl true
-  def handle_event("cancel_edit", _params, socket) do
-    updated_socket = SectionManager.handle_cancel_edit(socket, %{})
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("edit_section", %{"id" => section_id}, socket) do
-    case SectionManager.handle_edit_section(socket, %{"id" => section_id}) do
-      {:ok, updated_socket, event_data} ->
-        # Handle the push_event that SectionManager couldn't do
-        final_socket = if event_data do
-          push_event(updated_socket, event_data.event, event_data.data)
-        else
-          updated_socket
-        end
-        {:noreply, final_socket}
-
-      {:error, error_socket, _} ->
-        {:noreply, error_socket}
-    end
-  end
-
-  @impl true
-  def handle_event("delete_section", %{"id" => section_id}, socket) do
-    updated_socket = SectionManager.handle_delete_section(socket, %{"id" => section_id})
-    {:noreply, updated_socket}
-  end
-
-
-  @impl true
-  def handle_event("save_section", %{"id" => section_id}, socket) do
-    case SectionManager.handle_save_section(socket, %{"id" => section_id}) do
-      {:ok, updated_socket, event_data} ->
-        # Handle the push_event that SectionManager couldn't do
-        final_socket = if event_data do
-          push_event(updated_socket, event_data.event, event_data.data)
-        else
-          updated_socket
-        end
-        {:noreply, final_socket}
-
-      {:error, error_socket, _} ->
-        {:noreply, error_socket}
-    end
-  end
-
-  @impl true
-  def handle_event("update_section_field", params, socket) do
-    case SectionManager.handle_section_field_update(socket, params) do
-      {:ok, updated_socket, event_data} ->
-        # Handle the push_event that SectionManager couldn't do
-        final_socket = if event_data do
-          push_event(updated_socket, event_data.event, event_data.data)
-        else
-          updated_socket
-        end
-        {:noreply, final_socket}
-
-      {:error, error_socket, event_data} ->
-        # Handle error events too
-        final_socket = if event_data do
-          push_event(error_socket, event_data.event, event_data.data)
-        else
-          error_socket
-        end
-        {:noreply, final_socket}
-
-      # Handle the case where SectionManager returns just a socket (backward compatibility)
-      updated_socket when is_map(updated_socket) ->
-        {:noreply, updated_socket}
-    end
-  end
-
-  @impl true
-  def handle_event("toggle_section_visibility", %{"id" => section_id}, socket) do
-    updated_socket = SectionManager.handle_section_visibility_toggle(socket, %{"section_id" => section_id})
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("toggle_video_intro_visibility", %{"section_id" => section_id}, socket) do
-    updated_socket = SectionManager.handle_video_intro_visibility_toggle(socket, %{"section_id" => section_id})
-    {:noreply, updated_socket}
-  end
-
-  # 🔥 FIX: Section reordering
-  @impl true
-  def handle_event("reorder_sections", params, socket) do
-    updated_socket = SectionManager.handle_reorder_sections(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("move_section_up", %{"id" => section_id}, socket) do
-    updated_socket = SectionManager.handle_section_reorder(socket, %{"section_id" => section_id, "direction" => "up"})
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("move_section_down", %{"id" => section_id}, socket) do
-    updated_socket = SectionManager.handle_section_reorder(socket, %{"section_id" => section_id, "direction" => "down"})
-    {:noreply, updated_socket}
-  end
-
-  # 🔥 FIX: Section duplication
-  @impl true
-  def handle_event("duplicate_section", %{"id" => section_id}, socket) do
-    updated_socket = SectionManager.handle_duplicate_section(socket, %{"id" => section_id})
-    {:noreply, updated_socket}
-  end
-
-  # 🔥 FIX: Section creation
-  @impl true
-  def handle_event("add_section", %{"section_type" => section_type, "title" => title}, socket) do
-    updated_socket = SectionManager.handle_section_add(socket, %{"section_type" => section_type, "title" => title})
-    {:noreply, updated_socket}
-  end
-
-  # 🔥 FIX: Media management
-  @impl true
-  def handle_event("upload_media", params, socket) do
-    updated_socket = SectionManager.handle_media_upload(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("attach_media_to_section", params, socket) do
-    updated_socket = SectionManager.handle_attach_media_to_section(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("detach_media_from_section", params, socket) do
-    updated_socket = SectionManager.handle_detach_media_from_section(socket, params)
-    {:noreply, updated_socket}
-  end
-
   @impl true
   def handle_event("switch_section_edit_tab", %{"tab" => tab}, socket) do
     IO.puts("🔧 Switching section edit tab to: #{tab}")
     {:noreply, assign(socket, :section_edit_tab, tab)}
-  end
-
-  # 🔥 FIX: Section templates
-  @impl true
-  def handle_event("apply_section_template", params, socket) do
-    updated_socket = SectionManager.handle_apply_section_template(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("export_section_template", params, socket) do
-    updated_socket = SectionManager.handle_export_section_template(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  # 🔥 FIX: Skills management (if you have skills sections)
-  @impl true
-  def handle_event("add_skill", params, socket) do
-    updated_socket = SectionManager.handle_add_skill(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("remove_skill", params, socket) do
-    updated_socket = SectionManager.handle_remove_skill(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  # 🔥 FIX: Experience management (if you have experience sections)
-  @impl true
-  def handle_event("add_experience_entry", params, socket) do
-    updated_socket = SectionManager.add_experience_entry(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("remove_experience_entry", params, socket) do
-    updated_socket = SectionManager.handle_remove_experience_entry(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("update_experience_field", params, socket) do
-    updated_socket = SectionManager.handle_update_experience_field(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  # 🔥 FIX: Education management (if you have education sections)
-  @impl true
-  def handle_event("add_education_entry", params, socket) do
-    updated_socket = SectionManager.handle_add_education_entry(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("remove_education_entry", params, socket) do
-    updated_socket = SectionManager.handle_remove_education_entry(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("update_education_field", params, socket) do
-    updated_socket = SectionManager.handle_update_education_field(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  # 🔥 FIX: UI state management
-  @impl true
-  def handle_event("toggle_add_section_dropdown", _params, socket) do
-    updated_socket = SectionManager.handle_toggle_add_section_dropdown(socket, %{})
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("show_media_library", params, socket) do
-    updated_socket = SectionManager.handle_show_media_library(socket, params)
-    {:noreply, updated_socket}
-  end
-
-  @impl true
-  def handle_event("hide_media_library", _params, socket) do
-    updated_socket = SectionManager.handle_hide_media_library(socket, %{})
-    {:noreply, updated_socket}
   end
 
   # 🔥 FIX: Catch-all for any other unhandled section events
@@ -1140,35 +875,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     {:noreply, assign(socket, :selected_media_ids, new_selected_ids)}
   end
 
-  @impl true
-  def handle_event("attach_selected_media", _params, socket) do
-    section_id = socket.assigns.media_modal_section_id
-    selected_ids = socket.assigns.selected_media_ids || []
-
-    if section_id && length(selected_ids) > 0 do
-      case SectionManager.handle_attach_media_to_section(socket, %{"section_id" => section_id, "media_ids" => selected_ids}) do
-        {:ok, attached_count} ->
-          editing_section_media = if socket.assigns.section_edit_id == to_string(section_id) do
-            Portfolios.list_section_media(section_id)
-          else
-            socket.assigns.editing_section_media || []
-          end
-
-          {:noreply,
-          socket
-          |> assign(:show_media_modal, false)
-          |> assign(:editing_section_media, editing_section_media)
-          |> assign(:selected_media_ids, [])
-          |> put_flash(:info, "Successfully attached #{attached_count} media files!")}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Failed to attach media: #{reason}")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "Please select media files to attach")}
-    end
-  end
-
   # Section visibility toggle
   @impl true
   def handle_event("toggle_section_visibility", %{"id" => section_id}, socket) do
@@ -1192,29 +898,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       end
     else
       {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("update_section_content", params, socket) do
-    case SectionManager.handle_section_content_update(socket, params) do
-      {:ok, updated_socket, event_data} ->
-        # Handle the push_event that SectionManager couldn't do
-        final_socket = if event_data do
-          push_event(updated_socket, event_data.event, event_data.data)
-        else
-          updated_socket
-        end
-        {:noreply, final_socket}
-
-      {:error, error_socket, event_data} ->
-        # Handle error events too
-        final_socket = if event_data do
-          push_event(error_socket, event_data.event, event_data.data)
-        else
-          error_socket
-        end
-        {:noreply, final_socket}
     end
   end
 
@@ -1467,6 +1150,79 @@ defmodule FrestylWeb.PortfolioLive.Edit do
 
     result
   end
+
+  @impl true
+  def handle_event("toggle_video_visibility", %{"section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+
+    case Frestyl.Portfolios.SectionPositioning.toggle_section_visibility(section_id_int) do
+      {:ok, updated_section} ->
+        updated_sections = Enum.map(socket.assigns.sections, fn section ->
+          if section.id == section_id_int, do: updated_section, else: section
+        end)
+
+        message = if updated_section.visible do
+          "Video is now visible in your portfolio"
+        else
+          "Video is now hidden from your portfolio"
+        end
+
+        socket =
+          socket
+          |> assign(:sections, updated_sections)
+          |> put_flash(:info, message)
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        socket = put_flash(socket, :error, "Failed to update video visibility: #{reason}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("show_video_position_modal", %{"section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+    if section do
+      socket =
+        socket
+        |> assign(:show_video_position_modal, true)
+        |> assign(:selected_video_section, section)
+
+      {:noreply, socket}
+    else
+      socket = put_flash(socket, :error, "Video section not found")
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("update_video_position", %{"position" => position, "section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    portfolio_id = socket.assigns.portfolio.id
+
+    case Frestyl.Portfolios.SectionPositioning.update_video_section_position(portfolio_id, section_id_int, position) do
+      {:ok, updated_section} ->
+        updated_sections = Enum.map(socket.assigns.sections, fn section ->
+          if section.id == section_id_int, do: updated_section, else: section
+        end)
+
+        socket =
+          socket
+          |> assign(:sections, updated_sections)
+          |> assign(:show_video_position_modal, false)
+          |> put_flash(:info, "Video position updated to #{get_position_name(position)}")
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        socket = put_flash(socket, :error, "Failed to update video position: #{reason}")
+        {:noreply, socket}
+    end
+  end
+
 
   defp get_video_style_for_theme(theme) do
     case theme do
@@ -1994,6 +1750,359 @@ defmodule FrestylWeb.PortfolioLive.Edit do
     end
   end
 
+  defp render_video_intro_modal(assigns) do
+    ~H"""
+    <%= if @show_video_intro do %>
+      <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+          <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" phx-click="hide_video_intro"></div>
+
+          <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+          <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-6xl sm:w-full">
+            <.live_component
+              module={FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent}
+              id={"enhanced-video-intro-#{@portfolio.id}"}
+              portfolio={@portfolio}
+              current_user={@current_user}
+            />
+          </div>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_section_with_video_controls(assigns) do
+    ~H"""
+    <div class="section-item bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+      <div class="p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center">
+            <!-- Section Thumbnail/Icon -->
+            <div class="w-12 h-12 rounded-lg overflow-hidden mr-3 bg-gray-100 flex items-center justify-center">
+              <%= if @section.section_type == :media_showcase and get_in(@section.content, ["video_type"]) == "introduction" do %>
+                <%= if get_in(@section.content, ["thumbnail", "url"]) do %>
+                  <img src={get_in(@section.content, ["thumbnail", "url"])} alt="Video thumbnail" class="w-full h-full object-cover" />
+                <% else %>
+                  <svg class="w-6 h-6 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                  </svg>
+                <% end %>
+              <% else %>
+                <span class="text-2xl"><%= get_section_icon(@section.section_type) %></span>
+              <% end %>
+            </div>
+
+            <div>
+              <h3 class="font-medium text-gray-900"><%= @section.title %></h3>
+              <p class="text-sm text-gray-500">
+                <%= if @section.section_type == :media_showcase and get_in(@section.content, ["video_type"]) == "introduction" do %>
+                  Video Introduction • <%= get_in(@section.content, ["quality"]) || "HD" %> •
+                  Position: <%= get_position_name(get_in(@section.content, ["position"]) || "hero") %>
+                <% else %>
+                  <%= format_section_type(@section.section_type) %>
+                <% end %>
+              </p>
+            </div>
+          </div>
+
+          <!-- Section Controls -->
+          <div class="flex items-center space-x-2">
+            <!-- Visibility Toggle for Video Sections -->
+            <%= if @section.section_type == :media_showcase and get_in(@section.content, ["video_type"]) == "introduction" do %>
+              <button phx-click="toggle_video_visibility" phx-value-section-id={@section.id}
+                      class={"p-2 rounded-lg transition-colors #{if @section.visible, do: 'text-green-600 hover:bg-green-50', else: 'text-gray-400 hover:bg-gray-50'}"}>
+                <%= if @section.visible do %>
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                <% else %>
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L8.222 8.222M9.878 9.878l-.88-.88"/>
+                  </svg>
+                <% end %>
+              </button>
+
+              <!-- Position Settings -->
+              <button phx-click="show_video_position_modal" phx-value-section-id={@section.id}
+                      class="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+              </button>
+            <% end %>
+
+            <!-- Standard Section Controls -->
+            <button phx-click="edit_section" phx-value-section-id={@section.id}
+                    class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </button>
+
+            <button phx-click="delete_section" phx-value-section-id={@section.id}
+                    class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    data-confirm="Are you sure you want to delete this section?">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # Section type label helper
+  defp section_type_label(section_type) do
+    case section_type do
+      :intro -> "Introduction"
+      :about -> "About"
+      :experience -> "Experience"
+      :education -> "Education"
+      :skills -> "Skills"
+      :projects -> "Projects"
+      :featured_project -> "Featured Project"
+      :case_study -> "Case Study"
+      :achievements -> "Achievements"
+      :testimonial -> "Testimonials"
+      :media_showcase -> "Media Showcase"
+      :contact -> "Contact"
+      :social -> "Social Profiles"
+      :custom -> "Custom Section"
+      _ when is_atom(section_type) ->
+        section_type |> Atom.to_string() |> Phoenix.Naming.humanize()
+      _ when is_binary(section_type) ->
+        Phoenix.Naming.humanize(section_type)
+      _ -> "Unknown Section"
+    end
+  end
+
+  # Section color class helper
+  defp section_color_class(section_type) do
+    case section_type do
+      :intro -> "bg-blue-500"
+      :about -> "bg-green-500"
+      :experience -> "bg-purple-500"
+      :education -> "bg-indigo-500"
+      :skills -> "bg-yellow-500"
+      :projects -> "bg-red-500"
+      :featured_project -> "bg-pink-500"
+      :case_study -> "bg-orange-500"
+      :achievements -> "bg-emerald-500"
+      :testimonial -> "bg-cyan-500"
+      :media_showcase -> "bg-violet-500"
+      :contact -> "bg-gray-500"
+      :social -> "bg-blue-400"
+      :custom -> "bg-slate-500"
+      _ -> "bg-gray-400"
+    end
+  end
+
+  # Section gradient class helper
+  defp section_gradient_class(section_type) do
+    case section_type do
+      :intro -> "bg-gradient-to-r from-blue-400 to-blue-600"
+      :about -> "bg-gradient-to-r from-green-400 to-green-600"
+      :experience -> "bg-gradient-to-r from-purple-400 to-purple-600"
+      :education -> "bg-gradient-to-r from-indigo-400 to-indigo-600"
+      :skills -> "bg-gradient-to-r from-yellow-400 to-yellow-600"
+      :projects -> "bg-gradient-to-r from-red-400 to-red-600"
+      :featured_project -> "bg-gradient-to-r from-pink-400 to-pink-600"
+      :case_study -> "bg-gradient-to-r from-orange-400 to-orange-600"
+      :achievements -> "bg-gradient-to-r from-emerald-400 to-emerald-600"
+      :testimonial -> "bg-gradient-to-r from-cyan-400 to-cyan-600"
+      :media_showcase -> "bg-gradient-to-r from-violet-400 to-violet-600"
+      :contact -> "bg-gradient-to-r from-gray-400 to-gray-600"
+      :social -> "bg-gradient-to-r from-blue-400 to-cyan-500"
+      :custom -> "bg-gradient-to-r from-slate-400 to-slate-600"
+      _ -> "bg-gradient-to-r from-gray-400 to-gray-500"
+    end
+  end
+
+  # Section button class helper
+  defp section_button_class(section_type) do
+    case section_type do
+      :intro -> "border-blue-500 text-blue-600 hover:bg-blue-500 focus:ring-blue-500"
+      :about -> "border-green-500 text-green-600 hover:bg-green-500 focus:ring-green-500"
+      :experience -> "border-purple-500 text-purple-600 hover:bg-purple-500 focus:ring-purple-500"
+      :education -> "border-indigo-500 text-indigo-600 hover:bg-indigo-500 focus:ring-indigo-500"
+      :skills -> "border-yellow-500 text-yellow-600 hover:bg-yellow-500 focus:ring-yellow-500"
+      :projects -> "border-red-500 text-red-600 hover:bg-red-500 focus:ring-red-500"
+      :featured_project -> "border-pink-500 text-pink-600 hover:bg-pink-500 focus:ring-pink-500"
+      :case_study -> "border-orange-500 text-orange-600 hover:bg-orange-500 focus:ring-orange-500"
+      :achievements -> "border-emerald-500 text-emerald-600 hover:bg-emerald-500 focus:ring-emerald-500"
+      :testimonial -> "border-cyan-500 text-cyan-600 hover:bg-cyan-500 focus:ring-cyan-500"
+      :media_showcase -> "border-violet-500 text-violet-600 hover:bg-violet-500 focus:ring-violet-500"
+      :contact -> "border-gray-500 text-gray-600 hover:bg-gray-500 focus:ring-gray-500"
+      :social -> "border-blue-400 text-blue-500 hover:bg-blue-400 focus:ring-blue-400"
+      :custom -> "border-slate-500 text-slate-600 hover:bg-slate-500 focus:ring-slate-500"
+      _ -> "border-gray-400 text-gray-500 hover:bg-gray-400 focus:ring-gray-400"
+    end
+  end
+
+  defp format_file_size(bytes) when is_integer(bytes) do
+    cond do
+      bytes >= 1_073_741_824 -> "#{Float.round(bytes / 1_073_741_824, 1)} GB"
+      bytes >= 1_048_576 -> "#{Float.round(bytes / 1_048_576, 1)} MB"
+      bytes >= 1024 -> "#{Float.round(bytes / 1024, 1)} KB"
+      true -> "#{bytes} B"
+    end
+  end
+  defp format_file_size(_), do: "Unknown size"
+
+  # Format time ago
+  defp time_ago(datetime) do
+    case datetime do
+      %DateTime{} = dt ->
+        seconds_ago = DateTime.diff(DateTime.utc_now(), dt, :second)
+        format_time_difference(seconds_ago)
+      %NaiveDateTime{} = ndt ->
+        case DateTime.from_naive(ndt, "Etc/UTC") do
+          {:ok, dt} -> time_ago(dt)
+          {:error, _} -> "Unknown time"
+        end
+      _ -> "Unknown time"
+    end
+  end
+
+  defp format_time_difference(seconds) when is_integer(seconds) do
+    cond do
+      seconds < 60 -> "Just now"
+      seconds < 3600 -> "#{div(seconds, 60)} minutes ago"
+      seconds < 86400 -> "#{div(seconds, 3600)} hours ago"
+      seconds < 604800 -> "#{div(seconds, 86400)} days ago"
+      true -> "#{div(seconds, 604800)} weeks ago"
+    end
+  end
+  defp format_time_difference(_), do: "Unknown time"
+
+  # Section icon helper
+  defp section_icon(section_type) do
+    case section_type do
+      :intro -> "👋"
+      :about -> "👤"
+      :experience -> "💼"
+      :education -> "🎓"
+      :skills -> "⚡"
+      :projects -> "🚀"
+      :featured_project -> "⭐"
+      :case_study -> "📊"
+      :achievements -> "🏆"
+      :testimonial -> "💬"
+      :media_showcase -> "🎨"
+      :contact -> "📞"
+      :social -> "🔗"
+      :custom -> "📝"
+      _ -> "📄"
+    end
+  end
+
+  # Validation helper for forms
+  defp input_error(form, field) do
+    case form.errors[field] do
+      {msg, opts} -> error_to_string({msg, opts})
+      msg when is_binary(msg) -> msg
+      _ -> nil
+    end
+  end
+
+  # Check if section has content
+  defp section_has_content?(section) do
+    case section.content do
+      nil -> false
+      content when content == %{} -> false
+      content when is_map(content) ->
+        content
+        |> Map.values()
+        |> Enum.any?(fn value ->
+          case value do
+            nil -> false
+            "" -> false
+            [] -> false
+            %{} -> false
+            _ -> true
+          end
+        end)
+      _ -> true
+    end
+  end
+
+  # Get section completion percentage
+  defp section_completion_percentage(section) do
+    case section.section_type do
+      :intro ->
+        content = section.content || %{}
+        fields = ["headline", "summary", "location"]
+        completed = Enum.count(fields, &(Map.get(content, &1) not in [nil, ""]))
+        round(completed / length(fields) * 100)
+
+      :experience ->
+        jobs = get_in(section.content, ["jobs"]) || []
+        if length(jobs) > 0, do: 100, else: 0
+
+      :education ->
+        education = get_in(section.content, ["education"]) || []
+        if length(education) > 0, do: 100, else: 0
+
+      :skills ->
+        skills = get_in(section.content, ["skills"]) || []
+        if length(skills) > 0, do: 100, else: 0
+
+      :projects ->
+        projects = get_in(section.content, ["projects"]) || []
+        if length(projects) > 0, do: 100, else: 0
+
+      :contact ->
+        content = section.content || %{}
+        fields = ["email", "phone", "location"]
+        completed = Enum.count(fields, &(Map.get(content, &1) not in [nil, ""]))
+        round(completed / length(fields) * 100)
+
+      :social ->
+        platforms = get_in(section.content, ["platforms"]) || []
+        if length(platforms) > 0, do: 100, else: 0
+
+      _ ->
+        if section_has_content?(section), do: 100, else: 0
+    end
+  end
+
+  # Media type icon helper
+  defp media_type_icon(media_type) do
+    case media_type do
+      :image -> "🖼️"
+      :video -> "🎥"
+      :audio -> "🎵"
+      :document -> "📄"
+      _ -> "📎"
+    end
+  end
+
+  # Truncate text helper
+  defp truncate(text, length \\ 50) when is_binary(text) do
+    if String.length(text) > length do
+      String.slice(text, 0, length) <> "..."
+    else
+      text
+    end
+  end
+  defp truncate(_, _), do: ""
+
+  # Safe get helper for nested maps
+  defp safe_get(map, keys, default \\ nil) when is_map(map) and is_list(keys) do
+    Enum.reduce(keys, map, fn key, acc ->
+      case acc do
+        %{} -> Map.get(acc, key)
+        _ -> default
+      end
+    end) || default
+  end
+  defp safe_get(_, _, default), do: default
+
     # ============================================================================
     # MESSAGE HANDLERS - Template component communication
     # ============================================================================
@@ -2004,11 +2113,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
      socket
      |> assign(:show_template_preview, true)
      |> assign(:preview_template, template_key)}
-  end
-
-  @impl true
-  def handle_info({:apply_template, template_key}, socket) do
-    {:noreply, TemplateManager.handle_template_selection(socket, %{"template" => template_key})}
   end
 
   @impl true
@@ -2737,4 +2841,46 @@ defmodule FrestylWeb.PortfolioLive.Edit do
       _ -> :file
     end
   end
+
+  # Error handling helper
+  defp error_to_string(error) when is_binary(error), do: error
+  defp error_to_string(error) when is_atom(error), do: Phoenix.Naming.humanize(error)
+  defp error_to_string({msg, opts}) when is_binary(msg) and is_list(opts) do
+    Enum.reduce(opts, msg, fn {key, value}, acc ->
+      String.replace(acc, "%{#{key}}", to_string(value))
+    end)
+  end
+  defp error_to_string(error), do: inspect(error)
+
+  defp get_section_icon(:media_showcase), do: "🎥"
+  defp get_section_icon(:intro), do: "👋"
+  defp get_section_icon(:experience), do: "💼"
+  defp get_section_icon(:education), do: "🎓"
+  defp get_section_icon(:skills), do: "⚡"
+  defp get_section_icon(:projects), do: "🚀"
+  defp get_section_icon(:contact), do: "📧"
+  defp get_section_icon(_), do: "📄"
+
+  defp get_position_name("hero"), do: "Hero Section"
+  defp get_position_name("about"), do: "About Section"
+  defp get_position_name("sidebar"), do: "Sidebar"
+  defp get_position_name("footer"), do: "Footer"
+  defp get_position_name(_), do: "Hero Section"
+
+  defp format_section_type(:media_showcase), do: "Media Showcase"
+  defp format_section_type(:intro), do: "Introduction"
+  defp format_section_type(:experience), do: "Experience"
+  defp format_section_type(:education), do: "Education"
+  defp format_section_type(:skills), do: "Skills"
+  defp format_section_type(:projects), do: "Projects"
+  defp format_section_type(:contact), do: "Contact"
+  defp format_section_type(type), do: type |> to_string() |> String.capitalize()
+
+  defp format_video_duration(nil), do: "0:00"
+  defp format_video_duration(seconds) when is_number(seconds) do
+    minutes = div(trunc(seconds), 60)
+    remaining_seconds = rem(trunc(seconds), 60)
+    "#{minutes}:#{String.pad_leading(to_string(remaining_seconds), 2, "0")}"
+  end
+  defp format_video_duration(_), do: "0:00"
 end

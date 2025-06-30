@@ -180,8 +180,12 @@ defmodule FrestylWeb.Router do
     # Portfolio CRUD operations
     live "/portfolios/new", PortfolioLive.New, :new
     live "/portfolios/:id", PortfolioLive.Show, :show
-    live "/portfolios/:id/edit", PortfolioLive.Edit, :edit
+    live "/portfolios/:id/edit", PortfolioLive.PortfolioEditor, :edit
+    live "/portfolios/:id/enhance/:type", PortfolioLive.PortfolioEditor, :enhance
+    live "/portfolios/:id/edit-legacy", PortfolioLive.Edit, :edit
     live "/portfolios/:id/settings", PortfolioLive.Settings, :settings
+
+    live "/portfolios/:id/live-preview/:preview_token", PortfolioLive.LivePreview, :show
 
     # Portfolio analytics and insights
     live "/portfolios/:id/analytics", PortfolioLive.AnalyticsLive, :analytics
