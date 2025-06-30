@@ -38,7 +38,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         socket = socket
         |> assign_core_data(portfolio, account, user)
         |> assign_features_and_limits(features, limits)
-        |> assign_content_data(sections, media_library, content_blocks)
+        |> assign_content_data(sections, media_library, content_blocks)  # Fixed: added content_blocks parameter
         |> assign_monetization_data(monetization_data, streaming_config)
         |> assign_design_system(available_layouts, brand_constraints)
         |> assign_ui_state()
@@ -76,7 +76,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:max_media_size, limits.max_media_size_mb)
   end
 
-  defp assign_content_data(socket, sections, media_library) do
+  defp assign_content_data(socket, sections, media_library, content_blocks) do
     socket
       |> assign(:sections, sections)
       |> assign(:media_library, media_library)
@@ -430,12 +430,12 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   @impl true
   def handle_event("edit_content_block", %{"block_id" => block_id}, socket) do
-    case Portfolios.get_content_block!(block_id) do
-      block ->
-        {:noreply,
-        socket
-        |> assign(:editing_block, block)
-        |> assign(:editing_mode, :block_detail)}
+    try do
+      block = Portfolios.get_content_block!(block_id)
+      {:noreply,
+      socket
+      |> assign(:editing_block, block)
+      |> assign(:editing_mode, :block_detail)}
     rescue
       Ecto.NoResultsError ->
         {:noreply, put_flash(socket, :error, "Content block not found")}

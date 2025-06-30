@@ -8,8 +8,10 @@ defmodule Frestyl.Portfolios do
   import Ecto.Query, warn: false
   alias Frestyl.Repo
   alias Frestyl.Portfolios.{CustomDomain, Portfolio, PortfolioSection, PortfolioMedia,
-                          PortfolioShare, PortfolioVisit}
+                          PortfolioShare, PortfolioVisit, PortfolioService, StreamingConfig}
   alias Frestyl.Accounts.User
+  alias Frestyl.Streaming.StreamingSession
+
 
   # 🔥 FIXED: Get portfolio by slug with complete section data for public view
   def get_portfolio_by_slug_with_sections_simple(slug) do
