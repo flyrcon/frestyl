@@ -83,6 +83,363 @@
       <% end %>
 
     </div>
+    <!-- URL Customization Modal -->
+    <%= if @show_url_customization and @selected_portfolio_for_overview do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" phx-click="close_url_customization">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4" phx-click-away="close_url_customization">
+          <!-- Modal Header -->
+          <div class="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 rounded-t-xl">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-bold text-white">Portfolio Settings</h2>
+                <p class="text-blue-100 text-sm"><%= @selected_portfolio_for_overview.title %></p>
+              </div>
+              <button phx-click="close_url_customization" 
+                      class="text-white hover:text-gray-200 transition-colors p-1">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          <div class="p-6">
+            <!-- Current URL Display -->
+            <div class="bg-gray-50 rounded-lg p-4 mb-6">
+              <p class="text-sm font-medium text-gray-700 mb-2">Current URL:</p>
+              <div class="flex items-center space-x-2">
+                <code class="text-blue-600 font-mono text-sm bg-white px-2 py-1 rounded border flex-1">
+                  <%= @url_preview.current_url %>
+                </code>
+                <button phx-click="copy_portfolio_url" phx-value-portfolio-id={@selected_portfolio_for_overview.id}
+                        class="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <!-- URL Customization Form -->
+            <form phx-submit="update_portfolio_url" class="mb-6">
+              <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Custom URL</label>
+                <div class="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                  <span class="bg-gray-50 text-gray-500 text-sm px-3 py-2">frestyl.app/</span>
+                  <input type="text" name="custom_slug" 
+                        value={@selected_portfolio_for_overview.slug}
+                        class="flex-1 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="your-portfolio-name"
+                        pattern="^[a-z0-9-]+$"
+                        required>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Only lowercase letters, numbers, and hyphens</p>
+              </div>
+              
+              <button type="submit"
+                      class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                Update URL
+              </button>
+            </form>
+            
+            <!-- Visibility Settings -->
+            <div class="space-y-3">
+              <h3 class="text-sm font-medium text-gray-700">Quick Settings</h3>
+              
+              <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p class="font-medium text-sm">Public Access</p>
+                  <p class="text-xs text-gray-600">Anyone with the link can view</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" 
+                        checked={@selected_portfolio_for_overview.visibility == :public}
+                        phx-click="toggle_portfolio_visibility" 
+                        phx-value-portfolio-id={@selected_portfolio_for_overview.id}
+                        class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              
+              <button phx-click="show_portfolio_settings" phx-value-portfolio-id={@selected_portfolio_for_overview.id}
+                      class="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="font-medium text-sm">Advanced Settings</p>
+                    <p class="text-xs text-gray-600">Privacy, sharing, and access controls</p>
+                  </div>
+                  <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                  </svg>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <!-- Comprehensive Settings Modal -->
+    <%= if @show_settings_modal and @selected_portfolio_for_settings do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+          <!-- Modal Header -->
+          <div class="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xl font-bold text-white">Portfolio Settings</h2>
+                <p class="text-indigo-100 text-sm"><%= @selected_portfolio_for_settings.title %></p>
+              </div>
+              <button phx-click="close_settings_modal" 
+                      class="text-white hover:text-gray-200 transition-colors p-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          <div class="flex h-[calc(90vh-80px)]">
+            <!-- Settings Sidebar -->
+            <div class="w-64 bg-gray-50 border-r border-gray-200 overflow-y-auto">
+              <nav class="p-4 space-y-2">
+                <button class="w-full text-left px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg">
+                  🔒 Privacy & Visibility
+                </button>
+                <button class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+                  🔗 Sharing & Access
+                </button>
+                <button class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+                  📱 Social Integration
+                </button>
+                <button class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+                  📊 Analytics & Tracking
+                </button>
+                <button class="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+                  ⚙️ Advanced Settings
+                </button>
+              </nav>
+            </div>
+            
+            <!-- Settings Content -->
+            <div class="flex-1 overflow-y-auto p-6">
+              <!-- 4-Tier Visibility System -->
+              <div class="mb-8">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Visibility Level</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <%= for tier <- @settings_data.visibility_tiers do %>
+                    <div class="relative">
+                      <input type="radio" 
+                            name="visibility_tier" 
+                            value={tier.key}
+                            checked={@settings_data.current_visibility == tier.key}
+                            phx-click="update_visibility_tier"
+                            phx-value-tier={tier.key}
+                            class="sr-only peer"
+                            id={"tier-#{tier.key}"}>
+                      
+                      <label for={"tier-#{tier.key}"} 
+                            class="block p-4 border-2 border-gray-200 rounded-xl cursor-pointer transition-all peer-checked:border-indigo-500 peer-checked:bg-indigo-50 hover:border-gray-300">
+                        <div class="flex items-start space-x-3">
+                          <div class="text-2xl"><%= tier.icon %></div>
+                          <div class="flex-1">
+                            <h4 class="font-medium text-gray-900 mb-1"><%= tier.name %></h4>
+                            <p class="text-sm text-gray-600 mb-3"><%= tier.description %></p>
+                            
+                            <ul class="text-xs text-gray-500 space-y-1">
+                              <%= for feature <- tier.features do %>
+                                <li class="flex items-center">
+                                  <svg class="w-3 h-3 text-green-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                  </svg>
+                                  <%= feature %>
+                                </li>
+                              <% end %>
+                            </ul>
+                          </div>
+                        </div>
+                        
+                        <%= if @settings_data.current_visibility == tier.key do %>
+                          <div class="absolute top-2 right-2">
+                            <div class="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center">
+                              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                              </svg>
+                            </div>
+                          </div>
+                        <% end %>
+                      </label>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+              
+              <!-- Access Controls -->
+              <div class="mb-8">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Access Controls</h3>
+                
+                <form phx-submit="update_access_control" class="space-y-6">
+                  <!-- Password Protection -->
+                  <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 class="font-medium text-gray-900">Password Protection</h4>
+                        <p class="text-sm text-gray-600">Require a password to view this portfolio</p>
+                      </div>
+                      <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" 
+                              name="password_protection"
+                              checked={@settings_data.access_controls.password_protection}
+                              class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                      </label>
+                    </div>
+                    
+                    <%= if @settings_data.access_controls.password_protection do %>
+                      <div class="mt-3">
+                        <input type="password" 
+                              name="password"
+                              placeholder="Enter password"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      </div>
+                    <% end %>
+                  </div>
+                  
+                  <!-- Domain Restrictions -->
+                  <div class="bg-gray-50 rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900 mb-2">Domain Restrictions</h4>
+                    <p class="text-sm text-gray-600 mb-3">Limit access to specific domains (one per line)</p>
+                    <textarea name="allowed_domains" 
+                              rows="3"
+                              placeholder="example.com&#10;company.org"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><%= Enum.join(@settings_data.access_controls.allowed_domains, "\n") %></textarea>
+                  </div>
+                  
+                  <!-- Expiry Date -->
+                  <div class="bg-gray-50 rounded-lg p-4">
+                    <h4 class="font-medium text-gray-900 mb-2">Access Expiry</h4>
+                    <p class="text-sm text-gray-600 mb-3">Automatically make portfolio private after this date</p>
+                    <input type="date" 
+                          name="expiry_date"
+                          value={@settings_data.access_controls.expiry_date}
+                          class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  </div>
+                  
+                  <button type="submit" 
+                          class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+                    Update Access Controls
+                  </button>
+                </form>
+              </div>
+              
+              <!-- Share Links -->
+              <div class="mb-8">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Share Links</h3>
+                
+                <div class="space-y-4">
+                  <!-- Generate Share Links -->
+                  <div class="flex space-x-3">
+                    <button phx-click="generate_share_link" phx-value-link_type="temporary"
+                            class="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+                      Generate Temporary Link
+                    </button>
+                    <button phx-click="generate_share_link" phx-value-link_type="permanent"
+                            class="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors">
+                      Generate Permanent Link
+                    </button>
+                  </div>
+                  
+                  <!-- Existing Share Links -->
+                  <%= if length(@settings_data.share_links) > 0 do %>
+                    <div class="space-y-2">
+                      <%= for link <- @settings_data.share_links do %>
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <p class="font-medium text-sm"><%= link.name %></p>
+                            <code class="text-xs text-gray-600"><%= link.url %></code>
+                          </div>
+                          <div class="flex space-x-2">
+                            <button phx-click="copy_share_link" phx-value-link-id={link.id}
+                                    class="text-blue-600 hover:text-blue-800 text-sm">
+                              Copy
+                            </button>
+                            <button phx-click="delete_share_link" phx-value-link-id={link.id}
+                                    class="text-red-600 hover:text-red-800 text-sm">
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+              
+              <!-- Social Media Integration -->
+              <div class="mb-8">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Social Media Integration</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <%= for integration <- @settings_data.social_integrations do %>
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                      <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                          <span class="text-sm font-medium"><%= String.first(integration.name) %></span>
+                        </div>
+                        <div>
+                          <h4 class="font-medium text-gray-900"><%= integration.name %></h4>
+                          <p class="text-sm text-gray-600">Auto-share portfolio updates</p>
+                        </div>
+                      </div>
+                      
+                      <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" 
+                              checked={integration.enabled}
+                              phx-click="toggle_social_integration"
+                              phx-value-integration-id={integration.id}
+                              class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+              
+              <!-- Analytics & Privacy -->
+              <div class="mb-8">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Privacy & Analytics</h3>
+                
+                <div class="space-y-4">
+                  <%= for {setting_key, setting_config} <- [
+                        {:track_visitors, %{name: "Track Visitors", desc: "Collect anonymous visitor analytics"}},
+                        {:seo_enabled, %{name: "SEO Indexing", desc: "Allow search engines to index this portfolio"}},
+                        {:hide_contact_info, %{name: "Hide Contact Info", desc: "Hide contact information from public view"}},
+                        {:watermark_images, %{name: "Watermark Images", desc: "Add subtle watermark to uploaded images"}},
+                        {:disable_right_click, %{name: "Disable Right-Click", desc: "Prevent right-click context menu"}}
+                      ] do %>
+                    <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div>
+                        <h4 class="font-medium text-gray-900"><%= setting_config.name %></h4>
+                        <p class="text-sm text-gray-600"><%= setting_config.desc %></p>
+                      </div>
+                      
+                      <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" 
+                              checked={Map.get(@settings_data.privacy_settings, setting_key, false)}
+                              phx-click="toggle_privacy_setting"
+                              phx-value-setting={setting_key}
+                              class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gray-600"></div>
+                      </label>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
   </div>
 </div>
 
@@ -367,105 +724,6 @@
   </div>
 <% end %>
 
-<!-- Settings Modal -->
-<%= render_settings_modal(assigns) %>
-
-<!-- Live Streaming Modal -->
-<%= if @show_live_stream_modal do %>
-  <div class="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-       phx-click="close_live_stream_modal">
-    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
-         phx-click-away="close_live_stream_modal">
-      
-      <!-- Modal Header -->
-      <div class="bg-gradient-to-r from-red-600 to-pink-600 px-8 py-6">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center space-x-3">
-            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
-              </svg>
-            </div>
-            <div>
-              <h2 class="text-2xl font-bold text-white">Live Streaming</h2>
-              <p class="text-red-100">Stream your portfolio presentation live</p>
-            </div>
-          </div>
-          <button phx-click="close_live_stream_modal"
-                  class="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- Modal Content -->
-      <div class="p-8">
-        <div class="text-center">
-          <div class="w-20 h-20 bg-gradient-to-br from-red-100 to-pink-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <svg class="w-10 h-10 text-red-600" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
-            </svg>
-          </div>
-          <h3 class="text-2xl font-bold text-gray-900 mb-4">Start Your Live Stream</h3>
-          <p class="text-gray-600 mb-8 max-w-2xl mx-auto">
-            Present your portfolio live to potential employers, clients, or collaborators. Stream in HD with real-time chat and screen sharing capabilities.
-          </p>
-          
-          <!-- Stream Options -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <button phx-click="start_portfolio_presentation"
-                    class="p-6 border-2 border-red-200 rounded-xl hover:border-red-400 transition-all duration-200 text-center hover:bg-red-50">
-              <div class="w-16 h-16 bg-gradient-to-br from-red-100 to-pink-100 rounded-2xl flex items-center justify-center mb-4 mx-auto">
-                <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 8h10m-5-8v8m-5 4h10a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                </svg>
-              </div>
-              <h4 class="text-lg font-semibold text-gray-900 mb-2">Portfolio Presentation</h4>
-              <p class="text-sm text-gray-600">Walk through your portfolio with live commentary</p>
-            </button>
-
-            <button phx-click="start_interview_stream"
-                    class="p-6 border-2 border-blue-200 rounded-xl hover:border-blue-400 transition-all duration-200 text-center hover:bg-blue-50">
-              <div class="w-16 h-16 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl flex items-center justify-center mb-4 mx-auto">
-                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                </svg>
-              </div>
-              <h4 class="text-lg font-semibold text-gray-900 mb-2">Live Interview</h4>
-              <p class="text-sm text-gray-600">Host a live Q&A session about your work</p>
-            </button>
-          </div>
-
-          <!-- Stream Settings Preview -->
-          <div class="bg-gray-50 rounded-lg p-6 text-left">
-            <h4 class="font-semibold text-gray-900 mb-4">Stream Settings</h4>
-            <div class="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span class="text-gray-600">Quality:</span>
-                <span class="ml-2 font-medium">1080p HD</span>
-              </div>
-              <div>
-                <span class="text-gray-600">Audio:</span>
-                <span class="ml-2 font-medium">High Quality</span>
-              </div>
-              <div>
-                <span class="text-gray-600">Chat:</span>
-                <span class="ml-2 font-medium">Enabled</span>
-              </div>
-              <div>
-                <span class="text-gray-600">Recording:</span>
-                <span class="ml-2 font-medium">Auto-save</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-<% end %>
-
 <!-- JavaScript for Copy to Clipboard -->
 <script>
   function copyToClipboard(inputId) {
@@ -516,5 +774,47 @@
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  });
+
+  window.addEventListener("phx:copy-to-clipboard", (event) => {
+    const text = event.detail.text;
+    navigator.clipboard.writeText(text).then(() => {
+      console.log("Copied to clipboard:", text);
+    }).catch(err => {
+      console.error("Failed to copy:", err);
+    });
+  });
+
+  // Enhanced drag and drop for resume import
+  document.addEventListener('DOMContentLoaded', function() {
+    const dropZone = document.getElementById('drop-zone');
+    
+    if (dropZone) {
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+      });
+      
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, highlight, false);
+      });
+      
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, unhighlight, false);
+      });
+      
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      
+      function highlight(e) {
+        dropZone.classList.add('border-green-400', 'bg-green-50');
+      }
+      
+      function unhighlight(e) {
+        dropZone.classList.remove('border-green-400', 'bg-green-50');
+      }
+    }
   });
 </script>

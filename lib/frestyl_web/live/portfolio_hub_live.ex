@@ -122,6 +122,12 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:lab_recommendations, lab_data.recommendations)
       |> assign(:experiment_results, lab_data.results)
 
+      # ======== EXPORT AND ANALYTICS STATE ========
+      |> assign(:show_export_menu, false)                  # Export menu state
+      |> assign(:analytics_data, %{})                      # Analytics data
+      |> assign(:export_status, nil)                       # Export operation status
+
+
       # ======== HUB OPTIONS ========
       |> assign(:overview, safe_get_user_overview(user.id))
       |> assign(:view_mode, "grid")                    # "grid" or "list"
@@ -175,6 +181,20 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:open_more_menu, nil)
       |> assign(:show_settings_modal, false)
       |> assign(:selected_portfolio_for_settings, nil)
+      |> assign(:show_url_customization, false)
+      |> assign(:selected_portfolio_for_overview, nil)
+      |> assign(:url_preview, nil)
+      |> assign(:settings_data, %{})
+
+      |> assign(:show_live_stream_modal, false)            # Live streaming modal
+      |> assign(:show_ai_creation_modal, false)            # AI creation modal
+      |> assign(:show_clone_modal, false)                  # Clone portfolio modal
+      |> assign(:show_template_browser, false)             # Template browser modal
+      |> assign(:show_resume_import_modal, false)
+
+      |> assign(:show_enhancement_modal, false)            # Enhancement request modal
+      |> assign(:show_upgrade_modal, false)                # Upgrade subscription modal
+      |> assign(:requested_feature, nil)                   # Feature requiring upgrade
 
       # ======== MOBILE STATE ========
       |> Map.merge(mobile_state)
@@ -185,6 +205,263 @@ defmodule FrestylWeb.PortfolioHubLive do
 
     {:ok, socket}
   end
+
+  @impl true
+  def handle_event("show_portfolio_overview", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      url_preview = %{
+        current_url: "#{get_base_url()}/#{portfolio.slug}",
+        custom_available: portfolio.slug != portfolio.id
+      }
+
+      {:noreply,
+      socket
+      |> assign(:selected_portfolio_for_overview, portfolio)
+      |> assign(:url_preview, url_preview)
+      |> assign(:show_url_customization, true)}
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_url_customization", _params, socket) do
+    {:noreply, assign(socket, :show_url_customization, false)}
+  end
+
+  @impl true
+  def handle_event("update_portfolio_url", %{"custom_slug" => custom_slug}, socket) do
+    portfolio = socket.assigns.selected_portfolio_for_overview
+
+    case Portfolios.update_portfolio(portfolio, %{slug: String.downcase(custom_slug)}) do
+      {:ok, updated_portfolio} ->
+        updated_portfolios = Enum.map(socket.assigns.portfolios, fn p ->
+          if p.id == updated_portfolio.id, do: updated_portfolio, else: p
+        end)
+
+        url_preview = %{
+          current_url: "#{get_base_url()}/#{updated_portfolio.slug}",
+          custom_available: true
+        }
+
+        {:noreply,
+        socket
+        |> assign(:portfolios, updated_portfolios)
+        |> assign(:selected_portfolio_for_overview, updated_portfolio)
+        |> assign(:url_preview, url_preview)
+        |> put_flash(:info, "Portfolio URL updated successfully!")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update URL. Slug may already be taken.")}
+    end
+  end
+
+  @impl true
+  def handle_event("copy_portfolio_url", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      url = "#{get_base_url()}/#{portfolio.slug}"
+
+      {:noreply,
+      socket
+      |> put_flash(:info, "Portfolio URL copied to clipboard!")
+      |> push_event("copy-to-clipboard", %{text: url})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_portfolio_visibility", %{"portfolio-id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      new_visibility = if portfolio.visibility == :public, do: :private, else: :public
+
+      case Portfolios.update_portfolio(portfolio, %{visibility: new_visibility}) do
+        {:ok, updated_portfolio} ->
+          updated_portfolios = Enum.map(socket.assigns.portfolios, fn p ->
+            if p.id == updated_portfolio.id, do: updated_portfolio, else: p
+          end)
+
+          {:noreply,
+          socket
+          |> assign(:portfolios, updated_portfolios)
+          |> assign(:selected_portfolio_for_overview, updated_portfolio)}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update visibility")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("show_portfolio_overview", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      url_preview = %{
+        current_url: "#{get_base_url()}/#{portfolio.slug}",
+        custom_available: portfolio.slug != portfolio.id
+      }
+
+      {:noreply,
+      socket
+      |> assign(:selected_portfolio_for_overview, portfolio)
+      |> assign(:url_preview, url_preview)
+      |> assign(:show_url_customization, true)}
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_url_customization", _params, socket) do
+    {:noreply, assign(socket, :show_url_customization, false)}
+  end
+
+  @impl true
+  def handle_event("update_portfolio_url", %{"custom_slug" => custom_slug}, socket) do
+    portfolio = socket.assigns.selected_portfolio_for_overview
+
+    case Portfolios.update_portfolio(portfolio, %{slug: String.downcase(custom_slug)}) do
+      {:ok, updated_portfolio} ->
+        updated_portfolios = Enum.map(socket.assigns.portfolios, fn p ->
+          if p.id == updated_portfolio.id, do: updated_portfolio, else: p
+        end)
+
+        url_preview = %{
+          current_url: "#{get_base_url()}/#{updated_portfolio.slug}",
+          custom_available: true
+        }
+
+        {:noreply,
+        socket
+        |> assign(:portfolios, updated_portfolios)
+        |> assign(:selected_portfolio_for_overview, updated_portfolio)
+        |> assign(:url_preview, url_preview)
+        |> put_flash(:info, "Portfolio URL updated successfully!")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update URL. Slug may already be taken.")}
+    end
+  end
+
+  @impl true
+  def handle_event("show_portfolio_settings", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      settings_data = load_portfolio_settings(portfolio, socket.assigns.current_user)
+
+      {:noreply,
+      socket
+      |> assign(:show_settings_modal, true)
+      |> assign(:selected_portfolio_for_settings, portfolio)
+      |> assign(:settings_data, settings_data)}
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_settings_modal", _params, socket) do
+    {:noreply, assign(socket, :show_settings_modal, false)}
+  end
+
+  @impl true
+  def handle_event("update_visibility_tier", %{"tier" => tier}, socket) do
+    portfolio = socket.assigns.selected_portfolio_for_settings
+    tier_atom = String.to_atom(tier)
+
+    case Portfolios.update_portfolio_visibility(portfolio, tier_atom) do
+      {:ok, updated_portfolio} ->
+        updated_portfolios = update_portfolio_in_list(socket.assigns.portfolios, updated_portfolio)
+        settings_data = load_portfolio_settings(updated_portfolio, socket.assigns.current_user)
+
+        {:noreply,
+        socket
+        |> assign(:portfolios, updated_portfolios)
+        |> assign(:selected_portfolio_for_settings, updated_portfolio)
+        |> assign(:settings_data, settings_data)
+        |> put_flash(:info, "Visibility updated successfully!")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to update visibility: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_seo_indexing", _params, socket) do
+    portfolio = socket.assigns.selected_portfolio_for_settings
+    new_seo_value = not Map.get(portfolio, :seo_enabled, false)
+
+    case Portfolios.update_portfolio(portfolio, %{seo_enabled: new_seo_value}) do
+      {:ok, updated_portfolio} ->
+        updated_portfolios = update_portfolio_in_list(socket.assigns.portfolios, updated_portfolio)
+
+        {:noreply,
+        socket
+        |> assign(:portfolios, updated_portfolios)
+        |> assign(:selected_portfolio_for_settings, updated_portfolio)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update SEO settings")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_access_control", params, socket) do
+    portfolio = socket.assigns.selected_portfolio_for_settings
+
+    access_settings = %{
+      password_protection: Map.get(params, "password_protection") == "true",
+      password: Map.get(params, "password", ""),
+      allowed_domains: String.split(Map.get(params, "allowed_domains", ""), ",") |> Enum.map(&String.trim/1),
+      expiry_date: parse_date(Map.get(params, "expiry_date"))
+    }
+
+    case Portfolios.update_portfolio_access(portfolio, access_settings) do
+      {:ok, updated_portfolio} ->
+        updated_portfolios = update_portfolio_in_list(socket.assigns.portfolios, updated_portfolio)
+        settings_data = load_portfolio_settings(updated_portfolio, socket.assigns.current_user)
+
+        {:noreply,
+        socket
+        |> assign(:portfolios, updated_portfolios)
+        |> assign(:selected_portfolio_for_settings, updated_portfolio)
+        |> assign(:settings_data, settings_data)
+        |> put_flash(:info, "Access controls updated!")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to update access controls: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("generate_share_link", %{"link_type" => link_type}, socket) do
+    portfolio = socket.assigns.selected_portfolio_for_settings
+
+    case Portfolios.generate_share_link(portfolio, link_type) do
+      {:ok, share_link} ->
+        updated_settings = Map.put(socket.assigns.settings_data, :latest_share_link, share_link)
+
+        {:noreply,
+        socket
+        |> assign(:settings_data, updated_settings)
+        |> put_flash(:info, "Share link generated!")
+        |> push_event("copy-to-clipboard", %{text: share_link.url})}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to generate share link: #{reason}")}
+    end
+  end
+
 
   # ============================================================================
   # PORTFOLIO ENHANCEMENTS
@@ -1392,6 +1669,44 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
+  @impl true
+  def handle_event("preview_video_intro", %{"portfolio-id" => portfolio_id} = params, socket) do
+    # Handle hyphenated parameter name from template
+    handle_event("preview_video_intro", Map.put(params, "portfolio_id", portfolio_id), socket)
+  end
+
+  @impl true
+  def handle_event("preview_video_intro", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      # Navigate to portfolio view to see the video
+      {:noreply, push_navigate(socket, to: "/#{Map.get(portfolio, :slug, portfolio_id)}")}
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("record_video_intro", %{"portfolio-id" => portfolio_id} = params, socket) do
+    # Handle hyphenated parameter name from template
+    handle_event("record_video_intro", Map.put(params, "portfolio_id", portfolio_id), socket)
+  end
+
+  @impl true
+  def handle_event("record_video_intro", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      {:noreply,
+      socket
+      |> assign(:show_video_intro_modal, true)
+      |> assign(:current_portfolio_for_video, portfolio)}
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio not found")}
+    end
+  end
+
   # ============================================================================
   # MORE MENU WITH EXPORT OPTIONS
   # ============================================================================
@@ -1516,6 +1831,142 @@ defmodule FrestylWeb.PortfolioHubLive do
     |> assign(:show_settings_modal, true)
     |> assign(:selected_portfolio_for_settings, portfolio)
     |> assign(:open_more_menu, nil)}
+  end
+
+  @impl true
+  def handle_event("navigate_to_portfolio", %{"id" => id, "value" => _value}, socket) do
+    handle_event("navigate_to_portfolio", %{"id" => id}, socket)
+  end
+
+  @impl true
+  def handle_event("navigate_to_portfolio", %{"id" => id}, socket) do
+    portfolio_id = String.to_integer(id)
+    {:noreply, push_navigate(socket, to: "/portfolios/#{portfolio_id}/edit")}
+  end
+
+
+  # Portfolio Overview Events
+  @impl true
+  def handle_event("show_portfolio_overview", params, socket) do
+    portfolio_id = extract_portfolio_id(params)
+
+    if portfolio_id do
+      portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+      if portfolio do
+        url_preview = %{
+          current_url: "#{get_base_url()}/#{Map.get(portfolio, :slug, portfolio_id)}",
+          custom_available: true
+        }
+
+        {:noreply,
+        socket
+        |> assign(:selected_portfolio_for_overview, portfolio)
+        |> assign(:url_preview, url_preview)
+        |> assign(:show_url_customization, true)}
+      else
+        {:noreply, put_flash(socket, :error, "Portfolio not found")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio ID required")}
+    end
+  end
+
+  # Portfolio Settings Events
+  @impl true
+  def handle_event("show_portfolio_settings", params, socket) do
+    portfolio_id = extract_portfolio_id(params)
+
+    if portfolio_id do
+      portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+      if portfolio do
+        settings_data = load_portfolio_settings(portfolio, socket.assigns.current_user)
+
+        {:noreply,
+        socket
+        |> assign(:show_settings_modal, true)
+        |> assign(:selected_portfolio_for_settings, portfolio)
+        |> assign(:settings_data, settings_data)}
+      else
+        {:noreply, put_flash(socket, :error, "Portfolio not found")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio ID required")}
+    end
+  end
+
+  # Video Intro Events
+  @impl true
+  def handle_event("preview_video_intro", params, socket) do
+    portfolio_id = extract_portfolio_id(params)
+
+    if portfolio_id do
+      portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+      if portfolio do
+        {:noreply, push_navigate(socket, to: "/#{Map.get(portfolio, :slug, portfolio_id)}")}
+      else
+        {:noreply, put_flash(socket, :error, "Portfolio not found")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio ID required")}
+    end
+  end
+
+  @impl true
+  def handle_event("record_video_intro", params, socket) do
+    portfolio_id = extract_portfolio_id(params)
+
+    if portfolio_id do
+      portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+      if portfolio do
+        {:noreply,
+        socket
+        |> assign(:show_video_intro_modal, true)
+        |> assign(:current_portfolio_for_video, portfolio)}
+      else
+        {:noreply, put_flash(socket, :error, "Portfolio not found")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio ID required")}
+    end
+  end
+
+  # Portfolio Navigation
+  @impl true
+  def handle_event("navigate_to_portfolio", params, socket) do
+    portfolio_id = extract_portfolio_id(params)
+
+    if portfolio_id do
+      {:noreply, push_navigate(socket, to: "/portfolios/#{portfolio_id}/edit")}
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio ID required")}
+    end
+  end
+
+  # Copy Portfolio URL
+  @impl true
+  def handle_event("copy_portfolio_url", params, socket) do
+    portfolio_id = extract_portfolio_id(params)
+
+    if portfolio_id do
+      portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+      if portfolio do
+        url = "#{get_base_url()}/#{Map.get(portfolio, :slug, portfolio_id)}"
+
+        {:noreply,
+        socket
+        |> put_flash(:info, "Portfolio URL copied to clipboard!")
+        |> push_event("copy-to-clipboard", %{text: url})}
+      else
+        {:noreply, put_flash(socket, :error, "Portfolio not found")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio ID required")}
+    end
   end
 
   defp send_enhancement_invitations(channel, enhancement_type, current_account) do
@@ -1860,251 +2311,1183 @@ defmodule FrestylWeb.PortfolioHubLive do
   defp check_billing_integration(user_id), do: false
   defp portfolio_needs_work?(portfolio), do: false
 
+  defp extract_portfolio_id(params) do
+    cond do
+      Map.has_key?(params, "portfolio_id") -> Map.get(params, "portfolio_id")
+      Map.has_key?(params, "portfolio-id") -> Map.get(params, "portfolio-id")
+      Map.has_key?(params, "id") -> Map.get(params, "id")
+      true -> nil
+    end
+  end
+
+
+
   # ============================================================================
   # MAIN SECTION FUNCTIONS (called directly from template)
   # ============================================================================
 
-# Replace your entire portfolio_grid_section function with this complete version
-
-  defp portfolio_grid_section(assigns) do
+  defp enhanced_portfolio_grid_section(assigns) do
     ~H"""
     <div class="space-y-8">
-      <!-- Enhanced Header with Stats and Actions -->
+      <!-- Enhanced Header (same as before) -->
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-2xl font-bold text-gray-900">Your Portfolios</h2>
           <p class="text-gray-600 mt-1">
-            <%= length(@portfolios) %> portfolios • <%= @overview.total_visits %> total views
+            <%= length(@portfolios) %> portfolios •
+            <%= Enum.count(@portfolios, &(Map.get(&1, :visibility) == :public)) %> published
           </p>
         </div>
 
-        <div class="flex items-center space-x-3">
-          <!-- View Toggle -->
-          <div class="bg-gray-100 rounded-lg p-1 flex">
+        <div class="flex items-center space-x-4">
+          <!-- View Toggle (FIXED) -->
+          <div class="flex bg-gray-100 rounded-lg p-1">
             <button phx-click="set_view_mode" phx-value-mode="grid"
-                    class={["px-3 py-1 rounded text-sm font-medium transition-colors",
-                      if(assigns[:view_mode] == "grid", do: "bg-white shadow-sm text-gray-900", else: "text-gray-600 hover:text-gray-900")]}>
+                    class={[
+                      "px-3 py-1.5 rounded text-sm font-medium transition-colors",
+                      if(@view_mode == "grid",
+                        do: "bg-white text-gray-900 shadow-sm",
+                        else: "text-gray-600 hover:text-gray-900")
+                    ]}>
+              <svg class="w-4 h-4 mr-1.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+              </svg>
               Grid
             </button>
             <button phx-click="set_view_mode" phx-value-mode="list"
-                    class={["px-3 py-1 rounded text-sm font-medium transition-colors",
-                      if(assigns[:view_mode] == "list", do: "bg-white shadow-sm text-gray-900", else: "text-gray-600 hover:text-gray-900")]}>
+                    class={[
+                      "px-3 py-1.5 rounded text-sm font-medium transition-colors",
+                      if(@view_mode == "list",
+                        do: "bg-white text-gray-900 shadow-sm",
+                        else: "text-gray-600 hover:text-gray-900")
+                    ]}>
+              <svg class="w-4 h-4 mr-1.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+              </svg>
               List
             </button>
           </div>
 
-          <!-- Create Button -->
+          <!-- Create New Button -->
           <button phx-click="show_create_modal"
-                  class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                  class="flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
             </svg>
-            Create Portfolio
+            Create New
           </button>
         </div>
       </div>
 
-      <!-- Portfolio Grid -->
-      <%= if length(@portfolios) > 0 do %>
-        <div class={if assigns[:view_mode] == "grid", do: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6", else: "space-y-4"}>
+      <!-- Dynamic Portfolio Display based on view_mode -->
+      <%= case @view_mode do %>
+        <% "list" -> %>
+          <%= render_portfolio_list_view(assigns) %>
+        <% _ -> %>
+          <%= render_portfolio_grid_view(assigns) %>
+      <% end %>
+    </div>
+    """
+  end
 
-          <!-- Enhanced Portfolio Cards -->
-          <%= for portfolio <- @portfolios do %>
-            <div class="group bg-white rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl border border-gray-100 transform hover:-translate-y-1">
+  # Separate the grid view into its own function
+  defp render_portfolio_grid_view(assigns) do
+    ~H"""
+    <!-- Enhanced Portfolio Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <%= for portfolio <- @portfolios do %>
+        <div class="group bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 overflow-hidden border border-gray-100">
+          <!-- Theme Color Header -->
+          <div class={[
+            "h-1 bg-gradient-to-r rounded-t-xl",
+            case Map.get(portfolio, :theme, "default") do
+              "minimalist" -> "from-gray-600 to-gray-800"
+              "creative" -> "from-purple-600 to-pink-600"
+              "corporate" -> "from-blue-600 to-indigo-600"
+              "developer" -> "from-green-600 to-teal-600"
+              _ -> "from-cyan-600 to-blue-600"
+            end
+          ]}></div>
 
-              <!-- Portfolio Preview Header -->
-              <div class="relative">
-                <!-- Theme Color Stripe -->
-                <div class={[
-                  "h-1",
-                  case portfolio.theme do
-                    "minimalist" -> "bg-gradient-to-r from-gray-600 to-gray-800"
-                    "creative" -> "bg-gradient-to-r from-purple-600 to-pink-600"
-                    "corporate" -> "bg-gradient-to-r from-blue-600 to-indigo-600"
-                    "developer" -> "bg-gradient-to-r from-green-600 to-teal-600"
-                    _ -> "bg-gradient-to-r from-cyan-600 to-blue-600"
-                  end
-                ]}></div>
+          <!-- Portfolio Preview -->
+          <div class={[
+            "h-32 flex items-center justify-center relative overflow-hidden bg-gradient-to-r",
+            case Map.get(portfolio, :theme, "default") do
+              "minimalist" -> "from-gray-600 to-gray-800"
+              "creative" -> "from-purple-600 to-pink-600"
+              "corporate" -> "from-blue-600 to-indigo-600"
+              "developer" -> "from-green-600 to-teal-600"
+              _ -> "from-cyan-600 to-blue-600"
+            end
+          ]}>
+            <div class="absolute inset-0 bg-black bg-opacity-10"></div>
 
-                <!-- Portfolio Preview -->
-                <div class={[
-                  "h-32 flex items-center justify-center relative overflow-hidden",
-                  case portfolio.theme do
-                    "minimalist" -> "bg-gradient-to-br from-gray-100 to-gray-200"
-                    "creative" -> "bg-gradient-to-br from-purple-50 to-pink-50"
-                    "corporate" -> "bg-gradient-to-br from-blue-50 to-indigo-50"
-                    "developer" -> "bg-gradient-to-br from-green-50 to-teal-50"
-                    _ -> "bg-gradient-to-br from-cyan-50 to-blue-50"
-                  end
-                ]}>
-
-                  <!-- Video Indicator -->
-                  <%= if has_intro_video?(portfolio) do %>
-                    <div class="absolute top-3 left-3 z-10">
-                      <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-2 shadow-lg">
-                        <svg class="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 5v14l11-7z"/>
-                        </svg>
-                      </div>
-                    </div>
-                  <% end %>
-
-                  <!-- Visibility Status -->
-                  <div class="absolute top-3 right-3 z-10">
-                    <button phx-click="toggle_portfolio_visibility" phx-value-portfolio-id={portfolio.id}
-                            class={[
-                              "bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-2 shadow-lg transition-colors",
-                              get_visibility_color(portfolio.visibility)
-                            ]}
-                            title={get_visibility_tooltip(portfolio.visibility)}>
-                      <%= get_visibility_icon(portfolio.visibility) %>
-                    </button>
-                  </div>
-
-                  <!-- Portfolio Title -->
-                  <div class="text-center px-4">
-                    <h3 class={[
-                      "text-xl font-bold mb-2",
-                      case portfolio.theme do
-                        "minimalist" -> "text-gray-800"
-                        "creative" -> "text-purple-800"
-                        "corporate" -> "text-blue-800"
-                        "developer" -> "text-green-800"
-                        _ -> "text-cyan-800"
-                      end
-                    ]}>
-                      <%= portfolio.title %>
-                    </h3>
-                    <p class="text-sm text-gray-600">/<%= portfolio.slug %></p>
-                  </div>
-
-                  <!-- Quick Actions Overlay -->
-                  <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                    <div class="flex space-x-2">
-                      <.link href={"/p/#{portfolio.slug}"} target="_blank"
-                            class="bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-3 hover:bg-opacity-100 transition-all transform hover:scale-110">
-                        <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                        </svg>
-                      </.link>
-                      <.link href={"/portfolios/#{portfolio.id}/edit"}
-                            class="bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-3 hover:bg-opacity-100 transition-all transform hover:scale-110">
-                        <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                        </svg>
-                      </.link>
-                    </div>
-                  </div>
-                </div>
+            <!-- Video Introduction Indicator -->
+            <%= if has_intro_video?(portfolio) do %>
+              <div class="absolute top-3 left-3 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold flex items-center space-x-1">
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                </svg>
+                <span>Video</span>
               </div>
+            <% end %>
 
-              <!-- Portfolio Info -->
-              <div class="p-5">
-                <!-- Title and Description -->
-                <div class="mb-4">
-                  <h3 class="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors line-clamp-1">
-                    <%= portfolio.title %>
-                  </h3>
-                  <%= if portfolio.description do %>
-                    <p class="text-sm text-gray-600 line-clamp-2 mt-1"><%= portfolio.description %></p>
+            <!-- Portfolio Title -->
+            <div class="relative z-10 text-center text-white">
+              <h3 class="text-lg font-bold"><%= portfolio.title %></h3>
+              <div class="flex items-center justify-center space-x-1 mt-1">
+                <span class="text-sm opacity-90">/<%= Map.get(portfolio, :slug, "portfolio") %></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card Content with Icon Buttons -->
+          <%= render_portfolio_card_content(assigns, portfolio) %>
+        </div>
+      <% end %>
+
+      <!-- Enhanced Create New Portfolio Card -->
+      <%= render_create_new_portfolio_card(assigns) %>
+    </div>
+    """
+  end
+
+  # Add the list view rendering function
+  defp render_portfolio_list_view(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+      <%= if length(@portfolios) > 0 do %>
+        <div class="divide-y divide-gray-100">
+          <%= for portfolio <- @portfolios do %>
+            <div class="p-6 hover:bg-gray-50 transition-colors">
+              <div class="flex items-center justify-between">
+                <!-- Portfolio Info -->
+                <div class="flex items-center flex-1">
+                  <!-- Theme Color Indicator -->
+                  <div class={[
+                    "w-4 h-4 rounded-full mr-4 flex-shrink-0",
+                    case Map.get(portfolio, :theme, "default") do
+                      "minimalist" -> "bg-gray-600"
+                      "creative" -> "bg-purple-600"
+                      "corporate" -> "bg-blue-600"
+                      "developer" -> "bg-green-600"
+                      _ -> "bg-cyan-600"
+                    end
+                  ]}></div>
+
+                  <!-- Portfolio Details -->
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center space-x-3 mb-1">
+                      <h3 class="text-lg font-semibold text-gray-900 truncate"><%= portfolio.title %></h3>
+
+                      <!-- Video Indicator -->
+                      <%= if has_intro_video?(portfolio) do %>
+                        <div class="flex items-center text-green-600">
+                          <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                          </svg>
+                          <span class="text-xs font-medium">Video</span>
+                        </div>
+                      <% end %>
+
+                      <!-- Status Badge -->
+                      <% {badge_class, badge_text} = portfolio_status_badge(portfolio) %>
+                      <span class={"px-2 py-1 rounded-full text-xs font-medium #{badge_class}"}>
+                        <%= badge_text %>
+                      </span>
+                    </div>
+
+                    <div class="flex items-center text-sm text-gray-500 space-x-4">
+                      <span>/<%= Map.get(portfolio, :slug, "portfolio") %></span>
+                      <span><%= get_portfolio_view_count(portfolio) %> views</span>
+                      <span><%= get_portfolio_section_count(portfolio) %> sections</span>
+                      <span>Updated <%= time_ago(Map.get(portfolio, :updated_at)) %></span>
+                    </div>
+
+                    <%= if Map.get(portfolio, :description) do %>
+                      <p class="text-sm text-gray-600 mt-2 line-clamp-1">
+                        <%= Map.get(portfolio, :description) %>
+                      </p>
+                    <% end %>
+                  </div>
+                </div>
+
+                <!-- Action Icons (Same as Grid View) -->
+                <div class="flex items-center space-x-1 ml-4">
+                  <!-- Video Intro Button -->
+                  <%= if has_intro_video?(portfolio) do %>
+                    <button phx-click="show_video_intro" phx-value-portfolio_id={portfolio.id}
+                            class="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Edit Video Introduction">
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                      </svg>
+                    </button>
+                  <% else %>
+                    <button phx-click="show_video_intro" phx-value-portfolio_id={portfolio.id}
+                            class="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="Add Video Introduction">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                      </svg>
+                    </button>
                   <% end %>
-                </div>
 
-                <!-- Enhanced Stats Row -->
-                <% stats = Map.get(@portfolio_stats, portfolio.id, %{}) %>
-                <div class="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
-                  <div class="text-center">
-                    <div class="text-lg font-bold text-gray-900">
-                      <%= Map.get(stats, :total_visits, 0) %>
-                    </div>
-                    <div class="text-xs text-gray-500">Views</div>
-                  </div>
-                  <div class="text-center">
-                    <div class="text-lg font-bold text-gray-900">
-                      <%= Map.get(stats, :total_shares, 0) %>
-                    </div>
-                    <div class="text-xs text-gray-500">Shares</div>
-                  </div>
-                  <div class="text-center">
-                    <div class="text-lg font-bold text-gray-900">
-                      <%= Map.get(stats, :engagement_rate, 0) %>%
-                    </div>
-                    <div class="text-xs text-gray-500">Engagement</div>
-                  </div>
-                </div>
-
-                <!-- Action Buttons Row -->
-                <div class="flex items-center justify-between">
-                  <div class="flex space-x-2">
-                    <!-- Share Button -->
-                    <button phx-click="show_share_modal" phx-value-portfolio-id={portfolio.id}
-                            class="flex items-center px-3 py-1.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors">
-                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
+                  <!-- Visibility Toggle Button -->
+                  <button phx-click="toggle_discovery" phx-value-portfolio_id={portfolio.id}
+                          class={[
+                            "p-2 rounded-lg transition-colors",
+                            if(Map.get(portfolio, :visibility) == :public,
+                              do: "text-green-600 hover:bg-green-50",
+                              else: "text-gray-600 hover:bg-gray-50")
+                          ]}
+                          title={
+                            if(Map.get(portfolio, :visibility) == :public,
+                              do: "Portfolio is Public",
+                              else: "Portfolio is Private")
+                          }>
+                    <%= if Map.get(portfolio, :visibility) == :public do %>
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                       </svg>
-                      Share
-                    </button>
-
-                    <!-- Feedback Button -->
-                    <button phx-click="request_feedback" phx-value-portfolio-id={portfolio.id}
-                            class="flex items-center px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors">
-                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                    <% else %>
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
                       </svg>
-                      Feedback
-                    </button>
-                  </div>
+                    <% end %>
+                  </button>
 
-                  <div class="flex items-center space-x-2">
-                    <!-- Last Updated -->
-                    <div class="text-xs text-gray-500">
-                      Updated <%= time_ago(portfolio.updated_at) %>
-                    </div>
-                  </div>
+                  <!-- Copy Link Button -->
+                  <button phx-click="copy_portfolio_url" phx-value-portfolio_id={portfolio.id}
+                          class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Copy Portfolio Link">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                  </button>
+
+                  <!-- Feedback Button -->
+                  <button phx-click="request_feedback" phx-value-portfolio_id={portfolio.id}
+                          class="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                          title="Request Feedback">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                    </svg>
+                  </button>
+
+                  <!-- Settings Button -->
+                  <button phx-click="show_portfolio_settings" phx-value-portfolio_id={portfolio.id}
+                          class="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                          title="Portfolio Settings">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                  </button>
+
+                  <!-- Delete Button -->
+                  <button phx-click="delete_portfolio" phx-value-id={portfolio.id}
+                          data-confirm="Are you sure you want to delete this portfolio? This action cannot be undone."
+                          class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Portfolio">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                  </button>
+
+                  <!-- Edit Button -->
+                  <button phx-click="navigate_to_portfolio" phx-value-id={portfolio.id}
+                          class="p-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors"
+                          title="Edit Portfolio">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>
           <% end %>
-
-          <!-- Create New Card -->
-          <div class="group bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-1 border-2 border-dashed border-gray-300 hover:border-purple-300 cursor-pointer"
-              phx-click="show_create_modal">
-            <div class="p-8 text-center h-full flex flex-col justify-center">
-              <div class="w-16 h-16 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:from-purple-200 group-hover:to-indigo-200 transition-all duration-300">
-                <svg class="w-8 h-8 text-gray-500 group-hover:text-purple-600 transition-colors transform group-hover:scale-110 duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                </svg>
-              </div>
-              <h3 class="text-lg font-semibold text-gray-700 group-hover:text-purple-700 transition-colors mb-2">
-                Create New Portfolio
-              </h3>
-              <p class="text-sm text-gray-500 group-hover:text-gray-600 transition-colors">
-                Start fresh or use a template
-              </p>
-            </div>
-          </div>
         </div>
       <% else %>
-        <!-- Empty State -->
         <div class="text-center py-12">
-          <div class="w-20 h-20 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <svg class="w-10 h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+          <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
             </svg>
           </div>
-          <h3 class="text-2xl font-bold text-gray-900 mb-4">Ready to create your first portfolio?</h3>
-          <p class="text-gray-600 mb-8 max-w-md mx-auto">
-            Build a professional portfolio that showcases your work and opens new opportunities.
-          </p>
+          <h3 class="text-lg font-medium text-gray-900 mb-2">No portfolios yet</h3>
+          <p class="text-gray-600 mb-4">Create your first portfolio to get started</p>
           <button phx-click="show_create_modal"
-                  class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            Create Your First Portfolio
+                  class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            Create Portfolio
           </button>
         </div>
       <% end %>
+    </div>
+    """
+  end
+
+    defp render_portfolio_card_content(assigns, portfolio) do
+    assigns = assign(assigns, :portfolio, portfolio)
+
+    ~H"""
+    <!-- Card Content -->
+    <div class="p-6">
+      <div class="flex items-start justify-between mb-4">
+        <div class="flex-1">
+          <h3 class="text-xl font-bold text-gray-900 mb-2"><%= @portfolio.title %></h3>
+          <div class="flex items-center space-x-2 mb-3">
+            <% {badge_class, badge_text} = portfolio_status_badge(@portfolio) %>
+            <span class={"px-2 py-1 rounded-full text-xs font-medium #{badge_class}"}>
+              <%= badge_text %>
+            </span>
+          </div>
+        </div>
+
+        <!-- Action Menu Icons -->
+        <div class="flex items-center space-x-1">
+          <!-- Video Intro Button -->
+          <%= if has_intro_video?(@portfolio) do %>
+            <button phx-click="show_video_intro" phx-value-portfolio_id={@portfolio.id}
+                    class="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                    title="Edit Video Introduction">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+              </svg>
+            </button>
+          <% else %>
+            <button phx-click="show_video_intro" phx-value-portfolio_id={@portfolio.id}
+                    class="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                    title="Add Video Introduction">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </button>
+          <% end %>
+
+          <!-- Visibility Toggle Button -->
+          <button phx-click="toggle_discovery" phx-value-portfolio_id={@portfolio.id}
+                  class={[
+                    "p-2 rounded-lg transition-colors",
+                    if(Map.get(@portfolio, :visibility) == :public,
+                      do: "text-green-600 hover:bg-green-50",
+                      else: "text-gray-600 hover:bg-gray-50")
+                  ]}
+                  title={
+                    if(Map.get(@portfolio, :visibility) == :public,
+                      do: "Portfolio is Public",
+                      else: "Portfolio is Private")
+                  }>
+            <%= if Map.get(@portfolio, :visibility) == :public do %>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+            <% else %>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
+              </svg>
+            <% end %>
+          </button>
+
+          <!-- Copy Link Button -->
+          <button phx-click="copy_portfolio_url" phx-value-portfolio_id={@portfolio.id}
+                  class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Copy Portfolio Link">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
+          </button>
+
+          <!-- Feedback Button -->
+          <button phx-click="request_feedback" phx-value-portfolio_id={@portfolio.id}
+                  class="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                  title="Request Feedback">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+            </svg>
+          </button>
+
+          <!-- Settings Button -->
+          <button phx-click="show_portfolio_settings" phx-value-portfolio_id={@portfolio.id}
+                  class="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                  title="Portfolio Settings">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+          </button>
+
+          <!-- Delete Button -->
+          <button phx-click="delete_portfolio" phx-value-id={@portfolio.id}
+                  data-confirm="Are you sure you want to delete this portfolio? This action cannot be undone."
+                  class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete Portfolio">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <%= if Map.get(@portfolio, :description) do %>
+        <p class="text-sm text-gray-600 line-clamp-2 mb-4">
+          <%= Map.get(@portfolio, :description) %>
+        </p>
+      <% end %>
+
+      <!-- Portfolio Stats -->
+      <div class="flex items-center justify-between text-sm text-gray-500 mb-6">
+        <div class="flex items-center space-x-4">
+          <span class="flex items-center">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            <%= get_portfolio_view_count(@portfolio) %>
+          </span>
+
+          <span class="flex items-center">
+            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+            </svg>
+            <%= get_portfolio_section_count(@portfolio) %> sections
+          </span>
+        </div>
+
+        <span class="text-xs text-gray-400">
+          Updated <%= time_ago(Map.get(@portfolio, :updated_at)) %>
+        </span>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex space-x-3">
+        <button phx-click="navigate_to_portfolio" phx-value-id={@portfolio.id}
+                class="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-4 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+          Edit
+        </button>
+
+        <%= if Map.get(@portfolio, :visibility) == :public do %>
+          <a href={"#{get_base_url()}/#{Map.get(@portfolio, :slug, @portfolio.id)}"} target="_blank"
+            class="bg-green-600 text-white py-3 px-4 rounded-xl hover:bg-green-700 transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+            View Live
+          </a>
+        <% else %>
+          <button phx-click="show_portfolio_overview" phx-value-portfolio_id={@portfolio.id}
+                  class="bg-gray-100 text-gray-700 py-3 px-4 rounded-xl hover:bg-gray-200 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md">
+            Share
+          </button>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  # Extract the create new portfolio card into its own function
+  defp render_create_new_portfolio_card(assigns) do
+    ~H"""
+    <div class="group bg-gradient-to-br from-gray-50 to-white rounded-xl border-2 border-dashed border-gray-300 hover:border-blue-400 hover:from-blue-50 hover:to-indigo-50 transition-all duration-300 cursor-pointer transform hover:-translate-y-2"
+        phx-click="show_create_modal">
+      <div class="aspect-video flex items-center justify-center">
+        <div class="text-center">
+          <div class="w-20 h-20 bg-gradient-to-br from-blue-100 to-indigo-200 group-hover:from-blue-200 group-hover:to-indigo-300 rounded-2xl flex items-center justify-center mx-auto mb-4 transition-all duration-300 transform group-hover:scale-110">
+            <svg class="w-10 h-10 text-blue-600 group-hover:text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+          </div>
+          <p class="text-blue-600 group-hover:text-blue-700 font-semibold text-lg">Create New Portfolio</p>
+          <p class="text-gray-500 text-sm mt-1">Start with a template or build from scratch</p>
+        </div>
+      </div>
+
+      <div class="p-6">
+        <h3 class="font-bold text-lg text-gray-900 mb-2">Start Fresh</h3>
+        <p class="text-sm text-gray-600 leading-relaxed">Create a professional portfolio that showcases your unique skills and experience with our advanced templates and tools.</p>
+
+        <div class="mt-4 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <span class="w-2 h-2 bg-green-400 rounded-full"></span>
+            <span class="text-xs text-gray-500">Templates available</span>
+          </div>
+          <svg class="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp portfolio_status_badge(portfolio) do
+    case Map.get(portfolio, :visibility, :private) do
+      :public ->
+        {"bg-green-100 text-green-700", "Published"}
+      :link_only ->
+        {"bg-blue-100 text-blue-700", "Link Only"}
+      :request_only ->
+        {"bg-yellow-100 text-yellow-700", "Request Access"}
+      :private ->
+        {"bg-gray-100 text-gray-700", "Draft"}
+      _ ->
+        {"bg-gray-100 text-gray-700", "Draft"}
+    end
+  end
+
+  defp has_intro_video?(portfolio) do
+    case Ecto.assoc_loaded?(portfolio.sections) do
+      true ->
+        sections = portfolio.sections || []
+        Enum.any?(sections, fn section ->
+          section.section_type in [:media_showcase, "media_showcase", :video_intro, "video_intro"] &&
+          has_video_content_in_section?(section)
+        end)
+      false ->
+        # Try to load sections if not preloaded
+        try do
+          portfolio = Frestyl.Repo.preload(portfolio, :sections)
+          has_intro_video?(portfolio)
+        rescue
+          _ -> false
+        end
+    end
+  end
+
+  defp has_video_content_in_section?(section) do
+    content = section.content || %{}
+
+    # Check various video content patterns
+    cond do
+      Map.has_key?(content, "video_url") and content["video_url"] != nil -> true
+      Map.has_key?(content, "video_type") and content["video_type"] == "introduction" -> true
+      Map.has_key?(content, "media_items") ->
+        media_items = content["media_items"] || []
+        Enum.any?(media_items, fn item ->
+          case item do
+            %{"type" => "video"} -> true
+            %{"media_type" => "video"} -> true
+            %{"file_type" => file_type} when is_binary(file_type) ->
+              String.contains?(String.downcase(file_type), "video")
+            _ -> false
+          end
+        end)
+      true -> false
+    end
+  end
+
+  # ============================================================================
+  # ADDITIONAL EVENT HANDLERS FROM INDEX.EX
+  # ============================================================================
+
+  @impl true
+  def handle_event("show_video_intro", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      {:noreply,
+       socket
+       |> assign(:show_video_intro_modal, true)
+       |> assign(:current_portfolio_for_video, portfolio)}
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_discovery", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      new_visibility = case Map.get(portfolio, :visibility, :private) do
+        :public -> :private
+        _ -> :public
+      end
+
+      case Portfolios.update_portfolio(portfolio, %{visibility: new_visibility}) do
+        {:ok, updated_portfolio} ->
+          updated_portfolios = Enum.map(socket.assigns.portfolios, fn p ->
+            if p.id == updated_portfolio.id, do: updated_portfolio, else: p
+          end)
+
+          flash_message = if new_visibility == :public do
+            "Portfolio is now discoverable on Frestyl"
+          else
+            "Portfolio is now private (link-only access)"
+          end
+
+          {:noreply,
+           socket
+           |> assign(:portfolios, updated_portfolios)
+           |> put_flash(:info, flash_message)}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to update visibility.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_portfolio", %{"id" => id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(id)))
+
+    if portfolio && portfolio.user_id == socket.assigns.current_user.id do
+      case Portfolios.delete_portfolio(portfolio) do
+        {:ok, _} ->
+          # Refresh portfolios list after deletion
+          updated_portfolios = Enum.reject(socket.assigns.portfolios, &(&1.id == portfolio.id))
+
+          {:noreply,
+           socket
+           |> assign(:portfolios, updated_portfolios)
+           |> put_flash(:info, "Portfolio deleted successfully.")}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to delete portfolio.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Unauthorized action.")}
+    end
+  end
+
+  defp get_base_url do
+    Application.get_env(:frestyl, :portfolio_base_url, "https://frestyl.app")
+  end
+
+  defp load_portfolio_settings(portfolio, user) do
+    # Get account from socket assigns instead of user.account
+    account = %{subscription_tier: Map.get(user, :subscription_tier, "free")}
+
+    %{
+      current_visibility: Map.get(portfolio, :visibility, :private),
+      seo_enabled: Map.get(portfolio, :seo_enabled, false),
+      password_protection: Map.get(portfolio, :password_protection, false),
+      access_controls: get_portfolio_access_controls(portfolio),
+      share_links: get_portfolio_share_links(portfolio),
+      analytics_enabled: can_access_analytics?(user),
+      social_integrations: get_available_social_integrations(user),
+      privacy_settings: get_privacy_settings(portfolio),
+      visibility_tiers: get_visibility_tier_options(user)
+    }
+  end
+
+  defp get_visibility_tier_options(user) do
+    base_tiers = [
+      %{
+        key: :private,
+        name: "Private",
+        description: "Only you can see this portfolio",
+        icon: "🔒",
+        features: ["Personal access only", "Hidden from search engines"],
+        available: true
+      },
+      %{
+        key: :unlisted,
+        name: "Unlisted",
+        description: "Only people with the link can view",
+        icon: "🔗",
+        features: ["Link sharing", "Not indexed by search engines"],
+        available: true
+      },
+      %{
+        key: :public,
+        name: "Public",
+        description: "Anyone can find and view your portfolio",
+        icon: "🌍",
+        features: ["Public visibility", "Search engine indexing", "Social media sharing"],
+        available: true
+      }
+    ]
+
+    if can_access_premium_features?(user) do
+      premium_tier = %{
+        key: :premium_public,
+        name: "Premium Public",
+        description: "Enhanced public visibility with advanced features",
+        icon: "⭐",
+        features: ["Priority search ranking", "Advanced analytics", "Custom domain support"],
+        available: true
+      }
+      base_tiers ++ [premium_tier]
+    else
+      base_tiers
+    end
+  end
+
+  defp get_portfolio_access_controls(portfolio) do
+    %{
+      password_protection: Map.get(portfolio, :password_protection, false),
+      allowed_domains: Map.get(portfolio, :allowed_domains, []),
+      expiry_date: Map.get(portfolio, :expiry_date),
+      view_limit: Map.get(portfolio, :view_limit),
+      ip_restrictions: Map.get(portfolio, :ip_restrictions, [])
+    }
+  end
+
+  defp get_portfolio_share_links(_portfolio), do: []
+
+  defp can_access_analytics?(user) do
+    user.account.subscription_tier in ["professional", "creator", "creator_plus"]
+  end
+
+  defp get_available_social_integrations(user) do
+    base_integrations = [
+      %{id: "linkedin", name: "LinkedIn", enabled: true},
+      %{id: "twitter", name: "Twitter/X", enabled: true}
+    ]
+
+    if can_access_premium_features?(user) do
+      base_integrations ++ [
+        %{id: "instagram", name: "Instagram", enabled: true},
+        %{id: "tiktok", name: "TikTok", enabled: true}
+      ]
+    else
+      base_integrations
+    end
+  end
+
+  defp get_privacy_settings(portfolio) do
+    %{
+      hide_contact_info: Map.get(portfolio, :hide_contact_info, false),
+      watermark_images: Map.get(portfolio, :watermark_images, false),
+      disable_right_click: Map.get(portfolio, :disable_right_click, false),
+      track_visitors: Map.get(portfolio, :track_visitors, true)
+    }
+  end
+
+    @impl true
+  def handle_event("create_story_portfolio", _params, socket) do
+    # This will navigate to a story-focused creation flow
+    # You can customize the route and parameters as needed
+    {:noreply,
+     socket
+     |> assign(:show_create_modal, false)
+     |> push_navigate(to: "/portfolios/new?method=story&flow=guided")}
+  end
+
+  # You might also want to enhance the existing handlers to close the modal
+  @impl true
+  def handle_event("create_from_template", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_create_modal, false)
+     |> push_navigate(to: "/portfolios/new?method=template")}
+  end
+
+  @impl true
+  def handle_event("create_from_resume", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_create_modal, false)
+     |> push_navigate(to: "/onboarding/resume-upload")}
+  end
+
+  @impl true
+  def handle_event("create_blank", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_create_modal, false)
+     |> push_navigate(to: "/portfolios/new?method=blank")}
+  end
+
+    @impl true
+  def handle_event("toggle_export_menu", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_export_menu, false)
+    {:noreply, assign(socket, :show_export_menu, !current_state)}
+  end
+
+  # Close export menu handler
+  @impl true
+  def handle_event("close_export_menu", _params, socket) do
+    {:noreply, assign(socket, :show_export_menu, false)}
+  end
+
+  # Export analytics handlers (from the analytics section)
+  @impl true
+  def handle_event("export_analytics", %{"format" => format}, socket) do
+    case format do
+      "pdf" ->
+        {:noreply, put_flash(socket, :info, "Generating PDF analytics report...")}
+      "csv" ->
+        {:noreply, put_flash(socket, :info, "Exporting analytics to CSV...")}
+      "excel" ->
+        {:noreply, put_flash(socket, :info, "Exporting analytics to Excel...")}
+      _ ->
+        {:noreply, put_flash(socket, :error, "Unsupported export format")}
+    end
+  end
+
+  # Media upload handler (referenced in quick_actions)
+  @impl true
+  def handle_event("show_media_upload", _params, socket) do
+    {:noreply, put_flash(socket, :info, "Media upload feature coming soon!")}
+  end
+
+  # Switch section handler (referenced in quick_actions)
+  @impl true
+  def handle_event("switch_section", _params, socket) do
+    {:noreply, assign(socket, :active_hub_section, "analytics")}
+  end
+
+  # Hub section switching handler
+  @impl true
+  def handle_event("switch_hub_section", %{"section" => section}, socket) do
+    {:noreply, assign(socket, :active_hub_section, section)}
+  end
+
+  # Collaboration panel toggle
+  @impl true
+  def handle_event("toggle_collaboration_panel", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_collaboration_panel, false)
+    {:noreply, assign(socket, :show_collaboration_panel, !current_state)}
+  end
+
+  # Mobile menu toggle
+  @impl true
+  def handle_event("toggle_mobile_menu", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_mobile_menu, false)
+    {:noreply, assign(socket, :show_mobile_menu, !current_state)}
+  end
+
+  # Navigation handlers
+  @impl true
+  def handle_event("navigate_to_studio", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/studio")}
+  end
+
+  @impl true
+  def handle_event("browse_templates", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/portfolios/templates")}
+  end
+
+  @impl true
+  def handle_event("access_story_lab", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/lab")}
+  end
+
+  # Upgrade handlers
+  @impl true
+  def handle_event("upgrade_to_creator", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?plan=creator")}
+  end
+
+  @impl true
+  def handle_event("upgrade_to_professional", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?plan=professional")}
+  end
+
+  @impl true
+  def handle_event("upgrade_for_lab", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?feature=creator_lab")}
+  end
+
+  defp can_access_premium_features?(user) do
+    user.account.subscription_tier in ["creator", "creator_plus"]
+  end
+
+  defp parse_date(nil), do: nil
+  defp parse_date(""), do: nil
+  defp parse_date(date_string) when is_binary(date_string) do
+    case Date.from_iso8601(date_string) do
+      {:ok, date} -> date
+      {:error, _} -> nil
+    end
+  end
+
+  defp update_portfolio_in_list(portfolios, updated_portfolio) do
+    Enum.map(portfolios, fn p ->
+      if p.id == updated_portfolio.id, do: updated_portfolio, else: p
+    end)
+  end
+
+  defp visibility_badge_class(visibility) do
+    case visibility do
+      :private -> "bg-gray-100 text-gray-600"
+      :unlisted -> "bg-yellow-100 text-yellow-600"
+      :public -> "bg-green-100 text-green-600"
+      :premium_public -> "bg-purple-100 text-purple-600"
+      _ -> "bg-gray-100 text-gray-600"
+    end
+  end
+
+  defp format_visibility(visibility) do
+    case visibility do
+      :private -> "Private"
+      :unlisted -> "Unlisted"
+      :public -> "Public"
+      :premium_public -> "Premium"
+      _ -> "Unknown"
+    end
+  end
+
+  defp render_create_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+         phx-click="close_create_modal">
+      <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl"
+           phx-click-away="close_create_modal">
+
+        <!-- Enhanced Modal Header -->
+        <div class="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 px-8 py-6 rounded-t-2xl">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-2xl font-bold text-white">Create Your Portfolio</h2>
+              <p class="text-purple-100 mt-1">Choose how you'd like to tell your professional story</p>
+            </div>
+            <button phx-click="close_create_modal"
+                    class="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Enhanced Modal Content -->
+        <div class="p-8">
+          <div class="grid grid-cols-1 gap-6">
+
+            <!-- Story Creation Option (Primary) -->
+            <button phx-click="create_story_portfolio"
+                    class="group text-left p-6 border-2 border-purple-200 rounded-2xl hover:border-purple-400 hover:bg-gradient-to-br hover:from-purple-50 hover:to-blue-50 transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
+              <div class="flex items-start">
+                <div class="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-600 rounded-2xl flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
+                  <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C20.168 18.477 18.582 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-xl font-bold text-gray-900 mb-2 group-hover:text-purple-700 transition-colors">Tell Your Story</h3>
+                  <p class="text-gray-600 mb-3 leading-relaxed">Create a narrative-driven portfolio that guides visitors through your professional journey with engaging storytelling elements.</p>
+                  <div class="flex flex-wrap gap-2">
+                    <span class="px-3 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">Story Flow</span>
+                    <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">Guided Experience</span>
+                    <span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Engaging</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            <!-- Professional Template Option -->
+            <button phx-click="create_from_template"
+                    class="group text-left p-6 border-2 border-blue-200 rounded-2xl hover:border-blue-400 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
+              <div class="flex items-start">
+                <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
+                  <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-xl font-bold text-gray-900 mb-2 group-hover:text-blue-700 transition-colors">Professional Template</h3>
+                  <p class="text-gray-600 mb-3 leading-relaxed">Start with a professionally designed template optimized for your industry and customize it to match your personal brand.</p>
+                  <div class="flex flex-wrap gap-2">
+                    <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">Quick Start</span>
+                    <span class="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">Professional</span>
+                    <span class="px-3 py-1 bg-cyan-100 text-cyan-700 text-xs font-medium rounded-full">Industry-Focused</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            <!-- Resume Upload Option -->
+            <button phx-click="create_from_resume"
+                    class="group text-left p-6 border-2 border-green-200 rounded-2xl hover:border-green-400 hover:bg-gradient-to-br hover:from-green-50 hover:to-emerald-50 transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
+              <div class="flex items-start">
+                <div class="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
+                  <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-xl font-bold text-gray-900 mb-2 group-hover:text-green-700 transition-colors">Import from Resume</h3>
+                  <p class="text-gray-600 mb-3 leading-relaxed">Upload your existing resume and let our AI transform it into an interactive portfolio with smart content organization.</p>
+                  <div class="flex flex-wrap gap-2">
+                    <span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">AI-Powered</span>
+                    <span class="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">Auto-Import</span>
+                    <span class="px-3 py-1 bg-teal-100 text-teal-700 text-xs font-medium rounded-full">Time-Saving</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            <!-- Blank Canvas Option -->
+            <button phx-click="create_blank"
+                    class="group text-left p-6 border-2 border-gray-200 rounded-2xl hover:border-gray-400 hover:bg-gradient-to-br hover:from-gray-50 hover:to-slate-50 transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
+              <div class="flex items-start">
+                <div class="w-16 h-16 bg-gradient-to-br from-gray-500 to-slate-600 rounded-2xl flex items-center justify-center mr-6 group-hover:scale-110 transition-transform">
+                  <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-xl font-bold text-gray-900 mb-2 group-hover:text-gray-700 transition-colors">Start from Scratch</h3>
+                  <p class="text-gray-600 mb-3 leading-relaxed">Build a completely custom portfolio from the ground up with full creative control over every element and design choice.</p>
+                  <div class="flex flex-wrap gap-2">
+                    <span class="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">Full Control</span>
+                    <span class="px-3 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full">Custom Design</span>
+                    <span class="px-3 py-1 bg-zinc-100 text-zinc-700 text-xs font-medium rounded-full">Advanced</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <!-- Bottom Helper Text -->
+          <div class="mt-8 text-center">
+            <p class="text-sm text-gray-500">
+              Don't worry, you can always change your approach later. Start with what feels right for you today.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_video_intro_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl">
+        <!-- Modal Header -->
+        <div class="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 rounded-t-2xl">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xl font-bold text-white">Video Introduction</h2>
+            <button phx-click="close_video_intro_modal"
+                    class="text-white hover:text-gray-200 transition-colors">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Modal Content -->
+        <div class="p-6">
+          <div class="text-center">
+            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Video Introduction Setup</h3>
+            <p class="text-gray-600 mb-6">Add a personal video introduction to make your portfolio more engaging</p>
+
+            <div class="space-y-4">
+              <button class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition-colors">
+                Record New Video
+              </button>
+              <button class="w-full bg-gray-100 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors">
+                Upload Video File
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_share_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl">
+        <!-- Modal Header -->
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 rounded-t-2xl">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xl font-bold text-white">Share Portfolio</h2>
+            <button phx-click="close_share_modal"
+                    class="text-white hover:text-gray-200 transition-colors">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Modal Content -->
+        <div class="p-6">
+          <%= if @selected_portfolio_for_share do %>
+            <div class="space-y-4">
+              <!-- Portfolio URL -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Portfolio URL</label>
+                <div class="flex">
+                  <input type="text"
+                         value={"#{get_base_url()}/#{Map.get(@selected_portfolio_for_share, :slug, @selected_portfolio_for_share.id)}"}
+                         readonly
+                         class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg bg-gray-50 text-gray-700 text-sm">
+                  <button phx-click="copy_portfolio_url" phx-value-portfolio_id={@selected_portfolio_for_share.id}
+                          class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-r-lg hover:bg-blue-700 transition-colors">
+                    Copy
+                  </button>
+                </div>
+              </div>
+
+              <!-- Social Sharing -->
+              <div class="grid grid-cols-2 gap-3">
+                <button phx-click="share_to_social" phx-value-platform="linkedin"
+                        class="flex items-center justify-center px-4 py-2 bg-blue-700 text-white rounded-lg hover:bg-blue-800 transition-colors">
+                  LinkedIn
+                </button>
+                <button phx-click="share_to_social" phx-value-platform="twitter"
+                        class="flex items-center justify-center px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors">
+                  Twitter
+                </button>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_url_customization_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl">
+        <!-- Modal Header -->
+        <div class="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 rounded-t-2xl">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xl font-bold text-white">Customize URL</h2>
+            <button phx-click="close_url_customization"
+                    class="text-white hover:text-gray-200 transition-colors">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Modal Content -->
+        <div class="p-6">
+          <%= if @selected_portfolio_for_overview do %>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Custom URL</label>
+                <div class="flex items-center">
+                  <span class="text-sm text-gray-500 mr-2"><%= get_base_url() %>/</span>
+                  <input type="text"
+                         value={Map.get(@selected_portfolio_for_overview, :slug, "")}
+                         phx-keyup="update_portfolio_url"
+                         phx-value-custom_slug={Map.get(@selected_portfolio_for_overview, :slug, "")}
+                         class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                </div>
+              </div>
+
+              <div class="flex space-x-3">
+                <button phx-click="close_url_customization"
+                        class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                  Cancel
+                </button>
+                <button phx-click="update_portfolio_url"
+                        class="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                  Save
+                </button>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
     </div>
     """
   end
@@ -3245,89 +4628,6 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-   # ============================================================================
-  # ENHANCED PORTFOLIO GRID SECTION WITH ALL NEW FEATURES
-  # ============================================================================
-
-  defp enhanced_portfolio_grid_section(assigns) do
-    ~H"""
-    <div class="space-y-8">
-      <!-- Header with Stats and Actions -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-2xl font-bold text-gray-900">Your Portfolios</h2>
-          <p class="text-gray-600 mt-1">
-            <%= length(@portfolios) %> of <%= @limits.max_portfolios %> portfolios
-            • <%= @overview.total_visits %> total views
-          </p>
-        </div>
-
-        <div class="flex items-center space-x-3">
-          <!-- View Toggle -->
-          <div class="bg-gray-100 rounded-lg p-1 flex">
-            <button phx-click="set_view_mode" phx-value-mode="grid"
-                    class={["px-3 py-1 rounded text-sm font-medium transition-colors",
-                      if(@view_mode == "grid", do: "bg-white shadow-sm text-gray-900", else: "text-gray-600 hover:text-gray-900")]}>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
-              </svg>
-            </button>
-            <button phx-click="set_view_mode" phx-value-mode="list"
-                    class={["px-3 py-1 rounded text-sm font-medium transition-colors",
-                      if(@view_mode == "list", do: "bg-white shadow-sm text-gray-900", else: "text-gray-600 hover:text-gray-900")]}>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
-              </svg>
-            </button>
-          </div>
-
-          <!-- Create New Button -->
-          <button phx-click="show_create_modal"
-                  class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            Create Portfolio
-          </button>
-        </div>
-      </div>
-
-      <!-- Portfolio Grid/List -->
-      <%= if length(@portfolios) > 0 do %>
-        <div class={if @view_mode == "grid", do: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6", else: "space-y-4"}>
-
-          <!-- Existing Portfolio Cards with Enhancements -->
-          <%= for portfolio <- @portfolios do %>
-            <div class={[
-              "group bg-white rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl border border-gray-100",
-              if(@view_mode == "grid", do: "transform hover:-translate-y-1", else: "flex items-center p-4")
-            ]}>
-
-              <%= if @view_mode == "grid" do %>
-                <!-- Grid View Card -->
-                <%= render_enhanced_portfolio_card(assigns, portfolio) %>
-              <% else %>
-                <!-- List View Card -->
-                <%= render_portfolio_list_item(assigns, portfolio) %>
-              <% end %>
-            </div>
-          <% end %>
-
-          <!-- Live Streaming Card (if user has streaming capability) -->
-          <%= if can_use_live_streaming?(@current_user, @current_account) do %>
-            <%= render_live_streaming_card(assigns) %>
-          <% end %>
-
-          <!-- Create New Portfolio Card -->
-          <%= render_create_new_card(assigns) %>
-        </div>
-      <% else %>
-        <%= render_empty_state_with_cards(assigns) %>
-      <% end %>
-    </div>
-    """
-  end
-
   # ============================================================================
   # ENHANCED PORTFOLIO CARD WITH ALL NEW FEATURES
   # ============================================================================
@@ -3817,6 +5117,56 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
+  defp get_video_intro_status(portfolio) do
+    case Ecto.assoc_loaded?(portfolio.sections) do
+      true ->
+        sections = portfolio.sections || []
+        video_section = Enum.find(sections, fn section ->
+          section.section_type in [:video_intro, "video_intro", :media_showcase, "media_showcase"] and
+          has_video_content?(section)
+        end)
+
+        if video_section, do: :has_video, else: :no_video
+      false ->
+        # Need to load sections to check
+        :unknown
+    end
+  end
+
+  defp has_video_content?(section) do
+    content = section.content || %{}
+
+    # Check various video content patterns
+    cond do
+      Map.has_key?(content, "video_url") and content["video_url"] != nil -> true
+      Map.has_key?(content, "video_type") and content["video_type"] == "introduction" -> true
+      Map.has_key?(content, "media_items") ->
+        media_items = content["media_items"] || []
+        Enum.any?(media_items, fn item ->
+          case item do
+            %{"type" => "video"} -> true
+            %{"media_type" => "video"} -> true
+            %{"file_type" => file_type} when is_binary(file_type) ->
+              String.contains?(String.downcase(file_type), "video")
+            _ -> false
+          end
+        end)
+      true -> false
+    end
+  end
+
+  defp get_portfolio_view_count(portfolio) do
+    # Replace with actual view count logic
+    Map.get(portfolio, :view_count, 0)
+  end
+
+  defp get_portfolio_section_count(portfolio) do
+    case Ecto.assoc_loaded?(portfolio.sections) do
+      true -> length(portfolio.sections || [])
+      false -> 0
+    end
+  end
+
   defp get_visibility_color(visibility) do
     case visibility do
       :public -> "text-green-600"
@@ -3876,129 +5226,31 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-  defp time_ago(datetime) do
-    # Convert NaiveDateTime to DateTime if needed
-    datetime = case datetime do
-      %DateTime{} = dt -> dt
-      %NaiveDateTime{} = ndt -> DateTime.from_naive!(ndt, "Etc/UTC")
-      _ -> DateTime.utc_now()  # fallback
-    end
+  defp time_ago(datetime) when is_nil(datetime), do: "unknown"
 
-    case DateTime.diff(DateTime.utc_now(), datetime, :second) do
-      seconds when seconds < 60 -> "just now"
-      seconds when seconds < 3600 -> "#{div(seconds, 60)}m ago"
-      seconds when seconds < 86400 -> "#{div(seconds, 3600)}h ago"
-      seconds -> "#{div(seconds, 86400)}d ago"
+  defp time_ago(%NaiveDateTime{} = naive_datetime) do
+    # Convert NaiveDateTime to DateTime (assume UTC)
+    case DateTime.from_naive(naive_datetime, "Etc/UTC") do
+      {:ok, utc_datetime} -> time_ago(utc_datetime)
+      {:error, _} -> "unknown"
     end
   end
 
-  # ============================================================================
-  # LIST VIEW COMPONENT
-  # ============================================================================
-
-  defp render_portfolio_list_item(assigns, portfolio) do
-    stats = Map.get(assigns.portfolio_stats, portfolio.id, %{})
-
-    assigns = assign(assigns, :portfolio, portfolio)
-    assigns = assign(assigns, :stats, stats)
-
-    ~H"""
-    <div class="flex items-center space-x-4 w-full">
-      <!-- Portfolio Thumbnail -->
-      <div class={[
-        "w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 relative",
-        case @portfolio.theme do
-          "minimalist" -> "bg-gradient-to-br from-gray-100 to-gray-200"
-          "creative" -> "bg-gradient-to-br from-purple-100 to-pink-100"
-          "corporate" -> "bg-gradient-to-br from-blue-100 to-indigo-100"
-          "developer" -> "bg-gradient-to-br from-green-100 to-teal-100"
-          _ -> "bg-gradient-to-br from-cyan-100 to-blue-100"
-        end
-      ]}>
-        <%= if has_intro_video?(@portfolio) do %>
-          <div class="absolute -top-1 -right-1">
-            <div class="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-              <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            </div>
-          </div>
-        <% end %>
-
-        <span class={[
-          "text-lg font-bold",
-          case @portfolio.theme do
-            "minimalist" -> "text-gray-600"
-            "creative" -> "text-purple-600"
-            "corporate" -> "text-blue-600"
-            "developer" -> "text-green-600"
-            _ -> "text-cyan-600"
-          end
-        ]}>
-          <%= String.first(@portfolio.title) %>
-        </span>
-      </div>
-
-      <!-- Portfolio Info -->
-      <div class="flex-1 min-w-0">
-        <div class="flex items-start justify-between">
-          <div class="min-w-0 flex-1">
-            <h3 class="font-semibold text-gray-900 truncate">
-              <%= @portfolio.title %>
-            </h3>
-            <p class="text-sm text-gray-600 truncate">/<%= @portfolio.slug %></p>
-            <%= if @portfolio.description do %>
-              <p class="text-xs text-gray-500 mt-1 line-clamp-1"><%= @portfolio.description %></p>
-            <% end %>
-          </div>
-
-          <div class="flex items-center space-x-2 ml-4">
-            <!-- Visibility Status -->
-            <div class={["p-1 rounded-full", get_visibility_color(@portfolio.visibility)]}>
-              <%= get_visibility_icon(@portfolio.visibility) %>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Stats -->
-      <div class="hidden sm:flex items-center space-x-6 text-sm text-gray-500">
-        <div class="text-center">
-          <div class="font-semibold text-gray-900"><%= Map.get(@stats, :total_visits, 0) %></div>
-          <div class="text-xs">Views</div>
-        </div>
-        <div class="text-center">
-          <div class="font-semibold text-gray-900"><%= Map.get(@stats, :total_shares, 0) %></div>
-          <div class="text-xs">Shares</div>
-        </div>
-      </div>
-
-      <!-- Actions -->
-      <div class="flex items-center space-x-2">
-        <button phx-click="show_share_modal" phx-value-portfolio-id={@portfolio.id}
-                class="p-2 text-gray-400 hover:text-blue-600 transition-colors rounded-lg hover:bg-blue-50">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
-          </svg>
-        </button>
-
-        <.link href={"/p/#{@portfolio.id}"} target="_blank"
-              class="p-2 text-gray-400 hover:text-green-600 transition-colors rounded-lg hover:bg-green-50">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-          </svg>
-        </.link>
-
-        <.link href={"/portfolios/#{@portfolio.id}/edit"}
-              class="p-2 text-gray-400 hover:text-purple-600 transition-colors rounded-lg hover:bg-purple-50">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-          </svg>
-        </.link>
-      </div>
-    </div>
-    """
+  defp time_ago(%DateTime{} = datetime) do
+    case DateTime.diff(DateTime.utc_now(), datetime, :day) do
+      0 -> "today"
+      1 -> "1 day ago"
+      days when days < 7 -> "#{days} days ago"
+      days when days < 30 -> "#{div(days, 7)} weeks ago"
+      days -> "#{div(days, 30)} months ago"
+    end
+  rescue
+    _ -> "unknown"
   end
+
+  defp time_ago(_), do: "unknown"
+
+
 
   # ============================================================================
   # EVENT HANDLERS FOR NEW FEATURES

@@ -25,6 +25,21 @@ defmodule FrestylWeb.PortfolioLive.Edit.ResumeImportModal do
   end
 
   @impl true
+  def handle_event("retry_upload", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:parsing_stage, :idle)
+    |> assign(:error_message, nil)
+    |> assign(:upload_progress, 0)
+    |> assign(:parsing_progress, 0)}
+  end
+
+  @impl true
+  def handle_event("validate_upload", _params, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
@@ -318,6 +333,47 @@ defmodule FrestylWeb.PortfolioLive.Edit.ResumeImportModal do
     </div>
     """
   end
+
+  defp render_error(assigns) do
+    ~H"""
+    <div class="text-center space-y-6">
+      <div class="w-20 h-20 bg-red-100 rounded-2xl flex items-center justify-center mx-auto">
+        <svg class="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+
+      <div>
+        <h4 class="text-lg font-semibold text-gray-900 mb-2">Import Failed</h4>
+        <p class="text-gray-600 mb-6"><%= @error_message %></p>
+
+        <div class="space-y-3">
+          <button phx-click="retry_upload" phx-target={@myself}
+                  class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors">
+            Try Again
+          </button>
+
+          <button phx-click="close_modal" phx-target={@myself}
+                  class="w-full border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Common Issues Help -->
+      <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left">
+        <h5 class="font-medium text-yellow-800 mb-2">Common Issues:</h5>
+        <ul class="text-sm text-yellow-700 space-y-1">
+          <li>• Make sure your file is under 10MB</li>
+          <li>• PDF files work best for accurate text extraction</li>
+          <li>• Ensure your resume has clear section headers</li>
+          <li>• Try converting your file to PDF if using DOC/DOCX</li>
+        </ul>
+      </div>
+    </div>
+    """
+  end
+
 
   # ============================================================================
   # EVENT HANDLERS - FIXED LOGIC

@@ -7,24 +7,29 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
 
   @impl true
   def mount(socket) do
-    IO.puts("=== ENHANCED VIDEO INTRO COMPONENT MOUNTING ===")
-
-    socket =
-      socket
-      |> assign(:recording_state, :setup)
-      |> assign(:elapsed_time, 0)
-      |> assign(:recorded_blob, nil)
-      |> assign(:camera_ready, false)
-      |> assign(:upload_progress, 0)
-      |> assign(:error_message, nil)
-      |> assign(:camera_status, "initializing")
-      |> assign(:countdown_timer, 3)
-      |> assign(:countdown_value, 3)
-      |> assign(:upload_mode, false)
-      |> assign(:section_settings_visible, false)
-
-    {:ok, socket}
+    {:ok,
+    socket
+    |> assign(:recording_state, :setup)
+    |> assign(:countdown, 0)
+    |> assign(:recording_time, 0)
+    |> assign(:camera_ready, false)
+    |> assign(:video_blob, nil)
+    |> assign(:camera_error, nil)
+    |> assign(:is_saving, false)
+    |> assign(:upload_progress, 0)
+    |> assign(:processing_video, false)
+    |> assign(:video_constraints, %{
+        "video" => %{
+          "width" => %{"ideal" => 1280},
+          "height" => %{"ideal" => 720},
+          "frameRate" => %{"ideal" => 30}
+        },
+        "audio" => true
+      })
+    |> assign(:show_menu, false)  # Add menu state
+    |> assign(:menu_loading, false)}  # Add loading state
   end
+
 
   @impl true
   def update(%{portfolio: portfolio, current_user: user} = assigns, socket) do
@@ -243,6 +248,47 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
 
         {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("toggle_menu", _params, socket) do
+    {:noreply, assign(socket, :show_menu, not socket.assigns.show_menu)}
+  end
+
+  @impl true
+  def handle_event("close_menu", _params, socket) do
+    {:noreply, assign(socket, :show_menu, false)}
+  end
+
+  @impl true
+  def handle_event("test_camera", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:menu_loading, true)
+    |> assign(:show_menu, false)
+    |> push_event("test-camera", %{})}
+  end
+
+  @impl true
+  def handle_event("retry_camera", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:camera_error, nil)
+    |> assign(:camera_ready, false)
+    |> assign(:processing_video, true)
+    |> push_event("initialize-camera", socket.assigns.video_constraints)}
+  end
+
+  @impl true
+  def handle_event("reset_recording", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:recording_state, :setup)
+    |> assign(:video_blob, nil)
+    |> assign(:recording_time, 0)
+    |> assign(:countdown, 0)
+    |> assign(:show_menu, false)
+    |> push_event("reset-camera", %{})}
   end
 
   # ============================================================================
@@ -521,122 +567,107 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="bg-white rounded-xl shadow-2xl overflow-hidden max-w-5xl mx-auto">
-      <!-- Enhanced Header with Position Controls -->
-      <div class="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4">
+    <div class="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-4xl w-full">
+      <!-- Fixed Header with Better Menu Placement -->
+      <div class="bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-4">
         <div class="flex items-center justify-between">
-          <div class="flex items-center">
-            <div class="w-10 h-10 bg-white bg-opacity-20 rounded-xl flex items-center justify-center mr-3">
-              <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+          <div class="flex items-center space-x-3">
+            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
               </svg>
             </div>
             <div>
               <h3 class="text-xl font-bold text-white">Video Introduction</h3>
-              <p class="text-purple-100 text-sm">
-                <%= @quality_info.resolution %> • <%= @max_duration %>s max • <%= @user_tier |> String.capitalize() %> Tier
-              </p>
+              <p class="text-purple-100 text-sm">Record a personal introduction for your portfolio</p>
             </div>
           </div>
 
+          <!-- Fixed Menu Button with Loading State -->
           <div class="flex items-center space-x-2">
-            <!-- Section Settings Toggle -->
-            <%= if @existing_video_section do %>
-              <button phx-click="toggle_section_settings" phx-target={@myself}
-                      class={"text-white hover:text-purple-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors #{if @section_settings_visible, do: 'bg-white bg-opacity-20'}"}>
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                </svg>
+            <div class="relative">
+              <button phx-click="toggle_menu" phx-target={@myself}
+                      disabled={@menu_loading}
+                      class="p-2 text-white hover:bg-white hover:bg-opacity-10 rounded-lg transition-colors disabled:opacity-50">
+                <%= if @menu_loading do %>
+                  <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                <% else %>
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                  </svg>
+                <% end %>
               </button>
-            <% end %>
 
-            <!-- Close Button -->
-            <button phx-click="cancel_recording" phx-target={@myself}
-                    class="text-white hover:text-purple-200 p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <!-- Fixed Dropdown Menu with Better Positioning -->
+              <%= if @show_menu do %>
+                <div class="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50 overflow-hidden">
+                  <div class="py-2">
+                    <button phx-click="reset_recording" phx-target={@myself}
+                            class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors flex items-center">
+                      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                      </svg>
+                      Reset Recording
+                    </button>
+
+                    <button phx-click="test_camera" phx-target={@myself}
+                            class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors flex items-center">
+                      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                      </svg>
+                      Test Camera
+                    </button>
+
+                    <hr class="my-2 border-gray-200">
+
+                    <button phx-click="close_modal" phx-target={@myself}
+                            class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center">
+                      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                      </svg>
+                      Close Modal
+                    </button>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+
+            <button phx-click="close_modal" phx-target={@myself}
+                    class="p-2 text-white hover:bg-white hover:bg-opacity-10 rounded-lg transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
           </div>
         </div>
-
-        <!-- Section Settings Panel -->
-        <%= if @section_settings_visible && @existing_video_section do %>
-          <div class="mt-4 p-4 bg-white bg-opacity-10 rounded-lg">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <!-- Position Control -->
-              <div>
-                <label class="block text-sm font-medium text-purple-100 mb-2">Video Position</label>
-                <select phx-change="update_position" phx-target={@myself} name="position"
-                        class="w-full px-3 py-2 bg-white bg-opacity-20 text-white rounded-lg border border-white border-opacity-30 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50">
-                  <%= for position <- @available_positions do %>
-                    <option value={position.id} selected={@current_position == position.id}
-                            class="text-gray-900">
-                      <%= position.name %> - <%= position.description %>
-                    </option>
-                  <% end %>
-                </select>
-              </div>
-
-              <!-- Visibility Toggle -->
-              <div>
-                <label class="block text-sm font-medium text-purple-100 mb-2">Visibility</label>
-                <button phx-click="toggle_visibility" phx-target={@myself}
-                        class={"w-full px-4 py-2 rounded-lg font-medium transition-colors #{if @section_visible, do: 'bg-green-600 hover:bg-green-700 text-white', else: 'bg-gray-600 hover:bg-gray-700 text-white'}"}>
-                  <%= if @section_visible, do: "✅ Visible", else: "👁️ Hidden" %>
-                </button>
-              </div>
-            </div>
-          </div>
-        <% end %>
       </div>
 
-      <!-- Main Content with Enhanced Hook Integration -->
-      <div class="p-6"
-           phx-hook="VideoCapture"
-           id={"video-capture-#{@id}"}
-           data-component-id={@id}
-           data-recording-state={@recording_state}
-           data-user-tier={@user_tier}
-           phx-target={@myself}>
-
-        <!-- Recording Mode Toggle for Pro Users -->
-        <%= if @user_tier in ["pro", "premium"] do %>
-          <div class="mb-6 flex justify-center">
-            <div class="inline-flex rounded-lg bg-gray-100 p-1">
-              <button phx-click="toggle_upload_mode" phx-target={@myself}
-                      class={"px-4 py-2 rounded-md text-sm font-medium transition-colors #{if not @upload_mode, do: 'bg-white text-gray-900 shadow', else: 'text-gray-500 hover:text-gray-900'}"}>
-                📹 Record Video
-              </button>
-              <button phx-click="toggle_upload_mode" phx-target={@myself}
-                      class={"px-4 py-2 rounded-md text-sm font-medium transition-colors #{if @upload_mode, do: 'bg-white text-gray-900 shadow', else: 'text-gray-500 hover:text-gray-900'}"}>
-                📁 Upload Video
-              </button>
-            </div>
-          </div>
-        <% end %>
-
-        <%= if @upload_mode do %>
-          <%= render_upload_mode(assigns) %>
-        <% else %>
-          <%= case @recording_state do %>
-            <% :setup -> %>
-              <%= render_setup_phase(assigns) %>
-            <% :countdown -> %>
-              <%= render_countdown_phase(assigns) %>
-            <% :recording -> %>
-              <%= render_recording_phase(assigns) %>
-            <% :preview -> %>
-              <%= render_preview_phase(assigns) %>
-            <% :saving -> %>
-              <%= render_saving_phase(assigns) %>
-          <% end %>
+      <!-- Video Content Area with Loading States -->
+      <div class="p-6">
+        <%= case @recording_state do %>
+          <% :setup -> %>
+            <%= render_camera_setup(assigns) %>
+          <% :countdown -> %>
+            <%= render_countdown(assigns) %>
+          <% :recording -> %>
+            <%= render_recording_interface(assigns) %>
+          <% :preview -> %>
+            <%= render_preview(assigns) %>
+          <% :saving -> %>
+            <%= render_saving_state(assigns) %>
+          <% :complete -> %>
+            <%= render_completion(assigns) %>
+          <% :error -> %>
+            <%= render_error_state(assigns) %>
         <% end %>
       </div>
     </div>
     """
   end
+
 
   # ============================================================================
   # RENDER PHASE FUNCTIONS
@@ -901,15 +932,379 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     """
   end
 
+  defp render_camera_setup(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Camera Preview Area with Loading State -->
+      <div class="relative bg-gray-900 rounded-xl overflow-hidden" style="aspect-ratio: 16/9;">
+        <!-- Loading Overlay -->
+        <%= if not @camera_ready do %>
+          <div class="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
+            <div class="text-center space-y-4">
+              <div class="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <div class="text-white">
+                <h4 class="font-medium mb-2">Initializing Camera...</h4>
+                <p class="text-sm text-gray-300">Please allow camera access when prompted</p>
+              </div>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Video Element -->
+        <video id="camera-preview"
+              class="w-full h-full object-cover"
+              autoplay
+              muted
+              playsinline
+              phx-hook="VideoRecorder">
+        </video>
+
+        <!-- Camera Error State -->
+        <%= if @camera_error do %>
+          <div class="absolute inset-0 flex items-center justify-center bg-red-900 bg-opacity-90 z-20">
+            <div class="text-center space-y-4 text-white">
+              <svg class="w-16 h-16 mx-auto text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div>
+                <h4 class="font-medium mb-2">Camera Access Error</h4>
+                <p class="text-sm text-red-200 mb-4"><%= @camera_error %></p>
+                <button phx-click="retry_camera" phx-target={@myself}
+                        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors">
+                  Try Again
+                </button>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Enhanced Controls with Loading States -->
+      <div class="flex items-center justify-between">
+        <div class="space-y-2">
+          <h4 class="font-medium text-gray-900">Ready to record?</h4>
+          <p class="text-sm text-gray-600">Position yourself in the frame and click start when ready</p>
+        </div>
+
+        <button phx-click="start_recording" phx-target={@myself}
+                disabled={not @camera_ready or @processing_video}
+                class="px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
+          <%= if @processing_video do %>
+            <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Preparing...</span>
+          <% else %>
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m-8 0H7m4 0h1M9 10h1m4 0h1"/>
+            </svg>
+            <span>Start Recording</span>
+          <% end %>
+        </button>
+      </div>
+
+      <!-- Recording Tips -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h5 class="font-medium text-blue-900 mb-2">📹 Recording Tips:</h5>
+        <ul class="text-sm text-blue-800 space-y-1">
+          <li>• Ensure good lighting on your face</li>
+          <li>• Speak clearly and at a normal pace</li>
+          <li>• Keep your introduction to 30-90 seconds</li>
+          <li>• Look directly at the camera</li>
+        </ul>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_countdown(assigns) do
+    ~H"""
+    <div class="text-center space-y-8">
+      <div class="relative">
+        <!-- Camera Preview -->
+        <video id="camera-preview"
+              class="w-full h-auto rounded-xl bg-gray-900"
+              autoplay
+              muted
+              playsinline
+              style="aspect-ratio: 16/9;">
+        </video>
+
+        <!-- Countdown Overlay -->
+        <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-xl">
+          <div class="text-center">
+            <div class="text-8xl font-bold text-white mb-4 animate-pulse">
+              <%= @countdown %>
+            </div>
+            <p class="text-white text-xl">Get ready to record!</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-center">
+        <button phx-click="cancel_recording" phx-target={@myself}
+                class="px-6 py-3 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_recording_interface(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Recording Preview -->
+      <div class="relative bg-gray-900 rounded-xl overflow-hidden" style="aspect-ratio: 16/9;">
+        <video id="camera-preview"
+              class="w-full h-full object-cover"
+              autoplay
+              muted
+              playsinline>
+        </video>
+
+        <!-- Recording Indicator -->
+        <div class="absolute top-4 left-4 flex items-center space-x-2">
+          <div class="w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
+          <span class="text-white font-medium">REC</span>
+        </div>
+
+        <!-- Recording Timer -->
+        <div class="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-lg font-mono">
+          <%= format_time(@recording_time) %>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="absolute bottom-0 left-0 right-0 h-2 bg-black bg-opacity-30">
+          <div class="h-full bg-red-500 transition-all duration-1000"
+              style={"width: #{(@recording_time / @max_duration) * 100}%"}></div>
+        </div>
+      </div>
+
+      <!-- Recording Controls -->
+      <div class="flex items-center justify-center space-x-4">
+        <button phx-click="stop_recording" phx-target={@myself}
+                class="px-8 py-4 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors flex items-center space-x-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10h6v4H9z"/>
+          </svg>
+          <span>Stop Recording</span>
+        </button>
+      </div>
+
+      <!-- Recording Info -->
+      <div class="text-center text-sm text-gray-600">
+        <p>Recording in progress... Speak clearly and look at the camera</p>
+        <p>Maximum duration: <%= @max_duration %> seconds</p>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_preview(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Video Preview -->
+      <div class="relative bg-gray-900 rounded-xl overflow-hidden" style="aspect-ratio: 16/9;">
+        <video id="recorded-video"
+              class="w-full h-full object-cover"
+              controls
+              preload="metadata">
+          <source src={@video_blob} type="video/webm">
+          Your browser does not support the video tag.
+        </video>
+      </div>
+
+      <!-- Preview Controls -->
+      <div class="flex items-center justify-between">
+        <div class="space-y-1">
+          <h4 class="font-medium text-gray-900">Review Your Recording</h4>
+          <p class="text-sm text-gray-600">
+            Duration: <%= format_time(@recording_time) %> •
+            Quality: <%= @quality_info.resolution %>
+          </p>
+        </div>
+
+        <div class="flex space-x-3">
+          <button phx-click="retake_video" phx-target={@myself}
+                  class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+            Retake
+          </button>
+
+          <button phx-click="save_video" phx-target={@myself}
+                  disabled={@is_saving}
+                  class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center space-x-2">
+            <%= if @is_saving do %>
+              <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+              <span>Saving...</span>
+            <% else %>
+              <span>Save Video</span>
+            <% end %>
+          </button>
+        </div>
+      </div>
+
+      <!-- Video Positioning Options -->
+      <div class="bg-gray-50 rounded-lg p-4">
+        <h5 class="font-medium text-gray-900 mb-3">Where should this video appear?</h5>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <%= for position <- [:hero, :about, :footer] do %>
+            <label class="flex items-center p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-white transition-colors">
+              <input type="radio"
+                    name="video_position"
+                    value={position}
+                    checked={@video_position == position}
+                    phx-click="set_video_position"
+                    phx-value-position={position}
+                    phx-target={@myself}
+                    class="mr-3">
+              <div>
+                <p class="font-medium text-sm"><%= format_position_name(position) %></p>
+                <p class="text-xs text-gray-600"><%= get_position_description(position) %></p>
+              </div>
+            </label>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_saving_state(assigns) do
+    ~H"""
+    <div class="text-center space-y-6">
+      <div class="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center mx-auto">
+        <svg class="w-10 h-10 text-green-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+      </div>
+
+      <div>
+        <h4 class="text-lg font-semibold text-gray-900 mb-2">Saving Your Video...</h4>
+
+        <!-- Enhanced Progress Bar -->
+        <div class="w-full bg-gray-200 rounded-full h-3 mb-4">
+          <div class="bg-green-600 h-3 rounded-full transition-all duration-500"
+              style={"width: #{@upload_progress}%"}></div>
+        </div>
+
+        <div class="space-y-2 text-sm text-gray-600">
+          <p class={if @upload_progress >= 25, do: "text-green-600 font-medium", else: ""}>
+            ✓ Processing video file...
+          </p>
+          <p class={if @upload_progress >= 50, do: "text-green-600 font-medium", else: ""}>
+            ✓ Uploading to server...
+          </p>
+          <p class={if @upload_progress >= 75, do: "text-green-600 font-medium", else: ""}>
+            ✓ Creating portfolio section...
+          </p>
+          <p class={if @upload_progress >= 100, do: "text-green-600 font-medium", else: ""}>
+            ✓ Finalizing integration...
+          </p>
+        </div>
+
+        <p class="text-xs text-gray-500 mt-4">This may take up to 30 seconds</p>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_completion(assigns) do
+    ~H"""
+    <div class="text-center space-y-6">
+      <div class="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center mx-auto">
+        <svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+
+      <div>
+        <h4 class="text-lg font-semibold text-gray-900 mb-2">Video Saved Successfully!</h4>
+        <p class="text-gray-600 mb-6">Your video introduction has been added to your portfolio</p>
+
+        <div class="space-y-3">
+          <button phx-click="close_modal" phx-target={@myself}
+                  class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors">
+            Continue Editing Portfolio
+          </button>
+
+          <button phx-click="record_another" phx-target={@myself}
+                  class="w-full border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 transition-colors">
+            Record Another Video
+          </button>
+        </div>
+      </div>
+
+      <!-- Success Message -->
+      <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-left">
+        <h5 class="font-medium text-green-800 mb-2">What's Next?</h5>
+        <ul class="text-sm text-green-700 space-y-1">
+          <li>• Your video will appear in the <%= format_position_name(@video_position || :about) %> section</li>
+          <li>• You can preview your portfolio to see how it looks</li>
+          <li>• Edit the video position anytime in section settings</li>
+          <li>• Record additional videos for different sections</li>
+        </ul>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_error_state(assigns) do
+    ~H"""
+    <div class="text-center space-y-6">
+      <div class="w-20 h-20 bg-red-100 rounded-2xl flex items-center justify-center mx-auto">
+        <svg class="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+
+      <div>
+        <h4 class="text-lg font-semibold text-gray-900 mb-2">Recording Failed</h4>
+        <p class="text-gray-600 mb-6"><%= @camera_error || "An unexpected error occurred" %></p>
+
+        <div class="space-y-3">
+          <button phx-click="retry_recording" phx-target={@myself}
+                  class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors">
+            Try Again
+          </button>
+
+          <button phx-click="close_modal" phx-target={@myself}
+                  class="w-full border border-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Troubleshooting Tips -->
+      <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-left">
+        <h5 class="font-medium text-yellow-800 mb-2">Troubleshooting:</h5>
+        <ul class="text-sm text-yellow-700 space-y-1">
+          <li>• Ensure your camera is not being used by another application</li>
+          <li>• Check that you've granted camera permissions to your browser</li>
+          <li>• Try refreshing the page and trying again</li>
+          <li>• Make sure you have a stable internet connection</li>
+        </ul>
+      </div>
+    </div>
+    """
+  end
+
+
   # ============================================================================
   # UTILITY FUNCTIONS
   # ============================================================================
 
   defp format_time(seconds) when is_integer(seconds) do
     minutes = div(seconds, 60)
-    seconds = rem(seconds, 60)
-    "#{String.pad_leading(to_string(minutes), 2, "0")}:#{String.pad_leading(to_string(seconds), 2, "0")}"
+    remaining_seconds = rem(seconds, 60)
+    "#{String.pad_leading(to_string(minutes), 2, "0")}:#{String.pad_leading(to_string(remaining_seconds), 2, "0")}"
   end
+
   defp format_time(_), do: "00:00"
 
   defp find_position_name(position_id, available_positions) do
@@ -918,6 +1313,16 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
       _ -> "Hero Section"
     end
   end
+
+  defp format_position_name(:hero), do: "Hero Section"
+  defp format_position_name(:about), do: "About Section"
+  defp format_position_name(:footer), do: "Footer Section"
+  defp format_position_name(_), do: "About Section"
+
+  defp get_position_description(:hero), do: "Large video at the top of your portfolio"
+  defp get_position_description(:about), do: "Personal introduction in your about section"
+  defp get_position_description(:footer), do: "Closing video at the bottom of your portfolio"
+  defp get_position_description(_), do: "Standard placement in your portfolio"
 
   # Missing event handlers for completeness
   @impl true
