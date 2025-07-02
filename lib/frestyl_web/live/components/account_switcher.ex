@@ -111,10 +111,10 @@ defmodule FrestylWeb.Components.AccountSwitcher do
         class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
       >
         <div class={"w-8 h-8 bg-gradient-to-r #{get_account_color(@current_account)} rounded-lg flex items-center justify-center text-white font-bold text-sm"}>
-          <%= String.first(@current_account.name) %>
+          <%= String.first(Map.get(@current_account, :name, "P")) %>
         </div>
         <div class="text-left">
-          <div class="text-sm font-medium text-gray-900"><%= @current_account.name %></div>
+          <div class="text-sm font-medium text-gray-900"><%= Map.get(@current_account, :name, "Personal Account") %></div>
           <div class="text-xs text-gray-500"><%= format_subscription_tier(@current_account.subscription_tier) %></div>
         </div>
         <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -157,10 +157,10 @@ defmodule FrestylWeb.Components.AccountSwitcher do
                   class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-left transition-colors"
                 >
                   <div class={"w-8 h-8 bg-gradient-to-r #{get_account_color(account)} rounded-lg flex items-center justify-center text-white font-bold text-sm"}>
-                    <%= String.first(account.name) %>
+                    <%= String.first(Map.get(account, :name, "P")) %>
                   </div>
                   <div class="flex-1">
-                    <div class="text-sm font-medium text-gray-900"><%= account.name %></div>
+                    <div class="text-sm font-medium text-gray-900"><%= Map.get(account, :name, "Personal Account") %></div>
                     <div class="text-xs text-gray-500"><%= format_subscription_tier(account.subscription_tier) %></div>
                   </div>
                   <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1064,3 +1064,20 @@ input:disabled {
     gap: 2rem;
   }
 }
+
+
+.portfolio-card {
+  transition: all 0.3s ease;
+}
+
+.portfolio-card:hover {
+  transform: translateY(-4px);
+}
+
+.visibility-indicator {
+  transition: all 0.2s ease;
+}
+
+.share-button:hover {
+  transform: scale(1.05);
+}

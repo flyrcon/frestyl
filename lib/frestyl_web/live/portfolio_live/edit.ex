@@ -6,7 +6,6 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   # Import all necessary modules
   alias Frestyl.Portfolios
   alias Frestyl.Portfolios.{PortfolioTemplates, Portfolio}
-  alias FrestylWeb.PortfolioLive.Edit.{TabRenderer, TemplateManager, SectionManager, MediaManager}
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do

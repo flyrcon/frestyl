@@ -9,23 +9,43 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   # Handle /portfolios/:id route
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(params, _session, socket) do
+    %{"id" => id} = params
+    preview_mode = Map.get(params, "preview") == "true"
+
     try do
       portfolio = Portfolios.get_portfolio!(id)
-      # Preload the user association
       portfolio = Repo.preload(portfolio, :user)
 
       if can_view_portfolio?(portfolio, socket.assigns.current_user) do
         sections = load_portfolio_sections_safe(portfolio.id)
+
+        # Handle preview customization
+        customization = if preview_mode and Map.has_key?(params, "customization") do
+          try do
+            Jason.decode!(params["customization"])
+          rescue
+            _ -> portfolio.customization || %{}
+          end
+        else
+          portfolio.customization || %{}
+        end
 
         socket =
           socket
           |> assign(:page_title, portfolio.title)
           |> assign(:portfolio, portfolio)
           |> assign(:sections, sections)
+          |> assign(:customization, customization)
+          |> assign(:preview_mode, preview_mode)
           |> assign(:can_export, false)
           |> assign(:show_export_panel, false)
           |> assign(:export_processing, false)
+
+        # Subscribe to preview updates if in preview mode
+        if preview_mode do
+          Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
+        end
 
         {:ok, socket}
       else
@@ -173,5 +193,58 @@ defmodule FrestylWeb.PortfolioLive.Show do
         result -> result
       end
     end)
+  end
+
+  def apply_customization_styles(customization) when is_map(customization) do
+    primary_color = Map.get(customization, "primary_color", "#374151")
+    accent_color = Map.get(customization, "accent_color", "#059669")
+    secondary_color = Map.get(customization, "secondary_color", "#6b7280")
+    layout = Map.get(customization, "layout", "minimal")
+
+    """
+    <style>
+      :root {
+        --primary-color: #{primary_color};
+        --accent-color: #{accent_color};
+        --secondary-color: #{secondary_color};
+      }
+
+      .portfolio-container {
+        #{get_layout_styles(layout)}
+      }
+
+      .portfolio-primary { color: var(--primary-color) !important; }
+      .portfolio-accent { color: var(--accent-color) !important; }
+      .portfolio-secondary { color: var(--secondary-color) !important; }
+
+      .bg-portfolio-primary { background-color: var(--primary-color) !important; }
+      .bg-portfolio-accent { background-color: var(--accent-color) !important; }
+      .bg-portfolio-secondary { background-color: var(--secondary-color) !important; }
+    </style>
+    """
+  end
+
+  def apply_customization_styles(_), do: ""
+
+  defp get_layout_styles("dashboard") do
+    "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;"
+  end
+
+  defp get_layout_styles("gallery") do
+    "display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;"
+  end
+
+  defp get_layout_styles(_) do
+    "display: flex; flex-direction: column; gap: 2rem;"
+  end
+
+  @impl true
+  def handle_info({:preview_update, customization, _css}, socket) do
+    {:noreply, assign(socket, :customization, customization)}
+  end
+
+  @impl true
+  def handle_info({:sections_updated, sections}, socket) do
+    {:noreply, assign(socket, :sections, sections)}
   end
 end

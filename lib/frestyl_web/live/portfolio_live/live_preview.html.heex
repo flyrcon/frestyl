@@ -1,6 +1,8 @@
+# REPLACE live_preview.html.heex COMPLETELY with this working version:
 <!-- lib/frestyl_web/live/portfolio_live/live_preview.html.heex -->
 
 <div class="preview-container h-screen overflow-hidden bg-gray-100">
+  <!-- CRITICAL: Style injection with proper targeting -->
   <style id="preview-styles">
     <%= Phoenix.HTML.raw(@preview_css) %>
     
@@ -20,17 +22,17 @@
   </style>
 
   <div class={"preview-viewport #{if @mobile_view, do: "mobile-viewport", else: "desktop-viewport"}"}>
-    <!-- Render actual portfolio content -->
+    <!-- CRITICAL: Use the exact HTML structure that CSS targets -->
     <div class="portfolio-container">
       <div class="portfolio-header">
         <h1 class="text-4xl font-bold mb-2"><%= @portfolio.title %></h1>
         <p class="text-lg opacity-90"><%= @portfolio.description %></p>
       </div>
       
-      <!-- Portfolio sections -->
+      <!-- Portfolio sections with correct classes -->
       <div class="portfolio-sections">
-        <%= for section <- @sections do %>
-          <div class="section">
+        <%= for section <- Enum.filter(@sections, &(&1.visible)) do %>
+          <div class="section" id={"section-#{section.id}"}>
             <h2 class="text-2xl font-semibold mb-3 accent"><%= section.title || "Untitled Section" %></h2>
             <div class="section-content">
               <%= render_section_content(section) %>
@@ -38,13 +40,9 @@
           </div>
         <% end %>
         
-        <!-- Show placeholder if no sections -->
-        <%= if Enum.empty?(@sections) do %>
-          <div class="section text-center">
-            <h2 class="text-2xl font-semibold mb-3 accent">Welcome to Your Portfolio</h2>
-            <div class="section-content">
-              <p>Add some sections in the editor to see them appear here!</p>
-            </div>
+        <%= if Enum.all?(@sections, &(!&1.visible)) do %>
+          <div class="text-center py-12 text-gray-500">
+            <p>No visible sections in this portfolio</p>
           </div>
         <% end %>
       </div>
@@ -53,30 +51,33 @@
 </div>
 
 <script>
-  // Listen for style updates from parent
+  // CRITICAL: Listen for style updates and apply them immediately
   window.addEventListener("phx:update_preview_styles", (e) => {
+    console.log("🎨 Updating preview styles:", e.detail.css);
     const styleElement = document.getElementById("preview-styles");
     if (styleElement && e.detail.css) {
-      // Update the custom CSS part while preserving viewport styles
-      const existingContent = styleElement.innerHTML;
-      const baseStyles = existingContent.split('/* Mobile viewport simulation */')[1] || 
-                        `
-                        /* Mobile viewport simulation */
-                        .mobile-viewport {
-                          max-width: 375px;
-                          margin: 0 auto;
-                          box-shadow: 0 0 20px rgba(0,0,0,0.3);
-                          border-radius: 12px;
-                          overflow: hidden;
-                        }
-                        
-                        .desktop-viewport {
-                          width: 100%;
-                          height: 100%;
-                        }
-                        `;
+      // Force immediate update
+      styleElement.innerHTML = e.detail.css + `
+        /* Mobile viewport simulation */
+        .mobile-viewport {
+          max-width: 375px;
+          margin: 0 auto;
+          box-shadow: 0 0 20px rgba(0,0,0,0.3);
+          border-radius: 12px;
+          overflow: hidden;
+        }
+        
+        .desktop-viewport {
+          width: 100%;
+          height: 100%;
+        }
+      `;
+      console.log("✅ Preview styles updated successfully");
       
-      styleElement.innerHTML = e.detail.css + '\n/* Mobile viewport simulation */' + baseStyles;
+      // Force browser to re-render
+      document.body.style.display = 'none';
+      document.body.offsetHeight; // Trigger reflow
+      document.body.style.display = '';
     }
   });
 

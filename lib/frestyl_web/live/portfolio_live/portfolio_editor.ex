@@ -87,18 +87,17 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     portfolio = socket.assigns.portfolio
 
     socket
-    |> assign(:show_live_preview, true)  # CHANGED: Default to true (open)
+    |> assign(:show_live_preview, true)
     |> assign(:preview_token, generate_preview_token(portfolio.id))
     |> assign(:preview_mobile_view, false)
-    |> assign(:pending_changes, %{})
-    |> assign(:debounce_timer, nil)
+    |> assign(:pending_changes, %{})  # CRITICAL: Initialize this
+    |> assign(:debounce_timer, nil)   # CRITICAL: Initialize this
   end
 
   defp generate_preview_token(portfolio_id) do
     :crypto.hash(:sha256, "preview_#{portfolio_id}_#{Date.utc_today()}")
     |> Base.encode16(case: :lower)
   end
-
 
   @impl true
   def handle_event("toggle_live_preview", _params, socket) do
@@ -129,63 +128,147 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   @impl true
-  def handle_event("update_color_live", %{"field" => field, "value" => color}, socket) do
-    # Store pending changes
-    pending_changes = Map.put(socket.assigns.pending_changes, field, color)
-    socket = assign(socket, :pending_changes, pending_changes)
+  def handle_event("update_color", %{"field" => field, "value" => color}, socket) do
+    IO.puts("="*50)
+    IO.puts("🎨 COLOR CHANGE START: #{field} = #{color}")
+    IO.puts("🔍 Before - socket.assigns.customization: #{inspect(socket.assigns.customization)}")
+    IO.puts("🔍 Before - socket.assigns.portfolio.customization: #{inspect(socket.assigns.portfolio.customization)}")
+    IO.puts("🔍 Before - socket.assigns.primary_color: #{inspect(socket.assigns[:primary_color])}")
 
-    # Cancel existing timer
-    if socket.assigns.debounce_timer do
-      Process.cancel_timer(socket.assigns.debounce_timer)
+    # Use portfolio customization as source of truth
+    current_customization = socket.assigns.portfolio.customization || %{}
+    IO.puts("🔍 Current customization from portfolio: #{inspect(current_customization)}")
+
+    updated_customization = Map.put(current_customization, field, color)
+    IO.puts("🔍 Updated customization: #{inspect(updated_customization)}")
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        IO.puts("✅ Database update successful")
+        IO.puts("🔍 Updated portfolio.customization: #{inspect(updated_portfolio.customization)}")
+
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_portfolio.customization)
+        |> assign(:unsaved_changes, false)
+
+        # Update individual color assigns
+        socket = case field do
+          "primary_color" -> assign(socket, :primary_color, color)
+          "accent_color" -> assign(socket, :accent_color, color)
+          "secondary_color" -> assign(socket, :secondary_color, color)
+          _ -> socket
+        end
+
+        IO.puts("🔍 After - socket.assigns.customization: #{inspect(socket.assigns.customization)}")
+        IO.puts("🔍 After - socket.assigns.primary_color: #{inspect(socket.assigns[:primary_color])}")
+        IO.puts("="*50)
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("❌ Database update failed: #{inspect(changeset.errors)}")
+        IO.puts("="*50)
+        error_msg = format_changeset_errors(changeset)
+        {:noreply, put_flash(socket, :error, "Failed to save color: #{error_msg}")}
     end
-
-    # Set new debounce timer (300ms)
-    timer = Process.send_after(self(), :save_pending_changes, 300)
-    socket = assign(socket, :debounce_timer, timer)
-
-    # Immediate preview update (don't wait for save)
-    if socket.assigns.show_live_preview do
-      updated_customization = Map.merge(socket.assigns.customization || %{}, pending_changes)
-      css = generate_live_preview_css(updated_customization, socket.assigns.portfolio.theme)
-
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "portfolio_preview:#{socket.assigns.portfolio.id}",
-        {:preview_update, updated_customization, css}
-      )
-    end
-
-    {:noreply, socket}
   end
 
   @impl true
-  def handle_event("update_layout_live", %{"value" => layout_value}, socket) do
-    # Store pending changes
-    pending_changes = Map.put(socket.assigns.pending_changes, "layout", layout_value)
-    socket = assign(socket, :pending_changes, pending_changes)
+  def handle_event("change_theme", %{"theme" => theme}, socket) do
+    IO.puts("🎭 CHANGE THEME: #{theme} (no refresh)")
 
-    # Cancel existing timer
-    if socket.assigns.debounce_timer do
-      Process.cancel_timer(socket.assigns.debounce_timer)
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{theme: theme}) do
+      {:ok, updated_portfolio} ->
+        IO.puts("✅ Theme saved: #{theme}")
+
+        # DON'T redirect or refresh, just update socket
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:current_theme, theme)
+        |> assign(:unsaved_changes, false)
+
+        {:noreply, socket}  # NO push_event or redirects
+
+      {:error, changeset} ->
+        error_msg = format_changeset_errors(changeset)
+        {:noreply, put_flash(socket, :error, "Failed to save theme: #{error_msg}")}
     end
+  end
 
-    # Set new debounce timer
-    timer = Process.send_after(self(), :save_pending_changes, 300)
-    socket = assign(socket, :debounce_timer, timer)
+  @impl true
+  def handle_event("update_layout", %{"value" => layout_value}, socket) do
+    IO.puts("🎨 UPDATE LAYOUT: #{layout_value} (no refresh)")
 
-    # Immediate preview update
-    if socket.assigns.show_live_preview do
-      updated_customization = Map.merge(socket.assigns.customization || %{}, pending_changes)
-      css = generate_live_preview_css(updated_customization, socket.assigns.portfolio.theme)
+    # Use portfolio customization as source of truth
+    current_customization = socket.assigns.portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, "layout", layout_value)
 
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "portfolio_preview:#{socket.assigns.portfolio.id}",
-        {:preview_update, updated_customization, css}
-      )
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        IO.puts("✅ Layout saved: #{layout_value}")
+
+        # DON'T redirect or refresh, just update socket
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(:portfolio_layout, layout_value)
+        |> assign(:unsaved_changes, false)
+
+        {:noreply, socket}  # NO push_event or redirects
+
+      {:error, changeset} ->
+        error_msg = format_changeset_errors(changeset)
+        {:noreply, put_flash(socket, :error, "Failed to save layout: #{error_msg}")}
     end
+  end
 
-    {:noreply, socket}
+
+  @impl true
+  def handle_event("update_layout", %{"value" => layout_value}, socket) do
+    IO.puts("="*50)
+    IO.puts("🎯 LAYOUT CHANGE START: #{layout_value}")
+    IO.puts("🔍 LAYOUT - socket.assigns.customization: #{inspect(socket.assigns.customization)}")
+    IO.puts("🔍 LAYOUT - socket.assigns.portfolio.customization: #{inspect(socket.assigns.portfolio.customization)}")
+
+
+
+    # CRITICAL: Preserve existing customization instead of using defaults
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(current_customization, "layout", layout_value)
+
+    # IMMEDIATE UI update (optimistic)
+    socket = socket
+    |> assign(:customization, updated_customization)
+    |> assign(:portfolio_layout, layout_value)
+    |> assign(:unsaved_changes, true)
+
+    # IMMEDIATE database save to prevent overwriting
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        IO.puts("✅ Layout saved with preserved colors: #{inspect(updated_customization)}")
+
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+
+        # IMMEDIATE live preview update
+        if socket.assigns.show_live_preview do
+          css = generate_simple_preview_css(updated_customization, updated_portfolio.theme)
+
+          Phoenix.PubSub.broadcast(
+            Frestyl.PubSub,
+            "portfolio_preview:#{socket.assigns.portfolio.id}",
+            {:preview_update, updated_customization, css}
+          )
+        end
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        error_msg = format_changeset_errors(changeset)
+        {:noreply, put_flash(socket, :error, "Failed to save layout: #{error_msg}")}
+    end
   end
 
   @impl true
@@ -233,15 +316,52 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   @impl true
-  def handle_event("edit_section", %{"section-id" => section_id}, socket) do
+  def handle_event("edit_section", %{"section_id" => section_id}, socket) do
+    IO.puts("🔥 EDIT SECTION CALLED: section_id=#{section_id}")
+
     section_id_int = String.to_integer(section_id)
     section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+    IO.puts("🔥 FOUND SECTION: #{inspect(section)}")
 
     if section do
       socket = socket
       |> assign(:editing_section, section)
       |> assign(:active_tab, :content)
-      |> assign(:section_edit_mode, true)
+      |> assign(:section_edit_mode, true)  # CHANGE THIS LINE
+      |> assign(:editing_mode, :section_edit)  # ADD THIS LINE
+      |> put_flash(:info, "Editing section: #{section.title}")
+
+      IO.puts("🔥 SOCKET UPDATED - editing_section: #{inspect(socket.assigns.editing_section)}")
+
+      {:noreply, socket}
+    else
+      IO.puts("🔥 SECTION NOT FOUND")
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_section_editor", _params, socket) do
+    socket = socket
+    |> assign(:editing_section, nil)
+    |> assign(:section_edit_mode, false)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("save_section", %{"section_id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+
+    # Find the section that was being edited
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+    if section do
+      socket = socket
+      |> assign(:editing_section, nil)
+      |> assign(:section_edit_mode, false)
+      |> put_flash(:info, "Section '#{section.title}' saved successfully!")
 
       {:noreply, socket}
     else
@@ -268,6 +388,15 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
           |> assign(:sections, updated_sections)
           |> put_flash(:info, "Section \"#{updated_section.title}\" is now #{visibility_text}")
           |> assign(:unsaved_changes, false)
+
+          # Broadcast to live preview
+          if socket.assigns.show_live_preview do
+            Phoenix.PubSub.broadcast(
+              Frestyl.PubSub,
+              "portfolio_preview:#{socket.assigns.portfolio.id}",
+              {:sections_updated, updated_sections}
+            )
+          end
 
           {:noreply, socket}
 
@@ -399,95 +528,166 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     {:noreply, assign(socket, :show_video_intro, false)}
   end
 
-  @impl true
-  def handle_event("reorder_sections", %{"old_index" => old_index, "new_index" => new_index}, socket) do
-    sections = socket.assigns.sections
+@impl true
+def handle_event("reorder_sections", %{"sections" => section_ids}, socket) when is_list(section_ids) do
+  sections = socket.assigns.sections
 
-    case move_section(sections, old_index, new_index) do
-      {:ok, reordered_sections} ->
-        updated_sections = update_section_positions(reordered_sections)
+  # Reorder sections based on new order
+  ordered_sections = section_ids
+  |> Enum.with_index(1)
+  |> Enum.map(fn {section_id_str, new_position} ->
+    section_id = String.to_integer(section_id_str)
+    section = Enum.find(sections, &(&1.id == section_id))
 
-        socket = socket
-        |> assign(:sections, updated_sections)
-        |> put_flash(:info, "Sections reordered successfully!")
-        |> assign(:unsaved_changes, false)
-
-        {:noreply, socket}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to reorder sections: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_event("change_theme_live", %{"theme" => theme}, socket) do
-    # Store pending changes
-    pending_changes = Map.put(socket.assigns.pending_changes, "theme", theme)
-    socket = assign(socket, :pending_changes, pending_changes)
-
-    # Cancel existing timer
-    if socket.assigns.debounce_timer do
-      Process.cancel_timer(socket.assigns.debounce_timer)
-    end
-
-    # Set new debounce timer
-    timer = Process.send_after(self(), :save_pending_changes, 300)
-    socket = assign(socket, :debounce_timer, timer)
-
-    # Immediate preview update
-    if socket.assigns.show_live_preview do
-      updated_customization = Map.merge(socket.assigns.customization || %{}, pending_changes)
-      css = generate_live_preview_css(updated_customization, theme)
-
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "portfolio_preview:#{socket.assigns.portfolio.id}",
-        {:preview_update, updated_customization, css}
-      )
-    end
-
-    {:noreply, socket}
-  end
-
-  # 4. ADD THIS HANDLE_INFO FOR DEBOUNCED SAVES:
-
-  @impl true
-  def handle_info(:save_pending_changes, socket) do
-    if map_size(socket.assigns.pending_changes) > 0 do
-      # Merge pending changes with current customization
-      updated_customization = Map.merge(socket.assigns.customization || %{}, socket.assigns.pending_changes)
-
-      # Handle theme change separately if present
-      theme = Map.get(socket.assigns.pending_changes, "theme", socket.assigns.portfolio.theme)
-      update_params = %{customization: updated_customization}
-
-      if Map.has_key?(socket.assigns.pending_changes, "theme") do
-        update_params = Map.put(update_params, :theme, theme)
-      end
-
-      case Portfolios.update_portfolio(socket.assigns.portfolio, update_params) do
-        {:ok, portfolio} ->
-          socket =
-            socket
-            |> assign(:portfolio, portfolio)
-            |> assign(:customization, updated_customization)
-            |> assign(:pending_changes, %{})
-            |> assign(:debounce_timer, nil)
-            |> assign(:unsaved_changes, false)
-
-          {:noreply, socket}
-
-        {:error, _changeset} ->
-          socket =
-            socket
-            |> assign(:pending_changes, %{})
-            |> assign(:debounce_timer, nil)
-            |> assign(:unsaved_changes, true)
-
-          {:noreply, socket}
+    if section && section.position != new_position do
+      case Portfolios.update_section(section, %{position: new_position}) do
+        {:ok, updated_section} -> updated_section
+        {:error, _} -> section
       end
     else
-      {:noreply, assign(socket, :debounce_timer, nil)}
+      section
+    end
+  end)
+  |> Enum.filter(& &1)  # Remove any nils
+  |> Enum.sort_by(& &1.position)
+
+  {:noreply, socket
+  |> assign(:sections, ordered_sections)
+  |> put_flash(:info, "Section order updated")}
+end
+
+@impl true
+def handle_event("reorder_sections", %{"old_index" => old_index, "new_index" => new_index}, socket) do
+  old_idx = String.to_integer(old_index)
+  new_idx = String.to_integer(new_index)
+  sections = socket.assigns.sections |> Enum.sort_by(& &1.position)
+
+  if old_idx != new_idx and old_idx < length(sections) and new_idx < length(sections) do
+    # Reorder the list
+    section_to_move = Enum.at(sections, old_idx)
+    reordered_sections = sections
+    |> List.delete_at(old_idx)
+    |> List.insert_at(new_idx, section_to_move)
+
+    # Update positions in database
+    updated_sections = reordered_sections
+    |> Enum.with_index(1)
+    |> Enum.map(fn {section, position} ->
+      if section.position != position do
+        case Portfolios.update_section(section, %{position: position}) do
+          {:ok, updated} -> updated
+          {:error, _} -> section
+        end
+      else
+        section
+      end
+    end)
+
+    {:noreply, socket
+    |> assign(:sections, updated_sections)
+    |> put_flash(:info, "Section order updated")}
+  else
+    {:noreply, socket}
+  end
+end
+
+  @impl true
+  def handle_event("save_section", %{"section_id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    editing_section = socket.assigns.editing_section
+
+    if editing_section && editing_section.id == section_id_int do
+      # The section should already be saved from content updates
+      updated_sections = Enum.map(socket.assigns.sections, fn s ->
+        if s.id == section_id_int, do: editing_section, else: s
+      end)
+
+      socket = socket
+      |> assign(:sections, updated_sections)
+      |> assign(:editing_section, editing_section)
+      |> assign(:unsaved_changes, false)
+      |> put_flash(:info, "Section '#{editing_section.title}' saved successfully!")
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Section not found or not being edited")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_section_field", %{"section_id" => section_id, "field" => field, "value" => value}, socket) do
+    IO.puts("🔥 UPDATE SECTION FIELD: section_id=#{section_id}, field=#{field}, value=#{inspect(value)}")
+
+    section_id_int = String.to_integer(section_id)
+    sections = socket.assigns.sections
+    section_to_update = Enum.find(sections, &(&1.id == section_id_int))
+
+    if section_to_update do
+      # Handle different field types
+      update_params = case field do
+        "title" ->
+          %{title: value}
+        "description" ->
+          current_content = section_to_update.content || %{}
+          updated_content = Map.put(current_content, "description", value)
+          %{content: updated_content}
+        "headline" ->
+          current_content = section_to_update.content || %{}
+          updated_content = Map.put(current_content, "headline", value)
+          %{content: updated_content}
+        "summary" ->
+          current_content = section_to_update.content || %{}
+          updated_content = Map.put(current_content, "summary", value)
+          %{content: updated_content}
+        "location" ->
+          current_content = section_to_update.content || %{}
+          updated_content = Map.put(current_content, "location", value)
+          %{content: updated_content}
+        "visible" ->
+          %{visible: String.to_existing_atom(value)}
+        _ ->
+          current_content = section_to_update.content || %{}
+          updated_content = Map.put(current_content, field, value)
+          %{content: updated_content}
+      end
+
+      case Portfolios.update_section(section_to_update, update_params) do
+        {:ok, updated_section} ->
+          IO.puts("✅ Section updated successfully in database")
+
+          updated_sections = Enum.map(sections, fn s ->
+            if s.id == section_id_int, do: updated_section, else: s
+          end)
+
+          # Update editing_section if it's the same section
+          editing_section = if socket.assigns[:editing_section] &&
+                              socket.assigns.editing_section.id == section_id_int do
+            updated_section
+          else
+            socket.assigns[:editing_section]
+          end
+
+          # Broadcast to live preview
+          if socket.assigns.show_live_preview do
+            Phoenix.PubSub.broadcast(
+              Frestyl.PubSub,
+              "portfolio_preview:#{socket.assigns.portfolio.id}",
+              {:sections_updated, updated_sections}
+            )
+          end
+
+          {:noreply, socket
+          |> assign(:sections, updated_sections)
+          |> assign(:editing_section, editing_section)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Section updated successfully")}
+
+        {:error, changeset} ->
+          error_msg = format_changeset_errors(changeset)
+          {:noreply, put_flash(socket, :error, "Failed to update section: #{error_msg}")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
     end
   end
 
@@ -509,117 +709,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         %{
           subscription_tier: get_user_subscription_tier(user)
         }
-    end
-  end
-
-  defp generate_live_preview_css(customization, theme) do
-    primary_color = Map.get(customization, "primary_color", "#374151")
-    accent_color = Map.get(customization, "accent_color", "#059669")
-    secondary_color = Map.get(customization, "secondary_color", "#6b7280")
-    layout = Map.get(customization, "layout", "minimal")
-
-    """
-    :root {
-      --primary-color: #{primary_color};
-      --accent-color: #{accent_color};
-      --secondary-color: #{secondary_color};
-    }
-
-    .portfolio-container {
-      background: var(--primary-color);
-      color: #ffffff;
-      min-height: 100vh;
-      padding: 2rem;
-      font-family: #{get_theme_font(theme)};
-    }
-
-    .portfolio-header h1 {
-      color: #ffffff;
-      margin-bottom: 0.5rem;
-    }
-
-    .portfolio-header p {
-      color: rgba(255, 255, 255, 0.9);
-    }
-
-    .section {
-      margin-bottom: 2rem;
-      padding: 1.5rem;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.1);
-      #{get_layout_css(layout)}
-    }
-
-    .section h2.accent {
-      color: var(--accent-color);
-    }
-
-    .section-content {
-      color: rgba(255, 255, 255, 0.95);
-      line-height: 1.6;
-    }
-
-    /* Smooth transitions for live updates */
-    * {
-      transition: background-color 0.3s ease,
-                  color 0.3s ease,
-                  border-color 0.3s ease;
-    }
-
-    /* Mobile responsive */
-    .mobile-viewport {
-      max-width: 375px;
-      margin: 0 auto;
-      box-shadow: 0 0 20px rgba(0,0,0,0.3);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-
-    .mobile-viewport .portfolio-container {
-      padding: 1rem;
-    }
-
-    .mobile-viewport .section {
-      margin-bottom: 1rem;
-      padding: 1rem;
-    }
-
-    @media (max-width: 768px) {
-      .portfolio-container {
-        padding: 1rem;
-      }
-      .section {
-        margin-bottom: 1rem;
-        padding: 1rem;
-      }
-    }
-    """
-  end
-
-  defp get_theme_font("minimal"), do: "'Inter', sans-serif"
-  defp get_theme_font("professional"), do: "'Merriweather', serif"
-  defp get_theme_font("creative"), do: "'Poppins', sans-serif"
-  defp get_theme_font(_), do: "'Inter', sans-serif"
-
-  defp get_layout_css("dashboard") do
-    "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;"
-  end
-
-  defp get_layout_css("gallery") do
-    "display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0.5rem;"
-  end
-
-  defp get_layout_css(_), do: ""
-
-  defp broadcast_preview_update(socket) do
-    if socket.assigns.show_live_preview do
-      css = generate_live_preview_css(socket.assigns.customization || %{}, socket.assigns.portfolio.theme)
-
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "portfolio_preview:#{socket.assigns.portfolio.id}",
-        {:preview_update, socket.assigns.customization || %{}, css}
-      )
     end
   end
 
@@ -687,13 +776,49 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   defp assign_design_system(socket, portfolio, account) do
     customization = portfolio.customization || %{}
 
-    # Extract design values
-    portfolio_layout = customization["layout"] || "minimal"
-    primary_color = customization["primary_color"] || "#374151"
-    secondary_color = customization["secondary_color"] || "#6b7280"
-    accent_color = customization["accent_color"] || "#059669"
-    background_color = customization["background_color"] || "#ffffff"
-    text_color = customization["text_color"] || "#1f2937"
+    IO.puts("🔍 ASSIGN_DESIGN_SYSTEM called")
+    IO.puts("🔍 Portfolio customization: #{inspect(customization)}")
+
+    # CRITICAL: Don't use || operator which overrides existing values
+    # Use Map.get with proper nil checking instead
+
+    portfolio_layout = Map.get(customization, "layout", "minimal")
+
+    # FIXED: Only use defaults if the key doesn't exist at all, not if it's a different value
+    primary_color = case Map.get(customization, "primary_color") do
+      nil -> "#374151"
+      color when is_binary(color) -> color
+      _ -> "#374151"
+    end
+
+    secondary_color = case Map.get(customization, "secondary_color") do
+      nil -> "#6b7280"
+      color when is_binary(color) -> color
+      _ -> "#6b7280"
+    end
+
+    accent_color = case Map.get(customization, "accent_color") do
+      nil -> "#059669"
+      color when is_binary(color) -> color
+      _ -> "#059669"
+    end
+
+    background_color = case Map.get(customization, "background_color") do
+      nil -> "#ffffff"
+      color when is_binary(color) -> color
+      _ -> "#ffffff"
+    end
+
+    text_color = case Map.get(customization, "text_color") do
+      nil -> "#1f2937"
+      color when is_binary(color) -> color
+      _ -> "#1f2937"
+    end
+
+    IO.puts("🔍 Extracted colors:")
+    IO.puts("  primary: #{primary_color}")
+    IO.puts("  accent: #{accent_color}")
+    IO.puts("  secondary: #{secondary_color}")
 
     socket
     |> assign(:portfolio_layout, portfolio_layout)
@@ -703,9 +828,14 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:background_color, background_color)
     |> assign(:text_color, text_color)
     |> assign(:customization, customization)
+    |> assign(:available_layouts, get_available_layouts(account))
+    |> assign(:brand_constraints, get_brand_constraints(account))
   end
 
+
   defp assign_ui_state(socket) do
+    timestamp = System.system_time(:millisecond)
+
     socket
     |> assign(:active_tab, :overview)
     |> assign(:show_preview, false)
@@ -718,7 +848,14 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:show_main_menu, false)
     |> assign(:editing_section, nil)
     |> assign(:section_edit_mode, false)
+    |> assign(:pending_changes, %{})
+    |> assign(:debounce_timer, nil)
     |> assign(:media_section_id, nil)
+    |> assign(:last_updated, timestamp)
+    |> assign(:force_render, 0)
+    |> assign(:refresh_count, 0)
+    |> assign(:current_theme, nil)
+    |> assign(:current_layout, nil)
   end
 
   # ============================================================================
@@ -1001,10 +1138,25 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   # UNIFIED EVENT HANDLING
   # ============================================================================
 
+  def debug_portfolio_customization(portfolio_id) do
+    case Portfolios.get_portfolio(portfolio_id) do
+      nil -> IO.inspect("Portfolio not found")
+      portfolio ->
+        IO.inspect(portfolio.customization, label: "📊 Database customization")
+        IO.inspect(portfolio.theme, label: "📊 Database theme")
+    end
+  end
+
+
   @impl true
   def handle_event("change_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :active_tab, String.to_atom(tab))}
+    IO.inspect(tab, label: "📋 Tab changed to")
+    IO.inspect(socket.assigns.customization, label: "📋 Customization when changing tab")
+
+    tab_atom = String.to_atom(tab)
+    {:noreply, assign(socket, :active_tab, tab_atom)}
   end
+
 
   @impl true
   def handle_event("toggle_preview", _params, socket) do
@@ -1048,62 +1200,100 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   @impl true
-  def handle_event("change_theme", %{"theme" => theme}, socket) do
-    case Portfolios.update_portfolio(socket.assigns.portfolio, %{theme: theme}) do
-      {:ok, portfolio} ->
-        {:noreply, socket |> assign(:portfolio, portfolio) |> assign(:unsaved_changes, false)}
-      {:error, _} ->
-        {:noreply, socket |> assign(:unsaved_changes, true)}
-    end
-  end
-
-  @impl true
   def handle_event("update_color", %{"field" => field, "value" => color}, socket) do
-    customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(customization, field, color)
+    IO.puts("🎨 UPDATE COLOR (immediate): #{field} = #{color}")
 
+    # Get current customization and update immediately
+    current_customization = socket.assigns.customization || %{}
+    updated_customization = Map.put(current_customization, field, color)
+
+    # IMMEDIATE UI update first (prevents reversion)
+    socket = socket
+    |> assign(:customization, updated_customization)
+    |> assign(:unsaved_changes, true)
+
+    # Update individual color assigns for immediate UI feedback
+    socket = case field do
+      "primary_color" -> assign(socket, :primary_color, color)
+      "accent_color" -> assign(socket, :accent_color, color)
+      "secondary_color" -> assign(socket, :secondary_color, color)
+      _ -> socket
+    end
+
+    # IMMEDIATE database save (no debouncing for colors to prevent reversion)
     case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
-      {:ok, portfolio} ->
-        {:noreply, socket
-        |> assign(:portfolio, portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:unsaved_changes, false)}
-      {:error, _} ->
-        {:noreply, socket |> assign(:unsaved_changes, true)}
+      {:ok, updated_portfolio} ->
+        IO.puts("✅ Color saved to database immediately")
+
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+
+        # IMMEDIATE live preview update
+        if socket.assigns.show_live_preview do
+          css = generate_simple_preview_css(updated_customization, updated_portfolio.theme)
+
+          IO.puts("🔥 BROADCASTING COLOR UPDATE...")
+          Phoenix.PubSub.broadcast(
+            Frestyl.PubSub,
+            "portfolio_preview:#{socket.assigns.portfolio.id}",
+            {:preview_update, updated_customization, css}
+          )
+        end
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        error_msg = format_changeset_errors(changeset)
+        IO.puts("❌ Failed to save color: #{error_msg}")
+        {:noreply, put_flash(socket, :error, "Failed to save color: #{error_msg}")}
     end
   end
 
   @impl true
   def handle_event("update_layout", %{"value" => layout_value}, socket) do
-    customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(customization, "layout", layout_value)
+    IO.puts("🎨 UPDATE LAYOUT (debounced): #{layout_value}")
 
-    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
-      {:ok, portfolio} ->
-        {:noreply, socket
-        |> assign(:portfolio, portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:portfolio_layout, layout_value)  # Update the new assign name
-        |> assign(:unsaved_changes, false)}
-      {:error, _} ->
-        {:noreply, socket |> assign(:unsaved_changes, true)}
+    # Store pending changes
+    pending_changes = Map.put(socket.assigns[:pending_changes] || %{}, "layout", layout_value)
+    socket = assign(socket, :pending_changes, pending_changes)
+
+    # Cancel existing timer
+    if socket.assigns[:debounce_timer] do
+      Process.cancel_timer(socket.assigns.debounce_timer)
     end
+
+    # Set new debounce timer
+    timer = Process.send_after(self(), :save_pending_changes, 300)
+    socket = assign(socket, :debounce_timer, timer)
+
+    # Immediate UI update (optimistic)
+    updated_customization = Map.merge(socket.assigns.customization || %{}, pending_changes)
+
+    socket = socket
+    |> assign(:customization, updated_customization)
+    |> assign(:portfolio_layout, layout_value)
+    |> assign(:unsaved_changes, true)
+
+    # Broadcast to live preview immediately
+    if socket.assigns.show_live_preview do
+      css = generate_simple_preview_css(updated_customization, socket.assigns.portfolio.theme)
+
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{socket.assigns.portfolio.id}",
+        {:preview_update, updated_customization, css}
+      )
+    end
+
+    {:noreply, socket}
   end
+
 
   # Add placeholder handlers for other events
   @impl true
   def handle_event("add_section", _params, socket) do
     {:noreply, put_flash(socket, :info, "Add section functionality coming soon")}
-  end
-
-  @impl true
-  def handle_event("edit_section", %{"id" => _id}, socket) do
-    {:noreply, put_flash(socket, :info, "Edit section functionality coming soon")}
-  end
-
-  @impl true
-  def handle_event("delete_section", %{"id" => _id}, socket) do
-    {:noreply, put_flash(socket, :info, "Delete section functionality coming soon")}
   end
 
   @impl true
@@ -1155,20 +1345,54 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   @impl true
-  def handle_event("delete_section", %{"id" => section_id}, socket) do
-    case delete_section_by_id(section_id, socket) do
-      {:ok, updated_sections} ->
-        {:noreply,
-         socket
-         |> assign(:sections, updated_sections)
-         |> assign(:editing_section, nil)
-         |> assign(:editing_mode, :overview)
-         |> put_flash(:info, "Section deleted")}
+  def handle_event("delete_section", %{"section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    sections = socket.assigns.sections
+    section_to_delete = Enum.find(sections, &(&1.id == section_id_int))
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete section: #{reason}")}
+    if section_to_delete do
+      case Portfolios.delete_section(section_to_delete) do
+        {:ok, _deleted_section} ->
+          updated_sections = Enum.reject(sections, &(&1.id == section_id_int))
+
+          # Reindex positions
+          updated_sections = updated_sections
+          |> Enum.with_index(1)
+          |> Enum.map(fn {section, index} ->
+            if section.position != index do
+              {:ok, updated} = Portfolios.update_section(section, %{position: index})
+              updated
+            else
+              section
+            end
+          end)
+
+          # Broadcast to live preview
+          if socket.assigns.show_live_preview do
+            Phoenix.PubSub.broadcast(
+              Frestyl.PubSub,
+              "portfolio_preview:#{socket.assigns.portfolio.id}",
+              {:sections_updated, updated_sections}
+            )
+          end
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:editing_section, nil)
+          |> assign(:section_edit_mode, false)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Section '#{section_to_delete.title}' deleted successfully")
+
+          {:noreply, socket}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to delete section")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
     end
   end
+
 
   @impl true
   def handle_event("toggle_monetization", %{"section_id" => section_id}, socket) do
@@ -1373,6 +1597,187 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
+
+  defp generate_simple_preview_css(customization, theme) do
+    primary_color = Map.get(customization, "primary_color", "#374151")
+    accent_color = Map.get(customization, "accent_color", "#059669")
+    secondary_color = Map.get(customization, "secondary_color", "#6b7280")
+    layout = Map.get(customization, "layout", "minimal")
+
+    """
+    <style>
+    :root {
+      --primary-color: #{primary_color};
+      --accent-color: #{accent_color};
+      --secondary-color: #{secondary_color};
+    }
+
+    body {
+      font-family: #{get_theme_font(theme)};
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+    }
+
+    .portfolio-container {
+      background: var(--primary-color);
+      color: #ffffff;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .portfolio-header h1 {
+      color: #ffffff;
+      margin-bottom: 0.5rem;
+    }
+
+    .portfolio-header p {
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .section {
+      margin-bottom: 2rem;
+      padding: 1.5rem;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      #{get_layout_css(layout)}
+    }
+
+    .section h2.accent {
+      color: var(--accent-color);
+    }
+
+    .section-content {
+      color: rgba(255, 255, 255, 0.95);
+      line-height: 1.6;
+    }
+
+    /* Smooth transitions for live updates */
+    * {
+      transition: background-color 0.3s ease,
+                  color 0.3s ease,
+                  border-color 0.3s ease;
+    }
+
+    @media (max-width: 768px) {
+      .portfolio-container {
+        padding: 1rem;
+      }
+      .section {
+        margin-bottom: 1rem;
+        padding: 1rem;
+      }
+    }
+    </style>
+    """
+  end
+
+  defp get_theme_font("minimal"), do: "'Inter', sans-serif"
+  defp get_theme_font("professional"), do: "'Merriweather', serif"
+  defp get_theme_font("creative"), do: "'Poppins', sans-serif"
+  defp get_theme_font(_), do: "'Inter', sans-serif"
+
+  defp get_layout_css("dashboard") do
+    "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;"
+  end
+
+  defp get_layout_css("gallery") do
+    "display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0.5rem;"
+  end
+
+  defp get_layout_css(_), do: ""
+
+  defp get_theme_base_css("minimal") do
+    """
+    .portfolio-container {
+      background: linear-gradient(135deg, var(--primary-color) 0%, #{darken_color("#374151", 20)} 100%);
+    }
+    """
+  end
+
+  defp get_theme_base_css("professional") do
+    """
+    .portfolio-container {
+      background: linear-gradient(to bottom, var(--primary-color) 0%, #{darken_color("#1e40af", 10)} 100%);
+    }
+    """
+  end
+
+  defp get_theme_base_css("creative") do
+    """
+    .portfolio-container {
+      background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 50%, var(--secondary-color) 100%);
+    }
+    """
+  end
+
+  defp get_theme_base_css(_), do: get_theme_base_css("minimal")
+
+  defp get_advanced_layout_css("dashboard") do
+    """
+    .portfolio-sections {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+    }
+
+    .section {
+      display: flex;
+      flex-direction: column;
+      height: fit-content;
+    }
+    """
+  end
+
+  defp get_advanced_layout_css("gallery") do
+    """
+    .portfolio-sections {
+      columns: 3;
+      column-gap: 1rem;
+    }
+
+    .section {
+      break-inside: avoid;
+      margin-bottom: 1rem;
+    }
+
+    @media (max-width: 768px) {
+      .portfolio-sections {
+        columns: 1;
+      }
+    }
+    """
+  end
+
+  defp get_advanced_layout_css(_), do: ""
+
+  # Helper function to darken colors (simple version)
+  defp darken_color(hex_color, _percentage) do
+    # Simple darkening - in production you might want a more sophisticated approach
+    case hex_color do
+      "#374151" -> "#1f2937"
+      "#1e40af" -> "#1e3a8a"
+      _ -> "#1f2937"
+    end
+  end
+
+  # Function 2: Live preview CSS (same as simple for now)
+  defp generate_live_preview_css(customization, theme) do
+    generate_simple_preview_css(customization, theme)
+  end
+
+  # Function 3: Broadcast preview updates
+  defp broadcast_preview_update(socket) do
+    if socket.assigns.show_live_preview do
+      css = generate_simple_preview_css(socket.assigns.customization || %{}, socket.assigns.portfolio.theme)
+
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{socket.assigns.portfolio.id}",
+        {:preview_update, socket.assigns.customization || %{}, css}
+      )
+    end
+  end
 
   defp can_add_section?(socket) do
     current_count = socket.assigns.section_count
@@ -1923,17 +2328,31 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   defp format_section_type(section_type) do
-    section_type_string = case section_type do
-      atom when is_atom(atom) -> Atom.to_string(atom)
-      string when is_binary(string) -> string
-      _ -> "unknown"
+    case section_type do
+      :intro -> "Introduction"
+      :experience -> "Experience"
+      :skills -> "Skills"
+      :education -> "Education"
+      :projects -> "Projects"
+      :featured_project -> "Featured Project"
+      :case_study -> "Case Study"
+      :contact -> "Contact"
+      :testimonial -> "Testimonial"
+      :achievements -> "Achievements"
+      :media_showcase -> "Media Showcase"
+      "intro" -> "Introduction"
+      "experience" -> "Experience"
+      "skills" -> "Skills"
+      "education" -> "Education"
+      "projects" -> "Projects"
+      "featured_project" -> "Featured Project"
+      "case_study" -> "Case Study"
+      "contact" -> "Contact"
+      "testimonial" -> "Testimonial"
+      "achievements" -> "Achievements"
+      "media_showcase" -> "Media Showcase"
+      _ -> "Section"
     end
-
-    section_type_string
-    |> String.replace("_", " ")
-    |> String.split()
-    |> Enum.map(&String.capitalize/1)
-    |> Enum.join(" ")
   end
 
   defp format_changeset_errors(changeset) do
@@ -1946,6 +2365,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
       "#{field}: #{Enum.join(errors, ", ")}"
     end)
   end
+
 
   defp move_section(sections, old_index, new_index) do
     if old_index >= 0 and old_index < length(sections) and
@@ -2121,30 +2541,17 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   defp build_preview_url(portfolio, customization) do
-    base_url = "/portfolios/#{portfolio.id}"
+    # Generate preview token
+    token = :crypto.hash(:sha256, "preview_#{portfolio.id}_#{Date.utc_today()}")
+            |> Base.encode16(case: :lower)
 
-    # Add customization as query parameters
-    params = []
+    # Base URL that matches your route
+    preview_url = "/portfolios/#{portfolio.id}/preview/#{token}"
 
-    params = if customization && map_size(customization) > 0 do
-      customization_json = Jason.encode!(customization)
-      [{"customization", customization_json} | params]
-    else
-      params
-    end
+    IO.puts("🔍 PREVIEW URL GENERATED: #{preview_url}")
+    IO.puts("🔍 CUSTOMIZATION PASSED: #{inspect(customization)}")
 
-    # Add cache busting timestamp
-    params = [{"t", :os.system_time(:millisecond)} | params]
-
-    if params == [] do
-      base_url
-    else
-      query_string = params
-      |> Enum.map(fn {key, value} -> "#{key}=#{URI.encode(to_string(value))}" end)
-      |> Enum.join("&")
-
-      "#{base_url}?#{query_string}"
-    end
+    preview_url
   end
 
   # ============================================================================

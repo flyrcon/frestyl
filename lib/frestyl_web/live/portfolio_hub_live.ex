@@ -122,6 +122,19 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:lab_recommendations, lab_data.recommendations)
       |> assign(:experiment_results, lab_data.results)
 
+      # ======== HUB OPTIONS ========
+      |> assign(:overview, safe_get_user_overview(user.id))
+      |> assign(:view_mode, "grid")                    # "grid" or "list"
+      |> assign(:active_hub_section, "portfolio_studio") # Tab management
+      |> assign(:show_share_modal, false)              # Share modal state
+      |> assign(:selected_portfolio_for_share, nil)    # Selected portfolio for sharing
+      |> assign(:show_live_stream_modal, false)        # Live streaming modal
+      |> assign(:show_export_menu, false)              # Analytics export menu
+      |> assign(:show_ai_creation_modal, false)        # AI creation modal
+      |> assign(:show_clone_modal, false)              # Clone portfolio modal
+      # |> assign(:active_collaborations, [])            # Collaboration data
+      |> assign(:hub_sections, get_hub_sections(current_account)) # Dynamic sections
+
       # ======== SERVICE DASHBOARD SECTION (Creator+ only) ========
       |> assign(:service_data, service_data)
       |> assign(:active_bookings, service_data.active_bookings)
@@ -146,7 +159,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:show_welcome_celebration, just_completed_onboarding)
 
       # ======== UI STATE MANAGEMENT ========
-      |> assign(:view_mode, "sections") # "sections", "grid", "list"
+      |> assign(:view_mode, "grid") # "sections", "grid", "list"
       |> assign(:active_section, "portfolio_studio")
       |> assign(:filter_status, "all")
       |> assign(:show_create_modal, false)
@@ -158,6 +171,10 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:show_revenue_modal, false)
       |> assign(:selected_enhancement, nil)
       |> assign(:studio_mode, nil)
+
+      |> assign(:open_more_menu, nil)
+      |> assign(:show_settings_modal, false)
+      |> assign(:selected_portfolio_for_settings, nil)
 
       # ======== MOBILE STATE ========
       |> Map.merge(mobile_state)
@@ -559,6 +576,20 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> String.length()
 
     total_text > 200
+  end
+
+  defp safe_get_user_overview(user_id) do
+    try do
+      # Replace this with your actual overview loading logic
+      %{
+        total_visits: 0,
+        total_portfolios: length(Portfolios.list_user_portfolios(user_id)),
+        total_shares: 0
+      }
+    rescue
+      _ ->
+        %{total_visits: 0, total_portfolios: 0, total_shares: 0}
+    end
   end
 
 
@@ -1361,6 +1392,132 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
+  # ============================================================================
+  # MORE MENU WITH EXPORT OPTIONS
+  # ============================================================================
+
+  # Add to your existing event handlers:
+
+  @impl true
+  def handle_event("toggle_more_menu", %{"portfolio-id" => portfolio_id}, socket) do
+    current_open = socket.assigns[:open_more_menu]
+    new_open = if current_open == portfolio_id, do: nil, else: portfolio_id
+
+    {:noreply, assign(socket, :open_more_menu, new_open)}
+  end
+
+  @impl true
+  def handle_event("close_more_menu", _params, socket) do
+    {:noreply, assign(socket, :open_more_menu, nil)}
+  end
+
+  @impl true
+  def handle_event("export_portfolio", %{"portfolio-id" => portfolio_id, "format" => format}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    case format do
+      "pdf" ->
+        case export_portfolio_to_pdf(portfolio, socket.assigns.current_user) do
+          {:ok, pdf_url} ->
+            {:noreply,
+            socket
+            |> assign(:open_more_menu, nil)
+            |> push_event("download_file", %{url: pdf_url, filename: "#{portfolio.slug}-portfolio.pdf"})
+            |> put_flash(:info, "PDF export ready for download")}
+
+          {:error, reason} ->
+            {:noreply,
+            socket
+            |> assign(:open_more_menu, nil)
+            |> put_flash(:error, "PDF export failed: #{reason}")}
+        end
+
+      "json" ->
+        case export_portfolio_to_json(portfolio) do
+          {:ok, json_data} ->
+            {:noreply,
+            socket
+            |> assign(:open_more_menu, nil)
+            |> push_event("download_json", %{data: json_data, filename: "#{portfolio.slug}-portfolio.json"})
+            |> put_flash(:info, "Portfolio data exported")}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Export failed: #{reason}")}
+        end
+
+      "analytics" ->
+        case export_portfolio_analytics(portfolio, socket.assigns.current_user) do
+          {:ok, analytics_data} ->
+            {:noreply,
+            socket
+            |> assign(:open_more_menu, nil)
+            |> push_event("download_csv", %{data: analytics_data, filename: "#{portfolio.slug}-analytics.csv"})
+            |> put_flash(:info, "Analytics exported")}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Analytics export failed: #{reason}")}
+        end
+    end
+  end
+
+  @impl true
+  def handle_event("duplicate_portfolio", %{"portfolio-id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    case duplicate_portfolio(portfolio, socket.assigns.current_user) do
+      {:ok, new_portfolio} ->
+        updated_portfolios = [new_portfolio | socket.assigns.portfolios]
+
+        {:noreply,
+        socket
+        |> assign(:portfolios, updated_portfolios)
+        |> assign(:open_more_menu, nil)
+        |> put_flash(:info, "Portfolio duplicated successfully")
+        |> push_navigate(to: "/portfolios/#{new_portfolio.id}/edit")}
+
+      {:error, reason} ->
+        {:noreply,
+        socket
+        |> assign(:open_more_menu, nil)
+        |> put_flash(:error, "Failed to duplicate portfolio: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("archive_portfolio", %{"portfolio-id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    case archive_portfolio(portfolio, socket.assigns.current_user) do
+      {:ok, archived_portfolio} ->
+        updated_portfolios = Enum.map(socket.assigns.portfolios, fn p ->
+          if p.id == archived_portfolio.id, do: archived_portfolio, else: p
+        end)
+
+        {:noreply,
+        socket
+        |> assign(:portfolios, updated_portfolios)
+        |> assign(:open_more_menu, nil)
+        |> put_flash(:info, "Portfolio archived")}
+
+      {:error, reason} ->
+        {:noreply,
+        socket
+        |> assign(:open_more_menu, nil)
+        |> put_flash(:error, "Failed to archive portfolio: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("show_settings_modal", %{"portfolio-id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    {:noreply,
+    socket
+    |> assign(:show_settings_modal, true)
+    |> assign(:selected_portfolio_for_settings, portfolio)
+    |> assign(:open_more_menu, nil)}
+  end
+
   defp send_enhancement_invitations(channel, enhancement_type, current_account) do
     # Check if user wants to invite service providers
     if Features.FeatureGate.can_access_feature?(current_account, :service_provider_access) do
@@ -1707,79 +1864,292 @@ defmodule FrestylWeb.PortfolioHubLive do
   # MAIN SECTION FUNCTIONS (called directly from template)
   # ============================================================================
 
-  defp portfolio_studio_section(assigns) do
+# Replace your entire portfolio_grid_section function with this complete version
+
+  defp portfolio_grid_section(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <!-- Studio Overview Cards -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <!-- Total Portfolios -->
-        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
-          <div class="flex items-center">
-            <div class="p-3 bg-purple-100 rounded-lg">
-              <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-              </svg>
-            </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-600">Total Portfolios</p>
-              <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :total_portfolios, length(@portfolios)) %></p>
-            </div>
-          </div>
+    <div class="space-y-8">
+      <!-- Enhanced Header with Stats and Actions -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-900">Your Portfolios</h2>
+          <p class="text-gray-600 mt-1">
+            <%= length(@portfolios) %> portfolios • <%= @overview.total_visits %> total views
+          </p>
         </div>
 
-        <!-- Published Count -->
-        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
-          <div class="flex items-center">
-            <div class="p-3 bg-green-100 rounded-lg">
-              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-              </svg>
-            </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-600">Published</p>
-              <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :published_count, Enum.count(@portfolios, &(&1.visibility == :public))) %></p>
-            </div>
+        <div class="flex items-center space-x-3">
+          <!-- View Toggle -->
+          <div class="bg-gray-100 rounded-lg p-1 flex">
+            <button phx-click="set_view_mode" phx-value-mode="grid"
+                    class={["px-3 py-1 rounded text-sm font-medium transition-colors",
+                      if(assigns[:view_mode] == "grid", do: "bg-white shadow-sm text-gray-900", else: "text-gray-600 hover:text-gray-900")]}>
+              Grid
+            </button>
+            <button phx-click="set_view_mode" phx-value-mode="list"
+                    class={["px-3 py-1 rounded text-sm font-medium transition-colors",
+                      if(assigns[:view_mode] == "list", do: "bg-white shadow-sm text-gray-900", else: "text-gray-600 hover:text-gray-900")]}>
+              List
+            </button>
           </div>
-        </div>
 
-        <!-- Drafts -->
-        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
-          <div class="flex items-center">
-            <div class="p-3 bg-yellow-100 rounded-lg">
-              <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-              </svg>
-            </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-600">Drafts</p>
-              <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :draft_count, Enum.count(@portfolios, &(&1.visibility == :private))) %></p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Templates Available -->
-        <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
-          <div class="flex items-center">
-            <div class="p-3 bg-blue-100 rounded-lg">
-              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
-              </svg>
-            </div>
-            <div class="ml-4">
-              <p class="text-sm font-medium text-gray-600">Templates</p>
-              <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :templates_available, 10) %></p>
-            </div>
-          </div>
+          <!-- Create Button -->
+          <button phx-click="show_create_modal"
+                  class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Create Portfolio
+          </button>
         </div>
       </div>
 
-      <!-- Portfolios Section -->
-      <%= portfolio_grid_section(assigns) %>
+      <!-- Portfolio Grid -->
+      <%= if length(@portfolios) > 0 do %>
+        <div class={if assigns[:view_mode] == "grid", do: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6", else: "space-y-4"}>
 
-      <!-- Enhancement Suggestions -->
-      <%= if @enhancement_suggestions && length(@enhancement_suggestions) > 0 do %>
-        <%= enhancement_suggestions_section(assigns) %>
+          <!-- Enhanced Portfolio Cards -->
+          <%= for portfolio <- @portfolios do %>
+            <div class="group bg-white rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl border border-gray-100 transform hover:-translate-y-1">
+
+              <!-- Portfolio Preview Header -->
+              <div class="relative">
+                <!-- Theme Color Stripe -->
+                <div class={[
+                  "h-1",
+                  case portfolio.theme do
+                    "minimalist" -> "bg-gradient-to-r from-gray-600 to-gray-800"
+                    "creative" -> "bg-gradient-to-r from-purple-600 to-pink-600"
+                    "corporate" -> "bg-gradient-to-r from-blue-600 to-indigo-600"
+                    "developer" -> "bg-gradient-to-r from-green-600 to-teal-600"
+                    _ -> "bg-gradient-to-r from-cyan-600 to-blue-600"
+                  end
+                ]}></div>
+
+                <!-- Portfolio Preview -->
+                <div class={[
+                  "h-32 flex items-center justify-center relative overflow-hidden",
+                  case portfolio.theme do
+                    "minimalist" -> "bg-gradient-to-br from-gray-100 to-gray-200"
+                    "creative" -> "bg-gradient-to-br from-purple-50 to-pink-50"
+                    "corporate" -> "bg-gradient-to-br from-blue-50 to-indigo-50"
+                    "developer" -> "bg-gradient-to-br from-green-50 to-teal-50"
+                    _ -> "bg-gradient-to-br from-cyan-50 to-blue-50"
+                  end
+                ]}>
+
+                  <!-- Video Indicator -->
+                  <%= if has_intro_video?(portfolio) do %>
+                    <div class="absolute top-3 left-3 z-10">
+                      <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-2 shadow-lg">
+                        <svg class="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z"/>
+                        </svg>
+                      </div>
+                    </div>
+                  <% end %>
+
+                  <!-- Visibility Status -->
+                  <div class="absolute top-3 right-3 z-10">
+                    <button phx-click="toggle_portfolio_visibility" phx-value-portfolio-id={portfolio.id}
+                            class={[
+                              "bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-2 shadow-lg transition-colors",
+                              get_visibility_color(portfolio.visibility)
+                            ]}
+                            title={get_visibility_tooltip(portfolio.visibility)}>
+                      <%= get_visibility_icon(portfolio.visibility) %>
+                    </button>
+                  </div>
+
+                  <!-- Portfolio Title -->
+                  <div class="text-center px-4">
+                    <h3 class={[
+                      "text-xl font-bold mb-2",
+                      case portfolio.theme do
+                        "minimalist" -> "text-gray-800"
+                        "creative" -> "text-purple-800"
+                        "corporate" -> "text-blue-800"
+                        "developer" -> "text-green-800"
+                        _ -> "text-cyan-800"
+                      end
+                    ]}>
+                      <%= portfolio.title %>
+                    </h3>
+                    <p class="text-sm text-gray-600">/<%= portfolio.slug %></p>
+                  </div>
+
+                  <!-- Quick Actions Overlay -->
+                  <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                    <div class="flex space-x-2">
+                      <.link href={"/p/#{portfolio.slug}"} target="_blank"
+                            class="bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-3 hover:bg-opacity-100 transition-all transform hover:scale-110">
+                        <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        </svg>
+                      </.link>
+                      <.link href={"/portfolios/#{portfolio.id}/edit"}
+                            class="bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-3 hover:bg-opacity-100 transition-all transform hover:scale-110">
+                        <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                        </svg>
+                      </.link>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Portfolio Info -->
+              <div class="p-5">
+                <!-- Title and Description -->
+                <div class="mb-4">
+                  <h3 class="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors line-clamp-1">
+                    <%= portfolio.title %>
+                  </h3>
+                  <%= if portfolio.description do %>
+                    <p class="text-sm text-gray-600 line-clamp-2 mt-1"><%= portfolio.description %></p>
+                  <% end %>
+                </div>
+
+                <!-- Enhanced Stats Row -->
+                <% stats = Map.get(@portfolio_stats, portfolio.id, %{}) %>
+                <div class="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
+                  <div class="text-center">
+                    <div class="text-lg font-bold text-gray-900">
+                      <%= Map.get(stats, :total_visits, 0) %>
+                    </div>
+                    <div class="text-xs text-gray-500">Views</div>
+                  </div>
+                  <div class="text-center">
+                    <div class="text-lg font-bold text-gray-900">
+                      <%= Map.get(stats, :total_shares, 0) %>
+                    </div>
+                    <div class="text-xs text-gray-500">Shares</div>
+                  </div>
+                  <div class="text-center">
+                    <div class="text-lg font-bold text-gray-900">
+                      <%= Map.get(stats, :engagement_rate, 0) %>%
+                    </div>
+                    <div class="text-xs text-gray-500">Engagement</div>
+                  </div>
+                </div>
+
+                <!-- Action Buttons Row -->
+                <div class="flex items-center justify-between">
+                  <div class="flex space-x-2">
+                    <!-- Share Button -->
+                    <button phx-click="show_share_modal" phx-value-portfolio-id={portfolio.id}
+                            class="flex items-center px-3 py-1.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors">
+                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
+                      </svg>
+                      Share
+                    </button>
+
+                    <!-- Feedback Button -->
+                    <button phx-click="request_feedback" phx-value-portfolio-id={portfolio.id}
+                            class="flex items-center px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors">
+                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                      </svg>
+                      Feedback
+                    </button>
+                  </div>
+
+                  <div class="flex items-center space-x-2">
+                    <!-- Last Updated -->
+                    <div class="text-xs text-gray-500">
+                      Updated <%= time_ago(portfolio.updated_at) %>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% end %>
+
+          <!-- Create New Card -->
+          <div class="group bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-1 border-2 border-dashed border-gray-300 hover:border-purple-300 cursor-pointer"
+              phx-click="show_create_modal">
+            <div class="p-8 text-center h-full flex flex-col justify-center">
+              <div class="w-16 h-16 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:from-purple-200 group-hover:to-indigo-200 transition-all duration-300">
+                <svg class="w-8 h-8 text-gray-500 group-hover:text-purple-600 transition-colors transform group-hover:scale-110 duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+              </div>
+              <h3 class="text-lg font-semibold text-gray-700 group-hover:text-purple-700 transition-colors mb-2">
+                Create New Portfolio
+              </h3>
+              <p class="text-sm text-gray-500 group-hover:text-gray-600 transition-colors">
+                Start fresh or use a template
+              </p>
+            </div>
+          </div>
+        </div>
+      <% else %>
+        <!-- Empty State -->
+        <div class="text-center py-12">
+          <div class="w-20 h-20 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <svg class="w-10 h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+            </svg>
+          </div>
+          <h3 class="text-2xl font-bold text-gray-900 mb-4">Ready to create your first portfolio?</h3>
+          <p class="text-gray-600 mb-8 max-w-md mx-auto">
+            Build a professional portfolio that showcases your work and opens new opportunities.
+          </p>
+          <button phx-click="show_create_modal"
+                  class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Create Your First Portfolio
+          </button>
+        </div>
       <% end %>
+    </div>
+    """
+  end
+
+  defp render_special_cards(assigns) do
+    ~H"""
+    <!-- Create New Card -->
+    <div class="group bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-1 border-2 border-dashed border-gray-300 hover:border-purple-300 cursor-pointer"
+        phx-click="show_create_modal">
+      <div class="p-8 text-center h-full flex flex-col justify-center">
+        <div class="w-16 h-16 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:from-purple-200 group-hover:to-indigo-200 transition-all duration-300">
+          <svg class="w-8 h-8 text-gray-500 group-hover:text-purple-600 transition-colors transform group-hover:scale-110 duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-700 group-hover:text-purple-700 transition-colors mb-2">
+          Create New Portfolio
+        </h3>
+        <p class="text-sm text-gray-500 group-hover:text-gray-600 transition-colors">
+          Start fresh or use a template
+        </p>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_empty_state(assigns) do
+    ~H"""
+    <div class="text-center py-12">
+      <div class="w-20 h-20 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+        <svg class="w-10 h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+        </svg>
+      </div>
+      <h3 class="text-2xl font-bold text-gray-900 mb-4">Ready to create your first portfolio?</h3>
+      <p class="text-gray-600 mb-8 max-w-md mx-auto">
+        Build a professional portfolio that showcases your work and opens new opportunities.
+      </p>
+      <button phx-click="show_create_modal"
+              class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        Create Your First Portfolio
+      </button>
     </div>
     """
   end
@@ -1822,6 +2192,265 @@ defmodule FrestylWeb.PortfolioHubLive do
     <% else %>
       <!-- Full Revenue Center -->
       <%= revenue_center_content(assigns) %>
+    <% end %>
+    """
+  end
+
+  # ============================================================================
+  # SETTINGS MODAL COMPONENT
+  # ============================================================================
+
+  defp render_settings_modal(assigns) do
+    ~H"""
+    <%= if @show_settings_modal && @selected_portfolio_for_settings do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          phx-click="close_settings_modal">
+        <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+            phx-click-away="close_settings_modal">
+
+          <!-- Modal Header -->
+          <div class="bg-gradient-to-r from-indigo-600 to-purple-600 px-8 py-6">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 class="text-2xl font-bold text-white">Portfolio Settings</h2>
+                  <p class="text-indigo-100"><%= @selected_portfolio_for_settings.title %></p>
+                </div>
+              </div>
+              <button phx-click="close_settings_modal"
+                      class="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Modal Content -->
+          <div class="p-8 overflow-y-auto max-h-[calc(90vh-120px)]">
+            <.form for={%{}} phx-submit="save_portfolio_settings" class="space-y-8">
+
+              <!-- Visibility & Privacy Settings -->
+              <div class="bg-gray-50 rounded-xl p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                  </svg>
+                  Visibility & Privacy
+                </h3>
+
+                <!-- Visibility Setting -->
+                <div class="mb-6">
+                  <label class="block text-sm font-medium text-gray-700 mb-3">Portfolio Visibility</label>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <%= for {visibility_key, visibility_info} <- get_visibility_options() do %>
+                      <label class="relative">
+                        <input type="radio"
+                              name="visibility"
+                              value={visibility_key}
+                              checked={@selected_portfolio_for_settings.visibility == visibility_key}
+                              class="sr-only peer">
+                        <div class="border-2 border-gray-200 rounded-lg p-4 cursor-pointer peer-checked:border-indigo-500 peer-checked:bg-indigo-50 hover:border-gray-300 transition-all">
+                          <div class="flex items-start">
+                            <div class={["w-8 h-8 rounded-lg flex items-center justify-center mr-3", visibility_info.color]}>
+                              <%= visibility_info.icon %>
+                            </div>
+                            <div class="flex-1">
+                              <div class="font-medium text-gray-900"><%= visibility_info.title %></div>
+                              <div class="text-sm text-gray-600 mt-1"><%= visibility_info.description %></div>
+                            </div>
+                          </div>
+                        </div>
+                      </label>
+                    <% end %>
+                  </div>
+                </div>
+
+                <!-- Privacy Controls -->
+                <div class="space-y-4">
+                  <h4 class="font-medium text-gray-900">Privacy Controls</h4>
+
+                  <%= for {setting_key, setting_info} <- get_privacy_settings() do %>
+                    <div class="flex items-center justify-between">
+                      <div class="flex-1">
+                        <div class="font-medium text-gray-900"><%= setting_info.title %></div>
+                        <div class="text-sm text-gray-600"><%= setting_info.description %></div>
+                      </div>
+                      <label class="relative inline-flex items-center cursor-pointer ml-4">
+                        <input type="checkbox"
+                              name={"privacy_settings[#{setting_key}]"}
+                              checked={get_privacy_setting(@selected_portfolio_for_settings, setting_key)}
+                              class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                      </label>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+
+              <!-- Sharing Settings -->
+              <div class="bg-blue-50 rounded-xl p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
+                  </svg>
+                  Sharing & Social
+                </h3>
+
+                <!-- Portfolio URL -->
+                <div class="mb-6">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Portfolio URL</label>
+                  <div class="flex items-center space-x-3">
+                    <input type="text"
+                          readonly
+                          value={"#{FrestylWeb.Endpoint.url()}/p/#{@selected_portfolio_for_settings.slug}"}
+                          class="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <button type="button"
+                            onclick="copyToClipboard('portfolio-settings-url')"
+                            class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                      Copy
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Social Media Integration -->
+                <div class="space-y-4">
+                  <h4 class="font-medium text-gray-900">Social Media Integration</h4>
+
+                  <%= for {platform, platform_info} <- get_social_platforms() do %>
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center">
+                        <div class={["w-8 h-8 rounded-lg flex items-center justify-center mr-3", platform_info.color]}>
+                          <%= platform_info.icon %>
+                        </div>
+                        <div>
+                          <div class="font-medium text-gray-900"><%= platform_info.name %></div>
+                          <div class="text-sm text-gray-600">Auto-share portfolio updates</div>
+                        </div>
+                      </div>
+                      <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox"
+                              name={"social_integration[#{platform}]"}
+                              checked={get_social_integration(@selected_portfolio_for_settings, platform)}
+                              class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+
+              <!-- Access Control -->
+              <div class="bg-yellow-50 rounded-xl p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                  </svg>
+                  Access Control
+                </h3>
+
+                <!-- Password Protection -->
+                <div class="mb-6">
+                  <div class="flex items-center justify-between mb-3">
+                    <div>
+                      <div class="font-medium text-gray-900">Password Protection</div>
+                      <div class="text-sm text-gray-600">Require a password to view this portfolio</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox"
+                            name="password_protected"
+                            checked={has_password_protection?(@selected_portfolio_for_settings)}
+                            class="sr-only peer"
+                            phx-click="toggle_password_protection">
+                      <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
+                    </label>
+                  </div>
+
+                  <%= if has_password_protection?(@selected_portfolio_for_settings) do %>
+                    <input type="password"
+                          name="portfolio_password"
+                          placeholder="Enter portfolio password"
+                          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <% end %>
+                </div>
+
+                <!-- Expiration Date -->
+                <div class="mb-6">
+                  <div class="flex items-center justify-between mb-3">
+                    <div>
+                      <div class="font-medium text-gray-900">Auto-Expiration</div>
+                      <div class="text-sm text-gray-600">Automatically make portfolio private after a date</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox"
+                            name="has_expiration"
+                            checked={@selected_portfolio_for_settings.expires_at != nil}
+                            class="sr-only peer"
+                            phx-click="toggle_expiration">
+                      <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-yellow-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
+                    </label>
+                  </div>
+
+                  <%= if @selected_portfolio_for_settings.expires_at do %>
+                    <input type="datetime-local"
+                          name="expires_at"
+                          value={format_datetime_for_input(@selected_portfolio_for_settings.expires_at)}
+                          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <% end %>
+                </div>
+              </div>
+
+              <!-- Analytics & Tracking -->
+              <div class="bg-green-50 rounded-xl p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                  <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                  </svg>
+                  Analytics & Tracking
+                </h3>
+
+                <div class="space-y-4">
+                  <%= for {setting_key, setting_info} <- get_analytics_settings() do %>
+                    <div class="flex items-center justify-between">
+                      <div class="flex-1">
+                        <div class="font-medium text-gray-900"><%= setting_info.title %></div>
+                        <div class="text-sm text-gray-600"><%= setting_info.description %></div>
+                      </div>
+                      <label class="relative inline-flex items-center cursor-pointer ml-4">
+                        <input type="checkbox"
+                              name={"analytics_settings[#{setting_key}]"}
+                              checked={get_analytics_setting(@selected_portfolio_for_settings, setting_key)}
+                              class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                      </label>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex items-center justify-end space-x-4 pt-6 border-t border-gray-200">
+                <button type="button"
+                        phx-click="close_settings_modal"
+                        class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
+                <button type="submit"
+                        class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                  Save Settings
+                </button>
+              </div>
+
+            </.form>
+          </div>
+        </div>
+      </div>
     <% end %>
     """
   end
@@ -2080,6 +2709,525 @@ defmodule FrestylWeb.PortfolioHubLive do
     """
   end
 
+  @impl true
+  def handle_event("switch_hub_section", %{"section" => section}, socket) do
+    {:noreply, assign(socket, :active_hub_section, section)}
+  end
+
+  @impl true
+  def handle_event("show_share_modal", %{"portfolio-id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    {:noreply,
+    socket
+    |> assign(:show_share_modal, true)
+    |> assign(:selected_portfolio_for_share, portfolio)}
+  end
+
+  @impl true
+  def handle_event("close_share_modal", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_share_modal, false)
+    |> assign(:selected_portfolio_for_share, nil)}
+  end
+
+  @impl true
+  def handle_event("share_to_social", %{"platform" => platform}, socket) do
+    portfolio = socket.assigns.selected_portfolio_for_share
+    portfolio_url = "#{FrestylWeb.Endpoint.url()}/p/#{portfolio.slug}"
+
+    share_url = case platform do
+      "linkedin" ->
+        "https://www.linkedin.com/sharing/share-offsite/?url=#{URI.encode(portfolio_url)}"
+      "twitter" ->
+        text = "Check out my portfolio: #{portfolio.title}"
+        "https://twitter.com/intent/tweet?url=#{URI.encode(portfolio_url)}&text=#{URI.encode(text)}"
+      "facebook" ->
+        "https://www.facebook.com/sharer/sharer.php?u=#{URI.encode(portfolio_url)}"
+      "email" ->
+        subject = "Check out my portfolio: #{portfolio.title}"
+        body = "I'd like to share my portfolio with you: #{portfolio_url}"
+        "mailto:?subject=#{URI.encode(subject)}&body=#{URI.encode(body)}"
+      _ ->
+        portfolio_url
+    end
+
+    {:noreply,
+    socket
+    |> push_event("open_url", %{url: share_url})
+    |> put_flash(:info, "Opening #{String.capitalize(platform)} share dialog...")}
+  end
+
+  @impl true
+  def handle_event("generate_embed_code", _params, socket) do
+    portfolio = socket.assigns.selected_portfolio_for_share
+    embed_code = """
+    <iframe src="#{FrestylWeb.Endpoint.url()}/p/#{portfolio.slug}?embed=true"
+            width="100%" height="600" frameborder="0">
+    </iframe>
+    """
+
+    {:noreply,
+    socket
+    |> assign(:embed_code, embed_code)
+    |> put_flash(:info, "Embed code generated!")}
+  end
+
+  @impl true
+  def handle_event("generate_qr_code", _params, socket) do
+    portfolio = socket.assigns.selected_portfolio_for_share
+    portfolio_url = "#{FrestylWeb.Endpoint.url()}/p/#{portfolio.slug}"
+
+    # In a real implementation, you'd generate a QR code image
+    # For now, we'll just show a success message
+    {:noreply,
+    socket
+    |> put_flash(:info, "QR code generated! (Feature coming soon)")
+    |> assign(:qr_code_url, portfolio_url)}
+  end
+
+  @impl true
+  def handle_event("close_live_stream_modal", _params, socket) do
+    {:noreply, assign(socket, :show_live_stream_modal, false)}
+  end
+
+  @impl true
+  def handle_event("start_portfolio_presentation", _params, socket) do
+    # Implementation for starting portfolio presentation stream
+    {:noreply,
+    socket
+    |> assign(:stream_type, "presentation")
+    |> put_flash(:info, "Starting portfolio presentation stream...")
+    |> assign(:show_live_stream_modal, false)}
+  end
+
+  @impl true
+  def handle_event("start_interview_stream", _params, socket) do
+    # Implementation for starting interview stream
+    {:noreply,
+    socket
+    |> assign(:stream_type, "interview")
+    |> put_flash(:info, "Starting live interview stream...")
+    |> assign(:show_live_stream_modal, false)}
+  end
+
+  @impl true
+  def handle_event("create_blank_portfolio", _params, socket) do
+    user = socket.assigns.current_user
+
+    # Check portfolio creation limits
+    limits = socket.assigns.limits
+    current_count = length(socket.assigns.portfolios)
+
+    case check_portfolio_creation_limit(limits, current_count) do
+      :allowed ->
+        # Create blank portfolio with default title
+        portfolio_attrs = %{
+          title: "New Portfolio #{current_count + 1}",
+          description: "A new professional portfolio",
+          theme: "minimalist",
+          visibility: :link_only
+        }
+
+        case Frestyl.Portfolios.create_portfolio(user.id, portfolio_attrs) do
+          {:ok, portfolio} ->
+            {:noreply,
+            socket
+            |> assign(:show_create_modal, false)
+            |> put_flash(:info, "Blank portfolio created successfully!")
+            |> push_navigate(to: "/portfolios/#{portfolio.id}/edit")}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to create portfolio")}
+        end
+
+      {:limit_reached, message} ->
+        {:noreply, put_flash(socket, :error, message)}
+    end
+  end
+
+  @impl true
+  def handle_event("start_ai_creation", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_create_modal, false)
+    |> assign(:show_ai_creation_modal, true)}
+  end
+
+  @impl true
+  def handle_event("clone_portfolio", _params, socket) do
+    if length(socket.assigns.portfolios) > 0 do
+      {:noreply,
+      socket
+      |> assign(:show_create_modal, false)
+      |> assign(:show_clone_modal, true)}
+    else
+      {:noreply, put_flash(socket, :error, "No portfolios available to clone")}
+    end
+  end
+
+  @impl true
+  def handle_event("import_from_linkedin", _params, socket) do
+    # Check if user has LinkedIn connected
+    # For now, show coming soon message
+    {:noreply,
+    socket
+    |> assign(:show_create_modal, false)
+    |> put_flash(:info, "LinkedIn import coming soon! Use resume import for now.")}
+  end
+
+  # ============================================================================
+  # ANALYTICS SECTION HANDLERS
+  # ============================================================================
+
+  @impl true
+  def handle_event("export_analytics", %{"format" => format}, socket) do
+    case format do
+      "pdf" ->
+        {:noreply, put_flash(socket, :info, "Generating PDF analytics report...")}
+      "csv" ->
+        {:noreply, put_flash(socket, :info, "Exporting analytics to CSV...")}
+      "excel" ->
+        {:noreply, put_flash(socket, :info, "Exporting analytics to Excel...")}
+      _ ->
+        {:noreply, put_flash(socket, :error, "Unsupported export format")}
+    end
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS FOR ENHANCED FEATURES
+  # ============================================================================
+
+  defp check_portfolio_creation_limit(limits, current_count) do
+    max_portfolios = case limits.max_portfolios do
+      :unlimited -> :unlimited
+      max when is_integer(max) -> max
+    end
+
+    case max_portfolios do
+      :unlimited -> :allowed
+      max when current_count >= max ->
+        {:limit_reached, "You've reached your portfolio limit (#{max}). Upgrade to create more."}
+      _ -> :allowed
+    end
+  end
+
+  # ============================================================================
+  # RENDER FUNCTIONS FOR NEW SECTIONS
+  # ============================================================================
+
+  defp render_analytics_section(assigns) do
+    ~H"""
+    <div class="space-y-8">
+      <!-- Analytics Header -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-900">Portfolio Analytics</h2>
+          <p class="text-gray-600 mt-1">Track performance and engagement across all your portfolios</p>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <!-- Date Range Selector -->
+          <select class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+            <option>Last 7 days</option>
+            <option>Last 30 days</option>
+            <option>Last 3 months</option>
+            <option>Last year</option>
+          </select>
+
+          <!-- Export Button -->
+          <div class="relative" phx-click-away="close_export_menu">
+            <button phx-click="toggle_export_menu"
+                    class="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-4-4m4 4l4-4m-4-4v4m0 0V4a2 2 0 00-2-2H8a2 2 0 00-2 2v2"/>
+              </svg>
+              Export
+            </button>
+
+            <%= if @show_export_menu do %>
+              <div class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                <div class="py-1">
+                  <button phx-click="export_analytics" phx-value-format="pdf"
+                          class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    Export as PDF
+                  </button>
+                  <button phx-click="export_analytics" phx-value-format="csv"
+                          class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    Export as CSV
+                  </button>
+                  <button phx-click="export_analytics" phx-value-format="excel"
+                          class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    Export as Excel
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
+      <!-- Key Metrics Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">Total Views</p>
+              <p class="text-3xl font-bold text-gray-900 mt-1"><%= @overview.total_visits %></p>
+              <p class="text-sm text-green-600 mt-1">+12% from last month</p>
+            </div>
+            <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">Total Shares</p>
+              <p class="text-3xl font-bold text-gray-900 mt-1"><%= @overview.total_shares %></p>
+              <p class="text-sm text-green-600 mt-1">+8% from last month</p>
+            </div>
+            <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">Avg. Time on Page</p>
+              <p class="text-3xl font-bold text-gray-900 mt-1">2m 34s</p>
+              <p class="text-sm text-red-600 mt-1">-5% from last month</p>
+            </div>
+            <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
+              <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-6 border border-gray-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">Conversion Rate</p>
+              <p class="text-3xl font-bold text-gray-900 mt-1">4.2%</p>
+              <p class="text-sm text-green-600 mt-1">+15% from last month</p>
+            </div>
+            <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+              <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Portfolio Performance Table -->
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-semibold text-gray-900">Portfolio Performance</h3>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Portfolio</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Views</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shares</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Time</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Conversion</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              <%= for portfolio <- @portfolios do %>
+                <% stats = Map.get(@portfolio_stats, portfolio.id, %{}) %>
+                <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                      <div class={[
+                        "w-10 h-10 rounded-lg flex items-center justify-center mr-3",
+                        case portfolio.theme do
+                          "minimalist" -> "bg-gray-100 text-gray-600"
+                          "creative" -> "bg-purple-100 text-purple-600"
+                          "corporate" -> "bg-blue-100 text-blue-600"
+                          "developer" -> "bg-green-100 text-green-600"
+                          _ -> "bg-cyan-100 text-cyan-600"
+                        end
+                      ]}>
+                        <%= String.first(portfolio.title) %>
+                      </div>
+                      <div>
+                        <div class="text-sm font-medium text-gray-900"><%= portfolio.title %></div>
+                        <div class="text-sm text-gray-500">/<%= portfolio.slug %></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <%= Map.get(stats, :total_visits, 0) %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <%= Map.get(stats, :total_shares, 0) %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <%= Map.get(stats, :avg_time, "0m 0s") %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <%= Map.get(stats, :conversion_rate, 0) %>%
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <.link href={"/portfolios/#{portfolio.id}/analytics"} class="text-purple-600 hover:text-purple-900">
+                      View Details
+                    </.link>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_collaboration_section(assigns) do
+    ~H"""
+    <div class="space-y-8">
+      <!-- Collaboration Header -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-900">Collaboration Hub</h2>
+          <p class="text-gray-600 mt-1">Work together on portfolios and manage feedback</p>
+        </div>
+
+        <button phx-click="invite_collaborator"
+                class="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          Invite Collaborator
+        </button>
+      </div>
+
+      <!-- Active Collaborations -->
+      <div class="bg-white rounded-xl border border-gray-200 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Active Collaborations</h3>
+
+        <%= if length(@active_collaborations) > 0 do %>
+          <div class="space-y-4">
+            <%= for collab <- @active_collaborations do %>
+              <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                <div class="flex items-center space-x-3">
+                  <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    <span class="text-sm font-medium text-blue-600">
+                      <%= String.first(collab.collaborator_name) %>
+                    </span>
+                  </div>
+                  <div>
+                    <h4 class="font-medium text-gray-900"><%= collab.collaborator_name %></h4>
+                    <p class="text-sm text-gray-600">Working on: <%= collab.portfolio_title %></p>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                    <%= collab.permission_level %>
+                  </span>
+                  <button class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% else %>
+          <div class="text-center py-8">
+            <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+            <h4 class="text-lg font-medium text-gray-900 mb-2">No active collaborations</h4>
+            <p class="text-gray-600">Start collaborating by inviting others to work on your portfolios</p>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_live_streaming_section(assigns) do
+    ~H"""
+    <div class="space-y-8">
+      <!-- Live Streaming Header -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-900">Live Streaming</h2>
+          <p class="text-gray-600 mt-1">Stream your portfolio presentations in real-time</p>
+        </div>
+
+        <button phx-click="start_live_stream"
+                class="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+          <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
+          </svg>
+          Go Live
+        </button>
+      </div>
+
+      <!-- Streaming Options -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Stream</h3>
+          <p class="text-gray-600 mb-4">Start streaming immediately with default settings</p>
+          <button phx-click="quick_stream"
+                  class="w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 transition-colors">
+            Start Quick Stream
+          </button>
+        </div>
+
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Scheduled Stream</h3>
+          <p class="text-gray-600 mb-4">Schedule a stream for later and send invitations</p>
+          <button phx-click="schedule_stream"
+                  class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors">
+            Schedule Stream
+          </button>
+        </div>
+      </div>
+
+      <!-- Recent Streams -->
+      <div class="bg-white rounded-xl border border-gray-200 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Recent Streams</h3>
+        <div class="text-center py-8">
+          <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
+          </svg>
+          <h4 class="text-lg font-medium text-gray-900 mb-2">No streams yet</h4>
+          <p class="text-gray-600">Your streaming history will appear here</p>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # PORTFOLIO URL HELPER
+  # ============================================================================
+
+  defp portfolio_url(slug) do
+    "#{FrestylWeb.Endpoint.url()}/p/#{slug}"
+  end
+
   # ============================================================================
   # RENDER FUNCTIONS - Add these to the LiveView module
   # ============================================================================
@@ -2097,97 +3245,843 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-  # ============================================================================
-  # PORTFOLIO STUDIO SECTION RENDERS
+   # ============================================================================
+  # ENHANCED PORTFOLIO GRID SECTION WITH ALL NEW FEATURES
   # ============================================================================
 
-  defp portfolio_grid_section(assigns) do
+  defp enhanced_portfolio_grid_section(assigns) do
     ~H"""
-    <div class="bg-white rounded-xl p-6 border border-gray-200">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-bold text-gray-900">Your Portfolios</h2>
-        <button phx-click="show_create_modal"
-                class="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
-          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-          Create Portfolio
-        </button>
-      </div>
-
-      <%= if length(@portfolios) > 0 do %>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <%= for portfolio <- @portfolios do %>
-            <div class="group border border-gray-200 rounded-lg hover:shadow-md transition-all duration-200 overflow-hidden">
-              <!-- Portfolio Preview -->
-              <div class={[
-                "w-full h-32 flex items-center justify-center",
-                case portfolio.theme do
-                  "executive" -> "bg-gradient-to-br from-blue-500 to-indigo-600"
-                  "creative" -> "bg-gradient-to-br from-purple-500 to-pink-600"
-                  "developer" -> "bg-gradient-to-br from-green-500 to-teal-600"
-                  _ -> "bg-gradient-to-br from-gray-500 to-gray-600"
-                end
-              ]}>
-                <div class="text-center text-white">
-                  <h4 class="font-bold text-lg"><%= portfolio.title %></h4>
-                  <p class="text-sm opacity-90">/<%= portfolio.slug %></p>
-                </div>
-              </div>
-
-              <!-- Portfolio Info -->
-              <div class="p-4">
-                <div class="flex items-start justify-between mb-3">
-                  <div class="flex-1">
-                    <h3 class="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors">
-                      <%= portfolio.title %>
-                    </h3>
-                    <p class="text-sm text-gray-600 mt-1 line-clamp-2"><%= portfolio.description %></p>
-                  </div>
-                </div>
-
-                <!-- Portfolio Actions -->
-                <div class="flex items-center justify-between">
-                  <div class="flex space-x-2">
-                    <.link href={"/portfolios/#{portfolio.id}/edit"}
-                          class="text-xs px-3 py-1 bg-purple-100 text-purple-700 rounded-full hover:bg-purple-200 transition-colors">
-                      Edit
-                    </.link>
-                    <.link href={"/p/#{portfolio.slug}"} target="_blank"
-                          class="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors">
-                      View
-                    </.link>
-                  </div>
-
-                  <%= if stats = Map.get(@portfolio_stats, portfolio.id) do %>
-                    <div class="text-xs text-gray-500">
-                      <%= Map.get(stats, :total_visits, 0) %> views
-                    </div>
-                  <% end %>
-                </div>
-              </div>
-            </div>
-          <% end %>
+    <div class="space-y-8">
+      <!-- Header with Stats and Actions -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-900">Your Portfolios</h2>
+          <p class="text-gray-600 mt-1">
+            <%= length(@portfolios) %> of <%= @limits.max_portfolios %> portfolios
+            • <%= @overview.total_visits %> total views
+          </p>
         </div>
-      <% else %>
-        <div class="text-center py-12">
-          <div class="text-6xl mb-4">🎨</div>
-          <h3 class="text-lg font-medium text-gray-900 mb-2">No portfolios yet</h3>
-          <p class="text-gray-600 mb-6">Create your first portfolio to get started</p>
+
+        <div class="flex items-center space-x-3">
+          <!-- View Toggle -->
+          <div class="bg-gray-100 rounded-lg p-1 flex">
+            <button phx-click="set_view_mode" phx-value-mode="grid"
+                    class={["px-3 py-1 rounded text-sm font-medium transition-colors",
+                      if(@view_mode == "grid", do: "bg-white shadow-sm text-gray-900", else: "text-gray-600 hover:text-gray-900")]}>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+              </svg>
+            </button>
+            <button phx-click="set_view_mode" phx-value-mode="list"
+                    class={["px-3 py-1 rounded text-sm font-medium transition-colors",
+                      if(@view_mode == "list", do: "bg-white shadow-sm text-gray-900", else: "text-gray-600 hover:text-gray-900")]}>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Create New Button -->
           <button phx-click="show_create_modal"
-                  class="inline-flex items-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
-            Create Your First Portfolio
+            Create Portfolio
           </button>
         </div>
+      </div>
+
+      <!-- Portfolio Grid/List -->
+      <%= if length(@portfolios) > 0 do %>
+        <div class={if @view_mode == "grid", do: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6", else: "space-y-4"}>
+
+          <!-- Existing Portfolio Cards with Enhancements -->
+          <%= for portfolio <- @portfolios do %>
+            <div class={[
+              "group bg-white rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl border border-gray-100",
+              if(@view_mode == "grid", do: "transform hover:-translate-y-1", else: "flex items-center p-4")
+            ]}>
+
+              <%= if @view_mode == "grid" do %>
+                <!-- Grid View Card -->
+                <%= render_enhanced_portfolio_card(assigns, portfolio) %>
+              <% else %>
+                <!-- List View Card -->
+                <%= render_portfolio_list_item(assigns, portfolio) %>
+              <% end %>
+            </div>
+          <% end %>
+
+          <!-- Live Streaming Card (if user has streaming capability) -->
+          <%= if can_use_live_streaming?(@current_user, @current_account) do %>
+            <%= render_live_streaming_card(assigns) %>
+          <% end %>
+
+          <!-- Create New Portfolio Card -->
+          <%= render_create_new_card(assigns) %>
+        </div>
+      <% else %>
+        <%= render_empty_state_with_cards(assigns) %>
       <% end %>
     </div>
     """
   end
 
+  # ============================================================================
+  # ENHANCED PORTFOLIO CARD WITH ALL NEW FEATURES
+  # ============================================================================
 
+  defp render_enhanced_portfolio_card(assigns, portfolio) do
+    stats = Map.get(assigns.portfolio_stats, portfolio.id, %{})
+
+    assigns = assign(assigns, :portfolio, portfolio)
+    assigns = assign(assigns, :stats, stats)
+
+    ~H"""
+    <!-- Portfolio Preview Header -->
+    <div class="relative">
+      <!-- Theme Color Stripe -->
+      <div class={[
+        "h-1",
+        case @portfolio.theme do
+          "minimalist" -> "bg-gradient-to-r from-gray-600 to-gray-800"
+          "creative" -> "bg-gradient-to-r from-purple-600 to-pink-600"
+          "corporate" -> "bg-gradient-to-r from-blue-600 to-indigo-600"
+          "developer" -> "bg-gradient-to-r from-green-600 to-teal-600"
+          _ -> "bg-gradient-to-r from-cyan-600 to-blue-600"
+        end
+      ]}></div>
+
+      <!-- Portfolio Preview -->
+      <div class={[
+        "h-40 flex items-center justify-center relative overflow-hidden",
+        case @portfolio.theme do
+          "minimalist" -> "bg-gradient-to-br from-gray-100 to-gray-200"
+          "creative" -> "bg-gradient-to-br from-purple-50 to-pink-50"
+          "corporate" -> "bg-gradient-to-br from-blue-50 to-indigo-50"
+          "developer" -> "bg-gradient-to-br from-green-50 to-teal-50"
+          _ -> "bg-gradient-to-br from-cyan-50 to-blue-50"
+        end
+      ]}>
+
+        <!-- Video Indicator (NEW) -->
+        <%= if has_intro_video?(@portfolio) do %>
+          <div class="absolute top-3 left-3 z-10">
+            <div class="bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-2 shadow-lg">
+              <svg class="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Visibility Status (NEW) -->
+        <div class="absolute top-3 right-3 z-10">
+          <div class={[
+            "bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-2 shadow-lg transition-colors",
+            get_visibility_color(@portfolio.visibility)
+          ]}>
+            <%= get_visibility_icon(@portfolio.visibility) %>
+          </div>
+        </div>
+
+        <!-- Portfolio Title Preview -->
+        <div class="text-center px-4">
+          <h3 class={[
+            "text-xl font-bold mb-2",
+            case @portfolio.theme do
+              "minimalist" -> "text-gray-800"
+              "creative" -> "text-purple-800"
+              "corporate" -> "text-blue-800"
+              "developer" -> "text-green-800"
+              _ -> "text-cyan-800"
+            end
+          ]}>
+            <%= @portfolio.title %>
+          </h3>
+          <p class="text-sm text-gray-600">/<%= @portfolio.slug %></p>
+        </div>
+
+        <!-- Quick Actions Overlay (appears on hover) -->
+        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <div class="flex space-x-2">
+            <.link href={"/p/#{@portfolio.slug}"} target="_blank"
+                  class="bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-3 hover:bg-opacity-100 transition-all transform hover:scale-110">
+              <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+            </.link>
+            <.link href={"/portfolios/#{@portfolio.id}/edit"}
+                  class="bg-white bg-opacity-90 backdrop-blur-sm rounded-full p-3 hover:bg-opacity-100 transition-all transform hover:scale-110">
+              <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </.link>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Portfolio Info -->
+    <div class="p-5">
+      <!-- Title and Description -->
+      <div class="mb-4">
+        <div class="flex items-start justify-between mb-2">
+          <h3 class="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors line-clamp-1">
+            <%= @portfolio.title %>
+          </h3>
+
+          <!-- Visibility Toggle (NEW) -->
+          <button phx-click="toggle_portfolio_visibility" phx-value-portfolio-id={@portfolio.id}
+                  class="ml-2 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                  title={get_visibility_tooltip(@portfolio.visibility)}>
+            <%= get_visibility_icon(@portfolio.visibility) %>
+          </button>
+        </div>
+
+        <%= if @portfolio.description do %>
+          <p class="text-sm text-gray-600 line-clamp-2"><%= @portfolio.description %></p>
+        <% end %>
+      </div>
+
+      <!-- Enhanced Stats Row (NEW) -->
+      <div class="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
+        <div class="text-center">
+          <div class="text-lg font-bold text-gray-900">
+            <%= Map.get(@stats, :total_visits, 0) %>
+          </div>
+          <div class="text-xs text-gray-500">Views</div>
+        </div>
+        <div class="text-center">
+          <div class="text-lg font-bold text-gray-900">
+            <%= Map.get(@stats, :total_shares, 0) %>
+          </div>
+          <div class="text-xs text-gray-500">Shares</div>
+        </div>
+        <div class="text-center">
+          <div class="text-lg font-bold text-gray-900">
+            <%= Map.get(@stats, :engagement_rate, 0) %>%
+          </div>
+          <div class="text-xs text-gray-500">Engagement</div>
+        </div>
+      </div>
+
+      <!-- Action Buttons Row (NEW) -->
+      <div class="flex items-center justify-between">
+        <div class="flex space-x-2">
+          <!-- Share Button (NEW) -->
+          <button phx-click="show_share_modal" phx-value-portfolio-id={@portfolio.id}
+                  class="flex items-center px-3 py-1.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors">
+            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
+            </svg>
+            Share
+          </button>
+
+          <!-- Feedback Button (NEW) -->
+          <button phx-click="request_feedback" phx-value-portfolio-id={@portfolio.id}
+                  class="flex items-center px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors">
+            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+            </svg>
+            Feedback
+          </button>
+        </div>
+
+        <!-- Last Updated -->
+        <div class="text-xs text-gray-500">
+          Updated <%= time_ago(@portfolio.updated_at) %>
+        </div>
+
+        <!-- MORE MENU BUTTON -->
+        <div class="relative">
+          <button phx-click="toggle_more_menu" phx-value-portfolio-id={@portfolio.id}
+                  class="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-gray-100">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+            </svg>
+          </button>
+
+          <!-- More Menu Dropdown -->
+          <%= if assigns[:open_more_menu] == to_string(@portfolio.id) do %>
+            <div class="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border border-gray-100 z-50"
+                phx-click-away="close_more_menu">
+
+              <!-- Export Section -->
+              <div class="p-2">
+                <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Export</div>
+
+                <!-- PDF Export -->
+                <button phx-click="export_portfolio" phx-value-portfolio-id={@portfolio.id} phx-value-format="pdf"
+                        class={[
+                          "w-full flex items-center px-3 py-2 text-sm rounded-lg transition-colors",
+                          if(can_export_pdf?(@current_user, @portfolio),
+                            do: "text-gray-700 hover:bg-gray-50",
+                            else: "text-gray-400 cursor-not-allowed")
+                        ]}
+                        disabled={not can_export_pdf?(@current_user, @portfolio)}>
+                  <svg class="w-4 h-4 mr-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                  </svg>
+                  <div class="flex-1 text-left">
+                    <div class="font-medium">Export as PDF</div>
+                    <div class="text-xs text-gray-500">
+                      <%= if can_export_pdf?(@current_user, @portfolio), do: "Professional print-ready format", else: "Requires premium subscription" %>
+                    </div>
+                  </div>
+                  <%= if not can_export_pdf?(@current_user, @portfolio) do %>
+                    <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                  <% end %>
+                </button>
+
+                <!-- JSON Export -->
+                <button phx-click="export_portfolio" phx-value-portfolio-id={@portfolio.id} phx-value-format="json"
+                        class="w-full flex items-center px-3 py-2 text-sm text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                  <svg class="w-4 h-4 mr-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                  <div class="flex-1 text-left">
+                    <div class="font-medium">Export Data</div>
+                    <div class="text-xs text-gray-500">JSON format for backup/import</div>
+                  </div>
+                </button>
+
+                <!-- Analytics Export -->
+                <%= if can_access_analytics?(@current_user, @portfolio) do %>
+                  <button phx-click="export_portfolio" phx-value-portfolio-id={@portfolio.id} phx-value-format="analytics"
+                          class="w-full flex items-center px-3 py-2 text-sm text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                    <svg class="w-4 h-4 mr-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <div class="flex-1 text-left">
+                      <div class="font-medium">Export Analytics</div>
+                      <div class="text-xs text-gray-500">CSV format with visitor data</div>
+                    </div>
+                  </button>
+                <% end %>
+              </div>
+
+              <!-- Divider -->
+              <div class="border-t border-gray-100 my-2"></div>
+
+              <!-- Actions Section -->
+              <div class="p-2">
+                <div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</div>
+
+                <!-- Duplicate Portfolio -->
+                <button phx-click="duplicate_portfolio" phx-value-portfolio-id={@portfolio.id}
+                        class={[
+                          "w-full flex items-center px-3 py-2 text-sm rounded-lg transition-colors",
+                          if(can_duplicate_portfolio?(@current_user),
+                            do: "text-gray-700 hover:bg-gray-50",
+                            else: "text-gray-400 cursor-not-allowed")
+                        ]}
+                        disabled={not can_duplicate_portfolio?(@current_user)}>
+                  <svg class="w-4 h-4 mr-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                  </svg>
+                  <div class="flex-1 text-left">
+                    <div class="font-medium">Duplicate Portfolio</div>
+                    <div class="text-xs text-gray-500">
+                      <%= if can_duplicate_portfolio?(@current_user), do: "Create a copy to customize", else: "Requires premium or under limit" %>
+                    </div>
+                  </div>
+                </button>
+
+                <!-- Portfolio Settings -->
+                <button phx-click="show_settings_modal" phx-value-portfolio-id={@portfolio.id}
+                        class="w-full flex items-center px-3 py-2 text-sm text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                  <svg class="w-4 h-4 mr-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                  <div class="flex-1 text-left">
+                    <div class="font-medium">Portfolio Settings</div>
+                    <div class="text-xs text-gray-500">Privacy, sharing, and advanced options</div>
+                  </div>
+                </button>
+              </div>
+
+              <!-- Divider -->
+              <div class="border-t border-gray-100 my-2"></div>
+
+              <!-- Danger Zone -->
+              <div class="p-2">
+                <div class="px-3 py-2 text-xs font-semibold text-red-500 uppercase tracking-wider">Danger Zone</div>
+
+                <!-- Archive Portfolio -->
+                <button phx-click="archive_portfolio" phx-value-portfolio-id={@portfolio.id}
+                        class="w-full flex items-center px-3 py-2 text-sm text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                  <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8l4 4m0 0l4-4m-4 4v11"/>
+                  </svg>
+                  <div class="flex-1 text-left">
+                    <div class="font-medium">Archive Portfolio</div>
+                    <div class="text-xs text-red-400">Hide from public view</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # SPECIAL CARDS: LIVE STREAMING & CREATE NEW
+  # ============================================================================
+
+  defp render_live_streaming_card(assigns) do
+    ~H"""
+    <div class="group bg-gradient-to-br from-red-500 to-pink-600 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-1 text-white">
+      <!-- Live Indicator -->
+      <div class="p-5 relative">
+        <div class="absolute top-3 right-3">
+          <div class="bg-white bg-opacity-20 backdrop-blur-sm rounded-full px-2 py-1 flex items-center space-x-1">
+            <div class="w-2 h-2 bg-red-300 rounded-full animate-pulse"></div>
+            <span class="text-xs font-medium">LIVE</span>
+          </div>
+        </div>
+
+        <!-- Icon -->
+        <div class="w-16 h-16 bg-white bg-opacity-20 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-4">
+          <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
+          </svg>
+        </div>
+
+        <!-- Content -->
+        <h3 class="text-xl font-bold mb-2">Live Streaming</h3>
+        <p class="text-red-100 text-sm mb-4 opacity-90">
+          Stream your portfolio presentation live to potential employers or clients
+        </p>
+
+        <!-- Action Button -->
+        <button phx-click="start_live_stream"
+                class="w-full bg-white bg-opacity-20 backdrop-blur-sm border border-white border-opacity-30 rounded-lg px-4 py-3 text-sm font-medium hover:bg-opacity-30 transition-all duration-200">
+          Start Live Stream
+        </button>
+
+        <!-- Feature List -->
+        <div class="mt-4 space-y-1">
+          <div class="flex items-center text-xs text-red-100 opacity-90">
+            <svg class="w-3 h-3 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            HD video quality
+          </div>
+          <div class="flex items-center text-xs text-red-100 opacity-90">
+            <svg class="w-3 h-3 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            Real-time chat
+          </div>
+          <div class="flex items-center text-xs text-red-100 opacity-90">
+            <svg class="w-3 h-3 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            Screen sharing
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_create_new_card(assigns) do
+    ~H"""
+    <div class="group bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-2xl transform hover:-translate-y-1 border-2 border-dashed border-gray-300 hover:border-purple-300 cursor-pointer"
+         phx-click="show_create_modal">
+
+      <div class="p-8 text-center h-full flex flex-col justify-center">
+        <!-- Animated Plus Icon -->
+        <div class="w-16 h-16 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:from-purple-200 group-hover:to-indigo-200 transition-all duration-300">
+          <svg class="w-8 h-8 text-gray-500 group-hover:text-purple-600 transition-colors transform group-hover:scale-110 duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+        </div>
+
+        <!-- Content -->
+        <h3 class="text-lg font-semibold text-gray-700 group-hover:text-purple-700 transition-colors mb-2">
+          Create New Portfolio
+        </h3>
+        <p class="text-sm text-gray-500 group-hover:text-gray-600 transition-colors mb-4">
+          Start fresh or use a template to build your next portfolio
+        </p>
+
+        <!-- Quick Options -->
+        <div class="space-y-2 text-xs">
+          <div class="flex items-center justify-center text-gray-400 group-hover:text-gray-500 transition-colors">
+            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            Professional templates
+          </div>
+          <div class="flex items-center justify-center text-gray-400 group-hover:text-gray-500 transition-colors">
+            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            AI-powered assistance
+          </div>
+          <div class="flex items-center justify-center text-gray-400 group-hover:text-gray-500 transition-colors">
+            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+            </svg>
+            Ready in minutes
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # EMPTY STATE WITH SPECIAL CARDS
+  # ============================================================================
+
+  defp render_empty_state_with_cards(assigns) do
+    ~H"""
+    <div class="text-center py-12">
+      <!-- Main Empty State -->
+      <div class="mb-12">
+        <div class="w-20 h-20 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <svg class="w-10 h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+          </svg>
+        </div>
+        <h3 class="text-2xl font-bold text-gray-900 mb-4">Ready to create your first portfolio?</h3>
+        <p class="text-gray-600 mb-8 max-w-md mx-auto">
+          Build a professional portfolio that showcases your work, tells your story, and opens new opportunities.
+        </p>
+      </div>
+
+      <!-- Action Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto">
+        <!-- Create New Card -->
+        <%= render_create_new_card(assigns) %>
+
+        <!-- Import Resume Card -->
+        <div class="group bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-xl transform hover:-translate-y-1 border border-green-200 cursor-pointer"
+             phx-click="show_resume_import">
+          <div class="p-6 text-center">
+            <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4 mx-auto">
+              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+              </svg>
+            </div>
+            <h3 class="font-semibold text-gray-800 mb-2">Import Resume</h3>
+            <p class="text-sm text-gray-600">Upload your resume to get started quickly</p>
+          </div>
+        </div>
+
+        <!-- Browse Templates Card -->
+        <div class="group bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-xl transform hover:-translate-y-1 border border-blue-200 cursor-pointer"
+             phx-click="browse_templates">
+          <div class="p-6 text-center">
+            <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4 mx-auto">
+              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+              </svg>
+            </div>
+            <h3 class="font-semibold text-gray-800 mb-2">Browse Templates</h3>
+            <p class="text-sm text-gray-600">Choose from professional designs</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+
+
+  # ============================================================================
+  # HELPER FUNCTIONS FOR NEW FEATURES
+  # ============================================================================
+
+  defp has_intro_video?(portfolio) do
+    # Check if portfolio has an intro video section
+    case portfolio.sections do
+      %Ecto.Association.NotLoaded{} ->
+        # Load sections if not preloaded
+        portfolio = Frestyl.Repo.preload(portfolio, :sections)
+        Enum.any?(portfolio.sections, &(&1.section_type == "video_intro"))
+      sections when is_list(sections) ->
+        Enum.any?(sections, &(&1.section_type == "video_intro"))
+      _ ->
+        false
+    end
+  end
+
+  defp get_visibility_color(visibility) do
+    case visibility do
+      :public -> "text-green-600"
+      :link_only -> "text-blue-600"
+      :request_only -> "text-yellow-600"
+      :private -> "text-red-600"
+    end
+  end
+
+  defp get_visibility_icon(visibility) do
+    case visibility do
+      :public ->
+        assigns = %{}
+        ~H"""
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        """
+      :link_only ->
+        assigns = %{}
+        ~H"""
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+        </svg>
+        """
+      :request_only ->
+        assigns = %{}
+        ~H"""
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+        </svg>
+        """
+      :private ->
+        assigns = %{}
+        ~H"""
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
+        </svg>
+        """
+    end
+  end
+
+  defp get_visibility_tooltip(visibility) do
+    case visibility do
+      :public -> "Public - Discoverable by everyone"
+      :link_only -> "Link only - Accessible via direct URL"
+      :request_only -> "Request access - Requires approval"
+      :private -> "Private - Only you can see this"
+    end
+  end
+
+  defp can_use_live_streaming?(user, account) do
+    # Check if user's account tier supports live streaming
+    case account.subscription_tier do
+      tier when tier in [:professional, :enterprise] -> true
+      _ -> false
+    end
+  end
+
+  defp time_ago(datetime) do
+    # Convert NaiveDateTime to DateTime if needed
+    datetime = case datetime do
+      %DateTime{} = dt -> dt
+      %NaiveDateTime{} = ndt -> DateTime.from_naive!(ndt, "Etc/UTC")
+      _ -> DateTime.utc_now()  # fallback
+    end
+
+    case DateTime.diff(DateTime.utc_now(), datetime, :second) do
+      seconds when seconds < 60 -> "just now"
+      seconds when seconds < 3600 -> "#{div(seconds, 60)}m ago"
+      seconds when seconds < 86400 -> "#{div(seconds, 3600)}h ago"
+      seconds -> "#{div(seconds, 86400)}d ago"
+    end
+  end
+
+  # ============================================================================
+  # LIST VIEW COMPONENT
+  # ============================================================================
+
+  defp render_portfolio_list_item(assigns, portfolio) do
+    stats = Map.get(assigns.portfolio_stats, portfolio.id, %{})
+
+    assigns = assign(assigns, :portfolio, portfolio)
+    assigns = assign(assigns, :stats, stats)
+
+    ~H"""
+    <div class="flex items-center space-x-4 w-full">
+      <!-- Portfolio Thumbnail -->
+      <div class={[
+        "w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 relative",
+        case @portfolio.theme do
+          "minimalist" -> "bg-gradient-to-br from-gray-100 to-gray-200"
+          "creative" -> "bg-gradient-to-br from-purple-100 to-pink-100"
+          "corporate" -> "bg-gradient-to-br from-blue-100 to-indigo-100"
+          "developer" -> "bg-gradient-to-br from-green-100 to-teal-100"
+          _ -> "bg-gradient-to-br from-cyan-100 to-blue-100"
+        end
+      ]}>
+        <%= if has_intro_video?(@portfolio) do %>
+          <div class="absolute -top-1 -right-1">
+            <div class="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+              <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+          </div>
+        <% end %>
+
+        <span class={[
+          "text-lg font-bold",
+          case @portfolio.theme do
+            "minimalist" -> "text-gray-600"
+            "creative" -> "text-purple-600"
+            "corporate" -> "text-blue-600"
+            "developer" -> "text-green-600"
+            _ -> "text-cyan-600"
+          end
+        ]}>
+          <%= String.first(@portfolio.title) %>
+        </span>
+      </div>
+
+      <!-- Portfolio Info -->
+      <div class="flex-1 min-w-0">
+        <div class="flex items-start justify-between">
+          <div class="min-w-0 flex-1">
+            <h3 class="font-semibold text-gray-900 truncate">
+              <%= @portfolio.title %>
+            </h3>
+            <p class="text-sm text-gray-600 truncate">/<%= @portfolio.slug %></p>
+            <%= if @portfolio.description do %>
+              <p class="text-xs text-gray-500 mt-1 line-clamp-1"><%= @portfolio.description %></p>
+            <% end %>
+          </div>
+
+          <div class="flex items-center space-x-2 ml-4">
+            <!-- Visibility Status -->
+            <div class={["p-1 rounded-full", get_visibility_color(@portfolio.visibility)]}>
+              <%= get_visibility_icon(@portfolio.visibility) %>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="hidden sm:flex items-center space-x-6 text-sm text-gray-500">
+        <div class="text-center">
+          <div class="font-semibold text-gray-900"><%= Map.get(@stats, :total_visits, 0) %></div>
+          <div class="text-xs">Views</div>
+        </div>
+        <div class="text-center">
+          <div class="font-semibold text-gray-900"><%= Map.get(@stats, :total_shares, 0) %></div>
+          <div class="text-xs">Shares</div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center space-x-2">
+        <button phx-click="show_share_modal" phx-value-portfolio-id={@portfolio.id}
+                class="p-2 text-gray-400 hover:text-blue-600 transition-colors rounded-lg hover:bg-blue-50">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
+          </svg>
+        </button>
+
+        <.link href={"/p/#{@portfolio.id}"} target="_blank"
+              class="p-2 text-gray-400 hover:text-green-600 transition-colors rounded-lg hover:bg-green-50">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+          </svg>
+        </.link>
+
+        <.link href={"/portfolios/#{@portfolio.id}/edit"}
+              class="p-2 text-gray-400 hover:text-purple-600 transition-colors rounded-lg hover:bg-purple-50">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+          </svg>
+        </.link>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # EVENT HANDLERS FOR NEW FEATURES
+  # ============================================================================
+
+  @impl true
+  def handle_event("set_view_mode", %{"mode" => mode}, socket) when mode in ["grid", "list"] do
+    {:noreply, assign(socket, :view_mode, mode)}
+  end
+
+  @impl true
+  def handle_event("toggle_portfolio_visibility", %{"portfolio-id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    new_visibility = case portfolio.visibility do
+      :private -> :link_only
+      :link_only -> :public
+      :public -> :request_only
+      :request_only -> :private
+    end
+
+    case Frestyl.Portfolios.update_portfolio_visibility(portfolio.id, new_visibility, socket.assigns.current_user.id) do
+      {:ok, updated_portfolio} ->
+        updated_portfolios = Enum.map(socket.assigns.portfolios, fn p ->
+          if p.id == updated_portfolio.id, do: updated_portfolio, else: p
+        end)
+
+        {:noreply,
+         socket
+         |> assign(:portfolios, updated_portfolios)
+         |> put_flash(:info, "Portfolio visibility updated to #{humanize_visibility(new_visibility)}")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to update portfolio visibility")}
+    end
+  end
+
+  @impl true
+  def handle_event("request_feedback", %{"portfolio-id" => portfolio_id}, socket) do
+    # Implementation for requesting feedback
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    # Create feedback request logic here
+    # For now, just show a success message
+    {:noreply,
+     socket
+     |> put_flash(:info, "Feedback request sent for '#{portfolio.title}'")}
+  end
+
+  @impl true
+  def handle_event("start_live_stream", _params, socket) do
+    # Implementation for starting live stream
+    {:noreply,
+     socket
+     |> assign(:show_live_stream_modal, true)}
+  end
+
+  @impl true
+  def handle_event("show_resume_import", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_resume_import_modal, true)}
+  end
+
+  @impl true
+  def handle_event("browse_templates", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_template_browser, true)}
+  end
+
+  # ============================================================================
+  # UTILITY FUNCTIONS
+  # ============================================================================
+
+  defp humanize_visibility(visibility) do
+    case visibility do
+      :public -> "Public"
+      :link_only -> "Link Only"
+      :request_only -> "Request Access"
+      :private -> "Private"
+    end
+  end
 
   defp enhancement_suggestions_section(assigns) do
     ~H"""
@@ -3211,4 +5105,367 @@ defmodule FrestylWeb.PortfolioHubLive do
   end
 
   defp safe_get_insight_data(_, _, default), do: default
+
+  defp get_hub_sections(account) do
+    base_sections = %{
+      "portfolio_studio" => %{
+        title: "Portfolio Studio",
+        icon: portfolio_icon(),
+        badge: nil
+      },
+      "analytics" => %{
+        title: "Analytics",
+        icon: analytics_icon(),
+        badge: nil
+      }
+    }
+
+    # Add advanced sections based on subscription tier
+    advanced_sections = case account.subscription_tier do
+      tier when tier in [:professional, :enterprise] ->
+        %{
+          "collaboration" => %{
+            title: "Collaboration",
+            icon: collaboration_icon(),
+            badge: "3"
+          },
+          "live_streaming" => %{
+            title: "Live Streaming",
+            icon: streaming_icon(),
+            badge: "NEW"
+          }
+        }
+      _ -> %{}
+    end
+
+    Map.merge(base_sections, advanced_sections)
+  end
+
+  # ============================================================================
+  # EXPORT HELPER FUNCTIONS
+  # ============================================================================
+
+  defp export_portfolio_to_pdf(portfolio, user) do
+    # Check user permissions for PDF export
+    if can_export_pdf?(user, portfolio) do
+      try do
+        # Generate PDF export
+        case Frestyl.Services.PortfolioExporter.export_to_pdf(portfolio) do
+          {:ok, pdf_path} ->
+            # Upload to storage and return URL
+            case upload_export_file(pdf_path, "pdf") do
+              {:ok, url} -> {:ok, url}
+              error -> error
+            end
+          error -> error
+        end
+      rescue
+        e -> {:error, "PDF generation failed: #{Exception.message(e)}"}
+      end
+    else
+      {:error, "PDF export requires premium subscription"}
+    end
+  end
+
+  defp export_portfolio_to_json(portfolio) do
+    try do
+      # Preload all necessary associations
+      portfolio = Frestyl.Repo.preload(portfolio, [:sections, :user])
+
+      export_data = %{
+        portfolio: %{
+          title: portfolio.title,
+          description: portfolio.description,
+          theme: portfolio.theme,
+          customization: portfolio.customization,
+          visibility: portfolio.visibility,
+          created_at: portfolio.inserted_at,
+          updated_at: portfolio.updated_at
+        },
+        sections: Enum.map(portfolio.sections, fn section ->
+          %{
+            title: section.title,
+            section_type: section.section_type,
+            content: section.content,
+            position: section.position,
+            visible: section.visible
+          }
+        end),
+        export_info: %{
+          exported_at: DateTime.utc_now(),
+          format_version: "1.0",
+          exported_by: portfolio.user.email
+        }
+      }
+
+      {:ok, Jason.encode!(export_data, pretty: true)}
+    rescue
+      e -> {:error, "JSON export failed: #{Exception.message(e)}"}
+    end
+  end
+
+  defp export_portfolio_analytics(portfolio, user) do
+    if can_access_analytics?(user, portfolio) do
+      try do
+        # Get analytics data
+        analytics = Frestyl.Analytics.get_portfolio_analytics(portfolio.id)
+
+        csv_data = [
+          ["Date", "Views", "Unique Visitors", "Shares", "Time on Page", "Bounce Rate"],
+          # Add analytics rows here
+        ]
+        |> Enum.map(&Enum.join(&1, ","))
+        |> Enum.join("\n")
+
+        {:ok, csv_data}
+      rescue
+        e -> {:error, "Analytics export failed: #{Exception.message(e)}"}
+      end
+    else
+      {:error, "Analytics access requires premium subscription"}
+    end
+  end
+
+  defp duplicate_portfolio(portfolio, user) do
+    if can_duplicate_portfolio?(user) do
+      try do
+        # Create duplicate with new title and slug
+        duplicate_attrs = %{
+          title: "#{portfolio.title} (Copy)",
+          slug: generate_unique_slug("#{portfolio.slug}-copy"),
+          description: portfolio.description,
+          theme: portfolio.theme,
+          customization: portfolio.customization,
+          visibility: :private  # Always start as private
+        }
+
+        case Frestyl.Portfolios.create_portfolio(user.id, duplicate_attrs) do
+          {:ok, new_portfolio} ->
+            # Copy sections
+            copy_portfolio_sections(portfolio, new_portfolio)
+            {:ok, new_portfolio}
+          error -> error
+        end
+      rescue
+        e -> {:error, "Duplication failed: #{Exception.message(e)}"}
+      end
+    else
+      {:error, "Portfolio duplication requires premium subscription"}
+    end
+  end
+
+  defp archive_portfolio(portfolio, user) do
+    if portfolio.user_id == user.id do
+      # Update portfolio to archived status
+      case Frestyl.Portfolios.update_portfolio(portfolio, %{visibility: :private, archived: true}) do
+        {:ok, updated_portfolio} -> {:ok, updated_portfolio}
+        error -> error
+      end
+    else
+      {:error, "Unauthorized"}
+    end
+  end
+
+  # Permission checks
+  defp can_export_pdf?(user, _portfolio) do
+    user.subscription_tier in ["creator", "professional", "enterprise"]
+  end
+
+  defp can_access_analytics?(user, _portfolio) do
+    user.subscription_tier in ["creator", "professional", "enterprise"]
+  end
+
+  defp can_duplicate_portfolio?(user) do
+    user.subscription_tier in ["creator", "professional", "enterprise"] or
+    length(Frestyl.Portfolios.list_user_portfolios(user.id)) < 3
+  end
+
+  # Utility functions
+  defp upload_export_file(file_path, type) do
+    # Implementation depends on your file storage system
+    # This is a placeholder
+    {:ok, "/exports/#{Path.basename(file_path)}"}
+  end
+
+  defp generate_unique_slug(base_slug) do
+    # Generate unique slug by appending number if needed
+    base_slug
+  end
+
+  defp copy_portfolio_sections(source_portfolio, target_portfolio) do
+    # Copy all sections from source to target
+    # Implementation depends on your section copying logic
+    :ok
+  end
+
+
+  # Helper functions for icons (you can replace with your preferred icons)
+  defp portfolio_icon do
+    assigns = %{}
+    ~H"""
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+    </svg>
+    """
+  end
+
+  defp analytics_icon do
+    assigns = %{}
+    ~H"""
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+    </svg>
+    """
+  end
+
+  defp collaboration_icon do
+    assigns = %{}
+    ~H"""
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+    </svg>
+    """
+  end
+
+  defp streaming_icon do
+    assigns = %{}
+    ~H"""
+    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
+    </svg>
+    """
+  end
+
+  defp get_visibility_options do
+    %{
+      :public => %{
+        title: "Public",
+        description: "Visible to everyone and discoverable in search",
+        icon: "🌍",
+        color: "bg-green-500"
+      },
+      :link_only => %{
+        title: "Link Only",
+        description: "Only accessible via direct link",
+        icon: "🔗",
+        color: "bg-blue-500"
+      },
+      :request_only => %{
+        title: "Request Access",
+        description: "Viewers must request permission to view",
+        icon: "🔒",
+        color: "bg-yellow-500"
+      },
+      :private => %{
+        title: "Private",
+        description: "Only visible to you",
+        icon: "👁",
+        color: "bg-red-500"
+      }
+    }
+  end
+
+  defp get_social_platforms do
+    %{
+      "linkedin" => %{
+        name: "LinkedIn",
+        icon: "in",
+        color: "bg-blue-600"
+      },
+      "twitter" => %{
+        name: "Twitter/X",
+        icon: "X",
+        color: "bg-black"
+      },
+      "instagram" => %{
+        name: "Instagram",
+        icon: "IG",
+        color: "bg-pink-500"
+      },
+      "facebook" => %{
+        name: "Facebook",
+        icon: "f",
+        color: "bg-blue-700"
+      }
+    }
+  end
+
+  defp get_privacy_settings do
+    %{
+      "allow_search_engines" => %{
+        title: "Search Engine Indexing",
+        description: "Allow search engines to index this portfolio"
+      },
+      "show_in_discovery" => %{
+        title: "Show in Discovery",
+        description: "Include in platform's portfolio discovery feeds"
+      },
+      "require_login_to_view" => %{
+        title: "Require Login",
+        description: "Viewers must be logged in to access portfolio"
+      },
+      "watermark_images" => %{
+        title: "Watermark Images",
+        description: "Add watermarks to protect your images"
+      },
+      "disable_right_click" => %{
+        title: "Disable Right Click",
+        description: "Prevent right-click context menu (basic protection)"
+      },
+      "allow_downloads" => %{
+        title: "Allow Downloads",
+        description: "Enable download buttons for your files"
+      }
+    }
+  end
+
+  defp get_analytics_settings do
+    %{
+      "track_visitor_analytics" => %{
+        title: "Visitor Analytics",
+        description: "Track page views, visitor locations, and behavior"
+      },
+      "detailed_referrer_tracking" => %{
+        title: "Referrer Tracking",
+        description: "Track where visitors are coming from"
+      },
+      "conversion_tracking" => %{
+        title: "Conversion Tracking",
+        description: "Track contact form submissions and downloads"
+      },
+      "heatmap_tracking" => %{
+        title: "Heatmap Tracking",
+        description: "Visual heatmaps of where visitors click and scroll"
+      }
+    }
+  end
+
+  # Helper functions for getting current settings
+  defp get_privacy_setting(portfolio, setting_key) do
+    portfolio.privacy_settings
+    |> Map.get(setting_key, false)
+  end
+
+  defp get_social_integration(portfolio, platform) do
+    portfolio.social_integration
+    |> Map.get("enabled_platforms", [])
+    |> Enum.member?(platform)
+  end
+
+  defp get_analytics_setting(portfolio, setting_key) do
+    portfolio.privacy_settings
+    |> Map.get(setting_key, false)
+  end
+
+  defp has_password_protection?(portfolio) do
+    Map.get(portfolio, :password_hash) != nil
+  end
+
+  defp format_datetime_for_input(datetime) when is_nil(datetime), do: ""
+  defp format_datetime_for_input(datetime) do
+    datetime
+    |> DateTime.to_naive()
+    |> NaiveDateTime.to_iso8601()
+    |> String.slice(0, 16)  # Remove seconds for datetime-local input
+  end
 end

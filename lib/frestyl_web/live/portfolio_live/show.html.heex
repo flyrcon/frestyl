@@ -1,6 +1,27 @@
 <!-- lib/frestyl_web/live/portfolio_live/show.html.heex -->
 
 <div class="min-h-screen bg-gray-50">
+      <%= if assigns[:preview_mode] && @customization do %>
+    <style>
+      :root {
+        --primary-color: <%= Map.get(@customization, "primary_color", "#374151") %>;
+        --accent-color: <%= Map.get(@customization, "accent_color", "#059669") %>;
+      }
+      .portfolio-container {
+        background: var(--primary-color);
+        color: white;
+      }
+      .portfolio-header {
+        background: var(--primary-color);
+        color: white;
+      }
+      .section {
+        background: rgba(255,255,255,0.1);
+        color: white;
+      }
+      .accent { color: var(--accent-color); }
+    </style>
+  <% end %>
   <!-- Header -->
   <div class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

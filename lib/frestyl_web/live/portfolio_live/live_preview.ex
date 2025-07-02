@@ -9,55 +9,75 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
 
   @impl true
   def mount(%{"id" => portfolio_id, "preview_token" => token}, _session, socket) do
-    IO.puts("🔥 LIVE PREVIEW MOUNT: portfolio_id=#{portfolio_id}")
+    IO.puts("🔥 LIVE PREVIEW MOUNT: portfolio_id=#{portfolio_id}, token=#{token}")
 
     if verify_preview_token(portfolio_id, token) do
-      portfolio = Portfolios.get_portfolio!(portfolio_id)
-      IO.puts("🔥 PORTFOLIO LOADED: #{portfolio.title}")
+      case Portfolios.get_portfolio(portfolio_id) do
+        nil ->
+          IO.puts("❌ Portfolio not found: #{portfolio_id}")
+          {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
 
-      # Subscribe to live preview updates
-      PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
+        portfolio ->
+          IO.puts("🔥 PORTFOLIO LOADED: #{portfolio.title}")
 
-      sections = load_portfolio_sections(portfolio.id)
-      IO.puts("🔥 SECTIONS LOADED: #{length(sections)} sections")
+          # Subscribe to live preview updates
+          PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
 
-      socket =
-        socket
-        |> assign(:portfolio, portfolio)
-        |> assign(:preview_mode, true)
-        |> assign(:mobile_view, false)
-        |> assign(:viewport_width, "100%")
-        |> assign(:customization, portfolio.customization || %{})
-        |> assign(:preview_css, generate_preview_css(portfolio))
-        |> assign(:sections, sections)
+          sections = load_portfolio_sections(portfolio.id)
+          IO.puts("🔥 SECTIONS LOADED: #{length(sections)} sections")
 
-      {:ok, socket}
+          socket =
+            socket
+            |> assign(:portfolio, portfolio)
+            |> assign(:preview_mode, true)
+            |> assign(:mobile_view, false)
+            |> assign(:viewport_width, "100%")
+            |> assign(:customization, portfolio.customization || %{})
+            |> assign(:preview_css, generate_preview_css(portfolio))
+            |> assign(:sections, sections)
+
+          {:ok, socket}
+      end
     else
+      IO.puts("❌ Invalid preview token")
       {:ok, socket |> put_flash(:error, "Invalid preview session") |> redirect(to: "/")}
     end
   end
 
   @impl true
   def handle_info({:preview_update, customization, css}, socket) do
-    socket =
-      socket
-      |> assign(:customization, customization)
-      |> assign(:preview_css, css)
-      |> push_event("update_preview_styles", %{css: css})
+    IO.puts("🔥 LIVE PREVIEW: Received update with CSS")
+
+    socket = socket
+    |> assign(:customization, customization)
+    |> assign(:preview_css, css)
+    |> push_event("update_preview_styles", %{css: css})
 
     {:noreply, socket}
   end
 
   @impl true
-  def handle_info({:viewport_change, mobile_view}, socket) do
-    viewport_width = if mobile_view, do: "375px", else: "100%"
+  def handle_info({:preview_update, customization}, socket) do
+    IO.puts("🔥 LIVE PREVIEW: Received update, generating CSS")
 
-    socket =
-      socket
-      |> assign(:mobile_view, mobile_view)
-      |> assign(:viewport_width, viewport_width)
+    css = generate_portfolio_css(customization, socket.assigns.portfolio.theme || "minimal")
+
+    socket = socket
+    |> assign(:customization, customization)
+    |> assign(:preview_css, css)
+    |> push_event("update_preview_styles", %{css: css})
 
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:sections_updated, sections}, socket) do
+    {:noreply, assign(socket, :sections, sections)}
+  end
+
+  @impl true
+  def handle_info({:viewport_change, mobile_view}, socket) do
+    {:noreply, assign(socket, :mobile_view, mobile_view)}
   end
 
   defp verify_preview_token(portfolio_id, token) do
@@ -71,31 +91,40 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
     generate_portfolio_css(portfolio.customization || %{}, portfolio.theme || "minimal")
   end
 
-  defp load_portfolio_sections(portfolio_id) do
-    try do
-      Portfolios.list_portfolio_sections(portfolio_id)
-    rescue
-      _ -> []
-    end
-  end
-
-  defp generate_portfolio_css(customization, theme) do
+  defp generate_simple_preview_css(customization, theme) do
     primary_color = Map.get(customization, "primary_color", "#374151")
     accent_color = Map.get(customization, "accent_color", "#059669")
     secondary_color = Map.get(customization, "secondary_color", "#6b7280")
     layout = Map.get(customization, "layout", "minimal")
 
-    base_css = get_theme_css(theme)
-    custom_css = """
+    """
     :root {
       --primary-color: #{primary_color};
       --accent-color: #{accent_color};
       --secondary-color: #{secondary_color};
     }
 
+    body {
+      font-family: #{get_theme_font(theme)};
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+    }
+
     .portfolio-container {
       background: var(--primary-color);
       color: #ffffff;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .portfolio-header h1 {
+      color: #ffffff;
+      margin-bottom: 0.5rem;
+    }
+
+    .portfolio-header p {
+      color: rgba(255, 255, 255, 0.9);
     }
 
     .section {
@@ -103,16 +132,19 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
       padding: 1.5rem;
       border-radius: 8px;
       background: rgba(255, 255, 255, 0.1);
+      #{get_layout_css(layout)}
     }
 
-    .accent {
+    .section h2.accent {
       color: var(--accent-color);
     }
 
-    .layout-#{layout} .section {
-      #{get_layout_specific_css(layout)}
+    .section-content {
+      color: rgba(255, 255, 255, 0.95);
+      line-height: 1.6;
     }
 
+    /* Smooth transitions for live updates */
     * {
       transition: background-color 0.3s ease,
                   color 0.3s ease,
@@ -129,9 +161,127 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
       }
     }
     """
-
-    base_css <> custom_css
   end
+
+
+  defp load_portfolio_sections(portfolio_id) do
+    try do
+      Portfolios.list_portfolio_sections(portfolio_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp generate_portfolio_css(customization, theme) do
+    primary_color = Map.get(customization, "primary_color", "#374151")
+    accent_color = Map.get(customization, "accent_color", "#059669")
+    secondary_color = Map.get(customization, "secondary_color", "#6b7280")
+    layout = Map.get(customization, "layout", "minimal")
+
+    """
+    /* CRITICAL: CSS that directly targets the HTML elements */
+    :root {
+      --primary-color: #{primary_color};
+      --accent-color: #{accent_color};
+      --secondary-color: #{secondary_color};
+    }
+
+    body {
+      font-family: #{get_theme_font(theme)};
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+      background-color: var(--primary-color) !important;
+      color: #ffffff !important;
+    }
+
+    /* CRITICAL: Target the actual HTML structure */
+    .portfolio-container {
+      background-color: var(--primary-color) !important;
+      color: #ffffff !important;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .portfolio-header h1 {
+      color: #ffffff !important;
+      margin-bottom: 0.5rem;
+    }
+
+    .portfolio-header p {
+      color: rgba(255, 255, 255, 0.9) !important;
+    }
+
+    .section {
+      margin-bottom: 2rem;
+      padding: 1.5rem;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1) !important;
+      #{get_layout_css(layout)}
+    }
+
+    /* CRITICAL: Target the accent class that actually exists */
+    .accent, h2.accent {
+      color: var(--accent-color) !important;
+    }
+
+    .section-content {
+      color: rgba(255, 255, 255, 0.95) !important;
+      line-height: 1.6;
+    }
+
+    .section-content h3 {
+      color: #ffffff !important;
+    }
+
+    .section-content p {
+      color: rgba(255, 255, 255, 0.9) !important;
+    }
+
+    /* Force override any existing styles */
+    * {
+      transition: background-color 0.3s ease,
+                  color 0.3s ease,
+                  border-color 0.3s ease !important;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      .portfolio-container {
+        padding: 1rem !important;
+      }
+      .section {
+        margin-bottom: 1rem !important;
+        padding: 1rem !important;
+      }
+    }
+    """
+  end
+
+
+  defp get_theme_font("minimal"), do: "'Inter', sans-serif"
+  defp get_theme_font("professional"), do: "'Merriweather', serif"
+  defp get_theme_font("creative"), do: "'Poppins', sans-serif"
+  defp get_theme_font(_), do: "'Inter', sans-serif"
+
+  defp get_layout_css("dashboard") do
+    "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;"
+  end
+
+  defp get_layout_css("gallery") do
+    "display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0.5rem;"
+  end
+
+  defp get_layout_css("timeline") do
+    "position: relative; padding-left: 2rem; border-left: 2px solid var(--accent-color);"
+  end
+
+  defp get_layout_css("minimal") do
+    "display: block;"
+  end
+
+  defp get_layout_css(_), do: ""
+
 
   defp get_theme_css("minimal") do
     """
@@ -193,8 +343,20 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
 
   defp get_layout_specific_css(_), do: ""
 
+  @impl true
+  def handle_info({:sections_updated, sections}, socket) do
+    {:noreply, assign(socket, :sections, sections)}
+  end
+
+  @impl true
+  def handle_info({:viewport_change, mobile_view}, socket) do
+    {:noreply, assign(socket, :mobile_view, mobile_view)}
+  end
+
   # MAIN CONTENT RENDERING FUNCTION
   def render_section_content(section) do
+    IO.puts("🔥 RENDER_SECTION: #{section.section_type} - Content: #{inspect(section.content)}")
+
     content = section.content || %{}
     section_type = normalize_section_type(section.section_type)
 
@@ -218,11 +380,25 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
     end
   end
 
-  # INDIVIDUAL CONTENT RENDERERS
+  # Helper function for type checking
+  defp rescue_type(value) do
+    try do
+      value.__struct__
+    rescue
+      _ -> "not_struct"
+    end
+  end
+
   defp render_intro_content(content) do
-    headline = safe_extract(content, ["headline", "title"])
-    summary = safe_extract(content, ["summary", "description", "bio"])
-    location = safe_extract(content, ["location"])
+    # FIXED: Simple direct extraction without tuple handling
+    headline = safe_extract_string(content, ["headline", "title"])
+    summary = safe_extract_string(content, ["summary", "description", "bio"])
+    location = safe_extract_string(content, ["location"])
+
+    IO.puts("🔥 RENDER_INTRO DEBUG:")
+    IO.puts("🔥 headline: #{inspect(headline)}")
+    IO.puts("🔥 summary: #{inspect(summary)}")
+    IO.puts("🔥 location: #{inspect(location)}")
 
     parts = []
     parts = if headline != "", do: parts ++ ["<h3 class=\"text-lg font-semibold mb-2\">#{Phoenix.HTML.html_escape(headline)}</h3>"], else: parts
@@ -234,6 +410,50 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
     else
       Phoenix.HTML.raw("<p class=\"text-gray-400\">Introduction content...</p>")
     end
+  end
+
+  defp safe_extract_string(content, keys) when is_list(keys) do
+    result = Enum.find_value(keys, "", fn key ->
+      case Map.get(content, key) do
+        nil -> nil
+        "" -> nil
+        value when is_binary(value) -> String.trim(value)
+        value -> to_string(value) |> String.trim()
+      end
+      |> case do
+        "" -> nil
+        nil -> nil
+        result when is_binary(result) -> result
+        _ -> nil
+      end
+    end)
+
+    IO.puts("🔥 SAFE_EXTRACT result for keys #{inspect(keys)}: #{inspect(result)}")
+    result || ""
+  end
+
+  defp safe_extract_list(content, keys) when is_list(keys) do
+    result = Enum.find_value(keys, [], fn key ->
+      case Map.get(content, key) do
+        nil -> nil
+        list when is_list(list) -> list
+        "" -> nil
+        value when is_binary(value) ->
+          # Try to parse as JSON if it's a string
+          try do
+            case Jason.decode(value) do
+              {:ok, parsed_list} when is_list(parsed_list) -> parsed_list
+              _ -> []
+            end
+          rescue
+            _ -> []
+          end
+        _ -> nil
+      end
+    end)
+
+    IO.puts("🔥 SAFE_EXTRACT_LIST result for keys #{inspect(keys)}: #{inspect(result)}")
+    result || []
   end
 
   defp render_experience_content(content) do
@@ -286,6 +506,7 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
       Phoenix.HTML.raw("<p class=\"text-gray-400\">Education details...</p>")
     end
   end
+
 
   defp render_skills_content(content) do
     skills = safe_extract_list(content, ["skills"])
@@ -499,26 +720,59 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
   end
 
   defp safe_extract(content, keys) when is_list(keys) do
-    Enum.find_value(keys, "", fn key ->
+    result = Enum.find_value(keys, "", fn key ->
       case Map.get(content, key) do
         nil -> nil
         "" -> nil
         {:safe, safe_content} when is_binary(safe_content) ->
           String.trim(safe_content)
         {:safe, safe_content} when is_list(safe_content) ->
-          safe_content |> Enum.join("") |> String.trim()
+          # Handle list of strings/binaries
+          try do
+            safe_content
+            |> Enum.filter(fn item -> is_binary(item) end)
+            |> Enum.join("")
+            |> String.trim()
+          rescue
+            _ -> ""
+          end
         {:safe, safe_content} ->
-          "#{safe_content}" |> String.trim()
+          # FIXED: Handle any other safe content safely
+          try do
+            cond do
+              is_binary(safe_content) -> String.trim(safe_content)
+              is_atom(safe_content) -> Atom.to_string(safe_content)
+              is_number(safe_content) -> to_string(safe_content)
+              true -> inspect(safe_content) |> String.trim()
+            end
+          rescue
+            _ -> ""
+          end
         value when is_binary(value) ->
           String.trim(value)
+        value when is_atom(value) ->
+          Atom.to_string(value)
+        value when is_number(value) ->
+          to_string(value)
         value ->
-          "#{value}" |> String.trim()
+          # FIXED: Safe conversion for any other type
+          try do
+            inspect(value) |> String.trim()
+          rescue
+            _ -> ""
+          end
       end
       |> case do
         "" -> nil
-        result -> result
+        nil -> nil
+        result when is_binary(result) -> result
+        _ -> nil
       end
     end)
+
+    # Debug what we're returning
+    IO.puts("🔥 SAFE_EXTRACT result for keys #{inspect(keys)}: #{inspect(result)}")
+    result
   end
 
   # Map extraction function
@@ -527,33 +781,20 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
       case Map.get(map, key) do
         nil -> nil
         "" -> nil
-        {:safe, safe_content} when is_binary(safe_content) ->
-          String.trim(safe_content)
-        {:safe, safe_content} when is_list(safe_content) ->
-          safe_content |> Enum.join("") |> String.trim()
-        {:safe, safe_content} ->
-          "#{safe_content}" |> String.trim()
-        value when is_binary(value) ->
-          String.trim(value)
-        value ->
-          "#{value}" |> String.trim()
+        value when is_binary(value) -> String.trim(value)
+        value -> to_string(value) |> String.trim()
       end
       |> case do
         "" -> nil
-        result -> result
+        nil -> nil
+        result when is_binary(result) -> result
+        _ -> nil
       end
     end)
   end
 
-  # List extraction function
-  defp safe_extract_list(content, keys) when is_list(keys) do
-    Enum.find_value(keys, [], fn key ->
-      case Map.get(content, key) do
-        nil -> nil
-        list when is_list(list) -> list
-        _ -> nil
-      end
-    end)
+  defp safe_extract(content, keys) when is_list(keys) do
+    safe_extract_string(content, keys)
   end
 
   defp convert_to_safe_string(value) do
@@ -607,32 +848,50 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
   end
 
   defp safe_extract_debug(content, keys) when is_list(keys) do
-  Enum.find_value(keys, "", fn key ->
-    value = Map.get(content, key)
-    IO.puts("🔥 DEBUG safe_extract key='#{key}' value=#{inspect(value)}")
+    Enum.find_value(keys, "", fn key ->
+      value = Map.get(content, key)
+      IO.puts("🔥 DEBUG safe_extract key='#{key}' value=#{inspect(value)}")
 
-    result = case value do
-      nil -> nil
-      "" -> nil
-      {:safe, safe_value} ->
-        IO.puts("🔥 Found safe tuple with value: #{inspect(safe_value)}")
-        # Force convert to string without using to_string
-        cond do
-          is_binary(safe_value) -> String.trim(safe_value)
-          is_list(safe_value) -> Enum.join(safe_value, "") |> String.trim()
-          true -> "#{safe_value}" |> String.trim()  # Force string interpolation
-        end
-      value when is_binary(value) -> String.trim(value)
-      _ -> "#{value}"  # Force string interpolation
-    end
+      result = case value do
+        nil -> nil
+        "" -> nil
+        {:safe, safe_value} ->
+          IO.puts("🔥 Found safe tuple with value: #{inspect(safe_value)}")
+          # Force convert to string without using to_string
+          cond do
+            is_binary(safe_value) -> String.trim(safe_value)
+            is_list(safe_value) -> Enum.join(safe_value, "") |> String.trim()
+            true -> "#{safe_value}" |> String.trim()  # Force string interpolation
+          end
+        value when is_binary(value) -> String.trim(value)
+        _ -> "#{value}"  # Force string interpolation
+      end
 
-    IO.puts("🔥 DEBUG result: #{inspect(result)}")
-    if result == "", do: nil, else: result
-  end)
-end
-
+      IO.puts("🔥 DEBUG result: #{inspect(result)}")
+      if result == "", do: nil, else: result
+    end)
+  end
 
   defp normalize_section_type(type) when is_atom(type), do: type
-  defp normalize_section_type(type) when is_binary(type), do: String.to_atom(type)
+  defp normalize_section_type(type) when is_binary(type) do
+    case String.downcase(type) do
+      "intro" -> :intro
+      "experience" -> :experience
+      "education" -> :education
+      "skills" -> :skills
+      "projects" -> :projects
+      "featured_project" -> :featured_project
+      "case_study" -> :case_study
+      "achievements" -> :achievements
+      "testimonial" -> :testimonial
+      "contact" -> :contact
+      "media_showcase" -> :media_showcase
+      "story" -> :story
+      "journey" -> :journey
+      "narrative" -> :narrative
+      "custom" -> :custom
+      _ -> :generic
+    end
+  end
   defp normalize_section_type(_), do: :generic
 end

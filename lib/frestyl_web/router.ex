@@ -177,6 +177,8 @@ defmodule FrestylWeb.Router do
     # Portfolio management dashboard
     live "/portfolios", PortfolioLive.Index, :index
 
+    live "/portfolios/:id/preview/:preview_token", PortfolioLive.LivePreview
+
     # Portfolio CRUD operations
     live "/portfolios/new", PortfolioLive.New, :new
     live "/portfolios/:id", PortfolioLive.Show, :show
@@ -185,7 +187,6 @@ defmodule FrestylWeb.Router do
     live "/portfolios/:id/edit-legacy", PortfolioLive.Edit, :edit
     live "/portfolios/:id/settings", PortfolioLive.Settings, :settings
 
-    live "/portfolios/:id/live-preview/:preview_token", PortfolioLive.LivePreview, :show
 
     # Portfolio analytics and insights
     live "/portfolios/:id/analytics", PortfolioLive.AnalyticsLive, :analytics

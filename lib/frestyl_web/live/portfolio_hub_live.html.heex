@@ -1,494 +1,520 @@
+# lib/frestyl_web/live/portfolio_hub_live.html.heex - ENHANCED TEMPLATE
 
-<div class="min-h-screen bg-gray-50">
-  <!-- ============================================================================ -->
-  <!-- MOBILE HEADER - Enhanced for Creator Hub -->
-  <!-- ============================================================================ -->
-  
-  <!-- Enhanced Mobile Header for Creator Hub -->
-  <div class="lg:hidden">
-    <!-- Mobile Top Bar with Hub Features -->
-    <div class="border-b border-gray-200 bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-      <div class="px-4 py-3">
-        <div class="flex items-center justify-between">
-          <!-- Logo & Dynamic Title -->
-          <div class="flex items-center space-x-3">
-            <img src="/images/logo.svg" alt="Frestyl" class="w-7 h-7" />
-            <div>
-              <h1 class="text-lg font-bold text-gray-900">Creator Hub</h1>
-              <p class="text-xs text-gray-500"><%= get_active_section_title(@active_section) %></p>
-            </div>
-          </div>
+<div class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-purple-50">
+  <!-- Navigation -->
+  <FrestylWeb.Navigation.nav current_user={@current_user} active_tab={:portfolio_hub} />
 
-          <!-- Mobile Actions with Subscription Awareness -->
-          <div class="flex items-center space-x-2">
-            <!-- Quick Action Button -->
-            <%= if @quick_actions && length(@quick_actions) > 0 do %>
-              <button
-                phx-click={List.first(@quick_actions).action}
-                class="p-2 bg-purple-100 text-purple-600 rounded-lg transition-colors hover:bg-purple-200"
-                title={List.first(@quick_actions).description}
-              >
-                <span class="text-sm"><%= List.first(@quick_actions).icon %></span>
-              </button>
-            <% end %>
-
-            <!-- Collaboration Bell with Smart Badges -->
-            <button
-              phx-click="toggle_collaboration_panel"
-              class="relative p-2 text-gray-600 hover:text-blue-600 rounded-lg transition-colors"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-              </svg>
-              <%= if @collaboration_requests && length(@collaboration_requests) > 0 do %>
-                <span class="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-                  <%= length(@collaboration_requests) %>
-                </span>
-              <% end %>
-            </button>
-
-            <!-- Revenue Indicator (Professional+ only) -->
-            <%= if @account.subscription_tier in ["professional", "enterprise"] do %>
-              <button
-                phx-click="switch_section" phx-value-section="revenue_center"
-                class="p-2 text-gray-600 hover:text-green-600 rounded-lg transition-colors"
-                title="Revenue Center"
-              >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>
-                </svg>
-              </button>
-            <% end %>
-
-            <!-- Mobile Menu Toggle -->
-            <button
-              phx-click="toggle_mobile_menu"
-              class="p-2 text-gray-600 hover:text-gray-900 rounded-lg transition-colors"
-              aria-label="Toggle menu"
-            >
-              <%= if @show_mobile_menu do %>
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-              <% else %>
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                </svg>
-              <% end %>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Mobile Section Navigation Drawer -->
-    <%= if @show_mobile_menu do %>
-      <div class="bg-white border-b border-gray-200 shadow-lg">
-        <div class="px-4 py-3 space-y-1">
-          <%= for section <- @hub_config.primary_sections do %>
-            <button
-              phx-click="switch_section"
-              phx-value-section={section}
-              class={[
-                "w-full flex items-center px-3 py-2 rounded-lg text-left transition-colors",
-                if(@active_section == section,
-                  do: "bg-purple-100 text-purple-700",
-                  else: "text-gray-700 hover:bg-gray-100")
-              ]}
-            >
-              <span class="mr-3"><%= get_section_icon(section) %></span>
-              <%= FrestylWeb.PortfolioHubLive.Helpers.humanize_section_name(section) %>
-              <%= if section in @hub_config.upgrade_prompts do %>
-                <span class="ml-auto px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">Pro</span>
-              <% end %>
-            </button>
-          <% end %>
-
-          <!-- Secondary sections -->
-          <%= if length(@hub_config.secondary_sections) > 0 do %>
-            <div class="border-t border-gray-200 mt-3 pt-3">
-              <%= for section <- @hub_config.secondary_sections do %>
-                <button
-                  phx-click="switch_section"
-                  phx-value-section={section}
-                  class={[
-                    "w-full flex items-center px-3 py-2 rounded-lg text-left transition-colors text-sm",
-                    if(@active_section == section,
-                      do: "bg-purple-50 text-purple-600",
-                      else: "text-gray-600 hover:bg-gray-50")
-                  ]}
-                >
-                  <span class="mr-3"><%= get_section_icon(section) %></span>
-                  <%= FrestylWeb.PortfolioHubLive.Helpers.humanize_section_name(section) %>
-                </button>
-              <% end %>
-            </div>
-          <% end %>
-        </div>
-      </div>
-    <% end %>
-
-    <!-- Smart Navigation Integration -->
-    <.live_component 
-      module={FrestylWeb.Components.SmartNavComponent}
-      id="smart-nav"
-      current_user={@current_user}
-      current_context="hub"
-      portfolios={@portfolios}
-      lab_data={@lab_data}
-      studio_data={@studio_data} />
-  </div>
-
-  <!-- ============================================================================ -->
-  <!-- WELCOME CELEBRATION (First-time users) -->
-  <!-- ============================================================================ -->
-  
-  <%= if @show_welcome_celebration do %>
-    <div class="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 text-white">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div class="text-center">
-          <div class="text-6xl mb-4">🎉</div>
-          <h1 class="text-3xl font-bold mb-2">Welcome to Your Creator Hub!</h1>
-          <p class="text-xl text-purple-100 mb-6">Your comprehensive command center for creative success</p>
-          
-          <%= if @recently_created_portfolio do %>
-            <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-              <.link href={"/portfolios/#{@recently_created_portfolio.id}/edit"}
-                    class="inline-flex items-center px-6 py-3 bg-white text-purple-600 rounded-lg font-medium hover:bg-purple-50 transition-all">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                </svg>
-                Enhance My Portfolio
-              </.link>
-              
-              <button phx-click="dismiss_welcome"
-                      class="px-6 py-3 text-white/80 hover:text-white transition-colors">
-                Continue to Hub
-              </button>
-            </div>
-          <% end %>
-        </div>
-      </div>
-    </div>
-  <% end %>
-
-  <!-- ============================================================================ -->
-  <!-- MAIN CREATOR HUB LAYOUT -->
-  <!-- ============================================================================ -->
-  
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-    
-    <!-- ======== HUB HEADER & NAVIGATION ======== -->
-    <div class="mb-8">
-      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6">
-        <div>
-          <h1 class="text-3xl font-bold text-gray-900 mb-2">Creator Hub</h1>
-          <p class="text-gray-600">Your comprehensive command center for creative success</p>
+  <!-- Main Content Container -->
+  <div class="pt-16 min-h-screen">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      
+      <!-- Page Header with Breadcrumbs -->
+      <div class="mb-8">
+        <div class="flex items-center text-sm text-gray-500 mb-2">
+          <.link href="/" class="hover:text-gray-700 transition-colors">Home</.link>
+          <svg class="w-4 h-4 mx-2" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+          </svg>
+          <span class="text-gray-900 font-medium">Portfolio Hub</span>
         </div>
         
-        <!-- Quick Actions Panel -->
-        <div class="mt-4 lg:mt-0">
-          <div class="flex flex-wrap gap-2">
-            <!-- Studio Access -->
-            <button phx-click="show_studio_modal"
-                    class="flex items-center p-4 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-xl hover:from-green-600 hover:to-teal-700 transition-all transform hover:scale-105">
-              <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center mr-4">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
-                </svg>
-              </div>
-              <div class="text-left">
-                <h3 class="font-semibold">Creative Studio</h3>
-                <p class="text-sm opacity-90">Collaborative workspace</p>
-              </div>
-            </button>
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-3xl font-bold text-gray-900">Portfolio Hub</h1>
+            <p class="text-gray-600 mt-1">Manage, share, and track your professional portfolios</p>
+          </div>
+          
+          <!-- Account Switcher -->
+          <.live_component
+            module={FrestylWeb.Components.AccountSwitcher}
+            id="account-switcher"
+            current_account={@current_account}
+            accounts={@accounts}
+          />
+        </div>
+      </div>
 
-            <!-- Create Portfolio Button -->
-            <button phx-click="show_create_modal"
-                    class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-all">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-              </svg>
-              Create Portfolio
-            </button>
-
-            <!-- Community Channels Button -->
-            <button phx-click="navigate_to_channels"
-                    class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg text-sm font-medium hover:from-purple-700 hover:to-pink-700 transition-all">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-              </svg>
-              Community Channels
-            </button>
-
-            <!-- Collaboration Hub Button -->
-            <button phx-click="switch_section" phx-value-section="collaboration_hub"
-                    class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg text-sm font-medium hover:from-indigo-700 hover:to-purple-700 transition-all">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-              </svg>
-              Collaboration Hub
-            </button>
-
-            <!-- Keep your existing quick actions if any -->
-            <%= for action <- @quick_actions do %>
-              <button phx-click={action.action}
-                      class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all">
-                <span class="mr-2"><%= action.icon %></span>
-                <%= action.title %>
+      <!-- Hub Navigation Tabs -->
+      <div class="mb-8">
+        <div class="border-b border-gray-200">
+          <nav class="-mb-px flex space-x-8">
+            <%= for {section_key, section_data} <- @hub_sections do %>
+              <button phx-click="switch_hub_section" phx-value-section={section_key}
+                      class={[
+                        "py-2 px-1 border-b-2 font-medium text-sm transition-colors",
+                        if(@active_hub_section == section_key,
+                          do: "border-purple-500 text-purple-600",
+                          else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        )
+                      ]}>
+                <div class="flex items-center space-x-2">
+                  <%= section_data.icon %>
+                  <span><%= section_data.title %></span>
+                  <%= if section_data.badge do %>
+                    <span class="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-1 rounded-full">
+                      <%= section_data.badge %>
+                    </span>
+                  <% end %>
+                </div>
               </button>
             <% end %>
-          </div>
+          </nav>
         </div>
       </div>
 
-      <!-- Section Navigation Tabs -->
-      <div class="border-b border-gray-200">
-        <nav class="flex space-x-8 overflow-x-auto">
-          <%= for section <- @hub_config.primary_sections do %>
-            <button phx-click="switch_section" phx-value-section={section}
-                    class={[
-                      "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors",
-                      if(@active_section == section, 
-                        do: "border-purple-500 text-purple-600", 
-                        else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
-                    ]}>
-              <%= humanize_section_name(section) %>
-            </button>
-          <% end %>
-          
-          <%= for section <- @hub_config.secondary_sections do %>
-            <button phx-click="switch_section" phx-value-section={section}
-                    class={[
-                      "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors",
-                      if(@active_section == section, 
-                        do: "border-purple-500 text-purple-600", 
-                        else: "border-transparent text-gray-400 hover:text-gray-600")
-                    ]}>
-              <%= humanize_section_name(section) %>
-            </button>
-          <% end %>
-        </nav>
-      </div>
+      <!-- Dynamic Content Based on Active Section -->
+      <%= case @active_hub_section do %>
+        <% "portfolio_studio" -> %>
+          <!-- Enhanced Portfolio Grid Section -->
+          <%= enhanced_portfolio_grid_section(assigns) %>
+        
+        <% "analytics" -> %>
+          <%= render_analytics_section(assigns) %>
+        
+        <% "collaboration" -> %>
+          <%= render_collaboration_section(assigns) %>
+        
+        <% "live_streaming" -> %>
+          <%= render_live_streaming_section(assigns) %>
+        
+        <% _ -> %>
+          <!-- Default to Portfolio Studio -->
+          <%= enhanced_portfolio_grid_section(assigns) %>
+      <% end %>
+
     </div>
-
-    <!-- ============================================================================ -->
-    <!-- SECTION CONTENT - Equal Feature Prominence -->
-    <!-- ============================================================================ -->
-
-    <%= case @active_section do %>
-      <% "portfolio_studio" -> %>
-        <div class="space-y-6">
-          <!-- Studio Overview Cards -->
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <!-- Total Portfolios -->
-            <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
-              <div class="flex items-center">
-                <div class="p-3 bg-purple-100 rounded-lg">
-                  <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                  </svg>
-                </div>
-                <div class="ml-4">
-                  <p class="text-sm font-medium text-gray-600">Total Portfolios</p>
-                  <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :total_portfolios, 0) %></p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Published Count -->
-            <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
-              <div class="flex items-center">
-                <div class="p-3 bg-green-100 rounded-lg">
-                  <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                  </svg>
-                </div>
-                <div class="ml-4">
-                  <p class="text-sm font-medium text-gray-600">Published</p>
-                  <p class="text-2xl font-bold text-gray-900"><%= Map.get(@studio_data, :published_count, 0) %></p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Drafts -->
-            <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
-              <div class="flex items-center">
-                <div class="p-3 bg-yellow-100 rounded-lg">
-                  <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                  </svg>
-                </div>
-                <div class="ml-4">
-                  <p class="text-sm font-medium text-gray-600">Drafts</p>
-                  <p class="text-2xl font-bold text-gray-900"><%= @studio_data.draft_count %></p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Templates Available -->
-            <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all">
-              <div class="flex items-center">
-                <div class="p-3 bg-blue-100 rounded-lg">
-                  <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
-                  </svg>
-                </div>
-                <div class="ml-4">
-                  <p class="text-sm font-medium text-gray-600">Templates</p>
-                  <p class="text-2xl font-bold text-gray-900"><%= @studio_data.templates_available %></p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Portfolios Section -->
-          <%= portfolio_grid_section(assigns) %>
-
-          <!-- Enhancement Suggestions -->
-          <%= if length(@enhancement_suggestions) > 0 do %>
-            <%= enhancement_suggestions_section(assigns) %>
-          <% end %>
-        </div>
-      
-      <% "collaboration_hub" -> %>
-        <%= collaboration_hub_section(assigns) %>
-      
-      <% "community_channels" -> %>
-        <%= community_channels_section(assigns) %>
-      
-      <% "creator_lab" -> %>
-        <%= creator_lab_section(assigns) %>
-      
-      <% "service_dashboard" -> %>
-        <%= service_dashboard_section(assigns) %>
-      
-      <% "revenue_center" -> %>
-        <%= revenue_center_section(assigns) %>
-      
-      <% _ -> %>
-        <%= portfolio_studio_section(assigns) %>
-    <% end %>
-
   </div>
 </div>
 
 <!-- ============================================================================ -->
-<!-- MODALS AND OVERLAYS -->
+<!-- ENHANCED MODALS SECTION -->
 <!-- ============================================================================ -->
 
-<!-- Create Portfolio Modal -->
+<!-- Enhanced Create Portfolio Modal -->
 <%= if @show_create_modal do %>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" phx-click="close_create_modal">
-    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4" phx-click-away="close_create_modal">
-      <h2 class="text-xl font-bold text-gray-900 mb-4">Create New Portfolio</h2>
-      <p class="text-gray-600 mb-6">Choose how you'd like to create your portfolio</p>
+  <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+       phx-click="close_create_modal">
+    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+         phx-click-away="close_create_modal">
       
-      <div class="space-y-3">
-        <button phx-click="create_from_template"
-                class="w-full flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-          <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
-            <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-purple-600 to-indigo-600 px-8 py-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-bold text-white">Create New Portfolio</h2>
+            <p class="text-purple-100 mt-1">Choose how you'd like to get started</p>
+          </div>
+          <button phx-click="close_create_modal"
+                  class="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
             </svg>
-          </div>
-          <div class="text-left">
-            <p class="font-medium text-gray-900">From Template</p>
-            <p class="text-sm text-gray-600">Start with a professional template</p>
-          </div>
-        </button>
-        
-        <button phx-click="create_from_resume"
-                class="w-full flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-            <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-          </div>
-          <div class="text-left">
-            <p class="font-medium text-gray-900">From Resume</p>
-            <p class="text-sm text-gray-600">Upload resume and auto-populate</p>
-          </div>
-        </button>
-        
-        <button phx-click="create_blank"
-                class="w-full flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-          <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-          </div>
-          <div class="text-left">
-            <p class="font-medium text-gray-900">Start Blank</p>
-            <p class="text-sm text-gray-600">Build from scratch</p>
-          </div>
-        </button>
+          </button>
+        </div>
       </div>
-      
-      <div class="mt-6 flex justify-end">
-        <button phx-click="close_create_modal"
-                class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
-          Cancel
-        </button>
+
+      <!-- Modal Content -->
+      <div class="p-8 overflow-y-auto max-h-[calc(90vh-120px)]">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          
+          <!-- Start from Scratch -->
+          <button phx-click="create_blank_portfolio"
+                  class="group p-6 border-2 border-dashed border-gray-300 rounded-xl hover:border-purple-400 transition-all duration-200 text-center hover:bg-purple-50">
+            <div class="w-16 h-16 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:from-purple-200 group-hover:to-indigo-200 transition-all">
+              <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Start from Scratch</h3>
+            <p class="text-sm text-gray-600">Build your portfolio from the ground up with complete creative control</p>
+          </button>
+
+          <!-- Use Template -->
+          <button phx-click="browse_templates"
+                  class="group p-6 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition-all duration-200 text-center hover:bg-blue-50">
+            <div class="w-16 h-16 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:from-blue-200 group-hover:to-cyan-200 transition-all">
+              <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Use Template</h3>
+            <p class="text-sm text-gray-600">Choose from professionally designed templates to get started quickly</p>
+          </button>
+
+          <!-- Import Resume -->
+          <button phx-click="show_resume_import"
+                  class="group p-6 border-2 border-gray-200 rounded-xl hover:border-green-400 transition-all duration-200 text-center hover:bg-green-50">
+            <div class="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:from-green-200 group-hover:to-emerald-200 transition-all">
+              <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Import Resume</h3>
+            <p class="text-sm text-gray-600">Upload your resume and let AI create a portfolio for you</p>
+          </button>
+
+          <!-- AI Assistant -->
+          <button phx-click="start_ai_creation"
+                  class="group p-6 border-2 border-gray-200 rounded-xl hover:border-orange-400 transition-all duration-200 text-center hover:bg-orange-50">
+            <div class="w-16 h-16 bg-gradient-to-br from-orange-100 to-yellow-100 rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:from-orange-200 group-hover:to-yellow-200 transition-all">
+              <svg class="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">AI Assistant</h3>
+            <p class="text-sm text-gray-600">Let AI guide you through creating the perfect portfolio</p>
+          </button>
+
+          <!-- Clone Existing -->
+          <button phx-click="clone_portfolio"
+                  disabled={length(@portfolios) == 0}
+                  class={[
+                    "group p-6 border-2 border-gray-200 rounded-xl hover:border-teal-400 transition-all duration-200 text-center hover:bg-teal-50",
+                    if(length(@portfolios) == 0, do: "opacity-50 cursor-not-allowed", else: "")
+                  ]}>
+            <div class="w-16 h-16 bg-gradient-to-br from-teal-100 to-cyan-100 rounded-2xl flex items-center justify-center mb-4 mx-auto group-hover:from-teal-200 group-hover:to-cyan-200 transition-all">
+              <svg class="w-8 h-8 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Clone Existing</h3>
+            <p class="text-sm text-gray-600">Duplicate one of your existing portfolios as a starting point</p>
+          </button>
+
+          <!-- Import from LinkedIn -->
+          <button phx-click="import_from_linkedin"
+                  class="group p-6 border-2 border-gray-200 rounded-xl hover:border-blue-600 transition-all duration-200 text-center hover:bg-blue-50">
+            <div class="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center mb-4 mx-auto transition-all">
+              <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Import from LinkedIn</h3>
+            <p class="text-sm text-gray-600">Sync your LinkedIn profile to automatically populate your portfolio</p>
+          </button>
+        </div>
+
+        <!-- Quick Start Tips -->
+        <div class="mt-8 p-6 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200">
+          <h4 class="text-lg font-semibold text-gray-900 mb-3">Quick Start Tips</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div class="flex items-start space-x-2">
+              <svg class="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-gray-700">Templates are fastest for first-time users</span>
+            </div>
+            <div class="flex items-start space-x-2">
+              <svg class="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-gray-700">Resume import saves hours of data entry</span>
+            </div>
+            <div class="flex items-start space-x-2">
+              <svg class="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-gray-700">AI assistant provides personalized guidance</span>
+            </div>
+            <div class="flex items-start space-x-2">
+              <svg class="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-gray-700">You can always change templates later</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 <% end %>
 
-<!-- Studio Modal -->
-<%= if @show_studio_modal do %>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" phx-click="hide_studio_modal">
-    <div class="bg-white rounded-xl p-6 max-w-lg w-full mx-4" phx-click-away="hide_studio_modal">
-      <h2 class="text-xl font-bold text-gray-900 mb-4">Creative Studio</h2>
-      <p class="text-gray-600 mb-6">Launch a collaborative creative session</p>
+<!-- Enhanced Share Modal -->
+<%= if @show_share_modal do %>
+  <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+       phx-click="close_share_modal">
+    <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+         phx-click-away="close_share_modal">
       
-      <div class="grid grid-cols-1 gap-3">
-        <button phx-click="create_studio_session" phx-value-type="voice_recording"
-                class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left">
-          <div class="flex items-center">
-            <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mr-3">
-              🎤
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-blue-600 to-cyan-600 px-8 py-6">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
+              </svg>
             </div>
             <div>
-              <h3 class="font-medium text-gray-900">Voice Recording Session</h3>
-              <p class="text-sm text-gray-600">Record audio for your portfolio</p>
+              <h2 class="text-2xl font-bold text-white">Share Portfolio</h2>
+              <p class="text-blue-100"><%= @selected_portfolio_for_share.title %></p>
             </div>
           </div>
-        </button>
-        
-        <button phx-click="create_studio_session" phx-value-type="collaborative_writing"
-                class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left">
-          <div class="flex items-center">
-            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-              ✍️
-            </div>
-            <div>
-              <h3 class="font-medium text-gray-900">Writing Session</h3>
-              <p class="text-sm text-gray-600">Collaborate on content creation</p>
-            </div>
-          </div>
-        </button>
-        
-        <button phx-click="create_studio_session" phx-value-type="design_review"
-                class="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left">
-          <div class="flex items-center">
-            <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
-              🎨
-            </div>
-            <div>
-              <h3 class="font-medium text-gray-900">Design Review</h3>
-              <p class="text-sm text-gray-600">Get feedback on visual elements</p>
-            </div>
-          </div>
-        </button>
+          <button phx-click="close_share_modal"
+                  class="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
       </div>
-      
-      <div class="flex justify-end mt-6">
-        <button phx-click="hide_studio_modal"
-                class="px-4 py-2 text-gray-600 hover:text-gray-700">
-          Cancel
-        </button>
+
+      <!-- Modal Content -->
+      <div class="p-8">
+        <!-- Direct Link Sharing -->
+        <div class="mb-8">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Direct Link</h3>
+          <div class="bg-gray-50 rounded-lg p-4">
+            <div class="flex items-center space-x-3">
+              <input type="text" 
+                     readonly 
+                     value={portfolio_url(@selected_portfolio_for_share.slug)}
+                     class="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                     id="portfolio-url-input" />
+              <button onclick="copyToClipboard('portfolio-url-input')"
+                      class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              Anyone with this link can view your portfolio
+              <%= if @selected_portfolio_for_share.visibility != :public do %>
+                (Portfolio is currently <%= humanize_visibility(@selected_portfolio_for_share.visibility) %>)
+              <% end %>
+            </p>
+          </div>
+        </div>
+
+        <!-- Social Sharing -->
+        <div class="mb-8">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Social Media</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <button phx-click="share_to_social" phx-value-platform="linkedin"
+                    class="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+              </svg>
+              <span class="text-sm">LinkedIn</span>
+            </button>
+
+            <button phx-click="share_to_social" phx-value-platform="twitter"
+                    class="bg-sky-500 text-white p-3 rounded-lg hover:bg-sky-600 transition-colors flex items-center justify-center space-x-2">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
+              </svg>
+              <span class="text-sm">Twitter</span>
+            </button>
+
+            <button phx-click="share_to_social" phx-value-platform="facebook"
+                    class="bg-blue-700 text-white p-3 rounded-lg hover:bg-blue-800 transition-colors flex items-center justify-center space-x-2">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+              </svg>
+              <span class="text-sm">Facebook</span>
+            </button>
+
+            <button phx-click="share_to_social" phx-value-platform="email"
+                    class="bg-gray-600 text-white p-3 rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center space-x-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 7.89a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+              <span class="text-sm">Email</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Advanced Sharing Options -->
+        <div class="space-y-4">
+          <h3 class="text-lg font-semibold text-gray-900">Advanced Options</h3>
+          
+          <!-- Embed Code -->
+          <div class="border border-gray-200 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-medium text-gray-900">Embed Widget</h4>
+              <button phx-click="generate_embed_code"
+                      class="text-sm text-blue-600 hover:text-blue-700">Generate Code</button>
+            </div>
+            <p class="text-sm text-gray-600">Embed a preview of your portfolio on other websites</p>
+          </div>
+
+          <!-- QR Code -->
+          <div class="border border-gray-200 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-medium text-gray-900">QR Code</h4>
+              <button phx-click="generate_qr_code"
+                      class="text-sm text-blue-600 hover:text-blue-700">Generate</button>
+            </div>
+            <p class="text-sm text-gray-600">Perfect for business cards and print materials</p>
+          </div>
+
+          <!-- Analytics Tracking -->
+          <div class="border border-gray-200 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-medium text-gray-900">Share Analytics</h4>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked class="sr-only peer">
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+            <p class="text-sm text-gray-600">Track who views your portfolio through shared links</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 <% end %>
+
+<!-- Settings Modal -->
+<%= render_settings_modal(assigns) %>
+
+<!-- Live Streaming Modal -->
+<%= if @show_live_stream_modal do %>
+  <div class="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+       phx-click="close_live_stream_modal">
+    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+         phx-click-away="close_live_stream_modal">
+      
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-red-600 to-pink-600 px-8 py-6">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+              <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-2xl font-bold text-white">Live Streaming</h2>
+              <p class="text-red-100">Stream your portfolio presentation live</p>
+            </div>
+          </div>
+          <button phx-click="close_live_stream_modal"
+                  class="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Content -->
+      <div class="p-8">
+        <div class="text-center">
+          <div class="w-20 h-20 bg-gradient-to-br from-red-100 to-pink-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <svg class="w-10 h-10 text-red-600" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/>
+            </svg>
+          </div>
+          <h3 class="text-2xl font-bold text-gray-900 mb-4">Start Your Live Stream</h3>
+          <p class="text-gray-600 mb-8 max-w-2xl mx-auto">
+            Present your portfolio live to potential employers, clients, or collaborators. Stream in HD with real-time chat and screen sharing capabilities.
+          </p>
+          
+          <!-- Stream Options -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <button phx-click="start_portfolio_presentation"
+                    class="p-6 border-2 border-red-200 rounded-xl hover:border-red-400 transition-all duration-200 text-center hover:bg-red-50">
+              <div class="w-16 h-16 bg-gradient-to-br from-red-100 to-pink-100 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+                <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 8h10m-5-8v8m-5 4h10a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+              </div>
+              <h4 class="text-lg font-semibold text-gray-900 mb-2">Portfolio Presentation</h4>
+              <p class="text-sm text-gray-600">Walk through your portfolio with live commentary</p>
+            </button>
+
+            <button phx-click="start_interview_stream"
+                    class="p-6 border-2 border-blue-200 rounded-xl hover:border-blue-400 transition-all duration-200 text-center hover:bg-blue-50">
+              <div class="w-16 h-16 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+              </div>
+              <h4 class="text-lg font-semibold text-gray-900 mb-2">Live Interview</h4>
+              <p class="text-sm text-gray-600">Host a live Q&A session about your work</p>
+            </button>
+          </div>
+
+          <!-- Stream Settings Preview -->
+          <div class="bg-gray-50 rounded-lg p-6 text-left">
+            <h4 class="font-semibold text-gray-900 mb-4">Stream Settings</h4>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span class="text-gray-600">Quality:</span>
+                <span class="ml-2 font-medium">1080p HD</span>
+              </div>
+              <div>
+                <span class="text-gray-600">Audio:</span>
+                <span class="ml-2 font-medium">High Quality</span>
+              </div>
+              <div>
+                <span class="text-gray-600">Chat:</span>
+                <span class="ml-2 font-medium">Enabled</span>
+              </div>
+              <div>
+                <span class="text-gray-600">Recording:</span>
+                <span class="ml-2 font-medium">Auto-save</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+<% end %>
+
+<!-- JavaScript for Copy to Clipboard -->
+<script>
+  function copyToClipboard(inputId) {
+    const input = document.getElementById(inputId);
+    input.select();
+    input.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(input.value);
+    
+    // Show feedback
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg><span>Copied!</span>';
+    
+    setTimeout(() => {
+      button.innerHTML = originalText;
+    }, 2000);
+  };
+  
+  // Handle file downloads
+  window.addEventListener("phx:download_file", (e) => {
+    const link = document.createElement('a');
+    link.href = e.detail.url;
+    link.download = e.detail.filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+  window.addEventListener("phx:download_json", (e) => {
+    const blob = new Blob([e.detail.data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = e.detail.filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  });
+
+  window.addEventListener("phx:download_csv", (e) => {
+    const blob = new Blob([e.detail.data], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = e.detail.filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  });
+</script>
