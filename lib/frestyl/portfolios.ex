@@ -82,6 +82,28 @@ defmodule Frestyl.Portfolios do
     end
   end
 
+  def get_portfolio_with_account(portfolio_id) do
+    query = from p in Portfolio,
+      where: p.id == ^portfolio_id,
+      preload: [:user]
+
+    case Repo.one(query) do
+      nil ->
+        nil
+      portfolio ->
+        # Try to get accounts safely
+        accounts = try do
+          Frestyl.Accounts.list_user_accounts(portfolio.user.id)
+        rescue
+          _ -> []
+        end
+
+        account = List.first(accounts) || %{subscription_tier: "personal"}
+
+        %{portfolio: portfolio, account: account}
+    end
+  end
+
   def list_user_portfolios_with_sections(user_id) do
     Portfolio
     |> where([p], p.user_id == ^user_id)

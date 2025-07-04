@@ -149,7 +149,7 @@ defmodule FrestylWeb.Router do
 
     live_session :require_auth, on_mount: [{FrestylWeb.UserAuth, :ensure_authenticated}] do
 
-
+    live "/", PortfolioHubLive, :index           # Main landing page
     live "/dashboard", DashboardLive, :index     # General dashboard
 
     # Onboarding routes
@@ -158,7 +158,7 @@ defmodule FrestylWeb.Router do
 
 
     # Main dashboard/hub routes - MUST come before generic routes
-    live "/", PortfolioHubLive, :index           # Main landing page
+
     live "/hub", PortfolioHubLive, :index        # Portfolio hub
     live "/hub/welcome", PortfolioHubLive, :welcome  # Welcome page
 
@@ -183,8 +183,13 @@ defmodule FrestylWeb.Router do
 
     live "/portfolios/:id/preview/:preview_token", PortfolioLive.LivePreview
 
-    # Portfolio CRUD operations
+    # Portfolio CRUD operations - SPECIFIC ROUTES FIRST
     live "/portfolios/new", PortfolioLive.New, :new
+    live "/portfolios/templates", PortfolioLive.Templates, :index  # ADD THIS
+    live "/portfolios/stories", PortfolioLive.Stories, :index     # ADD THIS
+    live "/portfolios/stories/new", PortfolioLive.New, :story     # ADD THIS
+
+    # Generic routes LAST
     live "/portfolios/:id", PortfolioLive.Show, :show
     live "/portfolios/:id/edit", PortfolioLive.PortfolioEditor, :edit
     live "/portfolios/:id/enhance/:type", PortfolioLive.PortfolioEditor, :enhance

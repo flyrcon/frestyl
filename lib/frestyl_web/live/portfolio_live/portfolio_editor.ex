@@ -961,29 +961,32 @@ end
   # ============================================================================
 
   defp load_portfolio_with_account_and_blocks(portfolio_id, user) do
-    case Portfolios.get_portfolio_with_account(portfolio_id) do
+    # Use the basic get_portfolio function that definitely exists
+    case Portfolios.get_portfolio(portfolio_id) do
       nil ->
         {:error, :not_found}
 
-      %{portfolio: portfolio, account: account} ->
-        if can_edit_portfolio?(portfolio, user) do
-          # Load content blocks
-          content_blocks = load_portfolio_content_blocks(portfolio.id)
-          {:ok, portfolio, account, content_blocks}
-        else
-          {:error, :unauthorized}
-        end
-
       portfolio ->
-        # Fallback if get_portfolio_with_account doesn't return the expected format
         if can_edit_portfolio?(portfolio, user) do
-          # Get account from user
-          account = case Accounts.list_user_accounts(user.id) do
+          # Load account information safely
+          accounts = try do
+            Frestyl.Accounts.list_user_accounts(user.id)
+          rescue
+            _ -> []
+          end
+
+          account = case accounts do
             [account | _] -> account
             [] -> %{subscription_tier: "personal"}
           end
 
-          content_blocks = load_portfolio_content_blocks(portfolio.id)
+          # Load content blocks safely
+          content_blocks = try do
+            load_portfolio_content_blocks(portfolio.id)
+          rescue
+            _ -> %{}
+          end
+
           {:ok, portfolio, account, content_blocks}
         else
           {:error, :unauthorized}
@@ -991,8 +994,12 @@ end
     end
   end
 
-  defp can_edit_portfolio?(portfolio, current_user) do
-    current_user && (portfolio.user_id == current_user.id || current_user.role == "admin")
+  defp can_edit_portfolio?(portfolio, user) do
+    cond do
+      user && portfolio.user_id == user.id -> true
+      user && user.role == "admin" -> true
+      true -> false
+    end
   end
 
   defp load_portfolio_content_blocks(portfolio_id) do
@@ -1473,7 +1480,7 @@ end
       <div>
         <h3 class="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
         <p class="text-sm text-gray-600 mb-6">
-          Set up the fundamental details of your portfolio including title, subtitle, and visibility settings.
+          Set up the fundamental details of your portfolio including title, description, and visibility settings.
         </p>
       </div>
 
@@ -1493,21 +1500,18 @@ end
                 placeholder="e.g., John Doe - Software Engineer"
               />
             </div>
-            <p class="mt-2 text-sm text-gray-500">
-              This will be the main heading of your portfolio
-            </p>
           </div>
 
           <div>
-            <label for="portfolio_subtitle" class="block text-sm font-medium text-gray-700">
-              Subtitle (Optional)
+            <label for="portfolio_description" class="block text-sm font-medium text-gray-700">
+              Description
             </label>
             <div class="mt-1">
               <input
                 type="text"
-                name="portfolio[subtitle]"
-                id="portfolio_subtitle"
-                value={@portfolio.subtitle}
+                name="portfolio[description]"
+                id="portfolio_description"
+                value={@portfolio.description}
                 class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
                 placeholder="e.g., Full-Stack Developer with 5+ Years Experience"
               />
