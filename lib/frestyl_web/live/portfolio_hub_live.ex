@@ -1480,14 +1480,27 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-  @impl true
-  def handle_event("show_create_modal", _params, socket) do
-    IO.puts("=== CREATE MODAL CLICKED ===")
-    {:noreply, assign(socket, :show_create_modal, true)}
+  defp can_create_portfolio?(user) do
+    limits = Portfolios.get_portfolio_limits(user)
+    current_count = Portfolios.count_user_portfolios(user.id)
+
+    limits.max_portfolios == -1 || current_count < limits.max_portfolios
   end
 
   @impl true
-  def handle_event("close_create_modal", _params, socket) do
+  def handle_event("show_create_modal", _params, socket) do
+    if can_create_portfolio?(socket.assigns.current_user) do
+      {:noreply, assign(socket, :show_create_modal, true)}
+    else
+      {:noreply,
+      socket
+      |> put_flash(:error, "You've reached your portfolio limit. Upgrade to create more.")
+      |> push_navigate(to: "/account/subscription")}
+    end
+  end
+
+  @impl true
+  def handle_info(:close_create_modal, socket) do
     {:noreply, assign(socket, :show_create_modal, false)}
   end
 
@@ -4254,6 +4267,26 @@ defmodule FrestylWeb.PortfolioHubLive do
     socket
     |> assign(:show_create_modal, false)
     |> put_flash(:info, "LinkedIn import coming soon! Use resume import for now.")}
+  end
+
+  @impl true
+  def handle_info({:portfolio_created, portfolio, message}, socket) do
+    socket =
+      socket
+      |> assign(:show_create_modal, false)
+      |> put_flash(:info, message)
+      |> push_navigate(to: "/portfolios/#{portfolio.id}/edit")
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:portfolio_creation_failed, error_message}, socket) do
+    socket =
+      socket
+      |> put_flash(:error, "Failed to create portfolio: #{error_message}")
+
+    {:noreply, socket}
   end
 
   # ============================================================================

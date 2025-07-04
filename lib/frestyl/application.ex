@@ -15,6 +15,9 @@ defmodule Frestyl.Application do
       # Start the Finch HTTP client for sending emails
       {Finch, name: Frestyl.Finch},
 
+      Frestyl.Storage.TempFileManager,
+      {Task.Supervisor, name: Frestyl.TaskSupervisor},
+
       # StudioSupervisor handles ALL studio registries and supervisors
       Frestyl.Studio.StudioSupervisor,
       Frestyl.Streaming.Registry,

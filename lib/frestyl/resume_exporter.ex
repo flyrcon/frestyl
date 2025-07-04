@@ -1,454 +1,980 @@
 # lib/frestyl/resume_exporter.ex
 defmodule Frestyl.ResumeExporter do
   @moduledoc """
-  Generates ATS-friendly PDF resumes from portfolio data
+  Export engine for generating portfolios in various formats using ChromicPDF.
+  Supports ATS-optimized PDFs, full portfolios, HTML archives, and DOCX files.
   """
 
-  def generate_pdf(portfolio, owner) do
-    try do
-      resume_data = transform_portfolio_to_resume(portfolio, owner)
-      html_content = render_ats_resume(resume_data)
+  require Logger
+  alias Frestyl.Portfolios
+  alias Frestyl.Storage.TempFileManager
 
-      case ChromicPDF.print_to_pdf({:html, html_content}, pdf_options()) do
-        {:ok, pdf_binary} -> {:ok, pdf_binary}
-        {:error, reason} -> {:error, "PDF generation failed: #{inspect(reason)}"}
+  # Export formats and their configurations
+  @export_formats %{
+    ats_resume: %{
+      template: "ats_resume.html.heex",
+      output_type: :pdf,
+      page_size: :letter,
+      margins: %{top: "0.5in", bottom: "0.5in", left: "0.5in", right: "0.5in"}
+    },
+    full_portfolio: %{
+      template: "full_portfolio.html.heex",
+      output_type: :pdf,
+      page_size: :letter,
+      margins: %{top: "0.75in", bottom: "0.75in", left: "0.75in", right: "0.75in"}
+    },
+    html_archive: %{
+      template: "html_archive.html.heex",
+      output_type: :html,
+      standalone: true
+    },
+    docx_resume: %{
+      template: "docx_template.html",
+      output_type: :docx,
+      convert_via: :pandoc
+    }
+  }
+
+  @doc """
+  Main export function. Generates portfolio in specified format.
+  """
+  def export_portfolio(portfolio, format, options \\ %{}) do
+    Logger.info("Starting export: portfolio_id=#{portfolio.id}, format=#{format}")
+
+    with {:ok, format_config} <- validate_export_format(format),
+         {:ok, export_data} <- prepare_export_data(portfolio, format, options),
+         {:ok, file_info} <- generate_export_file(export_data, format_config) do
+
+      Logger.info("Export completed successfully: #{file_info.filename}")
+      {:ok, file_info}
+    else
+      {:error, reason} ->
+        Logger.error("Export failed: #{reason}")
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Export specifically optimized for ATS (Applicant Tracking Systems)
+  """
+  def export_ats_resume(portfolio, options \\ %{}) do
+    ats_options =
+      Map.merge(%{
+        "font_family" => "Arial",
+        "font_size" => "11pt",
+        "include_photo" => false,
+        "sections" => ["contact", "summary", "experience", "education", "skills"],
+        "optimize_for_ats" => true
+      }, options)
+
+    export_portfolio(portfolio, :ats_resume, ats_options)
+  end
+
+  @doc """
+  Export complete portfolio with all sections and media
+  """
+  def export_full_portfolio(portfolio, options \\ %{}) do
+    full_options =
+      Map.merge(%{
+        "include_photo" => true,
+        "include_projects" => true,
+        "include_testimonials" => true,
+        "include_media" => true,
+        "page_orientation" => "portrait"
+      }, options)
+
+    export_portfolio(portfolio, :full_portfolio, full_options)
+  end
+
+  @doc """
+  Export self-contained HTML archive
+  """
+  def export_html_archive(portfolio, options \\ %{}) do
+    html_options =
+      Map.merge(%{
+        "responsive_design" => true,
+        "include_print_styles" => true,
+        "embed_assets" => true,
+        "include_navigation" => true
+      }, options)
+
+    export_portfolio(portfolio, :html_archive, html_options)
+  end
+
+  @doc """
+  Export DOCX resume (portfolio owner only)
+  """
+  def export_docx_resume(portfolio, current_user, options \\ %{}) do
+    if portfolio.user_id == current_user.id do
+      docx_options =
+        Map.merge(%{
+          "template_style" => "professional",
+          "include_photo" => false,
+          "editable_fields" => true
+        }, options)
+
+      export_portfolio(portfolio, :docx_resume, docx_options)
+    else
+      {:error, "Access denied: DOCX export is only available to portfolio owners"}
+    end
+  end
+
+  # Private Functions
+
+  defp validate_export_format(format) do
+    case Map.get(@export_formats, format) do
+      nil -> {:error, "Unsupported export format: #{format}"}
+      config -> {:ok, config}
+    end
+  end
+
+  defp prepare_export_data(portfolio, format, options) do
+    try do
+      export_data = %{
+        portfolio: portfolio,
+        format: format,
+        options: options,
+        timestamp: DateTime.utc_now(),
+        sections: extract_portfolio_sections(portfolio, options),
+        metadata: generate_export_metadata(portfolio, format, options)
+      }
+
+      {:ok, export_data}
+    rescue
+      e ->
+        {:error, "Failed to prepare export data: #{Exception.message(e)}"}
+    end
+  end
+
+  defp extract_portfolio_sections(portfolio, options) do
+    available_sections = %{
+      contact: extract_contact_section(portfolio),
+      summary: extract_summary_section(portfolio),
+      experience: extract_experience_section(portfolio),
+      education: extract_education_section(portfolio),
+      skills: extract_skills_section(portfolio),
+      projects: extract_projects_section(portfolio),
+      certifications: extract_certifications_section(portfolio),
+      testimonials: extract_testimonials_section(portfolio)
+    }
+
+    # Filter sections based on options
+    requested_sections = Map.get(options, "sections", Map.keys(available_sections))
+
+    available_sections
+    |> Enum.filter(fn {key, _} -> Atom.to_string(key) in requested_sections end)
+    |> Enum.into(%{})
+  end
+
+  defp generate_export_metadata(portfolio, format, options) do
+    %{
+      title: portfolio.title || "Portfolio Export",
+      author: get_portfolio_owner_name(portfolio),
+      subject: "Portfolio Export - #{format}",
+      creator: "Frestyl Portfolio System",
+      creation_date: DateTime.utc_now(),
+      format: format,
+      options: options
+    }
+  end
+
+  defp generate_export_file(export_data, format_config) do
+    case format_config.output_type do
+      :pdf -> generate_pdf_export(export_data, format_config)
+      :html -> generate_html_export(export_data, format_config)
+      :docx -> generate_docx_export(export_data, format_config)
+    end
+  end
+
+  # PDF Generation using ChromicPDF
+  defp generate_pdf_export(export_data, format_config) do
+    try do
+      # Render HTML template
+      html_content = render_export_template(export_data, format_config)
+
+      # Generate PDF using ChromicPDF
+      pdf_options = build_chromic_pdf_options(export_data, format_config)
+
+      case ChromicPDF.print_to_pdf({:html, html_content}, pdf_options) do
+        {:ok, pdf_binary} ->
+          save_export_file(pdf_binary, export_data, "pdf")
+
+        {:error, reason} ->
+          {:error, "PDF generation failed: #{reason}"}
       end
     rescue
-      e -> {:error, "Export error: #{Exception.message(e)}"}
+      e ->
+        {:error, "PDF export error: #{Exception.message(e)}"}
     end
   end
 
-  defp pdf_options do
-    %{
-      size: :a4,
-      margin: %{top: 0.75, bottom: 0.75, left: 0.75, right: 0.75},
-      print_background: false,
-      scale: 1.0,
-      prefer_css_page_size: false
-    }
-  end
+  # HTML Generation
+  defp generate_html_export(export_data, format_config) do
+    try do
+      html_content = render_export_template(export_data, format_config)
 
-  defp transform_portfolio_to_resume(portfolio, owner) do
-    %{
-      personal_info: extract_personal_info(owner, portfolio),
-      summary: extract_summary(portfolio),
-      experience: extract_experience(portfolio),
-      projects: extract_projects(portfolio),
-      skills: extract_skills(portfolio),
-      education: extract_education(portfolio)
-    }
-  end
-
-  defp extract_personal_info(owner, portfolio) do
-    config = Map.get(portfolio, :resume_config, %{})
-
-    %{
-      name: Map.get(config, "name") || Map.get(owner, :full_name) || Map.get(owner, :name, ""),
-      email: Map.get(config, "email") || Map.get(owner, :email, ""),
-      phone: Map.get(config, "phone") || get_contact_info(portfolio, "phone"),
-      location: Map.get(config, "location") || get_contact_info(portfolio, "location"),
-      linkedin: Map.get(config, "linkedin") || get_contact_info(portfolio, "linkedin"),
-      website: Map.get(config, "website") || get_contact_info(portfolio, "website") ||
-               "#{System.get_env("APP_URL", "https://frestyl.com")}/p/#{Map.get(portfolio, :slug, "")}"
-    }
-  end
-
-  defp get_contact_info(portfolio, field_name) do
-    # Look for contact info in portfolio sections or content
-    portfolio.sections
-    |> Enum.find_value(fn section ->
-      case Map.get(section, :section_type) do
-        :contact -> Map.get(section.content || %{}, field_name)
-        _ -> nil
+      # For HTML archives, embed all assets inline
+      if export_data.options["embed_assets"] do
+        html_content = embed_html_assets(html_content)
       end
-    end)
-  end
 
-  defp extract_summary(portfolio) do
-    # Look for summary in portfolio description or dedicated summary section
-    case Map.get(portfolio, :description) do
-      desc when is_binary(desc) and byte_size(desc) > 0 -> desc
-      _ ->
-        portfolio.sections
-        |> Enum.find_value(fn section ->
-          case Map.get(section, :section_type) do
-            :summary -> Map.get(section.content || %{}, "summary")
-            _ -> nil
-          end
-        end)
+      save_export_file(html_content, export_data, "html")
+    rescue
+      e ->
+        {:error, "HTML export error: #{Exception.message(e)}"}
     end
   end
 
-  defp extract_experience(portfolio) do
-    portfolio.sections
-    |> Enum.filter(&(Map.get(&1, :section_type) == :experience))
-    |> Enum.flat_map(fn section ->
-      case Map.get(section.content || %{}, "jobs") do
-        jobs when is_list(jobs) ->
-          transform_jobs(jobs)
-        _ -> []
+  # DOCX Generation using Pandoc
+  defp generate_docx_export(export_data, format_config) do
+    try do
+      # First generate HTML
+      html_content = render_export_template(export_data, format_config)
+
+      # Create temporary HTML file for pandoc
+      temp_html_path = Path.join(System.tmp_dir!(), "portfolio_#{:rand.uniform(10000)}.html")
+      File.write!(temp_html_path, html_content)
+
+      # Convert to DOCX using pandoc
+      temp_docx_path = Path.join(System.tmp_dir!(), "portfolio_#{:rand.uniform(10000)}.docx")
+
+      case System.cmd("pandoc", [
+        temp_html_path,
+        "-o", temp_docx_path,
+        "--reference-doc", get_docx_template_path(export_data.options["template_style"])
+      ]) do
+        {_, 0} ->
+          docx_binary = File.read!(temp_docx_path)
+
+          # Cleanup temp files
+          File.rm(temp_html_path)
+          File.rm(temp_docx_path)
+
+          save_export_file(docx_binary, export_data, "docx")
+
+        {error, _} ->
+          # Cleanup on error
+          File.rm(temp_html_path)
+          if File.exists?(temp_docx_path), do: File.rm(temp_docx_path)
+
+          {:error, "DOCX conversion failed: #{error}"}
       end
-    end)
-    |> Enum.sort_by(&parse_date(Map.get(&1, :start_date, "")), {:desc, Date})
+    rescue
+      e ->
+        {:error, "DOCX export error: #{Exception.message(e)}"}
+    end
   end
 
-  defp transform_jobs(jobs) do
-    Enum.map(jobs, fn job ->
-      %{
-        title: Map.get(job, "title", ""),
-        company: Map.get(job, "company", ""),
-        start_date: Map.get(job, "start_date", ""),
-        end_date: if(Map.get(job, "current"), do: "Present", else: Map.get(job, "end_date", "")),
-        description: Map.get(job, "description", ""),
-        current: Map.get(job, "current", false)
+  defp build_chromic_pdf_options(export_data, format_config) do
+    base_options = [
+      size: format_config.page_size,
+      margin_top: format_config.margins.top,
+      margin_bottom: format_config.margins.bottom,
+      margin_left: format_config.margins.left,
+      margin_right: format_config.margins.right,
+      print_background: true,
+      prefer_css_page_size: true
+    ]
+
+    # Add metadata
+    metadata_options = [
+      info: %{
+        title: export_data.metadata.title,
+        author: export_data.metadata.author,
+        subject: export_data.metadata.subject,
+        creator: export_data.metadata.creator
       }
-    end)
-  end
+    ]
 
-  defp extract_projects(portfolio) do
-    portfolio.sections
-    |> Enum.filter(&(Map.get(&1, :section_type) in [:featured_project, :project, :case_study]))
-    |> Enum.map(&transform_project/1)
-    |> Enum.take(3)  # Limit to top 3 projects for ATS
-  end
+    # Add format-specific options
+    format_specific_options =
+      case export_data.format do
+        :ats_resume ->
+          [
+            # ATS-optimized settings
+            disable_scripts: true,
+            disable_plugins: true
+          ]
 
-  defp transform_project(section) do
-    content = Map.get(section, :content, %{})
+        :full_portfolio ->
+          [
+            # Full portfolio may include more complex layouts
+            wait_for: "networkidle",
+            timeout: 30_000
+          ]
 
-    %{
-      title: Map.get(content, "title") || Map.get(section, :title, ""),
-      description: Map.get(content, "description") || Map.get(content, "summary", ""),
-      technologies: Map.get(content, "technologies", []),
-      demo_url: Map.get(content, "demo_url"),
-      github_url: Map.get(content, "github_url"),
-      timeline: Map.get(content, "timeline")
-    }
-  end
-
-  defp extract_skills(portfolio) do
-    portfolio.sections
-    |> Enum.filter(&(Map.get(&1, :section_type) == :skills))
-    |> Enum.flat_map(fn section ->
-      Map.get(section.content || %{}, "skills", [])
-    end)
-    |> Enum.uniq()
-    |> Enum.take(20)  # Limit for ATS readability
-  end
-
-  defp extract_education(portfolio) do
-    portfolio.sections
-    |> Enum.filter(&(Map.get(&1, :section_type) == :education))
-    |> Enum.flat_map(fn section ->
-      case Map.get(section.content || %{}, "education") do
-        education when is_list(education) -> education
-        _ -> []
+        _ ->
+          []
       end
-    end)
+
+    base_options ++ metadata_options ++ format_specific_options
   end
 
-  defp parse_date(date_string) when is_binary(date_string) do
-    case Date.from_iso8601(date_string) do
-      {:ok, date} -> date
+  defp render_export_template(export_data, format_config) do
+    template_path = Path.join([
+      :code.priv_dir(:frestyl),
+      "templates",
+      "exports",
+      format_config.template
+    ])
+
+    case format_config.template do
+      "ats_resume.html.heex" ->
+        render_ats_template(export_data)
+
+      "full_portfolio.html.heex" ->
+        render_full_portfolio_template(export_data)
+
+      "html_archive.html.heex" ->
+        render_html_archive_template(export_data)
+
+      "docx_template.html" ->
+        render_docx_template(export_data)
+
       _ ->
-        # Try parsing MM/YYYY format
-        case Regex.run(~r/(\d{1,2})\/(\d{4})/, date_string) do
-          [_, month, year] ->
-            Date.new!(String.to_integer(year), String.to_integer(month), 1)
-          _ -> Date.utc_today()
-        end
+        raise "Unknown template: #{format_config.template}"
     end
   end
-  defp parse_date(_), do: Date.utc_today()
 
-  # ATS-Friendly HTML Template
-  defp render_ats_resume(data) do
+  defp render_ats_template(export_data) do
     """
     <!DOCTYPE html>
     <html lang="en">
     <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>#{data.personal_info.name} - Resume</title>
-      <style>#{ats_css()}</style>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>#{export_data.metadata.title}</title>
+        <style>
+            #{generate_ats_css(export_data.options)}
+        </style>
     </head>
     <body>
-      #{render_header(data.personal_info)}
-      #{if data.summary, do: render_summary(data.summary), else: ""}
-      #{if length(data.experience) > 0, do: render_experience(data.experience), else: ""}
-      #{if length(data.projects) > 0, do: render_projects(data.projects), else: ""}
-      #{if length(data.skills) > 0, do: render_skills(data.skills), else: ""}
-      #{if length(data.education) > 0, do: render_education(data.education), else: ""}
+        <div class="resume-container">
+            #{render_ats_header(export_data.sections.contact)}
+            #{render_ats_summary(export_data.sections.summary)}
+            #{render_ats_experience(export_data.sections.experience)}
+            #{render_ats_education(export_data.sections.education)}
+            #{render_ats_skills(export_data.sections.skills)}
+        </div>
     </body>
     </html>
     """
   end
 
-  defp ats_css do
+  defp render_full_portfolio_template(export_data) do
+    """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>#{export_data.metadata.title}</title>
+        <style>
+            #{generate_portfolio_css(export_data.options)}
+        </style>
+    </head>
+    <body>
+        <div class="portfolio-container">
+            #{render_portfolio_header(export_data)}
+            #{render_portfolio_sections(export_data.sections)}
+        </div>
+    </body>
+    </html>
+    """
+  end
+
+  defp render_html_archive_template(export_data) do
+    """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>#{export_data.metadata.title}</title>
+        <style>
+            #{generate_responsive_css(export_data.options)}
+            #{if export_data.options["include_print_styles"], do: generate_print_css(), else: ""}
+        </style>
+    </head>
+    <body>
+        <div class="archive-container">
+            #{if export_data.options["include_navigation"], do: render_navigation(export_data.sections), else: ""}
+            #{render_archive_content(export_data)}
+        </div>
+    </body>
+    </html>
+    """
+  end
+
+  defp render_docx_template(export_data) do
+    """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            #{generate_docx_css(export_data.options)}
+        </style>
+    </head>
+    <body>
+        <div class="docx-container">
+            #{render_docx_content(export_data)}
+        </div>
+    </body>
+    </html>
+    """
+  end
+
+  # CSS Generation Functions
+  defp generate_ats_css(options) do
+    font_family = Map.get(options, "font_family", "Arial")
+    font_size = Map.get(options, "font_size", "11pt")
+
     """
     * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
     }
 
     body {
-      font-family: Arial, sans-serif;
-      font-size: 11pt;
-      line-height: 1.4;
-      color: #000000;
-      max-width: 8.5in;
-      margin: 0 auto;
-      padding: 0.5in;
-      background: white;
+        font-family: '#{font_family}', sans-serif;
+        font-size: #{font_size};
+        line-height: 1.4;
+        color: #000;
+        background: white;
     }
 
-    /* ATS-friendly headers */
-    h1 {
-      font-size: 18pt;
-      font-weight: bold;
-      margin-bottom: 0.2in;
-      text-align: center;
-      color: #000000;
+    .resume-container {
+        max-width: 8.5in;
+        margin: 0 auto;
+        padding: 0.5in;
     }
 
-    h2 {
-      font-size: 12pt;
-      font-weight: bold;
-      margin: 0.25in 0 0.1in 0;
-      text-transform: uppercase;
-      color: #000000;
-      border-bottom: 1px solid #000000;
-      padding-bottom: 2pt;
+    .header {
+        text-align: center;
+        margin-bottom: 0.25in;
+        border-bottom: 1px solid #000;
+        padding-bottom: 0.15in;
     }
 
-    h3 {
-      font-size: 11pt;
-      font-weight: bold;
-      margin: 0.15in 0 0.05in 0;
-      color: #000000;
+    .name {
+        font-size: 18pt;
+        font-weight: bold;
+        margin-bottom: 5pt;
     }
 
-    /* Contact info */
     .contact-info {
-      text-align: center;
-      margin-bottom: 0.25in;
-      font-size: 10pt;
+        font-size: 10pt;
+        line-height: 1.2;
     }
 
-    .contact-info div {
-      margin: 2pt 0;
+    .section {
+        margin-bottom: 0.2in;
     }
 
-    /* Job entries */
+    .section-title {
+        font-size: 12pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        border-bottom: 1px solid #000;
+        margin-bottom: 8pt;
+        padding-bottom: 2pt;
+    }
+
     .job-entry {
-      margin-bottom: 0.2in;
-      page-break-inside: avoid;
-    }
-
-    .job-header {
-      margin-bottom: 0.05in;
+        margin-bottom: 12pt;
     }
 
     .job-title {
-      font-weight: bold;
-      display: inline;
+        font-weight: bold;
+        font-size: 11pt;
     }
 
     .company {
-      display: inline;
-      margin-left: 0.2in;
+        font-weight: bold;
+        margin-bottom: 2pt;
     }
 
-    .date-range {
-      float: right;
-      font-size: 10pt;
+    .dates {
+        font-style: italic;
+        font-size: 10pt;
+        margin-bottom: 4pt;
     }
 
-    .job-description {
-      margin-top: 0.05in;
-      text-align: justify;
-      clear: both;
+    .description {
+        margin-left: 0.15in;
     }
 
-    /* Projects */
-    .project-entry {
-      margin-bottom: 0.15in;
-      page-break-inside: avoid;
+    .skills-list {
+        line-height: 1.3;
+    }
+
+    @media print {
+        body {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .resume-container {
+            margin: 0;
+            padding: 0.5in;
+        }
+    }
+    """
+  end
+
+  defp generate_portfolio_css(options) do
+    """
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        font-family: 'Helvetica', 'Arial', sans-serif;
+        font-size: 12pt;
+        line-height: 1.5;
+        color: #333;
+        background: white;
+    }
+
+    .portfolio-container {
+        max-width: 8.5in;
+        margin: 0 auto;
+        padding: 0.75in;
+    }
+
+    .portfolio-header {
+        text-align: center;
+        margin-bottom: 0.5in;
+        border-bottom: 2px solid #0066cc;
+        padding-bottom: 0.25in;
+    }
+
+    .portfolio-title {
+        font-size: 24pt;
+        font-weight: bold;
+        color: #0066cc;
+        margin-bottom: 10pt;
+    }
+
+    .section {
+        margin-bottom: 0.35in;
+        page-break-inside: avoid;
+    }
+
+    .section-title {
+        font-size: 16pt;
+        font-weight: bold;
+        color: #0066cc;
+        border-bottom: 1px solid #0066cc;
+        margin-bottom: 15pt;
+        padding-bottom: 5pt;
+    }
+
+    .project-card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15pt;
+        margin-bottom: 15pt;
+        background: #f9f9f9;
     }
 
     .project-title {
-      font-weight: bold;
+        font-size: 14pt;
+        font-weight: bold;
+        margin-bottom: 8pt;
     }
 
-    .project-links {
-      font-size: 10pt;
-      margin-top: 0.05in;
-    }
+    @media print {
+        .portfolio-container {
+            margin: 0;
+            padding: 0.75in;
+        }
 
-    /* Skills */
-    .skills-list {
-      text-align: justify;
-      line-height: 1.6;
-    }
-
-    /* Education */
-    .education-entry {
-      margin-bottom: 0.15in;
-      page-break-inside: avoid;
-    }
-
-    /* Lists */
-    ul {
-      margin-left: 0.25in;
-      margin-bottom: 0.1in;
-    }
-
-    li {
-      margin-bottom: 0.05in;
-    }
-
-    /* Ensure no page breaks in critical sections */
-    .no-break {
-      page-break-inside: avoid;
-    }
-
-    /* Remove any decorative elements that ATS might not parse */
-    .hide-from-ats {
-      display: none;
+        .page-break {
+            page-break-before: always;
+        }
     }
     """
   end
 
-  defp render_header(personal_info) do
+  defp generate_responsive_css(options) do
     """
-    <div class="header no-break">
-      <h1>#{personal_info.name}</h1>
-      <div class="contact-info">
-        #{if personal_info.email && personal_info.email != "", do: "<div>#{personal_info.email}</div>", else: ""}
-        #{if personal_info.phone && personal_info.phone != "", do: "<div>#{personal_info.phone}</div>", else: ""}
-        #{if personal_info.location && personal_info.location != "", do: "<div>#{personal_info.location}</div>", else: ""}
-        #{if personal_info.linkedin && personal_info.linkedin != "", do: "<div>#{personal_info.linkedin}</div>", else: ""}
-        #{if personal_info.website && personal_info.website != "", do: "<div>#{personal_info.website}</div>", else: ""}
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        font-family: system-ui, -apple-system, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        background: #f5f5f5;
+    }
+
+    .archive-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        min-height: 100vh;
+    }
+
+    .navigation {
+        background: #0066cc;
+        color: white;
+        padding: 1rem;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
+
+    .nav-links {
+        display: flex;
+        gap: 2rem;
+        list-style: none;
+    }
+
+    .nav-link {
+        color: white;
+        text-decoration: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        transition: background 0.2s;
+    }
+
+    .nav-link:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .content {
+        padding: 2rem;
+    }
+
+    .section {
+        margin-bottom: 3rem;
+        scroll-margin-top: 5rem;
+    }
+
+    .section-title {
+        font-size: 2rem;
+        margin-bottom: 1.5rem;
+        color: #0066cc;
+        border-bottom: 2px solid #0066cc;
+        padding-bottom: 0.5rem;
+    }
+
+    @media (max-width: 768px) {
+        .archive-container {
+            margin: 0;
+        }
+
+        .content {
+            padding: 1rem;
+        }
+
+        .nav-links {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+    }
+    """
+  end
+
+  defp generate_print_css do
+    """
+    @media print {
+        .navigation {
+            display: none;
+        }
+
+        .archive-container {
+            background: white;
+            box-shadow: none;
+        }
+
+        .content {
+            padding: 0;
+        }
+
+        .section {
+            page-break-inside: avoid;
+        }
+
+        .section-title {
+            page-break-after: avoid;
+        }
+    }
+    """
+  end
+
+  defp generate_docx_css(options) do
+    template_style = Map.get(options, "template_style", "professional")
+
+    """
+    body {
+        font-family: 'Calibri', sans-serif;
+        font-size: 11pt;
+        line-height: 1.4;
+        margin: 1in;
+    }
+
+    h1 {
+        font-size: 18pt;
+        font-weight: bold;
+        margin-bottom: 12pt;
+    }
+
+    h2 {
+        font-size: 14pt;
+        font-weight: bold;
+        margin-top: 18pt;
+        margin-bottom: 6pt;
+        border-bottom: 1px solid #000;
+    }
+
+    p {
+        margin-bottom: 6pt;
+    }
+
+    .contact-info {
+        text-align: center;
+        margin-bottom: 18pt;
+    }
+    """
+  end
+
+  # Content Rendering Functions
+  defp render_ats_header(contact) do
+    if contact do
+      """
+      <div class="header">
+          <div class="name">#{contact.name || "Name"}</div>
+          <div class="contact-info">
+              #{contact.email || ""} • #{contact.phone || ""}<br>
+              #{if contact.linkedin, do: contact.linkedin, else: ""}
+          </div>
       </div>
-    </div>
-    """
-  end
-
-  defp render_summary(summary) do
-    """
-    <div class="section no-break">
-      <h2>Professional Summary</h2>
-      <p>#{summary}</p>
-    </div>
-    """
-  end
-
-  defp render_experience(experiences) do
-    experience_html = Enum.map(experiences, &render_job/1) |> Enum.join("\n")
-
-    """
-    <div class="section">
-      <h2>Professional Experience</h2>
-      #{experience_html}
-    </div>
-    """
-  end
-
-  defp render_job(job) do
-    """
-    <div class="job-entry">
-      <div class="job-header">
-        <span class="job-title">#{Map.get(job, :title, "")}</span>
-        <span class="company">#{Map.get(job, :company, "")}</span>
-        <span class="date-range">#{format_date_range(job)}</span>
-      </div>
-      #{if Map.get(job, :description) && String.length(Map.get(job, :description, "")) > 0, do: "<div class=\"job-description\">#{Map.get(job, :description)}</div>", else: ""}
-    </div>
-    """
-  end
-
-  defp format_date_range(job) do
-    start_date = Map.get(job, :start_date, "")
-    end_date = Map.get(job, :end_date, "")
-
-    case {start_date, end_date} do
-      {"", ""} -> ""
-      {start, ""} -> start
-      {"", end_d} -> end_d
-      {start, end_d} -> "#{start} - #{end_d}"
-    end
-  end
-
-  defp render_projects(projects) do
-    projects_html = Enum.map(projects, &render_project/1) |> Enum.join("\n")
-
-    """
-    <div class="section">
-      <h2>Featured Projects</h2>
-      #{projects_html}
-    </div>
-    """
-  end
-
-  defp render_project(project) do
-    """
-    <div class="project-entry">
-      <div class="project-title">#{Map.get(project, :title, "")}</div>
-      #{if Map.get(project, :description) && String.length(Map.get(project, :description, "")) > 0, do: "<div>#{Map.get(project, :description)}</div>", else: ""}
-      #{if length(Map.get(project, :technologies, [])) > 0, do: "<div><strong>Technologies:</strong> #{Enum.join(Map.get(project, :technologies), ", ")}</div>", else: ""}
-      <div class="project-links">
-        #{render_project_links(project)}
-      </div>
-    </div>
-    """
-  end
-
-  defp render_project_links(project) do
-    links = []
-
-    links = if Map.get(project, :demo_url) && Map.get(project, :demo_url) != "" do
-      ["Demo: #{Map.get(project, :demo_url)}" | links]
+      """
     else
-      links
+      ""
     end
+  end
 
-    links = if Map.get(project, :github_url) && Map.get(project, :github_url) != "" do
-      ["Code: #{Map.get(project, :github_url)}" | links]
+  defp render_ats_summary(summary) do
+    if summary && String.length(summary) > 0 do
+      """
+      <div class="section">
+          <div class="section-title">Professional Summary</div>
+          <p>#{summary}</p>
+      </div>
+      """
     else
-      links
+      ""
     end
-
-    Enum.join(Enum.reverse(links), " | ")
   end
 
-  defp render_skills(skills) do
-    skills_text = Enum.join(skills, " • ")
+  defp render_ats_experience(experience) do
+    if experience && length(experience) > 0 do
+      experience_html =
+        experience
+        |> Enum.map(fn exp ->
+          """
+          <div class="job-entry">
+              <div class="job-title">#{exp.title}</div>
+              <div class="company">#{exp.company}</div>
+              <div class="dates">#{exp.dates}</div>
+              <div class="description">#{exp.description}</div>
+          </div>
+          """
+        end)
+        |> Enum.join("")
 
-    """
-    <div class="section">
-      <h2>Technical Skills</h2>
-      <div class="skills-list">#{skills_text}</div>
-    </div>
-    """
+      """
+      <div class="section">
+          <div class="section-title">Professional Experience</div>
+          #{experience_html}
+      </div>
+      """
+    else
+      ""
+    end
   end
 
-  defp render_education(education) do
-    education_html = Enum.map(education, &render_education_item/1) |> Enum.join("\n")
+  defp render_ats_education(education) do
+    if education && length(education) > 0 do
+      education_html =
+        education
+        |> Enum.map(fn edu ->
+          """
+          <div class="education-entry">
+              <strong>#{edu.degree}</strong><br>
+              #{edu.institution} • #{edu.year}
+          </div>
+          """
+        end)
+        |> Enum.join("")
 
-    """
-    <div class="section">
-      <h2>Education</h2>
-      #{education_html}
-    </div>
-    """
+      """
+      <div class="section">
+          <div class="section-title">Education</div>
+          #{education_html}
+      </div>
+      """
+    else
+      ""
+    end
   end
 
-  defp render_education_item(item) do
-    """
-    <div class="education-entry">
-      <strong>#{Map.get(item, "degree", "")} #{Map.get(item, "field", "")}</strong><br>
-      #{Map.get(item, "institution", "")} | #{Map.get(item, "year", "")}
-    </div>
-    """
+  defp render_ats_skills(skills) do
+    if skills && length(skills) > 0 do
+      skills_text = Enum.join(skills, ", ")
+
+      """
+      <div class="section">
+          <div class="section-title">Skills</div>
+          <div class="skills-list">#{skills_text}</div>
+      </div>
+      """
+    else
+      ""
+    end
+  end
+
+  # Additional rendering functions for other templates would go here...
+  defp render_portfolio_header(export_data), do: "<div class='portfolio-header'>#{export_data.metadata.title}</div>"
+  defp render_portfolio_sections(sections), do: "<div class='sections'>Portfolio sections...</div>"
+  defp render_navigation(sections), do: "<nav class='navigation'>Navigation...</nav>"
+  defp render_archive_content(export_data), do: "<div class='archive-content'>Archive content...</div>"
+  defp render_docx_content(export_data), do: "<div class='docx-content'>DOCX content...</div>"
+
+  # Utility Functions
+  defp save_export_file(content, export_data, extension) do
+    filename = generate_filename(export_data, extension)
+    file_path = Path.join([get_export_directory(), filename])
+
+    case File.write(file_path, content) do
+      :ok ->
+        file_info = %{
+          filename: filename,
+          file_path: file_path,
+          download_url: generate_download_url(filename),
+          file_size: byte_size(content),
+          content_type: get_content_type(extension),
+          created_at: DateTime.utc_now()
+        }
+
+        # Store in temporary file manager for cleanup
+        TempFileManager.register_temp_file(filename, file_path, DateTime.add(DateTime.utc_now(), 48, :hour))
+
+        {:ok, file_info}
+
+      {:error, reason} ->
+        {:error, "Failed to save export file: #{reason}"}
+    end
+  end
+
+  defp generate_filename(export_data, extension) do
+    portfolio_title =
+      export_data.portfolio.title
+      |> String.replace(~r/[^\w\s-]/, "")
+      |> String.replace(~r/\s+/, "_")
+      |> String.slice(0, 50)
+
+    timestamp = DateTime.utc_now() |> DateTime.to_unix()
+    "#{portfolio_title}_#{export_data.format}_#{timestamp}.#{extension}"
+  end
+
+  defp generate_download_url(filename) do
+    "/api/exports/download/#{filename}"
+  end
+
+  defp get_content_type("pdf"), do: "application/pdf"
+  defp get_content_type("html"), do: "text/html"
+  defp get_content_type("docx"), do: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  defp get_content_type(_), do: "application/octet-stream"
+
+  defp get_export_directory do
+    export_dir = Path.join([Application.get_env(:frestyl, :uploads_directory, "priv/static"), "exports"])
+    File.mkdir_p!(export_dir)
+    export_dir
+  end
+
+  defp get_docx_template_path(template_style) do
+    Path.join([
+      :code.priv_dir(:frestyl),
+      "templates",
+      "docx",
+      "#{template_style}_template.docx"
+    ])
+  end
+
+  defp embed_html_assets(html_content) do
+    # This would embed CSS, images, and other assets inline
+    # For now, return as-is - implement asset embedding as needed
+    html_content
+  end
+
+  defp get_portfolio_owner_name(portfolio) do
+    case Portfolios.get_portfolio_owner(portfolio) do
+      %{name: name} when is_binary(name) -> name
+      %{first_name: first, last_name: last} -> "#{first} #{last}"
+      _ -> "Portfolio Owner"
+    end
+  end
+
+  # Section extraction functions - these would interface with your portfolio schema
+  defp extract_contact_section(portfolio) do
+    # Extract contact information from portfolio
+    # This is a placeholder - implement based on your portfolio schema
+    %{
+      name: portfolio.user.name || "#{portfolio.user.first_name} #{portfolio.user.last_name}",
+      email: portfolio.user.email,
+      phone: portfolio.contact_phone,
+      linkedin: portfolio.linkedin_url,
+      github: portfolio.github_url
+    }
+  end
+
+  defp extract_summary_section(portfolio) do
+    portfolio.summary || portfolio.bio || ""
+  end
+
+  defp extract_experience_section(portfolio) do
+    # Extract work experience from portfolio
+    # This is a placeholder - implement based on your portfolio schema
+    portfolio.work_experiences || []
+  end
+
+  defp extract_education_section(portfolio) do
+    # Extract education from portfolio
+    # This is a placeholder - implement based on your portfolio schema
+    portfolio.education || []
+  end
+
+  defp extract_skills_section(portfolio) do
+    # Extract skills from portfolio
+    # This is a placeholder - implement based on your portfolio schema
+    portfolio.skills || []
+  end
+
+  defp extract_projects_section(portfolio) do
+    # Extract projects from portfolio
+    # This is a placeholder - implement based on your portfolio schema
+    portfolio.projects || []
+  end
+
+  defp extract_certifications_section(portfolio) do
+    # Extract certifications from portfolio
+    # This is a placeholder - implement based on your portfolio schema
+    portfolio.certifications || []
+  end
+
+  defp extract_testimonials_section(portfolio) do
+    # Extract testimonials from portfolio
+    # This is a placeholder - implement based on your portfolio schema
+    portfolio.testimonials || []
   end
 end

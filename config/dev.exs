@@ -90,6 +90,9 @@ config :swoosh, :api_client, false
 config :frestyl, :storage_type, :local
 config :frestyl, :local_storage_path, "priv/static/uploads"
 
+config :chromic_pdf,
+  chrome_executable: "chromium-browser"
+
 # Maximum file size limits (in bytes)
 config :frestyl, :max_file_sizes, %{
   "document" => 20_971_520,  # 20MB

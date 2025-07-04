@@ -852,6 +852,21 @@ defmodule FrestylWeb.PortfolioLive.Index do
     {:noreply, assign(socket, :show_create_account_modal, true)}
   end
 
+  @impl true
+  def handle_info({:close_video_intro_modal}, socket) do
+    {:noreply, assign(socket, :show_video_intro_modal, false)}
+  end
+
+  @impl true
+  def handle_info({:video_intro_complete, video_section}, socket) do
+    socket =
+      socket
+      |> assign(:show_video_intro_modal, false)
+      |> put_flash(:info, "Video introduction created successfully!")
+
+    {:noreply, socket}
+  end
+
   # ADD THESE MISSING HANDLERS
   @impl true
   def handle_event("hide_video_intro", _params, socket) do

@@ -20,6 +20,12 @@ config :frestyl,
 config :frestyl,
   pdf_generator: :chromic_pdf
 
+# Export configuration
+config :frestyl,
+  uploads_directory: "priv/static/uploads",
+  exports_directory: "priv/static/exports",
+  temp_file_retention_hours: 48
+
 config :frestyl,
   upload_dir: Path.join(["priv", "static", "uploads"]),
   base_url: "http://localhost:4000"  # Change in production
@@ -150,15 +156,21 @@ config :esbuild,
   ]
 
 config :chromic_pdf,
+  chrome_executable: System.get_env("CHROME_EXECUTABLE") || "chromium-browser",
+  chrome_args: ~w[
+    --no-sandbox
+    --disable-dev-shm-usage
+    --disable-gpu
+    --remote-debugging-port=0
+    --disable-features=TranslateUI
+    --disable-ipc-flooding-protection
+  ],
+  session_pool: [
+    size: 3,
+    init_timeout: :timer.seconds(10)
+  ],
   # Increase timeout for large documents
   timeout: 30_000,  # 30 seconds instead of default 5 seconds
-
-  # Optional: Configure session pool for better performance
-  session_pool: [
-    size: 2,
-    timeout: 30_000,
-    init_timeout: 10_000
-  ],
 
   # Optional: Disable sandbox mode if you're having issues
   sandbox: false

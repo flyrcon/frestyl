@@ -41,6 +41,17 @@ config :frestyl, :allowed_extensions, %{
   "image" => [".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp"]
 }
 
+config :chromic_pdf,
+  chrome_executable: "/usr/bin/chromium-browser",
+  chrome_args: ~w[
+    --no-sandbox
+    --disable-dev-shm-usage
+    --disable-gpu
+    --disable-web-security
+    --remote-debugging-port=0
+    --headless
+  ]
+
 config :frestyl,
   storage_type: "s3",
   aws_bucket: System.get_env("AWS_BUCKET"),

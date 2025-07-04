@@ -23,6 +23,10 @@ config :frestyl, FrestylWeb.Endpoint,
   secret_key_base: "lwLrDUHJlAHGJA0qzFT1e3fWa+yla5/NsX/5RiIEiwsNwajqL0s2FU3gs7Tjb/jM",
   server: false
 
+config :chromic_pdf,
+  chrome_executable: "chromium-browser",
+  session_pool: [size: 1]
+
 # In test we don't send emails
 config :frestyl, Frestyl.Mailer, adapter: Swoosh.Adapters.Test
 

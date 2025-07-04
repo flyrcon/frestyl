@@ -253,6 +253,32 @@ defmodule Frestyl.Portfolios do
     end
   end
 
+  def create_or_update_video_intro_section(attrs) do
+    portfolio_id = attrs.portfolio_id
+
+    case get_video_intro_section(portfolio_id) do
+      nil ->
+        # Create new video intro section
+        %PortfolioSection{}
+        |> PortfolioSection.changeset(attrs)
+        |> Repo.insert()
+
+      existing_section ->
+        # Update existing section
+        existing_section
+        |> PortfolioSection.changeset(attrs)
+        |> Repo.update()
+    end
+  end
+
+  def get_video_intro_section(portfolio_id) do
+    from(s in PortfolioSection,
+      where: s.portfolio_id == ^portfolio_id and s.section_type == :video_intro,
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
   defp format_post_for_display(post) do
     %{
       id: post.id,

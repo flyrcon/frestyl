@@ -7,6 +7,7 @@ import topbar from "../vendor/topbar"
 
 // Import Video Capture Hook
 import VideoCapture from "./hooks/video_capture"
+import FileUpload from "./hooks/file_upload"
 
 // Import template hooks
 import TemplateHooks from "./hooks/template_hooks"
@@ -315,6 +316,7 @@ let Hooks = {
   // Video Recording
   VideoCapture,
   ...PortfolioEditorHooks,
+  FileUpload,
 
   // Drag & Drop Hooks - FIXED: No duplicates
   SortableSections: SortableHooks.SectionSortable,

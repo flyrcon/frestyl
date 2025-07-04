@@ -12,6 +12,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   alias Frestyl.Stories.MediaBinding
   alias Frestyl.Accounts.{User, Account}
   alias FrestylWeb.PortfolioLive.PortfolioPerformance
+  alias FrestylWeb.PortfolioLive.Edit.ResumeImportModal
 
   alias FrestylWeb.PortfolioLive.Components.{ContentRenderer, SectionEditor, MediaLibrary, VideoRecorder}
 
@@ -53,6 +54,13 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         # end
 
         socket = socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:current_user, user)
+        |> assign(:can_edit, can_edit_portfolio?(portfolio, user))
+        |> assign(:show_resume_import, false)  # ADD THIS LINE
+        |> assign(:active_section, "basic_info")
+        |> assign(:unsaved_changes, false)
+        |> assign(:page_title, "Edit #{portfolio.title || 'Portfolio'}")
         |> assign_core_data(portfolio, account, user)
         |> assign_features_and_limits(features, limits)
         |> assign_content_data(sections, media_library, content_blocks)
@@ -90,24 +98,35 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:show_live_preview, true)
     |> assign(:preview_token, generate_preview_token(portfolio.id))
     |> assign(:preview_mobile_view, false)
-    |> assign(:pending_changes, %{})  # CRITICAL: Initialize this
-    |> assign(:debounce_timer, nil)   # CRITICAL: Initialize this
+    |> assign(:pending_changes, %{})
+    |> assign(:debounce_timer, nil)
   end
 
-  defp generate_preview_token(portfolio_id) do
-    :crypto.hash(:sha256, "preview_#{portfolio_id}_#{Date.utc_today()}")
-    |> Base.encode16(case: :lower)
+  @impl true
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    valid_tabs = [:overview, :content, :design, :monetization, :streaming, :analytics]
+    tab_atom = String.to_existing_atom(tab)
+
+    if tab_atom in valid_tabs do
+      {:noreply, assign(socket, :active_tab, tab_atom)}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
   def handle_event("toggle_live_preview", _params, socket) do
-    show_preview = !socket.assigns.show_live_preview
+    show_preview = !Map.get(socket.assigns, :show_live_preview, false)
 
-    socket = assign(socket, :show_live_preview, show_preview)
+    socket =
+      socket
+      |> assign(:show_live_preview, show_preview)
+      |> assign(:preview_mobile_view, false)
 
+    # Generate preview URL if enabling
     if show_preview do
-      # Broadcast initial preview data
-      broadcast_preview_update(socket)
+      preview_url = build_preview_url(socket.assigns.portfolio, socket.assigns.customization)
+      socket = assign(socket, :preview_url, preview_url)
     end
 
     {:noreply, socket}
@@ -115,9 +134,9 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   @impl true
   def handle_event("toggle_preview_mobile", _params, socket) do
-    mobile_view = !socket.assigns.preview_mobile_view
+    mobile_view = !Map.get(socket.assigns, :preview_mobile_view, false)
 
-    # Broadcast viewport change to preview
+    # Broadcast viewport change to preview iframe
     Phoenix.PubSub.broadcast(
       Frestyl.PubSub,
       "portfolio_preview:#{socket.assigns.portfolio.id}",
@@ -127,52 +146,107 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     {:noreply, assign(socket, :preview_mobile_view, mobile_view)}
   end
 
-  @impl true
-  def handle_event("update_color", %{"field" => field, "value" => color}, socket) do
-    IO.puts("="*50)
-    IO.puts("🎨 COLOR CHANGE START: #{field} = #{color}")
-    IO.puts("🔍 Before - socket.assigns.customization: #{inspect(socket.assigns.customization)}")
-    IO.puts("🔍 Before - socket.assigns.portfolio.customization: #{inspect(socket.assigns.portfolio.customization)}")
-    IO.puts("🔍 Before - socket.assigns.primary_color: #{inspect(socket.assigns[:primary_color])}")
+@impl true
+def handle_event("update_color", %{"field" => field, "value" => color}, socket) do
+  portfolio = socket.assigns.portfolio
+  customization = Map.get(portfolio, :customization, %{})
 
-    # Use portfolio customization as source of truth
-    current_customization = socket.assigns.portfolio.customization || %{}
-    IO.puts("🔍 Current customization from portfolio: #{inspect(current_customization)}")
+  # Update customization
+  updated_customization = Map.put(customization, field, color)
 
-    updated_customization = Map.put(current_customization, field, color)
-    IO.puts("🔍 Updated customization: #{inspect(updated_customization)}")
+  # Save to database
+  case Portfolios.update_portfolio_customization(portfolio, updated_customization) do
+    {:ok, updated_portfolio} ->
+      # Generate new CSS
+      css = generate_live_preview_css(updated_customization, portfolio.theme)
 
-    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        IO.puts("✅ Database update successful")
-        IO.puts("🔍 Updated portfolio.customization: #{inspect(updated_portfolio.customization)}")
+      # Broadcast to live preview
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{portfolio.id}",
+        {:preview_update, updated_customization, css}
+      )
 
-        socket = socket
+      socket =
+        socket
         |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_portfolio.customization)
+        |> assign(:customization, updated_customization)
         |> assign(:unsaved_changes, false)
 
-        # Update individual color assigns
-        socket = case field do
-          "primary_color" -> assign(socket, :primary_color, color)
-          "accent_color" -> assign(socket, :accent_color, color)
-          "secondary_color" -> assign(socket, :secondary_color, color)
-          _ -> socket
-        end
+      {:noreply, socket}
 
-        IO.puts("🔍 After - socket.assigns.customization: #{inspect(socket.assigns.customization)}")
-        IO.puts("🔍 After - socket.assigns.primary_color: #{inspect(socket.assigns[:primary_color])}")
-        IO.puts("="*50)
-
-        {:noreply, socket}
-
-      {:error, changeset} ->
-        IO.puts("❌ Database update failed: #{inspect(changeset.errors)}")
-        IO.puts("="*50)
-        error_msg = format_changeset_errors(changeset)
-        {:noreply, put_flash(socket, :error, "Failed to save color: #{error_msg}")}
-    end
+    {:error, _changeset} ->
+      {:noreply, put_flash(socket, :error, "Failed to save color change")}
   end
+end
+
+@impl true
+def handle_event("update_layout", %{"value" => layout}, socket) do
+  portfolio = socket.assigns.portfolio
+  customization = Map.get(portfolio, :customization, %{})
+
+  # Update layout in customization
+  updated_customization = Map.put(customization, "layout", layout)
+
+  case Portfolios.update_portfolio_customization(portfolio, updated_customization) do
+    {:ok, updated_portfolio} ->
+      # Generate new CSS
+      css = generate_live_preview_css(updated_customization, portfolio.theme)
+
+      # Broadcast to live preview
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{portfolio.id}",
+        {:preview_update, updated_customization, css}
+      )
+
+      socket =
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(:unsaved_changes, false)
+
+      {:noreply, socket}
+
+    {:error, _changeset} ->
+      {:noreply, put_flash(socket, :error, "Failed to save layout change")}
+  end
+end
+
+@impl true
+def handle_event("update_template", %{"template" => template}, socket) do
+  portfolio = socket.assigns.portfolio
+
+  case Portfolios.update_portfolio_theme(portfolio, template) do
+    {:ok, updated_portfolio} ->
+      # Get template config
+      template_config = get_template_config(template)
+
+      # Generate CSS for new template
+      css = generate_live_preview_css(updated_portfolio.customization || %{}, template)
+
+      # Broadcast template change
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{portfolio.id}",
+        {:template_change, template, css}
+      )
+
+      socket =
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:selected_template, template)
+        |> assign(:template_config, template_config)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Template updated successfully")
+
+      {:noreply, socket}
+
+    {:error, _changeset} ->
+      {:noreply, put_flash(socket, :error, "Failed to update template")}
+  end
+end
+
 
   @impl true
   def handle_event("change_theme", %{"theme" => theme}, socket) do
@@ -197,79 +271,60 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   @impl true
-  def handle_event("update_layout", %{"value" => layout_value}, socket) do
-    IO.puts("🎨 UPDATE LAYOUT: #{layout_value} (no refresh)")
-
-    # Use portfolio customization as source of truth
-    current_customization = socket.assigns.portfolio.customization || %{}
-    updated_customization = Map.put(current_customization, "layout", layout_value)
-
-    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        IO.puts("✅ Layout saved: #{layout_value}")
-
-        # DON'T redirect or refresh, just update socket
-        socket = socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:portfolio_layout, layout_value)
-        |> assign(:unsaved_changes, false)
-
-        {:noreply, socket}  # NO push_event or redirects
-
-      {:error, changeset} ->
-        error_msg = format_changeset_errors(changeset)
-        {:noreply, put_flash(socket, :error, "Failed to save layout: #{error_msg}")}
-    end
+  def handle_params(_params, _url, socket) do
+    {:noreply, socket}
   end
-
 
   @impl true
-  def handle_event("update_layout", %{"value" => layout_value}, socket) do
-    IO.puts("="*50)
-    IO.puts("🎯 LAYOUT CHANGE START: #{layout_value}")
-    IO.puts("🔍 LAYOUT - socket.assigns.customization: #{inspect(socket.assigns.customization)}")
-    IO.puts("🔍 LAYOUT - socket.assigns.portfolio.customization: #{inspect(socket.assigns.portfolio.customization)}")
+  def handle_event("show_resume_import", _params, socket) do
+    {:noreply, assign(socket, :show_resume_import, true)}
+  end
 
+  @impl true
+  def handle_event("hide_resume_import", _params, socket) do
+    {:noreply, assign(socket, :show_resume_import, false)}
+  end
 
+    @impl true
+  def handle_event("change_section", %{"section" => section}, socket) do
+    {:noreply, assign(socket, :active_section, section)}
+  end
 
-    # CRITICAL: Preserve existing customization instead of using defaults
-    current_customization = socket.assigns.customization || %{}
-    updated_customization = Map.put(current_customization, "layout", layout_value)
-
-    # IMMEDIATE UI update (optimistic)
-    socket = socket
-    |> assign(:customization, updated_customization)
-    |> assign(:portfolio_layout, layout_value)
-    |> assign(:unsaved_changes, true)
-
-    # IMMEDIATE database save to prevent overwriting
-    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+  @impl true
+  def handle_event("save_portfolio", %{"portfolio" => portfolio_params}, socket) do
+    case Portfolios.update_portfolio(socket.assigns.portfolio, portfolio_params) do
       {:ok, updated_portfolio} ->
-        IO.puts("✅ Layout saved with preserved colors: #{inspect(updated_customization)}")
+        # Broadcast update via PubSub for real-time sync with show page
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio:#{updated_portfolio.id}",
+          {:portfolio_updated, updated_portfolio}
+        )
 
-        socket = socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:unsaved_changes, false)
-
-        # IMMEDIATE live preview update
-        if socket.assigns.show_live_preview do
-          css = generate_simple_preview_css(updated_customization, updated_portfolio.theme)
-
-          Phoenix.PubSub.broadcast(
-            Frestyl.PubSub,
-            "portfolio_preview:#{socket.assigns.portfolio.id}",
-            {:preview_update, updated_customization, css}
-          )
-        end
-
-        {:noreply, socket}
+        {:noreply,
+         socket
+         |> assign(:portfolio, updated_portfolio)
+         |> assign(:unsaved_changes, false)
+         |> put_flash(:info, "Portfolio updated successfully!")}
 
       {:error, changeset} ->
-        error_msg = format_changeset_errors(changeset)
-        {:noreply, put_flash(socket, :error, "Failed to save layout: #{error_msg}")}
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to save portfolio")
+         |> assign(:changeset, changeset)}
     end
   end
+
+  @impl true
+  def handle_event("portfolio_changed", _params, socket) do
+    {:noreply, assign(socket, :unsaved_changes, true)}
+  end
+
+  defp get_available_layout_keys(available_layouts) when is_map(available_layouts) do
+    Map.keys(available_layouts)
+  end
+  defp get_available_layout_keys(_), do: ["minimal", "professional", "creative"]
+
 
   @impl true
   def handle_event("toggle_add_section_dropdown", _params, socket) do
@@ -317,56 +372,68 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   @impl true
   def handle_event("edit_section", %{"section_id" => section_id}, socket) do
-    IO.puts("🔥 EDIT SECTION CALLED: section_id=#{section_id}")
-
-    section_id_int = String.to_integer(section_id)
-    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
-
-    IO.puts("🔥 FOUND SECTION: #{inspect(section)}")
+    sections = socket.assigns.sections
+    section = Enum.find(sections, &(&1.id == String.to_integer(section_id)))
 
     if section do
-      socket = socket
-      |> assign(:editing_section, section)
-      |> assign(:active_tab, :content)
-      |> assign(:section_edit_mode, true)  # CHANGE THIS LINE
-      |> assign(:editing_mode, :section_edit)  # ADD THIS LINE
-      |> put_flash(:info, "Editing section: #{section.title}")
-
-      IO.puts("🔥 SOCKET UPDATED - editing_section: #{inspect(socket.assigns.editing_section)}")
+      socket =
+        socket
+        |> assign(:editing_section, section)
+        |> assign(:section_edit_mode, true)
 
       {:noreply, socket}
     else
-      IO.puts("🔥 SECTION NOT FOUND")
       {:noreply, put_flash(socket, :error, "Section not found")}
     end
   end
 
   @impl true
-  def handle_event("close_section_editor", _params, socket) do
-    socket = socket
-    |> assign(:editing_section, nil)
-    |> assign(:section_edit_mode, false)
+  def handle_event("save_section", %{"section" => section_params}, socket) do
+    case socket.assigns.editing_section do
+      nil ->
+        {:noreply, put_flash(socket, :error, "No section being edited")}
 
-    {:noreply, socket}
+      section ->
+        case Portfolios.update_portfolio_section(section, section_params) do
+          {:ok, updated_section} ->
+            # Update sections list
+            updated_sections =
+              socket.assigns.sections
+              |> Enum.map(fn s ->
+                if s.id == updated_section.id, do: updated_section, else: s
+              end)
+
+            # Broadcast section update to live preview
+            Phoenix.PubSub.broadcast(
+              Frestyl.PubSub,
+              "portfolio_preview:#{socket.assigns.portfolio.id}",
+              {:section_update, updated_section}
+            )
+
+            socket =
+              socket
+              |> assign(:sections, updated_sections)
+              |> assign(:editing_section, nil)
+              |> assign(:section_edit_mode, false)
+              |> assign(:unsaved_changes, false)
+              |> put_flash(:info, "Section updated successfully")
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to save section: #{inspect(changeset.errors)}")}
+        end
+    end
   end
 
   @impl true
-  def handle_event("save_section", %{"section_id" => section_id}, socket) do
-    section_id_int = String.to_integer(section_id)
-
-    # Find the section that was being edited
-    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
-
-    if section do
-      socket = socket
+  def handle_event("cancel_section_edit", _params, socket) do
+    socket =
+      socket
       |> assign(:editing_section, nil)
       |> assign(:section_edit_mode, false)
-      |> put_flash(:info, "Section '#{section.title}' saved successfully!")
 
-      {:noreply, socket}
-    else
-      {:noreply, put_flash(socket, :error, "Section not found")}
-    end
+    {:noreply, socket}
   end
 
   @impl true
@@ -465,21 +532,27 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   @impl true
-  def handle_event("save_portfolio", _params, socket) do
-    portfolio = socket.assigns.portfolio
+  def handle_event("reset_design", _params, socket) do
+    default_customization = get_default_customization()
 
-    case Portfolios.update_portfolio(portfolio, %{updated_at: DateTime.utc_now()}) do
-      {:ok, updated_portfolio} ->
-        socket = socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:unsaved_changes, false)
-        |> put_flash(:info, "Portfolio saved successfully!")
+    socket = socket
+    |> assign(:customization, default_customization)
+    |> assign(:primary_color, default_customization["primary_color"])
+    |> assign(:secondary_color, default_customization["secondary_color"])
+    |> assign(:accent_color, default_customization["accent_color"])
+    |> assign(:background_color, default_customization["background_color"])
+    |> assign(:text_color, default_customization["text_color"])
+    |> assign(:portfolio_layout, default_customization["layout"])
 
-        {:noreply, socket}
+    if socket.assigns.show_live_preview do
+      broadcast_preview_update(socket)
+    end
 
-      {:error, changeset} ->
-        error_msg = format_changeset_errors(changeset)
-        {:noreply, put_flash(socket, :error, "Failed to save portfolio: #{error_msg}")}
+    case save_portfolio_customization(socket.assigns.portfolio.id, default_customization) do
+      {:ok, _} ->
+        {:noreply, put_flash(socket, :info, "Design reset to defaults")}
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to reset design")}
     end
   end
 
@@ -498,6 +571,16 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
     {:noreply, socket}
   end
+
+  @impl true
+def handle_event("show_resume_import", _params, socket) do
+  {:noreply, assign(socket, :show_resume_import, true)}
+end
+
+@impl true
+def handle_event("hide_resume_import", _params, socket) do
+  {:noreply, assign(socket, :show_resume_import, false)}
+end
 
   @impl true
   def handle_event("add_video_intro", _params, socket) do
@@ -691,6 +774,52 @@ end
     end
   end
 
+  defp get_template_config(template) do
+    case template do
+      "minimal" -> %{
+        name: "Minimal",
+        description: "Clean and simple design",
+        primary_color: "#374151",
+        layout: "single_column"
+      }
+      "executive" -> %{
+        name: "Executive",
+        description: "Professional business template",
+        primary_color: "#1f2937",
+        layout: "structured"
+      }
+      "creative" -> %{
+        name: "Creative",
+        description: "Bold and expressive design",
+        primary_color: "#7c3aed",
+        layout: "grid"
+      }
+      "developer" -> %{
+        name: "Developer",
+        description: "Technical portfolio with code focus",
+        primary_color: "#059669",
+        layout: "terminal"
+      }
+      _ -> %{
+        name: "Default",
+        description: "Standard template",
+        primary_color: "#6b7280",
+        layout: "single_column"
+      }
+    end
+  end
+
+  defp get_default_customization do
+    %{
+      "layout" => "minimal",
+      "primary_color" => "#374151",
+      "secondary_color" => "#6b7280",
+      "accent_color" => "#059669",
+      "background_color" => "#ffffff",
+      "text_color" => "#1f2937"
+    }
+  end
+
   defp get_user_account_safe(user) do
     try do
       # Try the function that we know exists from project knowledge
@@ -774,20 +903,31 @@ end
   end
 
   defp assign_design_system(socket, portfolio, account) do
-    # SAFE VERSION - No template migration, no legacy backup
-    customization = %{
-      "layout" => "minimal",
-      "primary_color" => "#374151",
-      "secondary_color" => "#6b7280",
-      "accent_color" => "#059669"
-    }
+    customization = portfolio.customization || %{}
+
+    # Extract design values with fallbacks
+    portfolio_layout = customization["layout"] || "minimal"
+    primary_color = customization["primary_color"] || "#374151"
+    secondary_color = customization["secondary_color"] || "#6b7280"
+    accent_color = customization["accent_color"] || "#059669"
+    background_color = customization["background_color"] || "#ffffff"
+    text_color = customization["text_color"] || "#1f2937"
+
+    # Get available layouts and brand constraints based on account
+    available_layouts = get_available_layouts(account)
+    brand_constraints = get_brand_constraints(account)
 
     socket
-    |> assign(:portfolio_layout, "minimal")
-    |> assign(:primary_color, "#374151")
-    |> assign(:secondary_color, "#6b7280")
-    |> assign(:accent_color, "#059669")
+    |> assign(:portfolio_layout, portfolio_layout)
+    |> assign(:primary_color, primary_color)
+    |> assign(:secondary_color, secondary_color)
+    |> assign(:accent_color, accent_color)
+    |> assign(:background_color, background_color)
+    |> assign(:text_color, text_color)
     |> assign(:customization, customization)
+    |> assign(:available_layouts, available_layouts)
+    |> assign(:brand_constraints, brand_constraints)
+    |> assign(:design_tokens, generate_design_tokens(portfolio, brand_constraints))
   end
 
 
@@ -820,33 +960,30 @@ end
   # ACCOUNT & PERMISSION HELPERS
   # ============================================================================
 
-  defp load_portfolio_with_account(portfolio_id, user) do
+  defp load_portfolio_with_account_and_blocks(portfolio_id, user) do
     case Portfolios.get_portfolio_with_account(portfolio_id) do
       nil ->
         {:error, :not_found}
 
       %{portfolio: portfolio, account: account} ->
-        if can_edit_portfolio?(portfolio, account, user) do
-          {:ok, portfolio, account}
+        if can_edit_portfolio?(portfolio, user) do
+          # Load content blocks
+          content_blocks = load_portfolio_content_blocks(portfolio.id)
+          {:ok, portfolio, account, content_blocks}
         else
           {:error, :unauthorized}
         end
-    end
-  end
-
-  defp load_portfolio_with_account_and_blocks(portfolio_id, user) do
-    case Portfolios.get_portfolio(portfolio_id) do
-      nil ->
-        {:error, :not_found}
 
       portfolio ->
-        # Get user's account
-        accounts = Frestyl.Accounts.list_user_accounts(user.id)
-        account = List.first(accounts) || %{subscription_tier: "personal"}
+        # Fallback if get_portfolio_with_account doesn't return the expected format
+        if can_edit_portfolio?(portfolio, user) do
+          # Get account from user
+          account = case Accounts.list_user_accounts(user.id) do
+            [account | _] -> account
+            [] -> %{subscription_tier: "personal"}
+          end
 
-        if can_edit_portfolio?(portfolio, account, user) do
-          # Load content blocks organized by section
-          content_blocks = load_content_blocks_by_section(portfolio_id)
+          content_blocks = load_portfolio_content_blocks(portfolio.id)
           {:ok, portfolio, account, content_blocks}
         else
           {:error, :unauthorized}
@@ -854,8 +991,24 @@ end
     end
   end
 
-  defp get_subscription_tier(account) when is_map(account) do
-    Map.get(account, :subscription_tier, "personal")
+  defp can_edit_portfolio?(portfolio, current_user) do
+    current_user && (portfolio.user_id == current_user.id || current_user.role == "admin")
+  end
+
+  defp load_portfolio_content_blocks(portfolio_id) do
+    try do
+      Portfolios.list_portfolio_content_blocks(portfolio_id)
+    rescue
+      _ -> %{}
+    end
+  end
+
+  defp get_subscription_tier(account) do
+    case account do
+      %{subscription_tier: tier} when is_binary(tier) -> tier
+      %{subscription_tier: tier} when is_atom(tier) -> Atom.to_string(tier)
+      _ -> "personal"
+    end
   end
 
   defp get_subscription_tier(_), do: "personal"
@@ -914,18 +1067,69 @@ end
     |> Enum.map(fn {key, value} -> %{type: key, content: value} end)
   end
 
-  defp can_edit_portfolio?(portfolio, _account, user) do
-    # Check if user owns the portfolio or has edit permissions
-    portfolio.user_id == user.id
+  defp get_account_features(account) do
+    subscription_tier = get_subscription_tier(account)
+
+    case subscription_tier do
+      "premium" -> %{
+        monetization_enabled: true,
+        streaming_enabled: true,
+        advanced_analytics: true,
+        collaboration: true,
+        custom_domains: true
+      }
+      "professional" -> %{
+        monetization_enabled: true,
+        streaming_enabled: false,
+        advanced_analytics: true,
+        collaboration: true,
+        custom_domains: false
+      }
+      "basic" -> %{
+        monetization_enabled: false,
+        streaming_enabled: false,
+        advanced_analytics: false,
+        collaboration: false,
+        custom_domains: false
+      }
+      _ -> %{
+        monetization_enabled: false,
+        streaming_enabled: false,
+        advanced_analytics: false,
+        collaboration: false,
+        custom_domains: false
+      }
+    end
   end
 
-  defp get_account_features(account) do
-    subscription_tier = Map.get(account, :subscription_tier, "personal")
+  defp get_account_limits(account) do
+    subscription_tier = get_subscription_tier(account)
+
     case subscription_tier do
-      "enterprise" -> [:all_features]
-      "professional" -> [:advanced_templates, :custom_css, :analytics]
-      "creator" -> [:basic_templates, :media_library]
-      _ -> [:basic_features]
+      "premium" -> %{
+        max_portfolios: -1,
+        max_sections: -1,
+        max_media_files: -1,
+        max_collaborators: -1
+      }
+      "professional" -> %{
+        max_portfolios: 10,
+        max_sections: 50,
+        max_media_files: 1000,
+        max_collaborators: 5
+      }
+      "basic" -> %{
+        max_portfolios: 3,
+        max_sections: 15,
+        max_media_files: 100,
+        max_collaborators: 1
+      }
+      _ -> %{
+        max_portfolios: 1,
+        max_sections: 5,
+        max_media_files: 10,
+        max_collaborators: 0
+      }
     end
   end
 
@@ -939,54 +1143,861 @@ end
     end
   end
 
-  defp get_available_layouts(_account) do
-    ["minimal", "dashboard", "gallery", "timeline"]
+  defp get_available_layouts(account) do
+    subscription_tier = get_subscription_tier(account)
+
+    base_layouts = ["minimal", "executive", "creative"]
+
+    case subscription_tier do
+      "premium" -> base_layouts ++ ["developer", "consultant", "academic", "gallery"]
+      "professional" -> base_layouts ++ ["developer", "consultant"]
+      _ -> base_layouts
+    end
   end
 
-  defp get_brand_constraints(_account) do
-    %{custom_css: false, white_label: false}
+  defp get_brand_constraints(account) do
+    subscription_tier = get_subscription_tier(account)
+
+    case subscription_tier do
+      "premium" -> %{
+        primary_colors: ["#1e40af", "#7c3aed", "#059669", "#dc2626", "#ea580c", "#ca8a04"],
+        secondary_colors: ["#64748b", "#6b7280", "#9ca3af"],
+        accent_colors: ["#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"],
+        allowed_fonts: ["Inter", "Merriweather", "JetBrains Mono", "Playfair Display", "Source Sans Pro"],
+        font_size_scale: %{min: 0.75, max: 3.0},
+        max_sections: -1,
+        spacing_scale: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6],
+        enforce_brand: false,
+        brand_locked_elements: []
+      }
+
+      "professional" -> %{
+        primary_colors: ["#1e40af", "#7c3aed", "#059669", "#dc2626"],
+        secondary_colors: ["#64748b", "#6b7280", "#9ca3af"],
+        accent_colors: ["#f59e0b", "#ef4444", "#8b5cf6"],
+        allowed_fonts: ["Inter", "Merriweather", "JetBrains Mono"],
+        font_size_scale: %{min: 0.875, max: 2.5},
+        max_sections: 50,
+        spacing_scale: [0.5, 1, 1.5, 2, 3, 4],
+        enforce_brand: false,
+        brand_locked_elements: []
+      }
+
+      _ -> %{
+        primary_colors: ["#374151", "#1f2937"],
+        secondary_colors: ["#64748b", "#6b7280"],
+        accent_colors: ["#059669", "#3b82f6"],
+        allowed_fonts: ["Inter"],
+        font_size_scale: %{min: 0.875, max: 2.0},
+        max_sections: 10,
+        spacing_scale: [0.5, 1, 1.5, 2],
+        enforce_brand: false,
+        brand_locked_elements: []
+      }
+    end
+  end
+
+  def handle_info(:save_pending_changes, socket) do
+    case Map.get(socket.assigns, :pending_changes) do
+      changes when map_size(changes) > 0 ->
+        portfolio = socket.assigns.portfolio
+        current_customization = Map.get(portfolio, :customization, %{})
+        updated_customization = Map.merge(current_customization, changes)
+
+        case Portfolios.update_portfolio_customization(portfolio, updated_customization) do
+          {:ok, updated_portfolio} ->
+            css = generate_live_preview_css(updated_customization, portfolio.theme)
+
+            Phoenix.PubSub.broadcast(
+              Frestyl.PubSub,
+              "portfolio_preview:#{portfolio.id}",
+              {:preview_update, updated_customization, css}
+            )
+
+            socket =
+              socket
+              |> assign(:portfolio, updated_portfolio)
+              |> assign(:customization, updated_customization)
+              |> assign(:pending_changes, %{})
+              |> assign(:debounce_timer, nil)
+              |> assign(:unsaved_changes, false)
+
+            {:noreply, socket}
+
+          {:error, _changeset} ->
+            socket =
+              socket
+              |> assign(:debounce_timer, nil)
+              |> put_flash(:error, "Failed to save changes")
+
+            {:noreply, socket}
+        end
+
+      _ ->
+        {:noreply, assign(socket, :debounce_timer, nil)}
+    end
+  end
+
+  @impl true
+  def handle_info({:close_video_intro_modal}, socket) do
+    {:noreply, assign(socket, :show_video_intro, false)}
+  end
+
+  @impl true
+  def handle_info({:video_intro_complete, video_section}, socket) do
+    # Reload sections to include the new video intro
+    updated_sections = load_portfolio_sections(socket.assigns.portfolio.id)
+
+    socket =
+      socket
+      |> assign(:show_video_intro, false)
+      |> assign(:sections, updated_sections)
+      |> put_flash(:info, "Video introduction added successfully!")
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:close_modal, :resume_import}, socket) do
+    {:noreply, assign(socket, :show_resume_import, false)}
+  end
+
+  @impl true
+  def handle_info({:portfolio_updated, updated_portfolio}, socket) do
+    # Handle real-time updates from resume import
+    {:noreply,
+    socket
+    |> assign(:portfolio, updated_portfolio)
+    |> assign(:unsaved_changes, false)}
+  end
+
+    @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="portfolio-editor-container">
+      <!-- Editor Header -->
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900">Edit Portfolio</h1>
+          <p class="text-gray-600 mt-2">Customize your portfolio content and sections</p>
+        </div>
+
+        <div class="flex items-center space-x-4">
+          <!-- Unsaved Changes Indicator -->
+          <div :if={@unsaved_changes} class="flex items-center text-amber-600">
+            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+            </svg>
+            Unsaved changes
+          </div>
+
+          <!-- Resume Import Button -->
+          <button
+            phx-click="show-resume-import"
+            class="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-300 rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+            </svg>
+            Import Resume
+          </button>
+
+          <!-- Preview Button -->
+          <.link
+            navigate={~p"/portfolio/#{@portfolio}"}
+            target="_blank"
+            class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+            </svg>
+            Preview
+          </.link>
+
+          <!-- Save Button -->
+          <button
+            phx-click="save-portfolio"
+            disabled={!@unsaved_changes}
+            class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+            </svg>
+            Save Changes
+          </button>
+        </div>
+      </div>
+
+      <!-- Editor Layout -->
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <!-- Sidebar Navigation -->
+        <div class="lg:col-span-1">
+          <nav class="space-y-2">
+            <button
+              :for={{section_key, section_info} <- get_editor_sections()}
+              phx-click="change-section"
+              phx-value-section={section_key}
+              class={[
+                "w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors",
+                if(@active_section == section_key,
+                  do: "bg-blue-100 text-blue-700 border border-blue-300",
+                  else: "text-gray-700 hover:bg-gray-100")
+              ]}
+            >
+              <div class="flex items-center">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <%= render_section_icon(section_info.icon) %>
+                </svg>
+                {section_info.title}
+              </div>
+            </button>
+          </nav>
+        </div>
+
+        <!-- Main Editor Content -->
+        <div class="lg:col-span-3">
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <!-- Section Content -->
+            <div class="p-6">
+              <%= render_editor_section(assigns) %>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resume Import Modal -->
+      <div :if={@show_resume_import}>
+        <.live_component
+          module={ResumeImportModal}
+          id="resume-import-modal"
+          portfolio={@portfolio}
+        />
+      </div>
+
+      <!-- Auto-save indicator -->
+      <div class="fixed bottom-4 right-4 z-40">
+        <div :if={@unsaved_changes} class="bg-white border border-gray-300 rounded-lg shadow-lg p-3">
+          <div class="flex items-center text-sm text-gray-600">
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Unsaved changes
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp get_editor_sections do
+    %{
+      "basic_info" => %{title: "Basic Information", icon: "user"},
+      "contact" => %{title: "Contact Details", icon: "mail"},
+      "summary" => %{title: "Professional Summary", icon: "document-text"},
+      "experience" => %{title: "Work Experience", icon: "briefcase"},
+      "education" => %{title: "Education", icon: "academic-cap"},
+      "skills" => %{title: "Skills", icon: "chip"},
+      "projects" => %{title: "Projects", icon: "code-bracket"},
+      "settings" => %{title: "Portfolio Settings", icon: "cog"}
+    }
+  end
+
+    defp render_section_icon(icon_name) do
+    case icon_name do
+      "user" ->
+        raw("""
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+        """)
+
+      "mail" ->
+        raw("""
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+        """)
+
+      "document-text" ->
+        raw("""
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+        """)
+
+      "briefcase" ->
+        raw("""
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0H8m8 0v2a2 2 0 002 2h2a2 2 0 002-2V8a2 2 0 00-2-2h-2z"></path>
+        """)
+
+      "academic-cap" ->
+        raw("""
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5z M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"></path>
+        """)
+
+      "chip" ->
+        raw("""
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path>
+        """)
+
+      "code-bracket" ->
+        raw("""
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"></path>
+        """)
+
+      "cog" ->
+        raw("""
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+        """)
+
+      _ ->
+        raw("""
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+        """)
+    end
+  end
+
+  defp render_editor_section(assigns) do
+    case assigns.active_section do
+      "basic_info" -> render_basic_info_section(assigns)
+      "contact" -> render_contact_section(assigns)
+      "summary" -> render_summary_section(assigns)
+      "experience" -> render_experience_section(assigns)
+      "education" -> render_education_section(assigns)
+      "skills" -> render_skills_section(assigns)
+      "projects" -> render_projects_section(assigns)
+      "settings" -> render_settings_section(assigns)
+      _ -> render_basic_info_section(assigns)
+    end
+  end
+
+  defp render_basic_info_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
+        <p class="text-sm text-gray-600 mb-6">
+          Set up the fundamental details of your portfolio including title, subtitle, and visibility settings.
+        </p>
+      </div>
+
+      <form phx-change="portfolio-changed" phx-submit="save-portfolio">
+        <div class="space-y-6">
+          <div>
+            <label for="portfolio_title" class="block text-sm font-medium text-gray-700">
+              Portfolio Title
+            </label>
+            <div class="mt-1">
+              <input
+                type="text"
+                name="portfolio[title]"
+                id="portfolio_title"
+                value={@portfolio.title}
+                class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                placeholder="e.g., John Doe - Software Engineer"
+              />
+            </div>
+            <p class="mt-2 text-sm text-gray-500">
+              This will be the main heading of your portfolio
+            </p>
+          </div>
+
+          <div>
+            <label for="portfolio_subtitle" class="block text-sm font-medium text-gray-700">
+              Subtitle (Optional)
+            </label>
+            <div class="mt-1">
+              <input
+                type="text"
+                name="portfolio[subtitle]"
+                id="portfolio_subtitle"
+                value={@portfolio.subtitle}
+                class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                placeholder="e.g., Full-Stack Developer with 5+ Years Experience"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label for="portfolio_slug" class="block text-sm font-medium text-gray-700">
+              Portfolio URL
+            </label>
+            <div class="mt-1 flex rounded-md shadow-sm">
+              <span class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                frestyl.com/
+              </span>
+              <input
+                type="text"
+                name="portfolio[slug]"
+                id="portfolio_slug"
+                value={@portfolio.slug}
+                class="focus:ring-blue-500 focus:border-blue-500 flex-1 block w-full rounded-none rounded-r-md sm:text-sm border-gray-300"
+                placeholder="your-name"
+              />
+            </div>
+            <p class="mt-2 text-sm text-gray-500">
+              Choose a unique URL for your portfolio
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700">
+              Visibility
+            </label>
+            <div class="mt-3 space-y-3">
+              <div class="flex items-center">
+                <input
+                  id="public"
+                  name="portfolio[public]"
+                  type="radio"
+                  value="true"
+                  checked={@portfolio.public}
+                  class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300"
+                />
+                <label for="public" class="ml-3 block text-sm font-medium text-gray-700">
+                  Public
+                </label>
+              </div>
+              <p class="ml-7 text-sm text-gray-500">
+                Anyone can view your portfolio
+              </p>
+
+              <div class="flex items-center">
+                <input
+                  id="private"
+                  name="portfolio[public]"
+                  type="radio"
+                  value="false"
+                  checked={!@portfolio.public}
+                  class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300"
+                />
+                <label for="private" class="ml-3 block text-sm font-medium text-gray-700">
+                  Private
+                </label>
+              </div>
+              <p class="ml-7 text-sm text-gray-500">
+                Only you can view your portfolio
+              </p>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  defp render_contact_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Contact Information</h3>
+        <p class="text-sm text-gray-600 mb-6">
+          Add your contact details so potential employers and collaborators can reach you.
+        </p>
+      </div>
+
+      <form phx-change="portfolio-changed" phx-submit="save-portfolio">
+        <div class="space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label for="contact_email" class="block text-sm font-medium text-gray-700">
+                Email Address
+              </label>
+              <div class="mt-1">
+                <input
+                  type="email"
+                  name="portfolio[contact_email]"
+                  id="contact_email"
+                  value={@portfolio.contact_email}
+                  class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                  placeholder="your.email@example.com"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label for="contact_phone" class="block text-sm font-medium text-gray-700">
+                Phone Number
+              </label>
+              <div class="mt-1">
+                <input
+                  type="tel"
+                  name="portfolio[contact_phone]"
+                  id="contact_phone"
+                  value={@portfolio.contact_phone}
+                  class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                  placeholder="+1 (555) 123-4567"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label for="linkedin_url" class="block text-sm font-medium text-gray-700">
+                LinkedIn Profile
+              </label>
+              <div class="mt-1">
+                <input
+                  type="url"
+                  name="portfolio[linkedin_url]"
+                  id="linkedin_url"
+                  value={@portfolio.linkedin_url}
+                  class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                  placeholder="https://linkedin.com/in/yourprofile"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label for="github_url" class="block text-sm font-medium text-gray-700">
+                GitHub Profile
+              </label>
+              <div class="mt-1">
+                <input
+                  type="url"
+                  name="portfolio[github_url]"
+                  id="github_url"
+                  value={@portfolio.github_url}
+                  class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                  placeholder="https://github.com/yourusername"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label for="location" class="block text-sm font-medium text-gray-700">
+              Location
+            </label>
+            <div class="mt-1">
+              <input
+                type="text"
+                name="portfolio[location]"
+                id="location"
+                value={@portfolio.location}
+                class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                placeholder="City, State/Country"
+              />
+            </div>
+          </div>
+
+          <div class="flex items-center">
+            <input
+              id="contact_visible"
+              name="portfolio[contact_visible]"
+              type="checkbox"
+              checked={@portfolio.contact_visible}
+              class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label for="contact_visible" class="ml-2 block text-sm text-gray-700">
+              Show contact information on portfolio
+            </label>
+          </div>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  defp render_summary_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Professional Summary</h3>
+        <p class="text-sm text-gray-600 mb-6">
+          Write a compelling summary that highlights your key skills, experience, and career objectives.
+        </p>
+      </div>
+
+      <form phx-change="portfolio-changed" phx-submit="save-portfolio">
+        <div class="space-y-6">
+          <div>
+            <label for="summary" class="block text-sm font-medium text-gray-700">
+              Summary
+            </label>
+            <div class="mt-1">
+              <textarea
+                name="portfolio[summary]"
+                id="summary"
+                rows="6"
+                class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                placeholder="Write a brief professional summary that highlights your key skills, experience, and what you're looking for in your next role..."
+              >{@portfolio.summary}</textarea>
+            </div>
+            <p class="mt-2 text-sm text-gray-500">
+              Aim for 2-3 sentences that capture your professional essence
+            </p>
+          </div>
+
+          <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                </svg>
+              </div>
+              <div class="ml-3">
+                <h4 class="text-sm font-medium text-blue-800">
+                  Tips for a great summary:
+                </h4>
+                <div class="mt-2 text-sm text-blue-700">
+                  <ul class="list-disc pl-5 space-y-1">
+                    <li>Start with your current role or years of experience</li>
+                    <li>Mention 2-3 key technical skills or areas of expertise</li>
+                    <li>Include what type of opportunities you're seeking</li>
+                    <li>Keep it concise but impactful</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  # Placeholder functions for other sections - implement based on your portfolio schema
+  defp render_experience_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Work Experience</h3>
+        <p class="text-sm text-gray-600 mb-6">
+          Add your professional experience, including job titles, companies, and key achievements.
+        </p>
+      </div>
+
+      <div class="text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+          <path d="M34 40h10v-4a6 6 0 00-10.712-3.714M34 40H14m20 0v-4a9.971 9.971 0 00-.712-3.714M14 40H4v-4a6 6 0 0110.713-3.714M14 40v-4c0-1.313.253-2.566.713-3.714m0 0A9.971 9.971 0 0124 24c4.004 0 7.625 2.371 9.287 6m-9.287-6H4l5.35-5.35C6.788 15.944 4.639 12.207 4 8h40c-.639 4.207-2.788 7.944-5.35 10.65L44 24H24z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No experience added yet</h3>
+        <p class="mt-1 text-sm text-gray-500">Get started by adding your first work experience.</p>
+        <div class="mt-6">
+          <button type="button" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+            Add Experience
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_education_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Education</h3>
+        <p class="text-sm text-gray-600 mb-6">
+          Add your educational background including degrees, certifications, and relevant coursework.
+        </p>
+      </div>
+
+      <div class="text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+          <path d="M12 14l9-5 9 5M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No education added yet</h3>
+        <p class="mt-1 text-sm text-gray-500">Add your educational background and qualifications.</p>
+        <div class="mt-6">
+          <button type="button" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+            Add Education
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_skills_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Skills</h3>
+        <p class="text-sm text-gray-600 mb-6">
+          Showcase your technical and professional skills. Organize them by categories for better presentation.
+        </p>
+      </div>
+
+      <div class="text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+          <path d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No skills added yet</h3>
+        <p class="mt-1 text-sm text-gray-500">Add your technical and professional skills.</p>
+        <div class="mt-6">
+          <button type="button" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+            Add Skills
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_projects_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Projects</h3>
+        <p class="text-sm text-gray-600 mb-6">
+          Showcase your best work including personal projects, open source contributions, and professional achievements.
+        </p>
+      </div>
+
+      <div class="text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+          <path d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No projects added yet</h3>
+        <p class="mt-1 text-sm text-gray-500">Showcase your work and achievements.</p>
+        <div class="mt-6">
+          <button type="button" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+            Add Project
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_settings_section(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Portfolio Settings</h3>
+        <p class="text-sm text-gray-600 mb-6">
+          Configure advanced settings for your portfolio including themes, SEO, and sharing options.
+        </p>
+      </div>
+
+      <form phx-change="portfolio-changed" phx-submit="save-portfolio">
+        <div class="space-y-8">
+          <!-- Theme Settings -->
+          <div>
+            <h4 class="text-base font-medium text-gray-900 mb-4">Theme & Appearance</h4>
+            <div class="grid grid-cols-3 gap-4">
+              <div class="border-2 border-gray-200 rounded-lg p-4 cursor-pointer hover:border-blue-500">
+                <div class="w-full h-20 bg-gradient-to-r from-blue-500 to-purple-600 rounded mb-2"></div>
+                <p class="text-sm font-medium text-center">Modern</p>
+              </div>
+              <div class="border-2 border-blue-500 rounded-lg p-4 cursor-pointer">
+                <div class="w-full h-20 bg-white border rounded mb-2"></div>
+                <p class="text-sm font-medium text-center">Minimal</p>
+              </div>
+              <div class="border-2 border-gray-200 rounded-lg p-4 cursor-pointer hover:border-blue-500">
+                <div class="w-full h-20 bg-gradient-to-r from-gray-800 to-gray-900 rounded mb-2"></div>
+                <p class="text-sm font-medium text-center">Dark</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- SEO Settings -->
+          <div>
+            <h4 class="text-base font-medium text-gray-900 mb-4">SEO & Meta</h4>
+            <div class="space-y-4">
+              <div>
+                <label for="meta_description" class="block text-sm font-medium text-gray-700">
+                  Meta Description
+                </label>
+                <div class="mt-1">
+                  <textarea
+                    name="portfolio[meta_description]"
+                    id="meta_description"
+                    rows="3"
+                    class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                    placeholder="A brief description of your portfolio for search engines..."
+                  >{@portfolio.meta_description}</textarea>
+                </div>
+                <p class="mt-2 text-sm text-gray-500">
+                  Recommended length: 150-160 characters
+                </p>
+              </div>
+
+              <div>
+                <label for="keywords" class="block text-sm font-medium text-gray-700">
+                  Keywords
+                </label>
+                <div class="mt-1">
+                  <input
+                    type="text"
+                    name="portfolio[keywords]"
+                    id="keywords"
+                    value={@portfolio.keywords}
+                    class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                    placeholder="software engineer, react, javascript, full-stack"
+                  />
+                </div>
+                <p class="mt-2 text-sm text-gray-500">
+                  Separate keywords with commas
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Analytics -->
+          <div>
+            <h4 class="text-base font-medium text-gray-900 mb-4">Analytics</h4>
+            <div class="flex items-center">
+              <input
+                id="analytics_enabled"
+                name="portfolio[analytics_enabled]"
+                type="checkbox"
+                checked={@portfolio.analytics_enabled}
+                class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label for="analytics_enabled" class="ml-2 block text-sm text-gray-700">
+                Enable portfolio analytics
+              </label>
+            </div>
+            <p class="mt-2 text-sm text-gray-500">
+              Track visits, popular sections, and user engagement
+            </p>
+          </div>
+        </div>
+      </form>
+    </div>
+    """
   end
 
   # ============================================================================
   # MONETIZATION & STREAMING FOUNDATION
   # ============================================================================
 
-  defp load_monetization_data(user, account) do
-    # Safe access to subscription_tier with fallback
-    subscription_tier = Map.get(account, :subscription_tier, "personal")
-
-    case subscription_tier do
-      tier when tier in ["professional", "creator", "enterprise"] ->
-        %{
-          streaming_key: get_streaming_key(user.id),
-          scheduled_streams: get_scheduled_streams(user.id),
-          stream_analytics: get_stream_analytics(user.id),
-          rtmp_config: get_rtmp_config(user.id),
-          subscription_tier: tier,
-          streaming_enabled: true,  # ADD THIS
-          monetization_enabled: true  # ADD THIS
-        }
-      _ ->
-        %{
-          streaming_key: nil,
-          scheduled_streams: [],
-          stream_analytics: %{},
-          rtmp_config: %{},
-          subscription_tier: "personal",
-          upgrade_required: true,
-          streaming_enabled: false,  # ADD THIS
-          monetization_enabled: false  # ADD THIS
-        }
+  defp load_monetization_data(portfolio, account) do
+    if get_account_features(account).monetization_enabled do
+      %{
+        services: load_portfolio_services(portfolio.id),
+        pricing: load_portfolio_pricing(portfolio.id),
+        calendar: load_booking_calendar(portfolio.id),
+        analytics: load_revenue_analytics(portfolio.id),
+        payment_config: load_payment_config(portfolio.id)
+      }
+    else
+      %{
+        services: [],
+        pricing: %{},
+        calendar: %{},
+        analytics: %{},
+        payment_config: %{}
+      }
     end
   end
 
   defp load_streaming_config(portfolio, account) do
-    %{
-      streaming_key: get_streaming_key(portfolio.id),
-      scheduled_streams: load_scheduled_streams(portfolio.id),
-      stream_analytics: load_stream_analytics(portfolio.id),
-      rtmp_config: get_rtmp_config(account)
-    }
+    if get_account_features(account).streaming_enabled do
+      %{
+        streaming_key: generate_streaming_key(portfolio.id),
+        scheduled_streams: load_scheduled_streams(portfolio.id),
+        stream_analytics: load_stream_analytics(portfolio.id),
+        rtmp_config: load_rtmp_config(portfolio.id)
+      }
+    else
+      %{
+        streaming_key: nil,
+        scheduled_streams: [],
+        stream_analytics: %{},
+        rtmp_config: %{}
+      }
+    end
   end
 
   defp get_monetization_features_for_tier(subscription_tier) do
@@ -1105,6 +2116,23 @@ end
     end
   end
 
+  defp save_portfolio_customization(portfolio_id, customization) do
+    case Portfolios.get_portfolio(portfolio_id) do
+      nil ->
+        {:error, :not_found}
+
+      portfolio ->
+        Portfolios.update_portfolio(portfolio, %{customization: customization})
+    end
+  end
+
+  defp track_portfolio_editor_load_safe(portfolio_id, load_time) do
+    if Code.ensure_loaded?(PortfolioPerformance) do
+      PortfolioPerformance.track_portfolio_editor_load(portfolio_id, load_time)
+    end
+  rescue
+    _ -> :ok
+  end
 
   @impl true
   def handle_event("change_tab", %{"tab" => tab}, socket) do
@@ -1364,6 +2392,37 @@ end
       end
     else
       {:noreply, put_flash(socket, :error, "Upgrade to Creator to enable monetization")}
+    end
+  end
+
+    defp debounce_save_customization(socket, customization) do
+    # Cancel existing timer
+    if socket.assigns.debounce_timer do
+      Process.cancel_timer(socket.assigns.debounce_timer)
+    end
+
+    # Set new timer
+    timer = Process.send_after(self(), {:save_customization, customization}, 500)
+    assign(socket, :debounce_timer, timer)
+  end
+
+  @impl true
+  def handle_info({:save_customization, customization}, socket) do
+    case save_portfolio_customization(socket.assigns.portfolio.id, customization) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:debounce_timer, nil)
+        |> put_flash(:info, "Design changes saved")
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        socket = socket
+        |> assign(:debounce_timer, nil)
+        |> put_flash(:error, "Failed to save changes: #{inspect(reason)}")
+
+        {:noreply, socket}
     end
   end
 
@@ -1635,56 +2694,48 @@ end
   defp get_theme_font("creative"), do: "'Poppins', sans-serif"
   defp get_theme_font(_), do: "'Inter', sans-serif"
 
-  defp get_layout_css("dashboard") do
-    "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;"
+  defp get_theme_base_css(theme) do
+    case theme do
+      "minimal" -> """
+        .portfolio-container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+        .portfolio-section { margin-bottom: 3rem; padding: 2rem; border-radius: 8px; }
+        .portfolio-header h1 { font-size: 2.5rem; font-weight: 300; }
+      """
+      "executive" -> """
+        .portfolio-container { max-width: 1200px; margin: 0 auto; padding: 3rem; }
+        .portfolio-section { margin-bottom: 4rem; padding: 3rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .portfolio-header h1 { font-size: 3rem; font-weight: 700; }
+      """
+      "creative" -> """
+        .portfolio-container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .portfolio-section { margin-bottom: 2rem; padding: 2rem; border-radius: 16px; }
+        .portfolio-header h1 { font-size: 4rem; font-weight: 900; }
+      """
+      _ -> """
+        .portfolio-container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+        .portfolio-section { margin-bottom: 2rem; padding: 2rem; }
+      """
+    end
   end
 
-  defp get_layout_css("gallery") do
-    "display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 0.5rem;"
-  end
-
-  defp get_layout_css(_), do: ""
-
-  defp get_theme_base_css("minimal") do
-    """
-    .portfolio-container {
-      background: linear-gradient(135deg, var(--primary-color) 0%, #{darken_color("#374151", 20)} 100%);
-    }
-    """
-  end
-
-  defp get_theme_base_css("professional") do
-    """
-    .portfolio-container {
-      background: linear-gradient(to bottom, var(--primary-color) 0%, #{darken_color("#1e40af", 10)} 100%);
-    }
-    """
-  end
-
-  defp get_theme_base_css("creative") do
-    """
-    .portfolio-container {
-      background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 50%, var(--secondary-color) 100%);
-    }
-    """
-  end
-
-  defp get_theme_base_css(_), do: get_theme_base_css("minimal")
-
-  defp get_advanced_layout_css("dashboard") do
-    """
-    .portfolio-sections {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 2rem;
-    }
-
-    .section {
-      display: flex;
-      flex-direction: column;
-      height: fit-content;
-    }
-    """
+  defp get_layout_css(layout) do
+    case layout do
+      "grid" -> """
+        .portfolio-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; }
+      """
+      "columns" -> """
+        .portfolio-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; }
+        @media (max-width: 768px) { .portfolio-sections { grid-template-columns: 1fr; } }
+      """
+      "masonry" -> """
+        .portfolio-sections { columns: 2; column-gap: 2rem; }
+        .portfolio-section { break-inside: avoid; margin-bottom: 2rem; }
+        @media (max-width: 768px) { .portfolio-sections { columns: 1; } }
+      """
+      _ -> """
+        .portfolio-sections { display: flex; flex-direction: column; gap: 2rem; }
+      """
+    end
   end
 
   defp get_advanced_layout_css("gallery") do
@@ -1719,22 +2770,85 @@ end
     end
   end
 
-  # Function 2: Live preview CSS (same as simple for now)
   defp generate_live_preview_css(customization, theme) do
-    generate_simple_preview_css(customization, theme)
+    primary_color = Map.get(customization, "primary_color", "#374151")
+    secondary_color = Map.get(customization, "secondary_color", "#6b7280")
+    accent_color = Map.get(customization, "accent_color", "#059669")
+    background_color = Map.get(customization, "background_color", "#ffffff")
+    text_color = Map.get(customization, "text_color", "#1f2937")
+    layout = Map.get(customization, "layout", "minimal")
+
+    base_css = get_theme_base_css(theme)
+
+    """
+    <style id="portfolio-preview-css">
+    :root {
+      --primary-color: #{primary_color};
+      --secondary-color: #{secondary_color};
+      --accent-color: #{accent_color};
+      --background-color: #{background_color};
+      --text-color: #{text_color};
+    }
+
+    #{base_css}
+
+    /* Layout specific styles */
+    #{get_layout_css(layout)}
+
+    /* Apply custom colors */
+    .portfolio-header {
+      background-color: var(--primary-color);
+      color: white;
+    }
+
+    .portfolio-section {
+      color: var(--text-color);
+    }
+
+    .portfolio-accent {
+      color: var(--accent-color);
+    }
+
+    .portfolio-secondary {
+      color: var(--secondary-color);
+    }
+
+    .portfolio-bg {
+      background-color: var(--background-color);
+    }
+
+    .btn-primary {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+
+    .btn-accent {
+      background-color: var(--accent-color);
+      border-color: var(--accent-color);
+    }
+
+    /* Ensure text is readable */
+    .portfolio-content {
+      background-color: var(--background-color);
+      color: var(--text-color);
+    }
+    </style>
+    """
   end
 
-  # Function 3: Broadcast preview updates
   defp broadcast_preview_update(socket) do
-    if socket.assigns.show_live_preview do
-      css = generate_simple_preview_css(socket.assigns.customization || %{}, socket.assigns.portfolio.theme)
+    portfolio = socket.assigns.portfolio
+    customization = socket.assigns.customization || %{}
 
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "portfolio_preview:#{socket.assigns.portfolio.id}",
-        {:preview_update, socket.assigns.customization || %{}, css}
-      )
-    end
+    css = generate_live_preview_css(customization, portfolio.theme)
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio.id}",
+      {:preview_update, customization, css}
+    )
+
+    socket
   end
 
   defp can_add_section?(socket) do
@@ -2009,13 +3123,36 @@ end
 
 
   # Placeholder functions for implementation in subsequent prompts
-  defp load_portfolio_sections(portfolio_id), do: Portfolios.list_portfolio_sections(portfolio_id)
-  defp load_portfolio_media(portfolio_id), do: Portfolios.list_portfolio_media(portfolio_id)
-  defp load_portfolio_services(portfolio_id), do: []
+  defp load_portfolio_sections(portfolio_id) do
+    try do
+      Portfolios.list_portfolio_sections(portfolio_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_portfolio_media(portfolio_id) do
+    try do
+      Portfolios.list_portfolio_media(portfolio_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_portfolio_services(_portfolio_id), do: []
+  defp load_portfolio_pricing(_portfolio_id), do: %{}
+  defp load_booking_calendar(_portfolio_id), do: %{}
+  defp load_revenue_analytics(_portfolio_id), do: %{}
+  defp load_payment_config(_portfolio_id), do: %{}
+
+  defp generate_streaming_key(_portfolio_id), do: nil
+  defp load_scheduled_streams(_portfolio_id), do: []
+  defp load_stream_analytics(_portfolio_id), do: %{}
+  defp load_rtmp_config(_portfolio_id), do: %{}
+
+
   defp load_pricing_config(portfolio_id), do: %{}
-  defp load_booking_calendar(portfolio_id), do: %{}
-  defp load_revenue_analytics(portfolio_id, account), do: %{}
-  defp load_payment_config(account_id), do: %{}
+
   defp get_custom_brand_config(account_id), do: nil
 
   defp update_section_content(params, socket) do
@@ -2499,17 +3636,28 @@ end
   end
 
   defp build_preview_url(portfolio, customization) do
-    # Generate preview token
-    token = :crypto.hash(:sha256, "preview_#{portfolio.id}_#{Date.utc_today()}")
-            |> Base.encode16(case: :lower)
+    base_url = FrestylWeb.Endpoint.url()
+    preview_token = generate_preview_token(portfolio.id)
 
-    # Base URL that matches your route
-    preview_url = "/portfolios/#{portfolio.id}/preview/#{token}"
+    query_params = [
+      {"preview", "true"},
+      {"token", preview_token}
+    ]
 
-    IO.puts("🔍 PREVIEW URL GENERATED: #{preview_url}")
-    IO.puts("🔍 CUSTOMIZATION PASSED: #{inspect(customization)}")
+    # Add customization params for immediate reflection
+    customization_params =
+      customization
+      |> Enum.map(fn {key, value} -> {"custom_#{key}", to_string(value)} end)
 
-    preview_url
+    all_params = query_params ++ customization_params
+    query_string = URI.encode_query(all_params)
+
+    "#{base_url}/p/#{portfolio.slug}?#{query_string}"
+  end
+
+  defp generate_preview_token(portfolio_id) do
+    :crypto.hash(:sha256, "preview_#{portfolio_id}_#{Date.utc_today()}")
+    |> Base.encode16(case: :lower)
   end
 
   # ============================================================================
