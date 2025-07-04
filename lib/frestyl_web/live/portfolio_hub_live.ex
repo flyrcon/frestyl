@@ -135,8 +135,6 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:show_share_modal, false)              # Share modal state
       |> assign(:selected_portfolio_for_share, nil)    # Selected portfolio for sharing
       |> assign(:show_live_stream_modal, false)        # Live streaming modal
-      |> assign(:show_export_menu, false)              # Analytics export menu
-      |> assign(:show_ai_creation_modal, false)        # AI creation modal
       |> assign(:show_clone_modal, false)              # Clone portfolio modal
       # |> assign(:active_collaborations, [])            # Collaboration data
       |> assign(:hub_sections, get_hub_sections(current_account)) # Dynamic sections
@@ -165,7 +163,6 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:show_welcome_celebration, just_completed_onboarding)
 
       # ======== UI STATE MANAGEMENT ========
-      |> assign(:view_mode, "grid") # "sections", "grid", "list"
       |> assign(:active_section, "portfolio_studio")
       |> assign(:filter_status, "all")
       |> assign(:show_create_modal, false)
@@ -186,7 +183,6 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:url_preview, nil)
       |> assign(:settings_data, %{})
 
-      |> assign(:show_live_stream_modal, false)            # Live streaming modal
       |> assign(:show_ai_creation_modal, false)            # AI creation modal
       |> assign(:show_clone_modal, false)                  # Clone portfolio modal
       |> assign(:show_template_browser, false)             # Template browser modal

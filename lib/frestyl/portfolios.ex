@@ -40,14 +40,6 @@ defmodule Frestyl.Portfolios do
     end
   end
 
-  def get_portfolio(portfolio_id) do
-    try do
-      get_portfolio!(portfolio_id)
-    rescue
-      Ecto.NoResultsError -> nil
-    end
-  end
-
   defp is_slug?(identifier) do
     String.length(identifier) < 64 and String.match?(identifier, ~r/^[a-z0-9-]+$/)
   end
@@ -557,18 +549,99 @@ defmodule Frestyl.Portfolios do
   @doc """
   Get portfolio with account context for editing permissions
   """
-  def get_portfolio_with_account(portfolio_id) do
-    query = from p in Portfolio,
-      where: p.id == ^portfolio_id,
-      preload: [:user]
+  @doc """
+  Get portfolio with account information
+  """
 
-    case Repo.one(query) do
-      nil -> nil
-      portfolio ->
-        accounts = Frestyl.Accounts.list_user_accounts(portfolio.user.id)
-        account = List.first(accounts) || %{subscription_tier: "personal"}
+  @doc """
+  URGENT: Clean infinite legacy_backup loops from portfolio customization
+  """
+  def clean_legacy_backup_loops do
+    require Logger
+    Logger.info("🔧 Starting legacy backup cleanup...")
 
-        %{portfolio: portfolio, account: account}
+    # Get all portfolios with customization
+    portfolios =
+      Portfolio
+      |> where([p], not is_nil(p.customization))
+      |> Repo.all()
+
+    Enum.each(portfolios, fn portfolio ->
+      case clean_portfolio_customization(portfolio) do
+        {:ok, _} ->
+          Logger.info("✅ Cleaned portfolio #{portfolio.id} (#{portfolio.title})")
+        {:error, reason} ->
+          Logger.error("❌ Failed to clean portfolio #{portfolio.id}: #{reason}")
+      end
+    end)
+
+    Logger.info("🔧 Legacy backup cleanup complete!")
+  end
+
+  defp clean_portfolio_customization(portfolio) do
+    cleaned_customization = remove_recursive_legacy_backup(portfolio.customization)
+
+    portfolio
+    |> Portfolio.changeset(%{customization: cleaned_customization})
+    |> Repo.update()
+  end
+
+  defp remove_recursive_legacy_backup(customization) when is_map(customization) do
+    customization
+    |> Map.drop(["legacy_backup"])  # Remove ALL legacy_backup keys
+    |> Enum.into(%{}, fn {k, v} ->
+      {k, remove_recursive_legacy_backup(v)}
+    end)
+  end
+
+  defp remove_recursive_legacy_backup(value), do: value
+
+  @doc """
+  SAFE UPDATE: Update portfolio customization without creating recursive backups
+  """
+  def safe_update_portfolio_customization(portfolio, new_customization) do
+    # Clean any existing legacy backups from new customization
+    clean_customization = remove_recursive_legacy_backup(new_customization)
+
+    # Create ONE level of backup (if needed)
+    safe_customization =
+      if should_create_backup?(portfolio.customization, clean_customization) do
+        backup = create_safe_backup(portfolio.customization)
+        Map.put(clean_customization, "legacy_backup", backup)
+      else
+        clean_customization
+      end
+
+    portfolio
+    |> Portfolio.changeset(%{customization: safe_customization})
+    |> Repo.update()
+  end
+
+  defp should_create_backup?(old_customization, new_customization) do
+    # Only create backup for significant changes (like layout changes)
+    layout_changed = Map.get(old_customization || %{}, "layout") != Map.get(new_customization, "layout")
+    theme_changed = Map.get(old_customization || %{}, "theme") != Map.get(new_customization, "theme")
+
+    layout_changed or theme_changed
+  end
+
+  defp create_safe_backup(customization) when is_map(customization) do
+    # Create backup but NEVER include existing legacy_backup
+    customization
+    |> Map.drop(["legacy_backup"])
+    |> Map.take(["layout", "theme", "primary_color", "secondary_color", "typography"])
+  end
+
+  defp create_safe_backup(_), do: %{}
+
+  # Update your existing update_portfolio function to use safe update
+  def update_portfolio(portfolio, attrs) do
+    if Map.has_key?(attrs, :customization) do
+      safe_update_portfolio_customization(portfolio, attrs.customization)
+    else
+      portfolio
+      |> Portfolio.changeset(attrs)
+      |> Repo.update()
     end
   end
 
@@ -975,8 +1048,191 @@ defmodule Frestyl.Portfolios do
     Repo.get_by!(Portfolio, user_id: user_id, slug: slug)
   end
 
-  def get_portfolio_by_slug(slug) do
-    Repo.get_by(Portfolio, slug: slug)
+  @doc """
+  Get portfolio by ID (safe version)
+  """
+  def get_portfolio(id) when is_binary(id) do
+    try do
+      case Integer.parse(id) do
+        {int_id, ""} -> get_portfolio(int_id)
+        _ -> nil
+      end
+    rescue
+      _ -> nil
+    end
+  end
+
+  def get_portfolio(id) when is_integer(id) do
+    Portfolio
+    |> Repo.get(id)
+  end
+
+  def get_portfolio(_), do: nil
+
+  @doc """
+  Get portfolio by ID (unsafe version - raises if not found)
+  """
+  def get_portfolio!(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int_id, ""} -> get_portfolio!(int_id)
+      _ -> raise Ecto.NoResultsError, queryable: Portfolio
+    end
+  end
+
+  def get_portfolio!(id) when is_integer(id) do
+    Portfolio |> Repo.get!(id)
+  end
+
+  @doc """
+  Get portfolio with preloaded sections
+  """
+  def get_portfolio_with_sections(id) do
+    case get_portfolio(id) do
+      nil -> nil
+      portfolio ->
+        portfolio
+        |> Repo.preload([
+          :user,
+          sections: [
+            :content_blocks,
+            :portfolio_media
+          ]
+        ])
+    end
+  end
+
+  @doc """
+  Get portfolio by slug (safe version)
+  """
+  def get_portfolio_by_slug(slug) when is_binary(slug) do
+    Portfolio
+    |> where([p], p.slug == ^slug)
+    |> Repo.one()
+  end
+
+  def get_portfolio_by_slug(_), do: nil
+
+  @doc """
+  Get portfolio by slug (unsafe version)
+  """
+  def get_portfolio_by_slug!(slug) when is_binary(slug) do
+    Portfolio
+    |> where([p], p.slug == ^slug)
+    |> Repo.one!()
+  end
+
+  @doc """
+  Get portfolio by slug with all sections and media preloaded
+  """
+  def get_portfolio_by_slug_with_sections_simple(slug) do
+    case get_portfolio_by_slug(slug) do
+      nil -> nil
+      portfolio ->
+        # Get sections
+        sections = list_portfolio_sections(portfolio.id)
+
+        # Get media for all sections
+        section_ids = Enum.map(sections, & &1.id)
+        media = if length(section_ids) > 0 do
+          PortfolioMedia
+          |> where([pm], pm.section_id in ^section_ids)
+          |> order_by([pm], pm.section_id)
+          |> Repo.all()
+        else
+          []
+        end
+
+        # Group media by section
+        media_by_section = Enum.group_by(media, & &1.section_id)
+
+        # Add media to sections
+        sections_with_media = Enum.map(sections, fn section ->
+          section_media = Map.get(media_by_section, section.id, [])
+          Map.put(section, :portfolio_media, section_media)
+        end)
+
+        Map.put(portfolio, :sections, sections_with_media)
+    end
+  end
+
+  @doc """
+  List all portfolios for a user
+  """
+  def list_user_portfolios(user_id) when is_integer(user_id) do
+    Portfolio
+    |> where([p], p.user_id == ^user_id)
+    |> order_by([p], desc: p.updated_at)
+    |> Repo.all()
+  end
+
+  def list_user_portfolios(user_id) when is_binary(user_id) do
+    case Integer.parse(user_id) do
+      {int_id, ""} -> list_user_portfolios(int_id)
+      _ -> []
+    end
+  end
+
+  def list_user_portfolios(_), do: []
+
+  @doc """
+  Count portfolios for a user
+  """
+  def count_user_portfolios(user_id) do
+    Portfolio
+    |> where([p], p.user_id == ^user_id)
+    |> Repo.aggregate(:count, :id)
+  rescue
+    _ -> 0
+  end
+
+  @doc """
+  Get portfolio limits for a user based on subscription
+  """
+  def get_portfolio_limits(user) do
+    subscription_tier = get_user_subscription_tier(user)
+
+    case subscription_tier do
+      "admin" -> %{
+        max_portfolios: -1,
+        max_media_size_mb: 1000,
+        custom_domain: true,
+        advanced_analytics: true
+      }
+      "creator" -> %{
+        max_portfolios: 25,
+        max_media_size_mb: 500,
+        custom_domain: true,
+        advanced_analytics: true
+      }
+      "professional" -> %{
+        max_portfolios: 10,
+        max_media_size_mb: 250,
+        custom_domain: true,
+        advanced_analytics: false
+      }
+      _ -> %{
+        max_portfolios: 3,
+        max_media_size_mb: 100,
+        custom_domain: false,
+        advanced_analytics: false
+      }
+    end
+  end
+
+  defp get_user_subscription_tier(user) do
+    cond do
+      # Check direct subscription_tier field
+      Map.has_key?(user, :subscription_tier) && user.subscription_tier ->
+        user.subscription_tier
+
+      # Check account association
+      Map.has_key?(user, :account) && user.account && Map.has_key?(user.account, :subscription_tier) ->
+        user.account.subscription_tier
+
+      # Default to personal
+      true ->
+        "personal"
+    end
   end
 
   def create_portfolio(user_id, attrs \\ %{}) do

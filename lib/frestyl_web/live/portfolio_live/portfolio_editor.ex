@@ -774,62 +774,20 @@ end
   end
 
   defp assign_design_system(socket, portfolio, account) do
-    customization = portfolio.customization || %{}
-
-    IO.puts("🔍 ASSIGN_DESIGN_SYSTEM called")
-    IO.puts("🔍 Portfolio customization: #{inspect(customization)}")
-
-    # CRITICAL: Don't use || operator which overrides existing values
-    # Use Map.get with proper nil checking instead
-
-    portfolio_layout = Map.get(customization, "layout", "minimal")
-
-    # FIXED: Only use defaults if the key doesn't exist at all, not if it's a different value
-    primary_color = case Map.get(customization, "primary_color") do
-      nil -> "#374151"
-      color when is_binary(color) -> color
-      _ -> "#374151"
-    end
-
-    secondary_color = case Map.get(customization, "secondary_color") do
-      nil -> "#6b7280"
-      color when is_binary(color) -> color
-      _ -> "#6b7280"
-    end
-
-    accent_color = case Map.get(customization, "accent_color") do
-      nil -> "#059669"
-      color when is_binary(color) -> color
-      _ -> "#059669"
-    end
-
-    background_color = case Map.get(customization, "background_color") do
-      nil -> "#ffffff"
-      color when is_binary(color) -> color
-      _ -> "#ffffff"
-    end
-
-    text_color = case Map.get(customization, "text_color") do
-      nil -> "#1f2937"
-      color when is_binary(color) -> color
-      _ -> "#1f2937"
-    end
-
-    IO.puts("🔍 Extracted colors:")
-    IO.puts("  primary: #{primary_color}")
-    IO.puts("  accent: #{accent_color}")
-    IO.puts("  secondary: #{secondary_color}")
+    # SAFE VERSION - No template migration, no legacy backup
+    customization = %{
+      "layout" => "minimal",
+      "primary_color" => "#374151",
+      "secondary_color" => "#6b7280",
+      "accent_color" => "#059669"
+    }
 
     socket
-    |> assign(:portfolio_layout, portfolio_layout)
-    |> assign(:primary_color, primary_color)
-    |> assign(:secondary_color, secondary_color)
-    |> assign(:accent_color, accent_color)
-    |> assign(:background_color, background_color)
-    |> assign(:text_color, text_color)
+    |> assign(:portfolio_layout, "minimal")
+    |> assign(:primary_color, "#374151")
+    |> assign(:secondary_color, "#6b7280")
+    |> assign(:accent_color, "#059669")
     |> assign(:customization, customization)
-    |> assign(:available_layouts, get_available_layouts(account))
-    |> assign(:brand_constraints, get_brand_constraints(account))
   end
 
 

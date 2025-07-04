@@ -753,4 +753,109 @@ defmodule Frestyl.Portfolios.PortfolioTemplates do
       _ -> "bg-white/95 backdrop-blur-sm border-r border-gray-200"
     end
   end
+
+  @doc """
+  Merges template configuration with user customization, ensuring user values always win.
+  This prevents template defaults from overriding user color choices.
+  """
+  def merge_template_with_user_customization(template_key, user_customization) do
+    template_config = get_template_config(template_key)
+
+    # CRITICAL: User customization values override template values
+    # Only use template values for keys that user hasn't customized
+    merged = Enum.reduce(template_config, %{}, fn {key, template_value}, acc ->
+      case Map.get(user_customization, key) do
+        nil -> Map.put(acc, key, template_value)           # User hasn't set this, use template
+        "" -> Map.put(acc, key, template_value)            # User cleared this, use template
+        user_value -> Map.put(acc, key, user_value)        # User has set this, use user value
+      end
+    end)
+
+    # Add any user customizations that aren't in the template
+    Map.merge(merged, user_customization)
+  end
+
+  @doc """
+  Gets template config but strips out color values if user has customized them.
+  This prevents template color defaults from overriding user choices.
+  """
+  def get_template_config_respecting_user_colors(template_key, user_customization \\ %{}) do
+    base_config = get_template_config(template_key)
+
+    # Remove template color values if user has customized them
+    protected_keys = ["primary_color", "secondary_color", "accent_color", "background_color", "text_color"]
+
+    Enum.reduce(protected_keys, base_config, fn color_key, config ->
+      case Map.get(user_customization, color_key) do
+        nil -> config                                      # User hasn't customized, keep template
+        "" -> config                                       # User cleared, keep template
+        _user_value -> Map.delete(config, color_key)       # User customized, remove template value
+      end
+    end)
+  end
+
+  # UPDATE: Replace the existing get_template_config function to be more defensive:
+  def get_template_config(template_key) do
+    config = case template_key do
+      # Business templates - REMOVE hardcoded colors that override user choices
+      "business_professional" -> %{
+        "layout" => "dashboard"
+        # Removed: "primary_color" => "#374151" - let user customizations win
+      }
+      "professional_executive" -> %{
+        "layout" => "dashboard"
+        # Removed: "primary_color" => "#374151" - let user customizations win
+        # Removed: "secondary_color" => "#6b7280" - let user customizations win
+      }
+
+      # Creative templates - REMOVE hardcoded colors
+      "creative_artistic" -> %{
+        "layout" => "creative"
+        # Removed color overrides
+      }
+      "creative_designer" -> %{
+        "layout" => "gallery"
+        # Removed color overrides
+      }
+
+      # Technical templates - REMOVE hardcoded colors
+      "technical_developer" -> %{
+        "layout" => "terminal"
+        # Removed color overrides
+      }
+      "technical_engineer" -> %{
+        "layout" => "dashboard"
+        # Removed color overrides
+      }
+
+      # Legacy template names - REMOVE hardcoded colors
+      "executive" -> %{
+        "layout" => "dashboard"
+        # Removed color overrides
+      }
+      "developer" -> %{
+        "layout" => "terminal"
+        # Removed color overrides
+      }
+      "designer" -> %{
+        "layout" => "gallery"
+        # Removed color overrides
+      }
+      "minimalist" -> %{
+        "layout" => "minimal"
+        # Removed color overrides
+      }
+
+      # Default fallback - ONLY layout, no color overrides
+      _ -> %{
+        "layout" => "dashboard"
+      }
+    end
+
+    # Only provide color defaults if they're truly needed (no existing customization)
+    Map.merge(%{
+      "layout" => "dashboard"
+      # NO default colors here - let the CSS Priority Manager handle defaults
+    }, config)
+  end
 end

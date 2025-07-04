@@ -149,15 +149,19 @@ defmodule FrestylWeb.Router do
 
     live_session :require_auth, on_mount: [{FrestylWeb.UserAuth, :ensure_authenticated}] do
 
-      # Onboarding routes
+
+    live "/dashboard", DashboardLive, :index     # General dashboard
+
+    # Onboarding routes
     live "/onboarding", OnboardingLive, :index
     live "/onboarding/resume-upload", OnboardingLive.ResumeUpload, :upload
+
 
     # Main dashboard/hub routes - MUST come before generic routes
     live "/", PortfolioHubLive, :index           # Main landing page
     live "/hub", PortfolioHubLive, :index        # Portfolio hub
     live "/hub/welcome", PortfolioHubLive, :welcome  # Welcome page
-    live "/dashboard", DashboardLive, :index     # General dashboard
+
 
       # Studio routes
     live "/studio", StudioLive.Index, :index

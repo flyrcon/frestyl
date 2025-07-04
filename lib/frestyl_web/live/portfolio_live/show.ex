@@ -4,31 +4,46 @@
 defmodule FrestylWeb.PortfolioLive.Show do
   use FrestylWeb, :live_view
 
+  import Ecto.Query
+
   alias Frestyl.Portfolios
   alias Frestyl.Repo
+  alias Frestyl.Portfolios.TemplateSystem
 
-  # Handle /portfolios/:id route
   @impl true
   def mount(params, _session, socket) do
     %{"id" => id} = params
     preview_mode = Map.get(params, "preview") == "true"
 
     try do
-      portfolio = Portfolios.get_portfolio!(id)
-      portfolio = Repo.preload(portfolio, :user)
+      # Use existing function but add timeout
+      portfolio = Task.async(fn ->
+        Portfolios.get_portfolio!(id)
+        |> Repo.preload(:user)
+      end)
+      |> Task.await(5000)  # 5 second timeout
 
       if can_view_portfolio?(portfolio, socket.assigns.current_user) do
-        sections = load_portfolio_sections_safe(portfolio.id)
+        # Load sections with timeout
+        sections = Task.async(fn ->
+          load_portfolio_sections_safe(portfolio.id)
+        end)
+        |> Task.await(3000)  # 3 second timeout
 
         # Handle preview customization
-        customization = if preview_mode and Map.has_key?(params, "customization") do
-          try do
-            Jason.decode!(params["customization"])
-          rescue
-            _ -> portfolio.customization || %{}
-          end
-        else
-          portfolio.customization || %{}
+        customization = case preview_mode do
+          true ->
+            case Map.get(params, "customization") do
+              nil -> portfolio.customization || get_default_customization()
+              customization_json ->
+                try do
+                  Jason.decode!(customization_json)
+                rescue
+                  _ -> portfolio.customization || get_default_customization()
+                end
+            end
+          false ->
+            portfolio.customization || %{}
         end
 
         socket =
@@ -41,8 +56,9 @@ defmodule FrestylWeb.PortfolioLive.Show do
           |> assign(:can_export, false)
           |> assign(:show_export_panel, false)
           |> assign(:export_processing, false)
+          |> assign(:customization_css, apply_customization_styles(customization))
 
-        # Subscribe to preview updates if in preview mode
+        # Only subscribe to preview updates if in preview mode
         if preview_mode do
           Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
         end
@@ -54,9 +70,11 @@ defmodule FrestylWeb.PortfolioLive.Show do
         |> redirect(to: "/")}
       end
     rescue
-      Ecto.NoResultsError ->
+      # Handle any timeout or database errors
+      error ->
+        IO.puts("Portfolio load error: #{inspect(error)}")
         {:ok, socket
-        |> put_flash(:error, "Portfolio not found")
+        |> put_flash(:error, "Portfolio temporarily unavailable")
         |> redirect(to: "/")}
     end
   end
@@ -130,6 +148,53 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+  defp get_default_customization do
+    %{
+      "primary_color" => "#374151",
+      "secondary_color" => "#6b7280",
+      "accent_color" => "#3b82f6",
+      "background_color" => "#ffffff",
+      "text_color" => "#111827",
+      "layout" => "dashboard"
+    }
+  end
+
+  defp load_minimal_sections(portfolio_id) do
+    # Use a lighter query for preview mode
+    try do
+      from(s in PortfolioSection,
+        where: s.portfolio_id == ^portfolio_id,
+        select: %{
+          id: s.id,
+          title: s.title,
+          section_type: s.section_type,
+          content: s.content,
+          visible: s.visible
+        },
+        limit: 10
+      )
+      |> Repo.all()
+    rescue
+      _ -> []
+    end
+  end
+
+  defp get_portfolio_basic(id) do
+    from(p in Portfolio,
+      where: p.id == ^id,
+      select: %{
+        id: p.id,
+        title: p.title,
+        description: p.description,
+        theme: p.theme,
+        customization: p.customization,
+        visibility: p.visibility,
+        user_id: p.user_id
+      }
+    )
+    |> Repo.one!()
+  end
+
   # EVENT HANDLERS (add basic ones if needed)
   @impl true
   def handle_event("toggle_export_panel", _params, socket) do
@@ -196,9 +261,12 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   def apply_customization_styles(customization) when is_map(customization) do
+    # Use EXACT colors user set - no template overrides
     primary_color = Map.get(customization, "primary_color", "#374151")
     accent_color = Map.get(customization, "accent_color", "#059669")
     secondary_color = Map.get(customization, "secondary_color", "#6b7280")
+    background_color = Map.get(customization, "background_color", "#ffffff")
+    text_color = Map.get(customization, "text_color", "#1f2937")
     layout = Map.get(customization, "layout", "minimal")
 
     """
@@ -207,10 +275,14 @@ defmodule FrestylWeb.PortfolioLive.Show do
         --primary-color: #{primary_color};
         --accent-color: #{accent_color};
         --secondary-color: #{secondary_color};
+        --background-color: #{background_color};
+        --text-color: #{text_color};
       }
 
       .portfolio-container {
         #{get_layout_styles(layout)}
+        background-color: var(--background-color);
+        color: var(--text-color);
       }
 
       .portfolio-primary { color: var(--primary-color) !important; }
@@ -225,6 +297,43 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   def apply_customization_styles(_), do: ""
+
+  # ADD these helper functions to show.ex:
+  defp map_template_grid_to_layout(grid_type) do
+    case grid_type do
+      "masonry" -> "dashboard"
+      "pinterest" -> "gallery"
+      "service_oriented" -> "case_study"
+      "minimal_stack" -> "minimal"
+      _ -> "dashboard"
+    end
+  end
+
+  defp get_template_system_layout_styles(layout, spacing, max_columns) do
+    case layout do
+      "dashboard" ->
+        "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: #{spacing}; max-width: #{max_columns * 400}px; margin: 0 auto;"
+      "gallery" ->
+        "display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: #{spacing}; max-width: #{max_columns * 350}px; margin: 0 auto;"
+      "case_study" ->
+        "display: flex; flex-direction: column; gap: #{spacing}; max-width: 900px; margin: 0 auto;"
+      "minimal" ->
+        "display: flex; flex-direction: column; gap: #{spacing}; max-width: 800px; margin: 0 auto;"
+      _ ->
+        "display: flex; flex-direction: column; gap: #{spacing}; max-width: 800px; margin: 0 auto;"
+    end
+  end
+
+  # Helper function to map template system grid types to layouts
+  defp map_template_grid_to_layout(grid_type) do
+    case grid_type do
+      "masonry" -> "dashboard"
+      "pinterest" -> "gallery"
+      "service_oriented" -> "case_study"
+      "minimal_stack" -> "minimal"
+      _ -> "dashboard"
+    end
+  end
 
   defp get_layout_styles("dashboard") do
     "display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;"
@@ -246,5 +355,20 @@ defmodule FrestylWeb.PortfolioLive.Show do
   @impl true
   def handle_info({:sections_updated, sections}, socket) do
     {:noreply, assign(socket, :sections, sections)}
+  end
+
+  @impl true
+  def handle_info({:preview_update, customization, _css}, socket) do
+    # Only update if customization actually changed
+    if customization != socket.assigns.customization do
+      new_css = apply_customization_styles(customization)
+      socket = socket
+      |> assign(:customization, customization)
+      |> assign(:customization_css, new_css)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 end
