@@ -14,38 +14,28 @@ defmodule FrestylWeb.PortfolioLive.Show do
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     try do
+      # Load portfolio with sections preloaded
       portfolio = Portfolios.get_portfolio!(id)
-      current_user = socket.assigns.current_user
+      |> Repo.preload([:user, :sections])
 
-      # Check access permissions first
-      if can_edit_portfolio?(portfolio, current_user) do
-        # Subscribe to real-time updates
-        if connected?(socket) do
-          Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio:#{portfolio.id}")
-        end
+      if can_view_portfolio?(portfolio, socket.assigns.current_user) do
+        sections = portfolio.sections || []
+        IO.puts("🔧 SHOW: Portfolio loaded with #{length(sections)} sections preloaded")
 
-        # Load portfolio data
-        sections = load_portfolio_sections_safe(portfolio.id)
-
-        # Process customization CSS and template layout
-        {template_config, customization_css, template_layout} = process_portfolio_customization(portfolio)
+        # Determine if current user can edit this portfolio
+        can_edit = owns_portfolio?(portfolio, socket.assigns.current_user)
 
         socket =
           socket
-          |> assign(:page_title, portfolio.title || "Portfolio")
-          |> assign(:portfolio, portfolio)
-          |> assign(:current_user, current_user)
-          |> assign(:can_edit, can_edit_portfolio?(portfolio, current_user))
-          |> assign(:show_export_modal, false)
+          |> assign(:page_title, portfolio.title)
+          |> assign(:portfolio, portfolio)  # Portfolio now has sections preloaded
           |> assign(:sections, sections)
-          |> assign(:customization, portfolio.customization || %{})
-          |> assign(:template_config, template_config)
-          |> assign(:template_layout, template_layout)
-          |> assign(:customization_css, customization_css)
-          |> assign(:can_export, owns_portfolio?(portfolio, current_user))
+          |> assign(:active_tab, :overview)  # Add default active tab
+          |> assign(:can_export, false)
+          |> assign(:can_edit, can_edit)
           |> assign(:show_export_panel, false)
+          |> assign(:show_export_modal, false)
           |> assign(:export_processing, false)
-          |> assign(:live_updates_enabled, true)
 
         {:ok, socket}
       else
@@ -58,43 +48,45 @@ defmodule FrestylWeb.PortfolioLive.Show do
         {:ok, socket
         |> put_flash(:error, "Portfolio not found")
         |> redirect(to: "/")}
-
-      error ->
-        # Log the error for debugging
-        require Logger
-        Logger.error("Error in portfolio show mount: #{inspect(error)}")
-
-        {:ok, socket
-        |> put_flash(:error, "An error occurred loading the portfolio")
-        |> redirect(to: "/")}
     end
   end
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
-    case Portfolios.get_portfolio_by_slug(slug) do
-      nil ->
+    case Portfolios.get_portfolio_by_slug_with_sections_simple(slug) do
+      {:ok, portfolio} ->
+        # Ensure both user and sections are preloaded
+        portfolio = portfolio
+        |> Repo.preload([:user, :sections])
+
+        sections = portfolio.sections || []
+        IO.puts("🔧 SHOW: Portfolio loaded via slug with #{length(sections)} sections preloaded")
+
+        # Determine if current user can edit this portfolio
+        can_edit = owns_portfolio?(portfolio, socket.assigns.current_user)
+
+        unless can_edit do
+          track_portfolio_visit_safe(portfolio, socket)
+        end
+
+        socket =
+          socket
+          |> assign(:page_title, portfolio.title)
+          |> assign(:portfolio, portfolio)  # Portfolio now has sections preloaded
+          |> assign(:sections, sections)
+          |> assign(:active_tab, :overview)  # Add default active tab
+          |> assign(:can_export, false)
+          |> assign(:can_edit, can_edit)
+          |> assign(:show_export_panel, false)
+          |> assign(:show_export_modal, false)
+          |> assign(:export_processing, false)
+
+        {:ok, socket}
+
+      {:error, :not_found} ->
         {:ok, socket
         |> put_flash(:error, "Portfolio not found")
         |> redirect(to: "/")}
-
-      portfolio ->
-        # For now, just use the portfolio as-is to prevent errors
-        # We'll fix the sections loading later
-        socket =
-          socket
-          |> assign(:page_title, portfolio.title || "Portfolio")
-          |> assign(:portfolio, portfolio)
-          |> assign(:sections, [])  # Empty sections for now
-          |> assign(:customization, portfolio.customization || %{})
-          |> assign(:template_config, %{})
-          |> assign(:template_layout, "default")
-          |> assign(:customization_css, "")
-          |> assign(:can_export, false)
-          |> assign(:show_export_panel, false)
-          |> assign(:live_updates_enabled, false)
-
-        {:ok, socket}
     end
   end
 
@@ -148,14 +140,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   defp owns_portfolio?(portfolio, user) do
     user && portfolio.user_id == user.id
-  end
-
-  defp load_portfolio_sections_safe(portfolio_id) do
-    try do
-      Portfolios.list_portfolio_sections(portfolio_id)
-    rescue
-      _ -> []
-    end
   end
 
   defp track_portfolio_visit_safe(portfolio, socket) do
@@ -499,18 +483,62 @@ defmodule FrestylWeb.PortfolioLive.Show do
     {:noreply, socket}
   end
 
-    @impl true
-  def handle_params(_params, _url, socket) do
-    {:noreply, socket}
+  @impl true
+  def handle_params(%{"id" => id}, _uri, socket) do
+    IO.puts("[debug] HANDLE PARAMS in FrestylWeb.PortfolioLive.Show")
+    IO.puts("  Parameters: %{\"id\" => \"#{id}\"}")
+
+    try do
+      portfolio = Portfolios.get_portfolio!(id)
+
+      # Preload the user association if not loaded
+      portfolio = if Ecto.assoc_loaded?(portfolio.user) do
+        portfolio
+      else
+        Repo.preload(portfolio, :user)
+      end
+
+      if can_view_portfolio?(portfolio, socket.assigns[:current_user]) do
+        # Load sections with debug info
+        sections = load_portfolio_sections_safe(portfolio.id)
+        IO.puts("🔧 LOADED: #{length(sections)} sections for portfolio")
+
+        socket =
+          socket
+          |> assign(:page_title, portfolio.title)
+          |> assign(:portfolio, portfolio)
+          |> assign(:sections, sections)
+          |> assign(:can_export, false)
+          |> assign(:show_export_panel, false)
+          |> assign(:export_processing, false)
+
+        {:noreply, socket}
+      else
+        {:noreply, socket
+        |> put_flash(:error, "Access denied")
+        |> redirect(to: "/")}
+      end
+    rescue
+      Ecto.NoResultsError ->
+        IO.puts("❌ Portfolio not found with id: #{id}")
+        {:noreply, socket
+        |> put_flash(:error, "Portfolio not found")
+        |> redirect(to: "/")}
+      error ->
+        IO.puts("❌ Unexpected error in handle_params: #{inspect(error)}")
+        {:noreply, socket
+        |> put_flash(:error, "Something went wrong")
+        |> redirect(to: "/")}
+    end
   end
 
   @impl true
   def handle_event("show_export_modal", _params, socket) do
-    {:noreply, assign(socket, :how_export_modal, true)}
+    {:noreply, assign(socket, :show_export_modal, true)}
   end
 
   @impl true
-  def handle_event("hide_export_modal", _params, socket) do
+  def handle_event("close_export_modal", _params, socket) do
     {:noreply, assign(socket, :show_export_modal, false)}
   end
 
@@ -520,6 +548,12 @@ defmodule FrestylWeb.PortfolioLive.Show do
     {:noreply,
      socket
      |> push_event("print_portfolio", %{})}
+  end
+
+  @impl true
+  def handle_event("change_tab", %{"tab" => tab}, socket) do
+    IO.puts("🔧 SHOW: Switching to tab: #{tab}")
+    {:noreply, assign(socket, :active_tab, String.to_atom(tab))}
   end
 
   @impl true
@@ -1154,10 +1188,25 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   defp load_portfolio_sections_safe(portfolio_id) do
+    IO.puts("🔧 HELPER: Loading sections for portfolio #{portfolio_id}")
+
     try do
-      Portfolios.list_portfolio_sections(portfolio_id)
+      sections = Portfolios.list_portfolio_sections(portfolio_id)
+      IO.puts("🔧 HELPER: Successfully loaded #{length(sections)} sections")
+
+      # Ensure sections are properly ordered by position
+      sections
+      |> Enum.sort_by(& &1.position)
+      |> Enum.filter(& &1.visible)
+
     rescue
-      _ -> []
+      error ->
+        IO.puts("❌ HELPER: Failed to load sections: #{inspect(error)}")
+        []
+    catch
+      :exit, reason ->
+        IO.puts("❌ HELPER: Process exit while loading sections: #{inspect(reason)}")
+        []
     end
   end
 
@@ -1244,40 +1293,41 @@ defmodule FrestylWeb.PortfolioLive.Show do
   # Ultra-safe helper function to get work experiences
   defp get_work_experiences(portfolio) do
     try do
-      # Double-check that sections are loaded
-      if Ecto.assoc_loaded?(portfolio.sections) do
-        sections = portfolio.sections || []
-        IO.puts("🔍 HELPER: Processing #{length(sections)} sections for work experience")
+      # Sections should now always be loaded
+      sections = case Ecto.assoc_loaded?(portfolio.sections) do
+        true ->
+          portfolio.sections || []
+        false ->
+          IO.puts("🔧 HELPER: Sections not preloaded, loading them...")
+          Portfolios.list_portfolio_sections(portfolio.id)
+      end
 
-        # Find experience section
-        experience_section = Enum.find(sections, fn section ->
-          section_type = section.section_type
-          IO.puts("🔍 HELPER: Checking section type: #{inspect(section_type)}")
-          section_type == :experience || section_type == "experience"
+      IO.puts("🔍 HELPER: Processing #{length(sections)} sections for work experience")
+
+      # Find experience section
+      experience_section = Enum.find(sections, fn section ->
+        section_type = section.section_type
+        section_type == :experience || section_type == "experience"
+      end)
+
+      if experience_section do
+        IO.puts("✅ HELPER: Found experience section")
+        content = experience_section.content || %{}
+        jobs = content["jobs"] || content["work_experience"] || content["experiences"] || []
+        IO.puts("🔍 HELPER: Found #{length(jobs)} jobs")
+
+        # Ensure each job has the expected structure
+        Enum.map(jobs, fn job ->
+          %{
+            title: job["title"] || job["position"] || "",
+            company: job["company"] || job["employer"] || "",
+            start_date: job["start_date"] || job["from"] || "",
+            end_date: job["end_date"] || job["to"] || job["until"],
+            description: job["description"] || job["summary"] || job["responsibilities"] || ""
+          }
         end)
-
-        if experience_section do
-          IO.puts("✅ HELPER: Found experience section")
-          content = experience_section.content || %{}
-          jobs = content["jobs"] || content["work_experience"] || content["experiences"] || []
-          IO.puts("🔍 HELPER: Found #{length(jobs)} jobs")
-
-          # Ensure each job has the expected structure
-          Enum.map(jobs, fn job ->
-            %{
-              title: job["title"] || job["position"] || "",
-              company: job["company"] || job["employer"] || "",
-              start_date: job["start_date"] || job["from"] || "",
-              end_date: job["end_date"] || job["to"] || job["until"],
-              description: job["description"] || job["summary"] || job["responsibilities"] || ""
-            }
-          end)
-        else
-          IO.puts("❌ HELPER: No experience section found")
-          []
-        end
       else
-        IO.puts("❌ HELPER: Sections not loaded!")
+        IO.puts("🔧 HELPER: No experience section found")
         []
       end
     rescue

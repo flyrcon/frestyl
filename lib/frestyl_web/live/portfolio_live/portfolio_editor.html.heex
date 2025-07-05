@@ -249,7 +249,7 @@
             </div>
           </div>
 
-          <!-- Main Content -->
+<!-- Main Content -->
           <div class="lg:col-span-3">
             <div class="bg-white rounded-lg shadow-sm border border-gray-200">
               
@@ -296,455 +296,90 @@
 
                 <% :content -> %>
                   <div class="p-6">
-                    <%= if assigns[:editing_section] && assigns[:section_edit_mode] do %>
-                      <!-- SECTION EDITING INTERFACE -->
-                      <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
-                        <!-- Editor Header -->
-                        <div class="border-b border-gray-200 px-6 py-4">
+                    <div class="flex items-center justify-between mb-6">
+                      <h2 class="text-lg font-semibold text-gray-900">Portfolio Sections</h2>
+                      <button 
+                        phx-click="add_section"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                        Add Section
+                      </button>
+                    </div>
+
+                    <!-- Sections List -->
+                    <div class="space-y-4">
+                      <%= for section <- (@sections || []) do %>
+                        <div class="border border-gray-200 rounded-lg p-4">
                           <div class="flex items-center justify-between">
-                            <div class="flex items-center space-x-3">
-                              <button type="button"
-                                      phx-click="close_section_editor"
-                                      class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-                                </svg>
-                              </button>
-                              <div>
-                                <h3 class="text-xl font-semibold text-gray-900">
-                                  Editing: <%= @editing_section.title %>
-                                </h3>
-                                <p class="text-sm text-gray-500">
-                                  <%= format_section_type(@editing_section.section_type) %> Section
-                                </p>
-                              </div>
+                            <div>
+                              <h3 class="font-medium text-gray-900"><%= section.title %></h3>
+                              <p class="text-sm text-gray-500"><%= format_section_type(section.section_type) %></p>
                             </div>
-                            
-                            <div class="flex items-center space-x-3">
-                              <button type="button"
-                                      phx-click="save_section"
-                                      phx-value-section_id={@editing_section.id}
-                                      class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-                                Save Changes
+                            <div class="flex items-center space-x-2">
+                              <button 
+                                phx-click="edit_section" 
+                                phx-value-section-id={section.id}
+                                class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
+                                Edit
+                              </button>
+                              <button 
+                                phx-click="toggle_section_visibility" 
+                                phx-value-section-id={section.id}
+                                class={"px-3 py-1 text-sm rounded #{if section.visible, do: "bg-green-100 text-green-700", else: "bg-gray-100 text-gray-700"}"}>
+                                <%= if section.visible, do: "Visible", else: "Hidden" %>
                               </button>
                             </div>
                           </div>
                         </div>
+                      <% end %>
 
-                        <!-- Editor Content -->
-                        <div class="p-6 space-y-6">
-                          <!-- Section Title -->
-                          <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Section Title</label>
-                            <input type="text" 
-                                  value={@editing_section.title}
-                                  phx-change="update_section_field"
-                                  phx-value-field="title"
-                                  phx-value-section_id={@editing_section.id}
-                                  placeholder="Enter section title..."
-                                  class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-medium">
-                          </div>
-
-                          <!-- Content Editor -->
-                          <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Section Content</label>
-                            <textarea phx-change="update_section_field"
-                                      phx-value-field="description"
-                                      phx-value-section_id={@editing_section.id}
-                                      rows="6"
-                                      placeholder="Add content for this section..."
-                                      class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= get_in(@editing_section.content, ["description"]) || get_in(@editing_section.content, ["content"]) || get_in(@editing_section.content, ["summary"]) || "" %></textarea>
-                          </div>
-
-                          <!-- Custom Fields Section (add after line ~400 where section editing happens) -->
-                          <%= if @editing_section && @editing_section.section_type == :custom do %>
-                            <div class="border-t border-gray-200 mt-6 pt-6">
-                              <div class="flex items-center justify-between mb-4">
-                                <h4 class="text-lg font-medium text-gray-900">Custom Fields</h4>
-                                <button phx-click="manage_custom_fields" 
-                                        phx-value-section-id={@editing_section.id}
-                                        class="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700">
-                                  Manage Fields
-                                </button>
-                              </div>
-                              
-                              <%= if Map.get(@editing_section, :custom_fields_enabled, false) do %>
-                                <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                                  <div class="flex items-center">
-                                    <svg class="w-5 h-5 text-green-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-                                    </svg>
-                                    <span class="text-sm font-medium text-green-800">Custom fields are enabled for this section</span>
-                                  </div>
-                                </div>
-                              <% else %>
-                                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                                  <div class="flex items-center justify-between">
-                                    <div class="flex items-center">
-                                      <svg class="w-5 h-5 text-gray-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                      </svg>
-                                      <span class="text-sm text-gray-700">Custom fields are disabled for this section</span>
-                                    </div>
-                                    <button phx-click="toggle_custom_fields" 
-                                            phx-value-section-id={@editing_section.id}
-                                            class="px-3 py-1.5 bg-gray-600 text-white rounded-lg text-sm font-medium hover:bg-gray-700">
-                                      Enable
-                                    </button>
-                                  </div>
-                                </div>
-                              <% end %>
-                            </div>
-                          <% end %>
-
-                          <!-- Custom Fields Modal (add at the end of the file, before closing div) -->
-                          <%= if assigns[:show_custom_fields_modal] do %>
-                            <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                              <div class="bg-white rounded-xl shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-                                <div class="p-6 border-b border-gray-200">
-                                  <div class="flex items-center justify-between">
-                                    <h3 class="text-lg font-semibold text-gray-900">
-                                      Custom Fields for "<%= @custom_fields_section.title %>"
-                                    </h3>
-                                    <button phx-click="close_custom_fields_modal"
-                                            class="text-gray-400 hover:text-gray-600">
-                                      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                      </svg>
-                                    </button>
-                                  </div>
-                                </div>
-                                
-                                <div class="p-6">
-                                  <.live_component 
-                                    module={FrestylWeb.PortfolioLive.Components.CustomFields}
-                                    id="custom-fields-manager"
-                                    portfolio_id={@portfolio.id}
-                                    field_definitions={assigns[:custom_field_definitions] || []}
-                                    field_values={assigns[:custom_field_values] || []}
-                                    section={assigns[:custom_fields_section]} />
-                                </div>
-                              </div>
-                            </div>
-                          <% end %>
-
-                          <!-- Visibility Toggle -->
-                          <div class="flex items-center justify-between pt-4 border-t">
-                            <label class="flex items-center">
-                              <input type="checkbox"
-                                    checked={@editing_section.visible}
-                                    phx-change="toggle_section_visibility"
-                                    phx-value-section-id={@editing_section.id}
-                                    class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                              <span class="ml-2 text-sm text-gray-700">Visible on portfolio</span>
-                            </label>
-                            
-                            <div class="flex items-center space-x-3">
-                              <button type="button"
-                                      phx-click="delete_section"
-                                      phx-value-section-id={@editing_section.id}
-                                      data-confirm="Are you sure you want to delete this section?"
-                                      class="px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors">
-                                Delete Section
-                              </button>
-                              
-                              <button type="button"
-                                      phx-click="save_section"
-                                      phx-value-section_id={@editing_section.id}
-                                      class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                                Save Changes
-                              </button>
-                            </div>
-                          </div>
+                      <%= if Enum.empty?(@sections || []) do %>
+                        <div class="text-center py-8 text-gray-500">
+                          <p>No sections yet. Add your first section to get started.</p>
                         </div>
-                      </div>
-                    <% else %>
-                      <!-- SECTIONS OVERVIEW - When NOT editing -->
-                      <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-lg font-semibold text-gray-900">Content Sections</h2>
-                        
-                        <!-- Add Section Dropdown -->
-                        <div class="relative" phx-click-away="close_add_section_dropdown">
-                          <button 
-                            phx-click="toggle_add_section_dropdown"
-                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-                            </svg>
-                            Add Section
-                            <svg class={["w-4 h-4 ml-2 transition-transform", if(assigns[:show_add_section_dropdown], do: "rotate-180", else: "rotate-0")]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                            </svg>
-                          </button>
-
-                          <%= if assigns[:show_add_section_dropdown] do %>
-                            <div class="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
-                              <div class="px-4 py-2 border-b border-gray-100">
-                                <h3 class="text-sm font-semibold text-gray-900">Choose Section Type</h3>
-                              </div>
-                              
-                              <%= for {section_type, section_info} <- get_section_types() do %>
-                                <button type="button"
-                                        phx-click="add_section"
-                                        phx-value-section_type={section_type}
-                                        class="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-start space-x-3 transition-colors">
-                                  <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                    <span class="text-lg"><%= section_info.emoji %></span>
-                                  </div>
-                                  <div class="flex-1 min-w-0">
-                                    <div class="font-medium text-gray-900"><%= section_info.title %></div>
-                                    <div class="text-sm text-gray-500"><%= section_info.description %></div>
-                                  </div>
-                                </button>
-                              <% end %>
-                            </div>
-                          <% end %>
-                        </div>
-                      </div>
-                      
-                      <!-- Sections List -->
-                      <div class="space-y-4" id="sortable-sections">
-                        <%= for {section, index} <- Enum.with_index(@sections) do %>
-                          <div class="border border-gray-200 rounded-lg bg-white shadow-sm hover:shadow-md transition-all" id={"section-#{section.id}"}>
-                            <div class="p-4">
-                              <div class="flex justify-between items-center">
-                                <!-- Left: Section Info -->
-                                <div class="flex items-center space-x-4">
-                                  <div class="flex items-center space-x-3">
-                                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                                      <span class="text-lg"><%= get_section_emoji(section.section_type) %></span>
-                                    </div>
-                                    <div>
-                                      <h3 class="font-medium text-gray-900"><%= section.title || "Untitled Section" %></h3>
-                                      <div class="flex items-center space-x-2 text-sm text-gray-500">
-                                        <span><%= format_section_type(section.section_type) %></span>
-                                        <span>•</span>
-                                        <span>Position <%= index + 1 %></span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <!-- Right: Action Buttons -->
-                                <div class="flex items-center space-x-2">
-                                  <!-- Visibility Toggle -->
-                                  <button type="button"
-                                          phx-click="toggle_section_visibility"
-                                          phx-value-section-id={section.id}
-                                          class={[
-                                            "p-2 rounded-lg transition-colors",
-                                            if(section.visible, 
-                                              do: "text-green-600 bg-green-50 hover:bg-green-100", 
-                                              else: "text-gray-400 bg-gray-50 hover:bg-gray-100")
-                                          ]}
-                                          title={if(section.visible, do: "Hide section", else: "Show section")}>
-                                    <%= if section.visible do %>
-                                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                      </svg>
-                                    <% else %>
-                                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
-                                      </svg>
-                                    <% end %>
-                                  </button>
-
-                                  <!-- Duplicate Button -->
-                                  <button type="button"
-                                          phx-click="duplicate_section"
-                                          phx-value-section-id={section.id}
-                                          class="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                                          title="Duplicate section">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                                    </svg>
-                                  </button>
-
-                                  <!-- Edit Button -->
-                                  <button 
-                                    phx-click="edit_section" 
-                                    phx-value-section_id={section.id}
-                                    class="px-3 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">
-                                    Edit
-                                  </button>
-
-                                  <!-- Delete Button -->
-                                  <button 
-                                    phx-click="delete_section" 
-                                    phx-value-section-id={section.id}
-                                    data-confirm="Are you sure you want to delete this section? This action cannot be undone."
-                                    class="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-                                    title="Delete section">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-
-                              <!-- Section Content Preview -->
-                              <div class="mt-4 text-sm text-gray-600">
-                                <%= if section.content && map_size(section.content) > 0 do %>
-                                  <div class="bg-gray-50 rounded-lg p-3">
-                                    <%= get_section_preview(section) %>
-                                  </div>
-                                <% else %>
-                                  <div class="text-gray-400 italic">No content added yet</div>
-                                <% end %>
-                              </div>
-                            </div>
-                          </div>
-                        <% end %>
-                        
-                        <%= if Enum.empty?(@sections) do %>
-                          <div class="text-center py-12">
-                            <div class="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-                              <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                              </svg>
-                            </div>
-                            <h3 class="text-lg font-medium text-gray-900 mb-2">Ready to Build Your Portfolio?</h3>
-                            <p class="text-gray-600 mb-6">Start by adding your first section. Choose from professional templates like Experience, Skills, Projects, and more.</p>
-                            <button 
-                              phx-click="toggle_add_section_dropdown"
-                              class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                              Add Your First Section
-                            </button>
-                          </div>
-                        <% end %>
-                      </div>
-                    <% end %>
+                      <% end %>
+                    </div>
                   </div>
 
                 <% :design -> %>
                   <div class="p-6">
-                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Design & Layout</h2>
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Design & Template</h2>
                     
-                    <!-- Theme Selection -->
-                    <div class="mb-6">
-                      <label class="block text-sm font-medium text-gray-700 mb-2">Theme Selection</label>
-                      <div class="grid grid-cols-3 gap-3">
-                        <%= for theme <- ["minimal", "professional", "creative"] do %>
-                          <% is_selected = @portfolio.theme == theme %>
-                          <button 
-                            phx-click="change_theme"
-                            phx-value-theme={theme}
-                            class={"p-3 border rounded-lg text-center transition-all #{if is_selected, do: "border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-200", else: "border-gray-200 hover:border-gray-300 hover:bg-gray-50"}"}>
-                            <div class="font-medium">
-                              <%= String.capitalize(theme) %>
-                              <%= if is_selected do %>
-                                <span class="ml-1 text-blue-600 font-bold">✓</span>
-                              <% end %>
-                            </div>
-                            <div class="text-xs text-gray-500 mt-1">
-                              <%= case theme do %>
-                                <% "minimal" -> %> Clean & Simple
-                                <% "professional" -> %> Business Ready  
-                                <% "creative" -> %> Bold & Artistic
-                              <% end %>
-                            </div>
-                          </button>
-                        <% end %>
-                      </div>
+                    <!-- Dynamic Card Layout Toggle -->
+                    <div class="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+                      <h3 class="font-semibold text-purple-900 mb-2">Dynamic Card Layouts</h3>
+                      <p class="text-sm text-purple-700 mb-3">Enable advanced card-based layouts with drag-and-drop editing</p>
+                      <button 
+                        phx-click="enable_dynamic_cards"
+                        class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors">
+                        Switch to Dynamic Cards
+                      </button>
                     </div>
                     
-                    <!-- Layout Options -->
-                    <div class="mb-6">
-                      <label class="block text-sm font-medium text-gray-700 mb-2">Layout Style</label>
-                      <div class="space-y-2">
-                        <%= for layout <- ["minimal", "dashboard", "gallery"] do %>
-                          <% current_layout = Map.get(@customization || %{}, "layout", "minimal") %>
-                          <% is_selected = current_layout == layout %>
-                          <label class={"flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-all #{if is_selected, do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200", else: "border-gray-200 hover:bg-gray-50"}"}>
-                            <input 
-                              type="radio" 
-                              name="layout_radio"
-                              value={layout}
-                              checked={is_selected}
-                              phx-click="update_layout"
-                              phx-value-value={layout}
-                              class="text-blue-600">
-                            <div class="flex-1">
-                              <div class="font-medium">
-                                <%= String.capitalize(layout) %>
-                                <%= if is_selected do %>
-                                  <span class="ml-1 text-blue-600 font-bold">✓</span>
-                                <% end %>
-                              </div>
-                              <div class="text-sm text-gray-500">
-                                <%= case layout do %>
-                                  <% "minimal" -> %> Clean single column
-                                  <% "dashboard" -> %> Grid layout
-                                  <% "gallery" -> %> Masonry style
-                                <% end %>
-                              </div>
-                            </div>
-                          </label>
-                        <% end %>
+                    <div class="space-y-6">
+                      <!-- Theme Selection -->
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Theme</label>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          <%= for theme <- ["professional_executive", "creative_modern", "minimal_clean"] do %>
+                            <button 
+                              phx-click="change_theme"
+                              phx-value-theme={theme}
+                              class={"p-3 border-2 rounded-lg text-sm #{if (@portfolio.theme || "professional_executive") == theme, do: "border-blue-500 bg-blue-50", else: "border-gray-200 hover:border-gray-300"}"}>
+                              <%= String.replace(theme, "_", " ") |> String.split() |> Enum.map(&String.capitalize/1) |> Enum.join(" ") %>
+                            </button>
+                          <% end %>
+                        </div>
                       </div>
-                    </div>
 
-                    <!-- Color Customization -->
-                    <div class="mb-6">
-                      <label class="block text-sm font-medium text-gray-700 mb-2">Colors</label>
-                      <div class="space-y-4">
-                        <!-- Primary Color -->
-                        <div>
-                          <label class="block text-sm text-gray-600 mb-1">Primary Color</label>
-                          <div class="flex items-center space-x-2">
-                            <input 
-                              type="color" 
-                              value={Map.get(@customization || %{}, "primary_color", "#374151")}
-                              phx-change="update_color"
-                              phx-value-field="primary_color"
-                              class="w-12 h-8 rounded border">
-                            <input 
-                              type="text" 
-                              value={Map.get(@customization || %{}, "primary_color", "#374151")}
-                              phx-change="update_color"
-                              phx-value-field="primary_color"
-                              class="flex-1 px-3 py-2 border rounded text-sm">
-                          </div>
-                        </div>
-                        
-                        <!-- Accent Color -->
-                        <div>
-                          <label class="block text-sm text-gray-600 mb-1">Accent Color</label>
-                          <div class="flex items-center space-x-2">
-                            <input 
-                              type="color" 
-                              value={Map.get(@customization || %{}, "accent_color", "#059669")}
-                              phx-change="update_color"
-                              phx-value-field="accent_color"
-                              class="w-12 h-8 rounded border">
-                            <input 
-                              type="text" 
-                              value={Map.get(@customization || %{}, "accent_color", "#059669")}
-                              phx-change="update_color"
-                              phx-value-field="accent_color"
-                              class="flex-1 px-3 py-2 border rounded text-sm">
-                          </div>
-                        </div>
-
-                        <!-- Secondary Color -->
-                        <div>
-                          <label class="block text-sm text-gray-600 mb-1">Secondary Color</label>
-                          <div class="flex items-center space-x-2">
-                            <input 
-                              type="color" 
-                              value={Map.get(@customization || %{}, "secondary_color", "#6b7280")}
-                              phx-change="update_color"
-                              phx-value-field="secondary_color"
-                              class="w-12 h-8 rounded border">
-                            <input 
-                              type="text" 
-                              value={Map.get(@customization || %{}, "secondary_color", "#6b7280")}
-                              phx-change="update_color"
-                              phx-value-field="secondary_color"
-                              class="flex-1 px-3 py-2 border rounded text-sm">
-                          </div>
-                        </div>
+                      <!-- Color Customization -->
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-3">Primary Color</label>
+                        <input 
+                          type="color" 
+                          value={get_in(@portfolio, [:customization, "primary_color"]) || "#3b82f6"}
+                          phx-change="update_color"
+                          phx-value-field="primary_color"
+                          class="w-16 h-10 border border-gray-300 rounded-md">
                       </div>
                     </div>
                   </div>
@@ -753,68 +388,55 @@
                   <div class="p-6">
                     <h2 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Settings</h2>
                     
-                    <!-- Account Information -->
-                    <div class="mb-6">
-                      <h3 class="text-sm font-medium text-gray-900 mb-2">Account</h3>
-                      <p class="text-sm text-gray-600">
-                        Subscription: <span class="font-medium"><%= String.capitalize(Map.get(@account, :subscription_tier, "personal")) %></span>
-                      </p>
+                    <div class="space-y-6">
+                      <!-- URL Settings -->
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Portfolio URL</label>
+                        <div class="flex">
+                          <span class="inline-flex items-center px-3 py-2 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                            frestyl.com/p/
+                          </span>
+                          <input 
+                            type="text" 
+                            value={@portfolio.slug}
+                            phx-change="update_slug"
+                            phx-value-field="slug"
+                            class="flex-1 px-3 py-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                      </div>
+
+                      <!-- Analytics -->
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                          <input type="checkbox" class="mr-2">
+                          Enable Analytics Tracking
+                        </label>
+                        <p class="text-sm text-gray-500">Track views and visitor engagement on your portfolio.</p>
+                      </div>
+
+                      <!-- Export Options -->
+                      <div>
+                        <h3 class="font-medium text-gray-900 mb-3">Export Options</h3>
+                        <div class="space-y-2">
+                          <button class="block w-full text-left px-4 py-2 bg-gray-50 rounded-md hover:bg-gray-100">
+                            Export as PDF
+                          </button>
+                          <button class="block w-full text-left px-4 py-2 bg-gray-50 rounded-md hover:bg-gray-100">
+                            Export as JSON
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    
-                    <!-- Monetization (SAFE ACCESS) -->
-                    <%= if Map.get(@monetization_data, :streaming_enabled, false) || Map.get(@account, :subscription_tier, "personal") in ["creator", "professional", "enterprise"] do %>
-                      <div class="mb-6">
-                        <h3 class="text-sm font-medium text-gray-900 mb-2">Monetization</h3>
-                        <div class="bg-green-50 border border-green-200 rounded-lg p-3">
-                          <p class="text-sm text-green-700">
-                            Monetization features are enabled for your account.
-                          </p>
-                        </div>
-                      </div>
-                    <% else %>
-                      <div class="mb-6">
-                        <h3 class="text-sm font-medium text-gray-900 mb-2">Monetization</h3>
-                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                          <p class="text-sm text-yellow-700">
-                            Upgrade to enable monetization features.
-                          </p>
-                        </div>
-                      </div>
-                    <% end %>
-                    
-                    <!-- Streaming (if available) -->
-                    <%= if Map.get(@monetization_data, :streaming_enabled, false) do %>
-                      <div class="mb-6">
-                        <h3 class="text-sm font-medium text-gray-900 mb-2">Live Streaming</h3>
-                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                          <p class="text-sm text-blue-700">
-                            Live streaming features are available for your account.
-                          </p>
-                          <%= if Map.get(@monetization_data, :streaming_key) do %>
-                            <div class="mt-2 text-xs text-blue-600">
-                              <strong>Streaming Key:</strong> 
-                              <code class="bg-blue-100 px-1 rounded">****-****-****</code>
-                            </div>
-                          <% end %>
-                        </div>
-                      </div>
-                    <% end %>
-                    
-                    <!-- Danger Zone -->
-                    <div class="border-t border-gray-200 pt-6">
-                      <h3 class="text-sm font-medium text-red-900 mb-2">Danger Zone</h3>
-                      <button 
-                        phx-click="delete_portfolio"
-                        data-confirm="Are you sure you want to delete this portfolio? This action cannot be undone."
-                        class="inline-flex items-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50">
-                        Delete Portfolio
-                      </button>
-                    </div>
+                  </div>
+
+                <% _ -> %>
+                  <div class="p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Unknown Tab</h2>
+                    <p class="text-gray-600">Please select a valid tab from the navigation.</p>
                   </div>
               <% end %>
             </div>
           </div>
-        </div>
       </div>
     </div>
   </div>

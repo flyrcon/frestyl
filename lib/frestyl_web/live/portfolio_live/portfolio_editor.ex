@@ -63,6 +63,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         |> assign(:page_title, "Edit #{portfolio.title || 'Portfolio'}")
         |> assign_core_data(portfolio, account, user)
         |> assign_features_and_limits(features, limits)
+        |> assign(:active_tab, :overview)
         |> assign_content_data(sections, media_library, content_blocks)
         |> assign_monetization_data(monetization_data, streaming_config)
         # Fix 3: Pass the correct parameters to assign_design_system
@@ -150,107 +151,112 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     {:noreply, assign(socket, :preview_mobile_view, mobile_view)}
   end
 
-@impl true
-def handle_event("update_color", %{"field" => field, "value" => color}, socket) do
-  portfolio = socket.assigns.portfolio
-  customization = Map.get(portfolio, :customization, %{})
+  @impl true
+  def handle_event("update_color", %{"field" => field, "value" => color}, socket) do
+    portfolio = socket.assigns.portfolio
+    customization = Map.get(portfolio, :customization, %{})
 
-  # Update customization
-  updated_customization = Map.put(customization, field, color)
+    # Update customization
+    updated_customization = Map.put(customization, field, color)
 
-  # Save to database
-  case Portfolios.update_portfolio_customization(portfolio, updated_customization) do
-    {:ok, updated_portfolio} ->
-      # Generate new CSS
-      css = generate_live_preview_css(updated_customization, portfolio.theme)
+    # Save to database
+    case Portfolios.update_portfolio_customization(portfolio, updated_customization) do
+      {:ok, updated_portfolio} ->
+        # Generate new CSS
+        css = generate_live_preview_css(updated_customization, portfolio.theme)
 
-      # Broadcast to live preview
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "portfolio_preview:#{portfolio.id}",
-        {:preview_update, updated_customization, css}
-      )
+        # Broadcast to live preview
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio_preview:#{portfolio.id}",
+          {:preview_update, updated_customization, css}
+        )
 
-      socket =
-        socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:unsaved_changes, false)
+        socket =
+          socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:customization, updated_customization)
+          |> assign(:unsaved_changes, false)
 
-      {:noreply, socket}
+        {:noreply, socket}
 
-    {:error, _changeset} ->
-      {:noreply, put_flash(socket, :error, "Failed to save color change")}
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to save color change")}
+    end
   end
-end
 
-@impl true
-def handle_event("update_layout", %{"value" => layout}, socket) do
-  portfolio = socket.assigns.portfolio
-  customization = Map.get(portfolio, :customization, %{})
+  @impl true
+  def handle_event("update_layout", %{"value" => layout}, socket) do
+    portfolio = socket.assigns.portfolio
+    customization = Map.get(portfolio, :customization, %{})
 
-  # Update layout in customization
-  updated_customization = Map.put(customization, "layout", layout)
+    # Update layout in customization
+    updated_customization = Map.put(customization, "layout", layout)
 
-  case Portfolios.update_portfolio_customization(portfolio, updated_customization) do
-    {:ok, updated_portfolio} ->
-      # Generate new CSS
-      css = generate_live_preview_css(updated_customization, portfolio.theme)
+    case Portfolios.update_portfolio_customization(portfolio, updated_customization) do
+      {:ok, updated_portfolio} ->
+        # Generate new CSS
+        css = generate_live_preview_css(updated_customization, portfolio.theme)
 
-      # Broadcast to live preview
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "portfolio_preview:#{portfolio.id}",
-        {:preview_update, updated_customization, css}
-      )
+        # Broadcast to live preview
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio_preview:#{portfolio.id}",
+          {:preview_update, updated_customization, css}
+        )
 
-      socket =
-        socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:unsaved_changes, false)
+        socket =
+          socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:customization, updated_customization)
+          |> assign(:unsaved_changes, false)
 
-      {:noreply, socket}
+        {:noreply, socket}
 
-    {:error, _changeset} ->
-      {:noreply, put_flash(socket, :error, "Failed to save layout change")}
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to save layout change")}
+    end
   end
-end
 
-@impl true
-def handle_event("update_template", %{"template" => template}, socket) do
-  portfolio = socket.assigns.portfolio
+  @impl true
+  def handle_event("update_template", %{"template" => template}, socket) do
+    portfolio = socket.assigns.portfolio
 
-  case Portfolios.update_portfolio_theme(portfolio, template) do
-    {:ok, updated_portfolio} ->
-      # Get template config
-      template_config = get_template_config(template)
+    case Portfolios.update_portfolio_theme(portfolio, template) do
+      {:ok, updated_portfolio} ->
+        # Get template config
+        template_config = get_template_config(template)
 
-      # Generate CSS for new template
-      css = generate_live_preview_css(updated_portfolio.customization || %{}, template)
+        # Generate CSS for new template
+        css = generate_live_preview_css(updated_portfolio.customization || %{}, template)
 
-      # Broadcast template change
-      Phoenix.PubSub.broadcast(
-        Frestyl.PubSub,
-        "portfolio_preview:#{portfolio.id}",
-        {:template_change, template, css}
-      )
+        # Broadcast template change
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio_preview:#{portfolio.id}",
+          {:template_change, template, css}
+        )
 
-      socket =
-        socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:selected_template, template)
-        |> assign(:template_config, template_config)
-        |> assign(:unsaved_changes, false)
-        |> put_flash(:info, "Template updated successfully")
+        socket =
+          socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:selected_template, template)
+          |> assign(:template_config, template_config)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Template updated successfully")
 
-      {:noreply, socket}
+        {:noreply, socket}
 
-    {:error, _changeset} ->
-      {:noreply, put_flash(socket, :error, "Failed to update template")}
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update template")}
+    end
   end
-end
 
+  @impl true
+  def handle_event("change_tab", %{"tab" => tab}, socket) do
+    IO.puts("🔧 SHOW: Switching to tab: #{tab}")
+    {:noreply, assign(socket, :active_tab, String.to_atom(tab))}
+  end
 
   @impl true
   def handle_event("change_theme", %{"theme" => theme}, socket) do
@@ -408,6 +414,17 @@ end
             {:noreply, put_flash(socket, :error, "Failed to add section: #{error_msg}")}
         end
     end
+  end
+
+  @impl true
+  def handle_event("enable_dynamic_cards", _params, socket) do
+    portfolio_id = socket.assigns.portfolio.id
+
+    # Redirect to dynamic card editor
+    {:noreply,
+    socket
+    |> put_flash(:info, "Switching to Dynamic Card Layout Editor...")
+    |> push_navigate(to: "/portfolios/#{portfolio_id}/dynamic_edit")}
   end
 
   # Helper function to build section attributes based on type
@@ -2831,6 +2848,12 @@ end
 
     tab_atom = String.to_atom(tab)
     {:noreply, assign(socket, :active_tab, tab_atom)}
+  end
+
+  @impl true
+  def handle_event("change-section", %{"section" => tab, "value" => _value}, socket) do
+    IO.puts("🔧 PORTFOLIO_EDITOR: Switching to tab: #{tab}")
+    {:noreply, assign(socket, :active_tab, String.to_atom(tab))}
   end
 
 
