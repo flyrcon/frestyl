@@ -492,13 +492,14 @@ defmodule FrestylWeb.PortfolioHubLive do
         false -> false  # If not loaded, assume not ready
       end
 
-      # 🔥 FIX: Change portfolio.status to portfolio.visibility
-      # Check if portfolio has necessary content for studio features
-      has_sufficient_content?(portfolio) and
-      portfolio.visibility in [:public, :private] and  # Use visibility instead of status
-      sections_loaded
+      # ✅ FIX: Use portfolio.visibility instead of portfolio.status
+      has_sufficient_content = sections_loaded
+      visibility_is_set = portfolio.visibility in [:public, :link_only, :request_only, :private]
+
+      has_sufficient_content && visibility_is_set
     end)
   end
+
 
   defp get_available_integrations(account) do
     # Return available integrations based on account tier/permissions
@@ -663,10 +664,13 @@ defmodule FrestylWeb.PortfolioHubLive do
   defp load_studio_data(user, portfolios, account) do
     %{
       total_portfolios: length(portfolios),
-      # 🔥 FIX: Use visibility instead of status
+      # ✅ FIX: Use visibility enum instead of old field references
       published_count: Enum.count(portfolios, &(&1.visibility == :public)),
       draft_count: Enum.count(portfolios, &(&1.visibility == :private)),
+      link_only_count: Enum.count(portfolios, &(&1.visibility == :link_only)),
+      request_only_count: Enum.count(portfolios, &(&1.visibility == :request_only)),
 
+      # Existing keys maintained:
       quick_integrations: get_available_integrations(account),
       studio_ready_portfolios: filter_studio_ready_portfolios(portfolios),
       recent_edits: get_recent_portfolio_edits(user.id),

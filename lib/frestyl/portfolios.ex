@@ -29,6 +29,14 @@ defmodule Frestyl.Portfolios do
   # 🔥 NEW: ENHANCED PORTFOLIO ACCESS CONTROL
   # ============================================================================
 
+  def get_public_portfolios do
+    from(p in Portfolio,
+      where: p.visibility == :public,
+      order_by: [desc: p.updated_at]
+    )
+    |> Repo.all()
+  end
+
   def get_portfolio_with_access_check(identifier, user \\ nil, access_token \\ nil) do
     cond do
       is_slug?(identifier) ->
@@ -38,6 +46,25 @@ defmodule Frestyl.Portfolios do
       true ->
         {:error, :invalid_identifier}
     end
+  end
+
+  def update_portfolio_visibility(portfolio_id, visibility, user_id) when visibility in ["public", "link_only", "request_only", "private"] do
+    portfolio = get_portfolio!(portfolio_id)
+
+    if portfolio.user_id == user_id do
+      visibility_atom = String.to_atom(visibility)
+      update_portfolio(portfolio, %{visibility: visibility_atom})
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  def list_portfolios_by_visibility(user_id, visibility) when visibility in [:public, :link_only, :request_only, :private] do
+    from(p in Portfolio,
+      where: p.user_id == ^user_id and p.visibility == ^visibility,
+      order_by: [desc: p.updated_at]
+    )
+    |> Repo.all()
   end
 
   defp is_slug?(identifier) do
@@ -191,6 +218,129 @@ defmodule Frestyl.Portfolios do
   defp share_expired?(share) do
     share.expires_at && DateTime.compare(DateTime.utc_now(), share.expires_at) == :gt
   end
+
+  # Custom fields
+
+  def create_custom_field_definition(attrs) do
+    Frestyl.Portfolios.CustomFieldDefinition.create(attrs)
+  end
+
+  def update_custom_field_definition(definition, attrs) do
+    Frestyl.Portfolios.CustomFieldDefinition.update(definition, attrs)
+  end
+
+  def delete_custom_field_definition(definition) do
+    Frestyl.Portfolios.CustomFieldDefinition.delete(definition)
+  end
+
+  def list_custom_field_definitions(portfolio_id) do
+    Frestyl.Portfolios.CustomFieldDefinition.list_for_portfolio(portfolio_id)
+  end
+
+  def get_custom_field_definition!(id) do
+    Frestyl.Portfolios.CustomFieldDefinition.get!(id)
+  end
+
+  def create_custom_field_value(attrs) do
+    Frestyl.Portfolios.CustomFieldValue.create(attrs)
+  end
+
+  def update_custom_field_value(value, attrs) do
+    Frestyl.Portfolios.CustomFieldValue.update(value, attrs)
+  end
+
+  def delete_custom_field_value(value) do
+    Frestyl.Portfolios.CustomFieldValue.delete(value)
+  end
+
+  def list_custom_field_values(portfolio_id, section_id \\ nil) do
+    Frestyl.Portfolios.CustomFieldValue.list_for_portfolio(portfolio_id, section_id)
+  end
+
+  def get_custom_field_value!(id) do
+    Frestyl.Portfolios.CustomFieldValue.get!(id)
+  end
+
+  def apply_field_template(portfolio_id, template_name) do
+    Frestyl.Portfolios.CustomFieldDefinition.apply_template(portfolio_id, template_name)
+  end
+
+  def validate_custom_field_value(value, definition) do
+    Frestyl.Portfolios.CustomFieldValue.validate_against_definition(value, definition)
+  end
+
+  defp validate_text_field(value, rules) when is_binary(value) do
+    cond do
+      Map.get(rules, "min_length") && String.length(value) < rules["min_length"] ->
+        {:error, "Text too short (minimum #{rules["min_length"]} characters)"}
+
+      Map.get(rules, "max_length") && String.length(value) > rules["max_length"] ->
+        {:error, "Text too long (maximum #{rules["max_length"]} characters)"}
+
+      Map.get(rules, "pattern") && !Regex.match?(~r/#{rules["pattern"]}/, value) ->
+        {:error, "Text does not match required pattern"}
+
+      true -> {:ok, value}
+    end
+  end
+
+  defp validate_number_field(value, rules) when is_number(value) do
+    cond do
+      Map.get(rules, "min_value") && value < rules["min_value"] ->
+        {:error, "Value too small (minimum #{rules["min_value"]})"}
+
+      Map.get(rules, "max_value") && value > rules["max_value"] ->
+        {:error, "Value too large (maximum #{rules["max_value"]})"}
+
+      Map.get(rules, "integer_only", false) && !is_integer(value) ->
+        {:error, "Value must be an integer"}
+
+      true -> {:ok, value}
+    end
+  end
+
+  defp validate_list_field(value, rules) when is_list(value) do
+    cond do
+      Map.get(rules, "min_items") && length(value) < rules["min_items"] ->
+        {:error, "Too few items (minimum #{rules["min_items"]})"}
+
+      Map.get(rules, "max_items") && length(value) > rules["max_items"] ->
+        {:error, "Too many items (maximum #{rules["max_items"]})"}
+
+      Map.get(rules, "allowed_values") && !Enum.all?(value, &(&1 in rules["allowed_values"])) ->
+        {:error, "Contains invalid values"}
+
+      true -> {:ok, value}
+    end
+  end
+
+  defp validate_date_field(value, _rules) when is_binary(value) do
+    case Date.from_iso8601(value) do
+      {:ok, _date} -> {:ok, value}
+      {:error, _} -> {:error, "Invalid date format"}
+    end
+  end
+
+  defp validate_url_field(value, _rules) when is_binary(value) do
+    if String.match?(value, ~r/^https?:\/\/.+/) do
+      {:ok, value}
+    else
+      {:error, "Invalid URL format"}
+    end
+  end
+
+  defp validate_email_field(value, _rules) when is_binary(value) do
+    if String.match?(value, ~r/^[^\s]+@[^\s]+\.[^\s]+$/) do
+      {:ok, value}
+    else
+      {:error, "Invalid email format"}
+    end
+  end
+
+  # Fallback for validation errors
+  defp validate_text_field(_, _), do: {:error, "Invalid text value"}
+  defp validate_number_field(_, _), do: {:error, "Invalid number value"}
+  defp validate_list_field(_, _), do: {:error, "Invalid list value"}
 
   # ============================================================================
   # 🔥 NEW: SOCIAL SECTION CREATION & MANAGEMENT
@@ -498,43 +648,15 @@ defmodule Frestyl.Portfolios do
   end
 
   def get_portfolio_by_slug_with_sections_simple(slug) do
-    IO.puts("🔥 LOADING PORTFOLIO: #{slug}")
-
-    query = from p in Portfolio,
-      where: p.slug == ^slug,
-      preload: [
-        :user,
-        portfolio_sections: [portfolio_media: []]
-      ]
-
-    case Repo.one(query) do
+    case Repo.get_by(Portfolio, slug: slug) do
       nil ->
-        IO.puts("🔥 PORTFOLIO NOT FOUND")
         {:error, :not_found}
-
       portfolio ->
-        IO.puts("🔥 PORTFOLIO FOUND: #{portfolio.title}")
-        IO.puts("🔥 RAW SECTIONS COUNT: #{length(portfolio.portfolio_sections)}")
-
-        # 🔥 CRITICAL: Transform to expected structure with proper field mapping
-        normalized_portfolio = %{
-          id: portfolio.id,
-          title: portfolio.title,
-          description: portfolio.description,
-          slug: portfolio.slug,
-          theme: portfolio.theme,
-          customization: portfolio.customization,
-          visibility: portfolio.visibility,
-          inserted_at: portfolio.inserted_at,
-          updated_at: portfolio.updated_at,
-          user: portfolio.user,
-          # 🔥 KEY FIX: Map portfolio_sections to sections with complete data
-          sections: transform_sections_for_display(portfolio.portfolio_sections)
-        }
-
-        IO.puts("🔥 NORMALIZED SECTIONS COUNT: #{length(normalized_portfolio.sections)}")
-
-        {:ok, normalized_portfolio}
+        portfolio_with_sections = Repo.preload(portfolio, [
+          :user,
+          sections: [:portfolio_media]
+        ])
+        {:ok, portfolio_with_sections}
     end
   end
 

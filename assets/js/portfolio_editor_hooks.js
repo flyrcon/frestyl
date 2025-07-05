@@ -891,5 +891,232 @@ document.addEventListener('DOMContentLoaded', function() {
   console.log('🚀 Portfolio Editor initialized successfully');
 });
 
+// ============================================================================
+// CUSTOM FIELDS DYNAMIC MANAGEMENT
+// ============================================================================
+
+const CustomFieldsManager = {
+  init() {
+    this.setupFieldTypeHandlers();
+    this.setupValidationRules();
+    this.setupDynamicFields();
+  },
+
+  setupFieldTypeHandlers() {
+    document.addEventListener('change', (e) => {
+      if (e.target.matches('select[name="field_type"]')) {
+        this.handleFieldTypeChange(e.target);
+      }
+    });
+  },
+
+  handleFieldTypeChange(selectElement) {
+    const fieldType = selectElement.value;
+    const form = selectElement.closest('form');
+    const validationSection = form.querySelector('.validation-rules-section');
+    
+    if (validationSection) {
+      this.updateValidationRulesSection(validationSection, fieldType);
+    }
+  },
+
+  updateValidationRulesSection(section, fieldType) {
+    // Clear existing validation rules
+    section.innerHTML = '';
+    
+    const validationHTML = this.getValidationRulesHTML(fieldType);
+    section.innerHTML = validationHTML;
+  },
+
+  getValidationRulesHTML(fieldType) {
+    switch (fieldType) {
+      case 'text':
+        return `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Minimum Length</label>
+              <input type="number" name="validation_rules[min_length]" min="0" 
+                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Maximum Length</label>
+              <input type="number" name="validation_rules[max_length]" min="1" 
+                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+          </div>
+          <div class="mt-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Pattern (Regex)</label>
+            <input type="text" name="validation_rules[pattern]" placeholder="e.g., ^[A-Z].*" 
+                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            <p class="mt-1 text-xs text-gray-500">Regular expression pattern (optional)</p>
+          </div>
+        `;
+      
+      case 'number':
+        return `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Minimum Value</label>
+              <input type="number" name="validation_rules[min_value]" step="any" 
+                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Maximum Value</label>
+              <input type="number" name="validation_rules[max_value]" step="any" 
+                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+          </div>
+          <div class="mt-4 flex items-center">
+            <input type="checkbox" name="validation_rules[integer_only]" 
+                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+            <label class="ml-2 text-sm text-gray-700">Integer values only</label>
+          </div>
+        `;
+      
+      case 'list':
+        return `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Minimum Items</label>
+              <input type="number" name="validation_rules[min_items]" min="0" 
+                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Maximum Items</label>
+              <input type="number" name="validation_rules[max_items]" min="1" 
+                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+          </div>
+          <div class="mt-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Allowed Values</label>
+            <textarea name="validation_rules[allowed_values]" rows="3" placeholder="One value per line" 
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+            <p class="mt-1 text-xs text-gray-500">Enter one allowed value per line (optional)</p>
+          </div>
+        `;
+      
+      default:
+        return '<p class="text-sm text-gray-500">No additional validation options for this field type.</p>';
+    }
+  },
+
+  setupValidationRules() {
+    document.addEventListener('input', (e) => {
+      if (e.target.matches('input[name*="validation_rules"], textarea[name*="validation_rules"]')) {
+        this.validateRuleInput(e.target);
+      }
+    });
+  },
+
+  validateRuleInput(input) {
+    const ruleName = input.name.match(/validation_rules\[([^\]]+)\]/);
+    if (!ruleName) return;
+
+    const rule = ruleName[1];
+    const value = input.value;
+
+    // Remove previous validation messages
+    const existingMessage = input.parentNode.querySelector('.validation-message');
+    if (existingMessage) {
+      existingMessage.remove();
+    }
+
+    let isValid = true;
+    let message = '';
+
+    switch (rule) {
+      case 'min_length':
+      case 'max_length':
+      case 'min_items':
+      case 'max_items':
+        if (value && !Number.isInteger(Number(value))) {
+          isValid = false;
+          message = 'Must be a whole number';
+        }
+        break;
+      
+      case 'min_value':
+      case 'max_value':
+        if (value && isNaN(Number(value))) {
+          isValid = false;
+          message = 'Must be a valid number';
+        }
+        break;
+      
+      case 'pattern':
+        if (value) {
+          try {
+            new RegExp(value);
+          } catch (e) {
+            isValid = false;
+            message = 'Invalid regular expression';
+          }
+        }
+        break;
+    }
+
+    if (!isValid) {
+      const messageEl = document.createElement('p');
+      messageEl.className = 'validation-message text-xs text-red-600 mt-1';
+      messageEl.textContent = message;
+      input.parentNode.appendChild(messageEl);
+      input.classList.add('border-red-300');
+    } else {
+      input.classList.remove('border-red-300');
+    }
+  },
+
+  setupDynamicFields() {
+    // Handle dynamic addition/removal of field values
+    document.addEventListener('click', (e) => {
+      if (e.target.matches('[data-action="add-field-value"]')) {
+        this.addFieldValue(e.target);
+      } else if (e.target.matches('[data-action="remove-field-value"]')) {
+        this.removeFieldValue(e.target);
+      }
+    });
+  },
+
+  addFieldValue(button) {
+    const container = button.closest('.field-values-container');
+    const template = container.querySelector('.field-value-template');
+    if (template) {
+      const clone = template.cloneNode(true);
+      clone.classList.remove('field-value-template', 'hidden');
+      clone.classList.add('field-value-item');
+      
+      // Update field names with unique indices
+      const index = container.querySelectorAll('.field-value-item').length;
+      const inputs = clone.querySelectorAll('input, textarea, select');
+      inputs.forEach(input => {
+        const oldName = input.getAttribute('name');
+        if (oldName) {
+          input.setAttribute('name', oldName.replace(/\[\d*\]/, `[${index}]`));
+        }
+      });
+      
+      button.parentNode.insertBefore(clone, button);
+    }
+  },
+
+  removeFieldValue(button) {
+    const item = button.closest('.field-value-item');
+    if (item) {
+      item.remove();
+    }
+  }
+};
+
+// Add to the main PortfolioEditor initialization
+const originalInit = window.PortfolioEditor.init;
+window.PortfolioEditor.init = function() {
+  originalInit.call(this);
+  CustomFieldsManager.init();
+  console.log('🎯 Custom Fields Manager initialized');
+};
+
+// Export CustomFieldsManager for external use
+window.CustomFieldsManager = CustomFieldsManager;
+
 // Export hooks for Phoenix LiveView
 export default PortfolioEditorHooks;

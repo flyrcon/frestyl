@@ -69,6 +69,10 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         |> assign_design_system(portfolio, account)  # Changed from (available_layouts, brand_constraints)
         |> assign_ui_state()
         |> assign_live_preview_state()
+        |> assign(:show_custom_fields_modal, false)
+        |> assign(:custom_fields_section, nil)
+        |> assign(:custom_field_definitions, [])
+        |> assign(:custom_field_values, [])
 
         load_time = System.monotonic_time(:millisecond) - start_time
         # Fix 4: Add safe call for performance tracking
@@ -285,9 +289,27 @@ end
     {:noreply, assign(socket, :show_resume_import, false)}
   end
 
-    @impl true
-  def handle_event("change_section", %{"section" => section}, socket) do
-    {:noreply, assign(socket, :active_section, section)}
+  @impl true
+  def handle_event("change-section", %{"section" => section_type, "value" => value}, socket) do
+    case section_type do
+      "experience" ->
+        handle_experience_section_change(value, socket)
+
+      "education" ->
+        handle_education_section_change(value, socket)
+
+      "skills" ->
+        handle_skills_section_change(value, socket)
+
+      "projects" ->
+        handle_projects_section_change(value, socket)
+
+      "custom" ->
+        handle_custom_section_change(value, socket)
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Unknown section type: #{section_type}")}
+    end
   end
 
   @impl true
@@ -338,36 +360,275 @@ end
   end
 
   @impl true
-  def handle_event("add_section", %{"section_type" => section_type}, socket) do
-    portfolio = socket.assigns.portfolio
-    sections = socket.assigns.sections
-    next_position = length(sections) + 1
+  def handle_event("add_section", params, socket) do
+    # Handle different parameter formats
+    section_type = case params do
+      %{"section_type" => type} -> type
+      %{"type" => type} -> type
+      _ -> nil
+    end
 
-    section_attrs = %{
-      portfolio_id: portfolio.id,
-      section_type: section_type,
+    cond do
+      # No section type provided - show error or dropdown
+      is_nil(section_type) ->
+        {:noreply, put_flash(socket, :error, "Please select a section type")}
+
+      # Check if user can add more sections
+      !can_add_section?(socket) ->
+        {:noreply, put_flash(socket, :error, "Section limit reached for your subscription")}
+
+      # Valid section type - create the section
+      true ->
+        portfolio = socket.assigns.portfolio
+        sections = socket.assigns.sections
+        next_position = length(sections) + 1
+
+        # Enhanced section attributes with custom fields support
+        section_attrs = build_section_attrs(section_type, portfolio.id, next_position)
+
+        case Portfolios.create_section(section_attrs) do
+          {:ok, new_section} ->
+            updated_sections = sections ++ [new_section]
+
+            # Enhanced success response with better messaging
+            success_message = get_section_creation_message(section_type)
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> assign(:show_add_section_dropdown, false)
+            |> assign(:editing_section, new_section)
+            |> assign(:editing_mode, :section_edit)
+            |> put_flash(:info, success_message)
+            |> assign(:unsaved_changes, false)
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            error_msg = format_changeset_errors(changeset)
+            {:noreply, put_flash(socket, :error, "Failed to add section: #{error_msg}")}
+        end
+    end
+  end
+
+  # Helper function to build section attributes based on type
+  defp build_section_attrs(section_type, portfolio_id, position) do
+    base_attrs = %{
+      portfolio_id: portfolio_id,
+      section_type: normalize_section_type(section_type),
       title: get_default_title_for_type(section_type),
       content: get_default_content_for_type(section_type),
       visible: true,
-      position: next_position
+      position: position
     }
 
-    case Portfolios.create_section(section_attrs) do
-      {:ok, new_section} ->
-        updated_sections = sections ++ [new_section]
+    # Add custom fields support for custom sections
+    case section_type do
+      "custom" ->
+        Map.merge(base_attrs, %{
+          custom_fields_enabled: true,
+          custom_field_template: nil
+        })
 
-        socket = socket
-        |> assign(:sections, updated_sections)
-        |> assign(:show_add_section_dropdown, false)
-        |> put_flash(:info, "#{format_section_type(section_type)} section added successfully!")
-        |> assign(:unsaved_changes, false)
+      type when type in ["certifications", "languages", "awards", "social_metrics"] ->
+        # These could benefit from custom fields templates
+        Map.merge(base_attrs, %{
+          custom_fields_enabled: true,
+          custom_field_template: type
+        })
 
-        {:noreply, socket}
-
-      {:error, changeset} ->
-        error_msg = format_changeset_errors(changeset)
-        {:noreply, put_flash(socket, :error, "Failed to add section: #{error_msg}")}
+      _ ->
+        base_attrs
     end
+  end
+
+  # Normalize section type to ensure it's an atom
+  defp normalize_section_type(section_type) when is_binary(section_type) do
+    case section_type do
+      "intro" -> :intro
+      "experience" -> :experience
+      "education" -> :education
+      "skills" -> :skills
+      "projects" -> :projects
+      "featured_project" -> :featured_project
+      "case_study" -> :case_study
+      "achievements" -> :achievements
+      "testimonial" -> :testimonial
+      "media_showcase" -> :media_showcase
+      "code_showcase" -> :code_showcase
+      "contact" -> :contact
+      "custom" -> :custom
+      "story" -> :story
+      "timeline" -> :timeline
+      "narrative" -> :narrative
+      "journey" -> :journey
+      "certifications" -> :custom  # Use custom type with template
+      "languages" -> :custom       # Use custom type with template
+      "awards" -> :custom         # Use custom type with template
+      "social_metrics" -> :custom # Use custom type with template
+      _ -> :custom
+    end
+  end
+
+  defp normalize_section_type(section_type) when is_atom(section_type), do: section_type
+
+  # Enhanced messaging based on section type
+  defp get_section_creation_message(section_type) do
+    case section_type do
+      "custom" ->
+        "Custom section added! You can now add custom fields to capture unique information."
+
+      "certifications" ->
+        "Certifications section added with custom fields template! Add your professional credentials."
+
+      "languages" ->
+        "Languages section added with proficiency tracking! List your language skills."
+
+      "awards" ->
+        "Awards section added! Showcase your recognition and achievements."
+
+      "social_metrics" ->
+        "Social metrics section added! Track your online presence and engagement."
+
+      type when type in ["experience", "education", "skills", "projects"] ->
+        "#{format_section_type(type)} section added successfully!"
+
+      _ ->
+        "#{format_section_type(section_type)} section added successfully!"
+    end
+  end
+
+  # Update get_default_content_for_type to handle new section types
+  defp get_default_content_for_type("certifications") do
+    %{
+      "title" => "Certifications & Licenses",
+      "content" => "Professional certifications and licenses will be displayed here using custom fields.",
+      "custom_fields" => %{},
+      "layout" => "list",
+      "show_expiry_dates" => true,
+      "show_credential_urls" => true
+    }
+  end
+
+  defp get_default_content_for_type("languages") do
+    %{
+      "title" => "Languages",
+      "content" => "Language skills and proficiency levels will be displayed here.",
+      "custom_fields" => %{},
+      "layout" => "grid",
+      "show_proficiency_levels" => true,
+      "proficiency_scale" => "standard" # beginner, intermediate, advanced, fluent, native
+    }
+  end
+
+  defp get_default_content_for_type("awards") do
+    %{
+      "title" => "Awards & Recognition",
+      "content" => "Awards, honors, and recognition will be displayed here.",
+      "custom_fields" => %{},
+      "layout" => "timeline",
+      "show_award_dates" => true,
+      "show_descriptions" => true
+    }
+  end
+
+  defp get_default_content_for_type("social_metrics") do
+    %{
+      "title" => "Social Media Presence",
+      "content" => "Social media metrics and online presence will be tracked here.",
+      "custom_fields" => %{},
+      "layout" => "cards",
+      "show_follower_counts" => true,
+      "show_engagement_rates" => true,
+      "platforms" => []
+    }
+  end
+
+  defp get_default_content_for_type(section_type) do
+    # Fall back to your existing function
+    case Frestyl.Portfolios.PortfolioSection.default_content_for_type(normalize_section_type(section_type)) do
+      %{} = content -> content
+      _ -> %{"title" => get_default_title_for_type(section_type), "content" => ""}
+    end
+  end
+
+  # Update get_default_title_for_type to handle new section types
+  defp get_default_title_for_type("certifications"), do: "Certifications"
+  defp get_default_title_for_type("languages"), do: "Languages"
+  defp get_default_title_for_type("awards"), do: "Awards & Recognition"
+  defp get_default_title_for_type("social_metrics"), do: "Social Media"
+
+  defp get_default_title_for_type(section_type) do
+    case section_type do
+      "intro" -> "Introduction"
+      "experience" -> "Work Experience"
+      "education" -> "Education"
+      "skills" -> "Skills"
+      "projects" -> "Projects"
+      "featured_project" -> "Featured Project"
+      "case_study" -> "Case Study"
+      "achievements" -> "Achievements"
+      "testimonial" -> "Testimonials"
+      "media_showcase" -> "Media Gallery"
+      "code_showcase" -> "Code Showcase"
+      "contact" -> "Contact Information"
+      "custom" -> "Custom Section"
+      "story" -> "My Story"
+      "timeline" -> "Timeline"
+      "narrative" -> "Narrative"
+      "journey" -> "Journey"
+      _ -> String.capitalize(section_type)
+    end
+  end
+
+  # Enhanced format_section_type function
+  defp format_section_type(section_type) do
+    case section_type do
+      "certifications" -> "Certifications"
+      "languages" -> "Languages"
+      "awards" -> "Awards"
+      "social_metrics" -> "Social Metrics"
+      _ ->
+        section_type
+        |> String.replace("_", " ")
+        |> String.split()
+        |> Enum.map(&String.capitalize/1)
+        |> Enum.join(" ")
+    end
+  end
+
+  # Add hook to apply custom field templates after section creation
+  defp maybe_apply_custom_field_template(section, socket) do
+    case section.custom_field_template do
+      nil ->
+        {:ok, section}
+
+      template_name when is_binary(template_name) ->
+        case Portfolios.apply_field_template(section.portfolio_id, template_name) do
+          {:ok, _results} ->
+            IO.puts("✅ Applied custom field template: #{template_name}")
+            {:ok, section}
+
+          {:error, reason} ->
+            IO.puts("⚠️ Failed to apply template #{template_name}: #{reason}")
+            # Don't fail section creation if template application fails
+            {:ok, section}
+        end
+    end
+  end
+
+  # Helper function to check if user can add more sections
+  defp can_add_section?(socket) do
+    current_count = length(socket.assigns.sections)
+    max_sections = get_in(socket.assigns, [:limits, :max_sections]) || 10
+
+    current_count < max_sections
+  end
+
+  # Enhanced error formatting
+  defp format_changeset_errors(changeset) do
+    changeset.errors
+    |> Enum.map(fn {field, {message, _}} -> "#{field}: #{message}" end)
+    |> Enum.join(", ")
   end
 
   @impl true
@@ -771,6 +1032,345 @@ end
       end
     else
       {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  def handle_event("update_portfolio_field", %{"field" => "visibility", "value" => visibility}, socket) do
+    portfolio = socket.assigns.portfolio
+
+    case Portfolios.update_portfolio_visibility(portfolio.id, visibility, socket.assigns.current_user.id) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> put_flash(:info, "Portfolio visibility updated successfully")}
+
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to update this portfolio")}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update visibility: #{format_changeset_errors(changeset)}")}
+    end
+  end
+
+  def handle_event("update_portfolio_field", %{"field" => field, "value" => value}, socket) do
+    portfolio = socket.assigns.portfolio
+    updates = %{String.to_atom(field) => value}
+
+    case Portfolios.update_portfolio(portfolio, updates) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update #{field}: #{format_changeset_errors(changeset)}")}
+    end
+  end
+
+  # ============================================================================
+  # CUSTOM FIELDS EVENT HANDLERS
+  # ============================================================================
+
+  @impl true
+  def handle_event("toggle_custom_fields", %{"section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+    if section do
+      case Portfolios.update_section(section, %{custom_fields_enabled: !section.custom_fields_enabled}) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == section_id_int, do: updated_section, else: s
+          end)
+
+          {:noreply, socket
+          |> assign(:sections, updated_sections)
+          |> put_flash(:info, "Custom fields #{if updated_section.custom_fields_enabled, do: "enabled", else: "disabled"}")}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Failed to update custom fields setting")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("manage_custom_fields", %{"section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+    if section do
+      # Load custom field definitions and values
+      field_definitions = Portfolios.list_custom_field_definitions(socket.assigns.portfolio.id)
+      field_values = Portfolios.list_custom_field_values(socket.assigns.portfolio.id, section_id_int)
+
+      socket = socket
+      |> assign(:show_custom_fields_modal, true)
+      |> assign(:custom_fields_section, section)
+      |> assign(:custom_field_definitions, field_definitions)
+      |> assign(:custom_field_values, field_values)
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_custom_fields_modal", _params, socket) do
+    {:noreply, socket
+    |> assign(:show_custom_fields_modal, false)
+    |> assign(:custom_fields_section, nil)
+    |> assign(:custom_field_definitions, [])
+    |> assign(:custom_field_values, [])}
+  end
+
+  @impl true
+  def handle_event("save_field_values", %{"field_values" => field_values_params}, socket) do
+    section = socket.assigns.custom_fields_section
+    portfolio_id = socket.assigns.portfolio.id
+
+    results = Enum.map(field_values_params, fn {field_name, value} ->
+      # Find or create field value
+      existing_value = Enum.find(socket.assigns.custom_field_values, &(&1.field_name == field_name))
+
+      processed_value = process_field_value(field_name, value, socket.assigns.custom_field_definitions)
+
+      attrs = %{
+        field_name: field_name,
+        value: processed_value,
+        value_text: extract_searchable_text(processed_value),
+        portfolio_id: portfolio_id,
+        section_id: section.id,
+        field_definition_id: get_definition_id(field_name, socket.assigns.custom_field_definitions)
+      }
+
+      if existing_value do
+        Portfolios.update_custom_field_value(existing_value, attrs)
+      else
+        Portfolios.create_custom_field_value(attrs)
+      end
+    end)
+
+    case Enum.all?(results, &match?({:ok, _}, &1)) do
+      true ->
+        # Reload field values
+        updated_field_values = Portfolios.list_custom_field_values(portfolio_id, section.id)
+
+        {:noreply, socket
+        |> assign(:custom_field_values, updated_field_values)
+        |> put_flash(:info, "Custom field values saved successfully!")}
+
+      false ->
+        errors = results
+        |> Enum.filter(&match?({:error, _}, &1))
+        |> Enum.map(fn {:error, changeset} -> format_changeset_errors(changeset) end)
+        |> Enum.join(", ")
+
+        {:noreply, put_flash(socket, :error, "Failed to save some values: #{errors}")}
+    end
+  end
+
+  # Handle custom field events delegated from the component
+  @impl true
+  def handle_info({:custom_fields_updated, updated_definitions}, socket) do
+    {:noreply, assign(socket, :custom_field_definitions, updated_definitions)}
+  end
+
+  # Helper functions for custom fields
+  defp process_field_value(field_name, value, definitions) do
+    case Enum.find(definitions, &(&1.field_name == field_name)) do
+      %{field_type: "list"} when is_binary(value) ->
+        # Convert comma-separated string to list
+        %{"items" => String.split(value, ",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))}
+
+      %{field_type: "object"} when is_binary(value) ->
+        # Parse JSON string
+        case Jason.decode(value) do
+          {:ok, decoded} -> decoded
+          {:error, _} -> %{"raw" => value}
+        end
+
+      %{field_type: "boolean"} ->
+        %{"value" => value == "true"}
+
+      %{field_type: "number"} when is_binary(value) ->
+        case Float.parse(value) do
+          {num, _} -> %{"value" => num}
+          :error -> %{"value" => 0}
+        end
+
+      _ ->
+        %{"content" => value}
+    end
+  end
+
+  defp get_definition_id(field_name, definitions) do
+    case Enum.find(definitions, &(&1.field_name == field_name)) do
+      %{id: id} -> id
+      _ -> nil
+    end
+  end
+
+  defp extract_searchable_text(%{"content" => content}) when is_binary(content), do: content
+  defp extract_searchable_text(%{"items" => items}) when is_list(items), do: Enum.join(items, " ")
+  defp extract_searchable_text(%{"value" => value}) when is_binary(value), do: value
+  defp extract_searchable_text(%{"value" => value}), do: "#{value}"
+  defp extract_searchable_text(map) when is_map(map) do
+    map
+    |> Map.values()
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join(" ")
+  end
+  defp extract_searchable_text(_), do: ""
+
+  defp handle_experience_section_change(value, socket) do
+    # Handle experience section updates
+    case socket.assigns[:editing_section] do
+      %{id: section_id} = section ->
+        content = section.content || %{}
+        updated_content = Map.put(content, "experience_data", value)
+
+        case Portfolios.update_section(section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, sections)
+            |> assign(:editing_section, updated_section)
+            |> assign(:unsaved_changes, false)}
+
+          {:error, changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section: #{format_changeset_errors(changeset)}")}
+        end
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "No section currently being edited")}
+    end
+  end
+
+  defp handle_education_section_change(value, socket) do
+    # Similar to experience but for education
+    case socket.assigns[:editing_section] do
+      %{id: section_id} = section ->
+        content = section.content || %{}
+        updated_content = Map.put(content, "education_data", value)
+
+        case Portfolios.update_section(section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, sections)
+            |> assign(:editing_section, updated_section)
+            |> assign(:unsaved_changes, false)}
+
+          {:error, changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section: #{format_changeset_errors(changeset)}")}
+        end
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "No section currently being edited")}
+    end
+  end
+
+  defp handle_skills_section_change(value, socket) do
+    # Skills section handler
+    case socket.assigns[:editing_section] do
+      %{id: section_id} = section ->
+        content = section.content || %{}
+        updated_content = Map.put(content, "skills_data", value)
+
+        case Portfolios.update_section(section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, sections)
+            |> assign(:editing_section, updated_section)
+            |> assign(:unsaved_changes, false)}
+
+          {:error, changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section: #{format_changeset_errors(changeset)}")}
+        end
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "No section currently being edited")}
+    end
+  end
+
+  defp handle_projects_section_change(value, socket) do
+    # Projects section handler
+    case socket.assigns[:editing_section] do
+      %{id: section_id} = section ->
+        content = section.content || %{}
+        updated_content = Map.put(content, "projects_data", value)
+
+        case Portfolios.update_section(section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, sections)
+            |> assign(:editing_section, updated_section)
+            |> assign(:unsaved_changes, false)}
+
+          {:error, changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section: #{format_changeset_errors(changeset)}")}
+        end
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "No section currently being edited")}
+    end
+  end
+
+  defp handle_custom_section_change(value, socket) do
+    # Custom section handler - this is where flexible custom fields will be handled
+    case socket.assigns[:editing_section] do
+      %{id: section_id} = section ->
+        content = section.content || %{}
+
+        # Parse the value as JSON if it's a string, otherwise use as-is
+        parsed_value = case value do
+          value_string when is_binary(value_string) ->
+            case Jason.decode(value_string) do
+              {:ok, decoded} -> decoded
+              {:error, _} -> %{"raw_content" => value_string}
+            end
+          value_map when is_map(value_map) -> value_map
+          _ -> %{"content" => value}
+        end
+
+        updated_content = Map.put(content, "custom_data", parsed_value)
+
+        case Portfolios.update_section(section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, sections)
+            |> assign(:editing_section, updated_section)
+            |> assign(:unsaved_changes, false)}
+
+          {:error, changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section: #{format_changeset_errors(changeset)}")}
+        end
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "No section currently being edited")}
     end
   end
 
@@ -1470,120 +2070,9 @@ end
       "skills" -> render_skills_section(assigns)
       "projects" -> render_projects_section(assigns)
       "settings" -> render_settings_section(assigns)
+      "custom" -> render_custom_section(assigns)
       _ -> render_basic_info_section(assigns)
     end
-  end
-
-  defp render_basic_info_section(assigns) do
-    ~H"""
-    <div class="space-y-6">
-      <div>
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
-        <p class="text-sm text-gray-600 mb-6">
-          Set up the fundamental details of your portfolio including title, description, and visibility settings.
-        </p>
-      </div>
-
-      <form phx-change="portfolio-changed" phx-submit="save-portfolio">
-        <div class="space-y-6">
-          <div>
-            <label for="portfolio_title" class="block text-sm font-medium text-gray-700">
-              Portfolio Title
-            </label>
-            <div class="mt-1">
-              <input
-                type="text"
-                name="portfolio[title]"
-                id="portfolio_title"
-                value={@portfolio.title}
-                class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                placeholder="e.g., John Doe - Software Engineer"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label for="portfolio_description" class="block text-sm font-medium text-gray-700">
-              Description
-            </label>
-            <div class="mt-1">
-              <input
-                type="text"
-                name="portfolio[description]"
-                id="portfolio_description"
-                value={@portfolio.description}
-                class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                placeholder="e.g., Full-Stack Developer with 5+ Years Experience"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label for="portfolio_slug" class="block text-sm font-medium text-gray-700">
-              Portfolio URL
-            </label>
-            <div class="mt-1 flex rounded-md shadow-sm">
-              <span class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
-                frestyl.com/
-              </span>
-              <input
-                type="text"
-                name="portfolio[slug]"
-                id="portfolio_slug"
-                value={@portfolio.slug}
-                class="focus:ring-blue-500 focus:border-blue-500 flex-1 block w-full rounded-none rounded-r-md sm:text-sm border-gray-300"
-                placeholder="your-name"
-              />
-            </div>
-            <p class="mt-2 text-sm text-gray-500">
-              Choose a unique URL for your portfolio
-            </p>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700">
-              Visibility
-            </label>
-            <div class="mt-3 space-y-3">
-              <div class="flex items-center">
-                <input
-                  id="public"
-                  name="portfolio[public]"
-                  type="radio"
-                  value="true"
-                  checked={@portfolio.public}
-                  class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300"
-                />
-                <label for="public" class="ml-3 block text-sm font-medium text-gray-700">
-                  Public
-                </label>
-              </div>
-              <p class="ml-7 text-sm text-gray-500">
-                Anyone can view your portfolio
-              </p>
-
-              <div class="flex items-center">
-                <input
-                  id="private"
-                  name="portfolio[public]"
-                  type="radio"
-                  value="false"
-                  checked={!@portfolio.public}
-                  class="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300"
-                />
-                <label for="private" class="ml-3 block text-sm font-medium text-gray-700">
-                  Private
-                </label>
-              </div>
-              <p class="ml-7 text-sm text-gray-500">
-                Only you can view your portfolio
-              </p>
-            </div>
-          </div>
-        </div>
-      </form>
-    </div>
-    """
   end
 
   defp render_contact_section(assigns) do
@@ -1962,6 +2451,203 @@ end
     """
   end
 
+  defp render_custom_section(assigns) do
+    content = assigns.content || %{}
+    custom_data = Map.get(content, "custom_data", %{})
+
+    # Load custom field definitions and values if available
+    field_definitions = if assigns[:field_definitions] do
+      assigns.field_definitions
+    else
+      []
+    end
+
+    field_values = if assigns[:field_values] do
+      assigns.field_values
+    else
+      []
+    end
+
+    assigns = assign(assigns, :custom_data, custom_data)
+    assigns = assign(assigns, :field_definitions, field_definitions)
+    assigns = assign(assigns, :field_values, field_values)
+
+    ~H"""
+    <div class="custom-section">
+      <!-- Basic Content -->
+      <%= if Map.get(@content, "title") do %>
+        <h3 class="text-xl font-bold text-gray-900 mb-4"><%= Map.get(@content, "title") %></h3>
+      <% end %>
+
+      <%= if Map.get(@content, "content") do %>
+        <div class="prose prose-sm max-w-none mb-6">
+          <%= raw Map.get(@content, "content") %>
+        </div>
+      <% end %>
+
+      <!-- Custom Fields Display -->
+      <%= if Enum.any?(@field_values) do %>
+        <div class="custom-fields-display space-y-4">
+          <%= for field_value <- @field_values do %>
+            <%= if field_value.field_definition && field_value.field_definition.is_public do %>
+              <div class="custom-field-item">
+                <dt class="text-sm font-medium text-gray-700 mb-1">
+                  <%= field_value.field_definition.field_label %>
+                </dt>
+                <dd class="text-sm text-gray-900">
+                  <%= render_custom_field_value(field_value) %>
+                </dd>
+              </div>
+            <% end %>
+          <% end %>
+        </div>
+      <% end %>
+
+      <!-- Fallback Content -->
+      <%= if Enum.empty?(@field_values) && !Map.get(@content, "content") do %>
+        <%= render_empty_state("puzzle-piece", "Custom section", "Custom content will appear here") %>
+      <% end %>
+    </div>
+    """
+  end
+
+  # Helper function to render custom field values
+  defp render_custom_field_value(field_value) do
+    case field_value.field_definition.field_type do
+      "url" ->
+        case field_value.value do
+          %{"content" => url} when is_binary(url) and url != "" ->
+            Phoenix.HTML.raw(~s(<a href="#{url}" target="_blank" class="text-blue-600 hover:text-blue-700 underline">#{url}</a>))
+          _ -> ""
+        end
+
+      "email" ->
+        case field_value.value do
+          %{"content" => email} when is_binary(email) and email != "" ->
+            Phoenix.HTML.raw(~s(<a href="mailto:#{email}" class="text-blue-600 hover:text-blue-700">#{email}</a>))
+          _ -> ""
+        end
+
+      "list" ->
+        case field_value.value do
+          %{"items" => items} when is_list(items) ->
+            items
+            |> Enum.join(", ")
+            |> Phoenix.HTML.html_escape()
+          _ -> ""
+        end
+
+      "boolean" ->
+        case field_value.value do
+          %{"value" => true} -> "Yes"
+          %{"value" => false} -> "No"
+          _ -> ""
+        end
+
+      "date" ->
+        case field_value.value do
+          %{"content" => date_string} when is_binary(date_string) ->
+            case Date.from_iso8601(date_string) do
+              {:ok, date} -> Calendar.strftime(date, "%B %d, %Y")
+              _ -> date_string
+            end
+          _ -> ""
+        end
+
+      "object" ->
+        case field_value.value do
+          map when is_map(map) ->
+            map
+            |> Jason.encode!(pretty: true)
+            |> Phoenix.HTML.raw()
+            |> then(fn content -> Phoenix.HTML.raw("<pre class=\"bg-gray-100 p-2 rounded text-xs overflow-x-auto\">#{content}</pre>") end)
+          _ -> ""
+        end
+
+      _ ->
+        # Default text rendering
+        case field_value.value do
+          %{"content" => content} when is_binary(content) -> Phoenix.HTML.html_escape(content)
+          %{"value" => value} -> Phoenix.HTML.html_escape("#{value}")
+          _ -> ""
+        end
+    end
+  end
+
+  defp render_empty_state(icon, title, description) do
+    Phoenix.HTML.raw("""
+    <div class="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
+      <div class="w-16 h-16 bg-gray-200 rounded-xl flex items-center justify-center mx-auto mb-4">
+        #{get_icon_svg(icon)}
+      </div>
+      <h3 class="text-lg font-medium text-gray-900 mb-2">#{Phoenix.HTML.html_escape(title)}</h3>
+      <p class="text-gray-600 max-w-sm mx-auto">
+        #{Phoenix.HTML.html_escape(description)}
+      </p>
+    </div>
+    """)
+  end
+
+  # Helper function to get SVG icons
+  defp get_icon_svg("puzzle-piece") do
+    """
+    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a1 1 0 01-1-1V9a1 1 0 011-1h1a2 2 0 100-4H4a1 1 0 01-1-1V4a1 1 0 011-1h3a1 1 0 001-1v1z"/>
+    </svg>
+    """
+  end
+
+  defp get_icon_svg("briefcase") do
+    """
+    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2V8a2 2 0 012-2V6z"/>
+    </svg>
+    """
+  end
+
+  defp get_icon_svg("academic-cap") do
+    """
+    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
+    </svg>
+    """
+  end
+
+  defp get_icon_svg("star") do
+    """
+    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+    </svg>
+    """
+  end
+
+  defp get_icon_svg("code") do
+    """
+    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+    </svg>
+    """
+  end
+
+  defp get_icon_svg("photograph") do
+    """
+    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+    </svg>
+    """
+  end
+
+  # Fallback icon for unknown types
+  defp get_icon_svg(_) do
+    """
+    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+    </svg>
+    """
+  end
+
   # ============================================================================
   # MONETIZATION & STREAMING FOUNDATION
   # ============================================================================
@@ -2281,10 +2967,6 @@ end
 
 
   # Add placeholder handlers for other events
-  @impl true
-  def handle_event("add_section", _params, socket) do
-    {:noreply, put_flash(socket, :info, "Add section functionality coming soon")}
-  end
 
   @impl true
   def handle_event("publish_portfolio", _params, socket) do
@@ -2309,28 +2991,6 @@ end
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to update section: #{format_errors(changeset)}")}
-    end
-  end
-
-  @impl true
-  def handle_event("add_section", %{"type" => section_type}, socket) do
-    if can_add_section?(socket) do
-      case create_new_section(section_type, socket) do
-        {:ok, new_section} ->
-          updated_sections = socket.assigns.sections ++ [new_section]
-
-          {:noreply,
-           socket
-           |> assign(:sections, updated_sections)
-           |> assign(:editing_section, new_section)
-           |> assign(:editing_mode, :section_edit)
-           |> put_flash(:info, "Section added successfully")}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Failed to add section: #{reason}")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "Section limit reached for your subscription")}
     end
   end
 
@@ -3455,16 +4115,10 @@ end
   end
 
   defp format_changeset_errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
-        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-      end)
-    end)
-    |> Enum.map_join(", ", fn {field, errors} ->
-      "#{field}: #{Enum.join(errors, ", ")}"
-    end)
+    changeset.errors
+    |> Enum.map(fn {field, {message, _}} -> "#{field}: #{message}" end)
+    |> Enum.join(", ")
   end
-
 
   defp move_section(sections, old_index, new_index) do
     if old_index >= 0 and old_index < length(sections) and
@@ -3687,5 +4341,219 @@ end
 
     {:noreply, socket}
   end
+
+  defp render_basic_info_section(assigns) do
+    ~H"""
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+      <div class="p-6 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-900">Portfolio Information</h3>
+        <p class="text-sm text-gray-600 mt-1">Basic details about your portfolio</p>
+      </div>
+
+      <div class="p-6 space-y-6">
+        <!-- Title -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Portfolio Title</label>
+          <input
+            type="text"
+            value={@portfolio.title}
+            phx-change="update_title"
+            phx-debounce="300"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Enter your portfolio title">
+        </div>
+
+        <!-- Description -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+          <textarea
+            phx-change="update_description"
+            phx-debounce="300"
+            rows="3"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Brief description of your portfolio"><%= @portfolio.description %></textarea>
+        </div>
+
+        <!-- Visibility -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Visibility</label>
+          <select
+            phx-change="update_visibility"
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="public" selected={@portfolio.visibility == :public}>
+              Public - Discoverable by everyone
+            </option>
+            <option value="link_only" selected={@portfolio.visibility == :link_only}>
+              Link Only - Accessible via direct URL
+            </option>
+            <option value="request_only" selected={@portfolio.visibility == :request_only}>
+              Request Only - Requires approval to view
+            </option>
+            <option value="private" selected={@portfolio.visibility == :private}>
+              Private - Only you and collaborators
+            </option>
+          </select>
+
+          <!-- Visibility Help Text -->
+          <p class="mt-2 text-xs text-gray-500">
+            <%= case @portfolio.visibility do %>
+              <% :public -> %>🌍 Your portfolio is publicly discoverable and accessible to everyone
+              <% :link_only -> %>🔗 Your portfolio is accessible to anyone with the direct link
+              <% :request_only -> %>🔐 Visitors must request access to view your portfolio
+              <% :private -> %>👤 Only you and invited collaborators can view this portfolio
+            <% end %>
+          </p>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # Test if custom fields are working properly
+  def test_custom_fields_functionality(portfolio_id) do
+    IO.puts("🧪 Testing Custom Fields for Portfolio #{portfolio_id}")
+
+    # Test field definition creation
+    test_field = %{
+      portfolio_id: portfolio_id,
+      field_name: "test_certification",
+      field_type: "text",
+      field_label: "Test Certification",
+      field_description: "A test certification field",
+      validation_rules: %{"min_length" => 3, "max_length" => 100},
+      is_required: true,
+      is_public: true
+    }
+
+    case Portfolios.create_custom_field_definition(test_field) do
+      {:ok, definition} ->
+        IO.puts("✅ Field definition created: #{definition.field_label}")
+
+        # Test field value creation
+        test_value = %{
+          portfolio_id: portfolio_id,
+          field_definition_id: definition.id,
+          field_name: "test_certification",
+          value: %{"content" => "AWS Solutions Architect"},
+          value_text: "AWS Solutions Architect"
+        }
+
+        case Portfolios.create_custom_field_value(test_value) do
+          {:ok, value} ->
+            IO.puts("✅ Field value created: #{value.value_text}")
+            {:ok, %{definition: definition, value: value}}
+
+          {:error, changeset} ->
+            IO.puts("❌ Field value creation failed: #{inspect(changeset.errors)}")
+            {:error, :value_creation_failed}
+        end
+
+      {:error, changeset} ->
+        IO.puts("❌ Field definition creation failed: #{inspect(changeset.errors)}")
+        {:error, :definition_creation_failed}
+    end
+  end
+
+  # Cleanup test data
+  def cleanup_test_custom_fields(portfolio_id) do
+    definitions = Portfolios.list_custom_field_definitions(portfolio_id)
+
+    test_definitions = Enum.filter(definitions, &String.starts_with?(&1.field_name, "test_"))
+
+    Enum.each(test_definitions, fn definition ->
+      case Portfolios.delete_custom_field_definition(definition) do
+        {:ok, _} -> IO.puts("🧹 Cleaned up test definition: #{definition.field_name}")
+        {:error, _} -> IO.puts("❌ Failed to cleanup: #{definition.field_name}")
+      end
+    end)
+
+    IO.puts("🧹 Custom fields cleanup completed")
+  end
+
+  # Validate portfolio custom fields integrity
+  def validate_custom_fields_integrity(portfolio_id) do
+    definitions = Portfolios.list_custom_field_definitions(portfolio_id)
+    values = Portfolios.list_custom_field_values(portfolio_id)
+
+    issues = []
+
+    # Check for orphaned values
+    orphaned_values = Enum.filter(values, fn value ->
+      !Enum.any?(definitions, &(&1.id == value.field_definition_id))
+    end)
+
+    if !Enum.empty?(orphaned_values) do
+      issues = [{"Orphaned field values found", length(orphaned_values)} | issues]
+    end
+
+    # Check for missing required values
+    required_definitions = Enum.filter(definitions, & &1.is_required)
+    missing_required = Enum.filter(required_definitions, fn definition ->
+      !Enum.any?(values, &(&1.field_definition_id == definition.id))
+    end)
+
+    if !Enum.empty?(missing_required) do
+      issues = [{"Missing required field values", length(missing_required)} | issues]
+    end
+
+    # Check validation rule compliance
+    validation_issues = Enum.reduce(values, [], fn value, acc ->
+      case value.field_definition do
+        nil -> acc
+        definition ->
+          case Portfolios.validate_custom_field_value(value.value, definition) do
+            {:ok, _} -> acc
+            {:error, error} -> [{value.field_name, error} | acc]
+          end
+      end
+    end)
+
+    if !Enum.empty?(validation_issues) do
+      issues = [{"Validation rule violations", length(validation_issues)} | issues]
+    end
+
+    case issues do
+      [] ->
+        IO.puts("✅ Custom fields integrity check passed")
+        {:ok, :valid}
+      issues ->
+        IO.puts("⚠️  Custom fields integrity issues found:")
+        Enum.each(issues, fn {issue, count} ->
+          IO.puts("   - #{issue}: #{count}")
+        end)
+        {:warning, issues}
+    end
+  end
+
+  # Export custom fields data for backup/migration
+  def export_custom_fields_data(portfolio_id) do
+    definitions = Portfolios.list_custom_field_definitions(portfolio_id)
+    values = Portfolios.list_custom_field_values(portfolio_id)
+
+    export_data = %{
+      portfolio_id: portfolio_id,
+      exported_at: DateTime.utc_now(),
+      definitions: Enum.map(definitions, fn def ->
+        Map.take(def, [:field_name, :field_type, :field_label, :field_description, :validation_rules, :display_options, :position, :is_required, :is_public])
+      end),
+      values: Enum.map(values, fn val ->
+        %{
+          field_name: val.field_name,
+          value: val.value,
+          section_id: val.section_id
+        }
+      end)
+    }
+
+    case Jason.encode(export_data, pretty: true) do
+      {:ok, json} ->
+        IO.puts("📤 Custom fields data exported successfully")
+        {:ok, json}
+      {:error, error} ->
+        IO.puts("❌ Export failed: #{inspect(error)}")
+        {:error, error}
+    end
+  end
+
 
 end
