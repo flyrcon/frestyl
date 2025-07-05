@@ -181,7 +181,8 @@ defmodule FrestylWeb.Router do
     # Portfolio management dashboard
     live "/portfolios", PortfolioLive.Index, :index
 
-    live "/portfolios/:id/preview/:preview_token", PortfolioLive.LivePreview
+    # In router.ex, add this route:
+    live "/live_preview/:id/:preview_token", PortfolioLive.LivePreview
 
     # Portfolio CRUD operations - SPECIFIC ROUTES FIRST
     live "/portfolios/new", PortfolioLive.New, :new

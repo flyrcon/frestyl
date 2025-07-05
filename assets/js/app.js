@@ -190,6 +190,18 @@ window.PortfolioEditor = {
   }
 };
 
+// Define missing objects before using them
+const LivePreviewManager = {
+  init: () => console.log('LivePreviewManager initialized'),
+  updatePreview: () => {},
+  toggleMobile: () => {}
+};
+
+const DevicePreviewSwitcher = {};
+const AutoSaveControl = {};
+const LayoutPreview = {};
+
+
 // Portfolio Hub Hooks
 export const PortfolioHub = {
   mounted() {

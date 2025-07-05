@@ -1,438 +1,372 @@
 # lib/frestyl_web/live/portfolio_live/live_preview.ex
-# FIXED VERSION - Using the new CSS generation system
+# FIXED VERSION - Handles portfolio struct properly
 
 defmodule FrestylWeb.PortfolioLive.LivePreview do
   use FrestylWeb, :live_view
 
   alias Frestyl.Portfolios
-  alias FrestylWeb.PortfolioLive.{CssGenerator, CssPriorityManager}
   alias Phoenix.PubSub
 
   @impl true
-  def mount(%{"id" => portfolio_id} = params, _session, socket) do
+  def mount(%{"id" => portfolio_id, "preview_token" => token}, _session, socket) do
     IO.puts("🔥 LIVE PREVIEW MOUNT: portfolio_id=#{portfolio_id}")
 
-    # Verify preview token if present
-    if preview_token = params["preview_token"] do
-      unless verify_preview_token(portfolio_id, preview_token) do
-        {:ok, socket |> put_flash(:error, "Invalid preview session") |> redirect(to: "/")}
-      end
-    end
+    if verify_preview_token(portfolio_id, token) do
+      # Load portfolio safely
+      portfolio = load_portfolio_safe(portfolio_id)
+      IO.puts("🔥 PORTFOLIO LOADED: #{portfolio.title}")
 
-    case Portfolios.get_portfolio(portfolio_id) do
-      {:ok, portfolio} ->
-        IO.puts("🔥 PORTFOLIO LOADED: #{portfolio.title}")
+      # Subscribe to live preview updates
+      PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
 
-        # Subscribe to live preview updates
-        PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
+      sections = load_portfolio_sections(portfolio.id)
+      IO.puts("🔥 SECTIONS LOADED: #{length(sections)} sections")
 
-        # Load sections with proper content structure
-        sections = load_portfolio_sections_enhanced(portfolio.id)
-        IO.puts("🔥 SECTIONS LOADED: #{length(sections)} sections")
+      # Get customization safely
+      customization = Map.get(portfolio, :customization, %{})
 
-        # Get customization from params or portfolio
-        customization = build_customization_from_params(params, portfolio)
+      socket =
+        socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:preview_mode, true)
+        |> assign(:mobile_view, false)
+        |> assign(:viewport_width, "100%")
+        |> assign(:customization, customization)
+        |> assign(:preview_css, generate_preview_css(portfolio))
+        |> assign(:sections, sections)
 
-        # UPDATED: Use CssPriorityManager for guaranteed user customization priority
-        mobile_view = params["mobile"] == "true"
-        temp_portfolio = %{portfolio | customization: customization}
-        preview_css = CssPriorityManager.generate_portfolio_css(temp_portfolio,
-          mobile_view: mobile_view,
-          preview_mode: true
-        )
-
-        socket =
-          socket
-          |> assign(:portfolio, portfolio)
-          |> assign(:preview_mode, true)
-          |> assign(:mobile_view, mobile_view)
-          |> assign(:viewport_width, if(mobile_view, do: "375px", else: "100%"))
-          |> assign(:customization, customization)
-          |> assign(:preview_css, preview_css)
-          |> assign(:sections, sections)
-          |> assign(:owner, portfolio.user)
-
-        {:ok, socket}
-
-      {:error, _} ->
-        # Fall back to old method for backward compatibility
-        try do
-          portfolio = Portfolios.get_portfolio!(portfolio_id)
-
-          sections = load_portfolio_sections_enhanced(portfolio.id)
-          customization = build_customization_from_params(params, portfolio)
-          mobile_view = params["mobile"] == "true"
-
-          # UPDATED: Use CssPriorityManager here too
-          temp_portfolio = %{portfolio | customization: customization}
-          preview_css = CssPriorityManager.generate_portfolio_css(temp_portfolio,
-            mobile_view: mobile_view,
-            preview_mode: true
-          )
-
-          socket =
-            socket
-            |> assign(:portfolio, portfolio)
-            |> assign(:preview_mode, true)
-            |> assign(:mobile_view, mobile_view)
-            |> assign(:viewport_width, if(mobile_view, do: "375px", else: "100%"))
-            |> assign(:customization, customization)
-            |> assign(:preview_css, preview_css)
-            |> assign(:sections, sections)
-            |> assign(:owner, portfolio.user)
-
-          {:ok, socket}
-        rescue
-          _ ->
-            {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
-        end
+      {:ok, socket}
+    else
+      {:ok, socket |> put_flash(:error, "Invalid preview session") |> redirect(to: "/")}
     end
   end
 
   @impl true
-  def handle_info({:preview_update, new_customization, portfolio}, socket) do
-    IO.puts("🔥 PREVIEW UPDATE WITH PORTFOLIO RECEIVED")
-
-    # Regenerate CSS with new customization
-    new_css = CssGenerator.generate_portfolio_css(portfolio, mobile_view: socket.assigns.mobile_view)
-
+  def handle_info({:preview_update, customization, css}, socket) do
     socket =
       socket
-      |> assign(:customization, new_customization)
-      |> assign(:portfolio, portfolio)
-      |> assign(:preview_css, new_css)
-      |> push_event("update_preview_styles", %{css: new_css})
+      |> assign(:customization, customization)
+      |> assign(:preview_css, css)
+      |> push_event("update_preview_styles", %{css: css})
 
     {:noreply, socket}
   end
 
   @impl true
   def handle_info({:viewport_change, mobile_view}, socket) do
-    IO.puts("🔥 VIEWPORT CHANGE: mobile=#{mobile_view}")
-
-    # UPDATED: Regenerate CSS for new viewport using CssPriorityManager
-    new_css = CssPriorityManager.generate_portfolio_css(socket.assigns.portfolio,
-      mobile_view: mobile_view,
-      preview_mode: true
-    )
     viewport_width = if mobile_view, do: "375px", else: "100%"
 
     socket =
       socket
       |> assign(:mobile_view, mobile_view)
       |> assign(:viewport_width, viewport_width)
-      |> assign(:preview_css, new_css)
 
     {:noreply, socket}
   end
 
-  def handle_info({:sections_updated, sections}, socket) do
-    IO.puts("🔥 SECTIONS UPDATED: #{length(sections)} sections")
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="live-preview-container" data-mobile-view={@mobile_view}>
+      <style><%= raw(@preview_css) %></style>
 
-    # Process sections to ensure proper structure
-    processed_sections = process_sections_for_display(sections)
+      <div class="portfolio-preview">
+        <!-- Portfolio Header -->
+        <div class="portfolio-header">
+          <h1 class="portfolio-title"><%= @portfolio.title %></h1>
+          <%= if @portfolio.description do %>
+            <p class="portfolio-description"><%= @portfolio.description %></p>
+          <% end %>
+        </div>
 
-    {:noreply, assign(socket, :sections, processed_sections)}
-  end
+        <!-- Portfolio Sections -->
+        <div class="portfolio-content">
+          <%= for section <- @sections do %>
+            <div class="portfolio-section" data-section-id={section.id}>
+              <%= if section.title do %>
+                <h2 class="section-title"><%= section.title %></h2>
+              <% end %>
 
-  # Helper functions
-  defp verify_preview_token(portfolio_id, token) do
-    expected_token = :crypto.hash(:sha256, "preview_#{portfolio_id}_#{Date.utc_today()}")
-                     |> Base.encode16(case: :lower)
-                     |> String.slice(0, 16)
+              <div class="section-content">
+                <%= case section.section_type do %>
+                  <% "intro" -> %>
+                    <%= render_intro_section(section) %>
+                  <% "experience" -> %>
+                    <%= render_experience_section(section) %>
+                  <% "skills" -> %>
+                    <%= render_skills_section(section) %>
+                  <% "projects" -> %>
+                    <%= render_projects_section(section) %>
+                  <% "contact" -> %>
+                    <%= render_contact_section(section) %>
+                  <% _ -> %>
+                    <%= render_generic_section(section) %>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
 
-    token == expected_token
-  end
-
-  def render_section_content(section) do
-    case section.section_type do
-      :intro -> render_intro_content(section.content)
-      :experience -> render_experience_content(section.content)
-      :education -> render_education_content(section.content)
-      :skills -> render_skills_content(section.content)
-      :projects -> render_projects_content(section.content)
-      :featured_project -> render_featured_project_content(section.content)
-      :case_study -> render_case_study_content(section.content)
-      :achievements -> render_achievements_content(section.content)
-      :testimonial -> render_testimonial_content(section.content)
-      :media_showcase -> render_media_content(section.content)
-      :contact -> render_contact_content(section.content)
-      _ -> render_generic_content(section.content)
-    end
-  end
-
-  defp render_intro_content(content) do
-    headline = Map.get(content, "headline", "Welcome")
-    summary = Map.get(content, "summary", "")
-
-    """
-    <div class="intro-section">
-      <h3 class="text-xl font-semibold mb-3 text-primary">#{escape_html(headline)}</h3>
-      <p class="text-gray-600">#{escape_html(summary)}</p>
+          <%= if length(@sections) == 0 do %>
+            <div class="empty-portfolio">
+              <p>No sections added yet. Add some content in the editor!</p>
+            </div>
+          <% end %>
+        </div>
+      </div>
     </div>
     """
   end
 
-  defp render_experience_content(content) do
-    jobs = Map.get(content, "jobs", [])
+  # ============================================================================
+  # SECTION RENDERERS
+  # ============================================================================
 
-    if length(jobs) > 0 do
-      job_html = Enum.map_join(jobs, "", fn job ->
-        title = Map.get(job, "title", "Position")
-        company = Map.get(job, "company", "Company")
-        description = Map.get(job, "description", "")
+  defp render_intro_section(section) do
+    content = section.content || %{}
+    main_content = Map.get(content, "main_content", "")
 
-        """
-        <div class="experience-item mb-4 p-3 border-l-4 border-accent">
-          <h4 class="font-semibold text-primary">#{escape_html(title)}</h4>
-          <p class="text-gray-600 font-medium">#{escape_html(company)}</p>
-          <p class="text-sm text-gray-500 mt-1">#{escape_html(description)}</p>
-        </div>
-        """
-      end)
+    assigns = %{content: main_content}
 
-      """
-      <div class="experience-section">
-        #{job_html}
-      </div>
-      """
-    else
-      """
-      <div class="experience-section text-gray-500">
-        <p>Experience details will appear here once configured.</p>
-      </div>
-      """
-    end
+    ~H"""
+    <div class="intro-content">
+      <%= if @content != "" do %>
+        <%= raw(@content) %>
+      <% else %>
+        <p class="placeholder-text">Add your introduction content...</p>
+      <% end %>
+    </div>
+    """
   end
 
-  defp render_education_content(content) do
-    education = Map.get(content, "education", [])
+  defp render_experience_section(section) do
+    content = section.content || %{}
+    main_content = Map.get(content, "main_content", "")
 
-    if length(education) > 0 do
-      edu_html = Enum.map_join(education, "", fn edu ->
-        degree = Map.get(edu, "degree", "Degree")
-        institution = Map.get(edu, "institution", "Institution")
+    assigns = %{content: main_content}
 
-        """
-        <div class="education-item mb-3">
-          <h4 class="font-semibold text-primary">#{escape_html(degree)}</h4>
-          <p class="text-gray-600">#{escape_html(institution)}</p>
-        </div>
-        """
-      end)
-
-      """
-      <div class="education-section">
-        #{edu_html}
-      </div>
-      """
-    else
-      """
-      <div class="education-section text-gray-500">
-        <p>Education details will appear here once configured.</p>
-      </div>
-      """
-    end
+    ~H"""
+    <div class="experience-content">
+      <%= if @content != "" do %>
+        <%= raw(@content) %>
+      <% else %>
+        <p class="placeholder-text">Add your experience details...</p>
+      <% end %>
+    </div>
+    """
   end
 
-  defp render_skills_content(content) do
-    skills = Map.get(content, "skills", [])
+  defp render_skills_section(section) do
+    content = section.content || %{}
+    main_content = Map.get(content, "main_content", "")
 
-    if length(skills) > 0 do
-      skills_html = Enum.map_join(skills, "", fn skill ->
-        name = if is_map(skill), do: Map.get(skill, "name", "Skill"), else: skill
+    assigns = %{content: main_content}
 
-        """
-        <span class="inline-block bg-accent bg-opacity-10 text-accent px-3 py-1 rounded-full text-sm mr-2 mb-2 border border-accent border-opacity-20">#{escape_html(name)}</span>
-        """
-      end)
-
-      """
-      <div class="skills-section">
-        #{skills_html}
-      </div>
-      """
-    else
-      """
-      <div class="skills-section text-gray-500">
-        <p>Skills will appear here once configured.</p>
-      </div>
-      """
-    end
+    ~H"""
+    <div class="skills-content">
+      <%= if @content != "" do %>
+        <%= raw(@content) %>
+      <% else %>
+        <p class="placeholder-text">Add your skills...</p>
+      <% end %>
+    </div>
+    """
   end
 
-  defp render_projects_content(content) do
-    projects = Map.get(content, "projects", [])
+  defp render_projects_section(section) do
+    content = section.content || %{}
+    main_content = Map.get(content, "main_content", "")
 
-    if length(projects) > 0 do
-      projects_html = Enum.map_join(projects, "", fn project ->
-        title = Map.get(project, "title", "Project")
-        description = Map.get(project, "description", "")
+    assigns = %{content: main_content}
 
-        """
-        <div class="project-item mb-4 p-4 border rounded-lg hover:shadow-md transition-shadow">
-          <h4 class="font-semibold text-primary mb-2">#{escape_html(title)}</h4>
-          <p class="text-sm text-gray-600">#{escape_html(description)}</p>
-        </div>
-        """
-      end)
-
-      """
-      <div class="projects-section grid gap-4">
-        #{projects_html}
-      </div>
-      """
-    else
-      """
-      <div class="projects-section text-gray-500">
-        <p>Projects will appear here once configured.</p>
-      </div>
-      """
-    end
+    ~H"""
+    <div class="projects-content">
+      <%= if @content != "" do %>
+        <%= raw(@content) %>
+      <% else %>
+        <p class="placeholder-text">Add your projects...</p>
+      <% end %>
+    </div>
+    """
   end
 
-  defp render_generic_content(content) do
-    case content do
-      %{"text" => text} when is_binary(text) ->
-        """
-        <div class="generic-section">
-          <p>#{escape_html(text)}</p>
-        </div>
-        """
+  defp render_contact_section(section) do
+    content = section.content || %{}
+    main_content = Map.get(content, "main_content", "")
 
-      %{"description" => description} when is_binary(description) ->
-        """
-        <div class="generic-section">
-          <p>#{escape_html(description)}</p>
-        </div>
-        """
+    assigns = %{content: main_content}
 
-      content when is_map(content) and map_size(content) > 0 ->
-        # Try to find any text content to display
-        text_content = content
-        |> Map.values()
-        |> Enum.find(&is_binary/1)
-        |> case do
-          nil -> "Content available - check section configuration"
-          text -> text
-        end
+    ~H"""
+    <div class="contact-content">
+      <%= if @content != "" do %>
+        <%= raw(@content) %>
+      <% else %>
+        <p class="placeholder-text">Add your contact information...</p>
+      <% end %>
+    </div>
+    """
+  end
 
-        """
-        <div class="generic-section">
-          <p>#{escape_html(text_content)}</p>
-        </div>
-        """
+  defp render_generic_section(section) do
+    content = section.content || %{}
+    main_content = Map.get(content, "main_content", "")
 
+    assigns = %{content: main_content}
+
+    ~H"""
+    <div class="generic-content">
+      <%= if @content != "" do %>
+        <%= raw(@content) %>
+      <% else %>
+        <p class="placeholder-text">Add content for this section...</p>
+      <% end %>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS
+  # ============================================================================
+
+  defp load_portfolio_safe(portfolio_id) do
+    try do
+      Portfolios.get_portfolio!(portfolio_id)
+    rescue
       _ ->
-        """
-        <div class="generic-section text-gray-500">
-          <p>No content configured for this section.</p>
-        </div>
-        """
+        # Fallback if function signature is different
+        try do
+          Portfolios.get_portfolio(portfolio_id)
+        rescue
+          _ -> %{id: portfolio_id, title: "Portfolio", description: nil}
+        end
     end
   end
 
-  # ADD ADDITIONAL SECTION RENDERERS FOR COMPLETENESS:
-  defp render_featured_project_content(content), do: render_projects_content(content)
-  defp render_case_study_content(content), do: render_projects_content(content)
-  defp render_achievements_content(content), do: render_generic_content(content)
-  defp render_testimonial_content(content), do: render_generic_content(content)
-  defp render_media_content(content), do: render_generic_content(content)
-  defp render_contact_content(content), do: render_generic_content(content)
+  defp verify_preview_token(portfolio_id, token) do
+    expected_token = :crypto.hash(:sha256, "preview_#{portfolio_id}_#{Date.utc_today()}")
+                     |> Base.encode16(case: :lower)
 
-  # ADD HTML ESCAPING HELPER:
-  defp escape_html(text) when is_binary(text) do
-    text
-    |> String.replace("&", "&amp;")
-    |> String.replace("<", "&lt;")
-    |> String.replace(">", "&gt;")
-    |> String.replace("\"", "&quot;")
-    |> String.replace("'", "&#39;")
+    token == expected_token
   end
-
-  defp escape_html(_), do: ""
 
   defp generate_preview_css(portfolio) do
-    CssPriorityManager.generate_portfolio_css(portfolio, preview_mode: true)
-  end
+    theme = Map.get(portfolio, :theme, "minimal")
+    customization = Map.get(portfolio, :customization, %{})
 
-  defp load_portfolio_sections_enhanced(portfolio_id) do
-    try do
-      sections = Portfolios.list_portfolio_sections(portfolio_id)
-      process_sections_for_display(sections)
-    rescue
-      error ->
-        IO.puts("❌ Error loading sections: #{inspect(error)}")
-        []
-    end
-  end
-
-  defp build_customization_from_params(params, portfolio) do
-    base_customization = portfolio.customization || %{}
-
-    # Override with URL params if present
-    url_customization = %{}
-
-    url_customization = if primary = params["primary"] do
-      Map.put(url_customization, "primary_color", "##{primary}")
-    else
-      url_customization
-    end
-
-    url_customization = if accent = params["accent"] do
-      Map.put(url_customization, "accent_color", "##{accent}")
-    else
-      url_customization
-    end
-
-    url_customization = if layout = params["layout"] do
-      Map.put(url_customization, "layout", layout)
-    else
-      url_customization
-    end
-
-    Map.merge(base_customization, url_customization)
+    generate_portfolio_css(customization, theme)
   end
 
   defp load_portfolio_sections(portfolio_id) do
     try do
-      sections = Portfolios.list_portfolio_sections(portfolio_id)
-
-      # Ensure sections have proper data structure
-      Enum.map(sections, fn section ->
-        %{
-          id: section.id,
-          title: section.title || "Untitled Section",
-          section_type: section.section_type,
-          content: section.content || %{},
-          position: section.position || 0,
-          visible: section.visible
-        }
-      end)
-      |> Enum.filter(& &1.visible)
-      |> Enum.sort_by(& &1.position)
+      Portfolios.list_portfolio_sections(portfolio_id)
     rescue
-      error ->
-        IO.puts("❌ Error loading sections: #{inspect(error)}")
-        []
+      _ -> []
     end
   end
 
-  defp process_sections_for_display(sections) do
-    sections
-    |> Enum.map(fn section ->
-      %{
-        id: section.id,
-        title: section.title || "Untitled Section",
-        section_type: section.section_type,
-        content: section.content || %{},
-        position: section.position || 0,
-        visible: section.visible
-      }
-    end)
-    |> Enum.filter(& &1.visible)
-    |> Enum.sort_by(& &1.position)
+  defp generate_portfolio_css(customization, theme) do
+    primary_color = Map.get(customization, "primary_color", "#374151")
+    accent_color = Map.get(customization, "accent_color", "#059669")
+    secondary_color = Map.get(customization, "secondary_color", "#6b7280")
+    layout = Map.get(customization, "layout", "minimal")
+
+    """
+    :root {
+      --primary-color: #{primary_color};
+      --accent-color: #{accent_color};
+      --secondary-color: #{secondary_color};
+    }
+
+    .live-preview-container {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #fff;
+      min-height: 100vh;
+    }
+
+    .portfolio-preview {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+
+    .portfolio-header {
+      text-align: center;
+      margin-bottom: 3rem;
+      padding: 2rem;
+      background: var(--primary-color);
+      color: white;
+      border-radius: 8px;
+    }
+
+    .portfolio-title {
+      font-size: 2.5rem;
+      font-weight: bold;
+      margin: 0 0 1rem 0;
+    }
+
+    .portfolio-description {
+      font-size: 1.2rem;
+      opacity: 0.9;
+      margin: 0;
+    }
+
+    .portfolio-section {
+      background: white;
+      border-radius: 8px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      border: 1px solid #e5e7eb;
+    }
+
+    .section-title {
+      font-size: 1.8rem;
+      font-weight: bold;
+      margin: 0 0 1rem 0;
+      color: var(--primary-color);
+      border-bottom: 2px solid var(--accent-color);
+      padding-bottom: 0.5rem;
+    }
+
+    .section-content {
+      margin-top: 1rem;
+    }
+
+    .placeholder-text {
+      color: #9ca3af;
+      font-style: italic;
+      text-align: center;
+      padding: 2rem;
+      background: #f9fafb;
+      border: 2px dashed #d1d5db;
+      border-radius: 4px;
+      margin: 0;
+    }
+
+    .empty-portfolio {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: #6b7280;
+    }
+
+    /* Mobile responsive */
+    [data-mobile-view="true"] .portfolio-preview {
+      max-width: 375px;
+      padding: 1rem;
+    }
+
+    [data-mobile-view="true"] .portfolio-title {
+      font-size: 2rem;
+    }
+
+    [data-mobile-view="true"] .portfolio-section {
+      padding: 1rem;
+    }
+
+    [data-mobile-view="true"] .section-title {
+      font-size: 1.5rem;
+    }
+    """
   end
-
-
 end
