@@ -1,5 +1,6 @@
 # lib/frestyl/portfolios/content_blocks/dynamic_card_blocks.ex
 defmodule Frestyl.Portfolios.ContentBlocks.DynamicCardBlocks do
+
   @moduledoc """
   Dynamic Card Layout Content Blocks for talent showcase with monetization opportunities.
   Works across all portfolio templates with brand-controllable design.

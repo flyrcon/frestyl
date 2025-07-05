@@ -514,11 +514,498 @@ defmodule FrestylWeb.PortfolioLive.Show do
     """
   end
 
+  defp render_service_provider_layout(assigns) do
+    ~H"""
+    <div class="service-provider-layout">
+      <!-- Hero Section with Service Focus -->
+      <section class="hero-section py-20" style={"background: linear-gradient(135deg, #{@brand_colors.primary} 0%, #{@brand_colors.secondary} 100%)"}>
+        <div class="container mx-auto px-6 text-center">
+          <h1 class="text-5xl font-bold text-white mb-6"><%= @portfolio.title %></h1>
+          <p class="text-xl text-white/90 mb-8 max-w-2xl mx-auto"><%= @portfolio.description %></p>
+
+          <!-- Service CTAs -->
+          <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <button class="px-8 py-3 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
+              Book Consultation
+            </button>
+            <button class="px-8 py-3 border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-gray-900 transition-colors">
+              View Services
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Services Grid -->
+      <section class="services-section py-16 bg-gray-50">
+        <div class="container mx-auto px-6">
+          <h2 class="text-3xl font-bold text-center mb-12">Services</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <%= for section <- filter_sections_by_type(@sections, ["projects", "services", "skills"]) do %>
+              <div class="service-card bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+                <h3 class="text-xl font-semibold mb-4" style={"color: #{@brand_colors.primary}"}><%= section.title %></h3>
+                <p class="text-gray-600 mb-4"><%= get_section_excerpt(section) %></p>
+                <button class="text-sm font-medium hover:underline" style={"color: #{@brand_colors.accent}"}>
+                  Learn More →
+                </button>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </section>
+
+      <!-- Trust Building: Testimonials + Pricing -->
+      <section class="trust-section py-16">
+        <div class="container mx-auto px-6">
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
+            <!-- Testimonials -->
+            <div class="lg:col-span-2">
+              <h2 class="text-3xl font-bold mb-8">Client Testimonials</h2>
+              <div class="space-y-6">
+                <%= for section <- filter_sections_by_type(@sections, ["testimonial"]) do %>
+                  <div class="testimonial-card bg-white p-6 rounded-xl border border-gray-200">
+                    <p class="text-gray-700 mb-4 italic">"<%= get_section_excerpt(section) %>"</p>
+                    <div class="flex items-center">
+                      <div class="w-12 h-12 rounded-full mr-4" style={"background: #{@brand_colors.primary}"}></div>
+                      <div>
+                        <h4 class="font-semibold"><%= section.title %></h4>
+                      </div>
+                    </div>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+
+            <!-- Pricing -->
+            <div class="lg:col-span-1">
+              <h2 class="text-3xl font-bold mb-8">Pricing</h2>
+              <div class="pricing-card bg-white p-6 rounded-xl border-2" style={"border-color: #{@brand_colors.accent}"}>
+                <h3 class="text-xl font-semibold mb-4">Consultation</h3>
+                <div class="text-4xl font-bold mb-4" style={"color: #{@brand_colors.primary}"}>$150<span class="text-lg text-gray-600">/hour</span></div>
+                <ul class="space-y-2 mb-6">
+                  <li class="flex items-center"><span class="w-2 h-2 rounded-full mr-3" style={"background: #{@brand_colors.accent}"}></span>Expert consultation</li>
+                  <li class="flex items-center"><span class="w-2 h-2 rounded-full mr-3" style={"background: #{@brand_colors.accent}"}></span>Action plan included</li>
+                  <li class="flex items-center"><span class="w-2 h-2 rounded-full mr-3" style={"background: #{@brand_colors.accent}"}></span>Follow-up support</li>
+                </ul>
+                <button class="w-full py-3 rounded-lg font-semibold text-white transition-colors" style={"background: #{@brand_colors.primary}"}>
+                  Book Now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
+  defp render_creative_showcase_layout(assigns) do
+    ~H"""
+    <div class="creative-showcase-layout">
+      <!-- Visual Hero -->
+      <section class="hero-section min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-orange-600 relative overflow-hidden">
+        <div class="absolute inset-0 bg-black/20"></div>
+        <div class="relative z-10 container mx-auto px-6 flex items-center min-h-screen">
+          <div class="max-w-3xl">
+            <h1 class="text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight"><%= @portfolio.title %></h1>
+            <p class="text-2xl text-white/90 mb-8"><%= @portfolio.description %></p>
+            <div class="flex gap-4">
+              <button class="px-8 py-4 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
+                View Portfolio
+              </button>
+              <button class="px-8 py-4 border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-gray-900 transition-colors">
+                Commission Work
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Portfolio Masonry Grid -->
+      <section class="portfolio-section py-20">
+        <div class="container mx-auto px-6">
+          <h2 class="text-4xl font-bold text-center mb-16">Recent Work</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <%= for section <- filter_sections_by_type(@sections, ["projects", "featured_project", "media_showcase"]) do %>
+              <div class="portfolio-item group cursor-pointer">
+                <div class="aspect-square bg-gradient-to-br rounded-2xl overflow-hidden" style={"background: linear-gradient(135deg, #{@brand_colors.primary} 0%, #{@brand_colors.accent} 100%)"}>
+                  <div class="w-full h-full flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+                    <div class="text-center text-white p-6">
+                      <h3 class="text-xl font-bold mb-2"><%= section.title %></h3>
+                      <p class="text-white/80 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <%= get_section_excerpt(section) %>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
+  defp render_content_creator_layout(assigns) do
+    ~H"""
+    <div class="content-creator-layout">
+      <!-- Streaming Hero -->
+      <section class="hero-section py-20 bg-gradient-to-br from-purple-600 via-pink-600 to-orange-500">
+        <div class="container mx-auto px-6 text-center">
+          <h1 class="text-5xl font-bold text-white mb-6"><%= @portfolio.title %></h1>
+          <p class="text-xl text-white/90 mb-8 max-w-2xl mx-auto"><%= @portfolio.description %></p>
+
+          <!-- Creator CTAs -->
+          <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <button class="px-8 py-3 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
+              Subscribe
+            </button>
+            <button class="px-8 py-3 border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-gray-900 transition-colors">
+              Collaborate
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Content Metrics -->
+      <section class="metrics-section py-16 bg-gray-50">
+        <div class="container mx-auto px-6">
+          <h2 class="text-3xl font-bold text-center mb-12">Creator Stats</h2>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div class="metric-card text-center p-6 bg-white rounded-xl shadow-lg">
+              <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>100K+</div>
+              <div class="text-gray-600">Followers</div>
+            </div>
+            <div class="metric-card text-center p-6 bg-white rounded-xl shadow-lg">
+              <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>1M+</div>
+              <div class="text-gray-600">Views</div>
+            </div>
+            <div class="metric-card text-center p-6 bg-white rounded-xl shadow-lg">
+              <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>500+</div>
+              <div class="text-gray-600">Videos</div>
+            </div>
+            <div class="metric-card text-center p-6 bg-white rounded-xl shadow-lg">
+              <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>98%</div>
+              <div class="text-gray-600">Positive Rating</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Content Showcase -->
+      <section class="content-section py-16">
+        <div class="container mx-auto px-6">
+          <h2 class="text-3xl font-bold text-center mb-12">Latest Content</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <%= for section <- filter_sections_by_type(@sections, ["projects", "media_showcase"]) do %>
+              <div class="content-card bg-white rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow">
+                <div class="aspect-video bg-gradient-to-br rounded-t-xl" style={"background: linear-gradient(135deg, #{@brand_colors.primary} 0%, #{@brand_colors.accent} 100%)"}>
+                  <div class="w-full h-full flex items-center justify-center">
+                    <div class="text-white text-center">
+                      <h3 class="text-lg font-bold"><%= section.title %></h3>
+                    </div>
+                  </div>
+                </div>
+                <div class="p-6">
+                  <p class="text-gray-600 mb-4"><%= get_section_excerpt(section) %></p>
+                  <button class="text-sm font-medium hover:underline" style={"color: #{@brand_colors.accent}"}>
+                    Watch Now →
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
+  defp render_corporate_executive_layout(assigns) do
+    ~H"""
+    <div class="corporate-executive-layout">
+      <!-- Executive Hero -->
+      <section class="hero-section py-20 bg-gradient-to-br from-slate-900 to-blue-900">
+        <div class="container mx-auto px-6">
+          <div class="max-w-4xl mx-auto text-center">
+            <h1 class="text-5xl font-bold text-white mb-6"><%= @portfolio.title %></h1>
+            <p class="text-xl text-white/90 mb-8"><%= @portfolio.description %></p>
+
+            <!-- Executive CTAs -->
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+              <button class="px-8 py-3 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
+                Schedule Meeting
+              </button>
+              <button class="px-8 py-3 border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-gray-900 transition-colors">
+                Download Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Executive Summary -->
+      <section class="summary-section py-16 bg-white">
+        <div class="container mx-auto px-6">
+          <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-12">Executive Summary</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div class="stat-card text-center p-6">
+                <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>15+</div>
+                <div class="text-gray-600">Years Experience</div>
+              </div>
+              <div class="stat-card text-center p-6">
+                <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>$50M+</div>
+                <div class="text-gray-600">Revenue Generated</div>
+              </div>
+              <div class="stat-card text-center p-6">
+                <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>200+</div>
+                <div class="text-gray-600">Team Members Led</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Leadership Experience -->
+      <section class="experience-section py-16 bg-gray-50">
+        <div class="container mx-auto px-6">
+          <h2 class="text-3xl font-bold text-center mb-12">Leadership Experience</h2>
+          <div class="max-w-4xl mx-auto space-y-8">
+            <%= for section <- filter_sections_by_type(@sections, ["experience", "achievements"]) do %>
+              <div class="experience-card bg-white p-8 rounded-xl shadow-lg">
+                <div class="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 class="text-xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}><%= section.title %></h3>
+                    <p class="text-gray-600"><%= get_section_excerpt(section) %></p>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-sm text-gray-500">2020 - Present</div>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded text-sm">Strategy</span>
+                  <span class="px-3 py-1 bg-green-100 text-green-800 rounded text-sm">Growth</span>
+                  <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded text-sm">Leadership</span>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
+  defp render_technical_expert_layout(assigns) do
+    ~H"""
+    <div class="technical-expert-layout bg-gray-900 text-white">
+      <!-- Terminal-Style Hero -->
+      <section class="hero-section py-20 bg-gradient-to-br from-gray-900 to-gray-800">
+        <div class="container mx-auto px-6">
+          <div class="max-w-4xl">
+            <div class="font-mono text-green-400 mb-4">~/$ whoami</div>
+            <h1 class="text-5xl font-bold mb-6"><%= @portfolio.title %></h1>
+            <div class="font-mono text-green-400 mb-4">~/$ cat about.txt</div>
+            <p class="text-xl text-gray-300 mb-8"><%= @portfolio.description %></p>
+            <div class="font-mono text-green-400 mb-6">~/$ ls services/</div>
+            <div class="flex gap-4">
+              <button class="px-6 py-3 bg-green-600 text-white rounded font-semibold hover:bg-green-700 transition-colors">
+                ./hire_me.sh
+              </button>
+              <button class="px-6 py-3 border border-green-600 text-green-400 rounded font-semibold hover:bg-green-600 hover:text-white transition-colors">
+                cat portfolio.md
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Skills Matrix -->
+      <section class="skills-section py-16 bg-gray-800">
+        <div class="container mx-auto px-6">
+          <h2 class="text-3xl font-bold mb-12 text-center">Technical Expertise</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <%= for section <- filter_sections_by_type(@sections, ["skills", "experience"]) do %>
+              <div class="skill-card bg-gray-700 p-6 rounded-lg border border-gray-600">
+                <h3 class="text-lg font-semibold mb-4 text-green-400"><%= section.title %></h3>
+                <div class="space-y-2">
+                  <div class="flex justify-between text-sm">
+                    <span>Proficiency</span>
+                    <span>90%</span>
+                  </div>
+                  <div class="w-full bg-gray-600 rounded-full h-2">
+                    <div class="bg-green-500 h-2 rounded-full w-[90%]"></div>
+                  </div>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </section>
+
+      <!-- Project Deep Dive -->
+      <section class="projects-section py-16 bg-gray-900">
+        <div class="container mx-auto px-6">
+          <h2 class="text-3xl font-bold mb-12 text-center">Featured Projects</h2>
+          <div class="space-y-8">
+            <%= for section <- filter_sections_by_type(@sections, ["projects", "featured_project"]) do %>
+              <div class="project-card bg-gray-800 p-8 rounded-xl border border-gray-700">
+                <h3 class="text-2xl font-bold mb-4 text-green-400"><%= section.title %></h3>
+                <p class="text-gray-300 mb-6"><%= get_section_excerpt(section) %></p>
+                <div class="flex flex-wrap gap-2 mb-6">
+                  <span class="px-3 py-1 bg-green-600 text-white rounded text-sm">React</span>
+                  <span class="px-3 py-1 bg-blue-600 text-white rounded text-sm">Node.js</span>
+                  <span class="px-3 py-1 bg-purple-600 text-white rounded text-sm">PostgreSQL</span>
+                </div>
+                <div class="flex gap-4">
+                  <button class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors">
+                    View Code
+                  </button>
+                  <button class="px-4 py-2 border border-green-600 text-green-400 rounded hover:bg-green-600 hover:text-white transition-colors">
+                    Live Demo
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
 
-  defp load_portfolio_by_slug(slug) do
+  # Add to show.ex mount function
+  defp determine_portfolio_layout_type(portfolio) do
+    customization = portfolio.customization || %{}
+
+    # Check for dynamic card layout
+    layout_style = Map.get(customization, "layout") || portfolio.theme
+
+    dynamic_layouts = [
+      "professional_service_provider",
+      "creative_portfolio_showcase",
+      "technical_expert_dashboard",
+      "content_creator_hub",
+      "corporate_executive_profile"
+    ]
+
+    if layout_style in dynamic_layouts do
+      {:dynamic_card, layout_style}
+    else
+      {:traditional, "default"}
+    end
+  end
+
+  defp render_portfolio_layout(assigns) do
+    case determine_portfolio_layout_type(assigns.portfolio) do
+      {:dynamic_card, layout_style} ->
+        render_dynamic_card_layout(assigns, layout_style)
+
+      {:traditional, _} ->
+        render_traditional_sections(assigns)
+    end
+  end
+
+  defp get_dynamic_layout_config(portfolio, layout_style) do
+    customization = portfolio.customization || %{}
+
+    %{
+      layout_style: layout_style,
+      primary_color: Map.get(customization, "primary_color") || "#3b82f6",
+      secondary_color: Map.get(customization, "secondary_color") || "#64748b",
+      accent_color: Map.get(customization, "accent_color") || "#f59e0b",
+      grid_density: Map.get(customization, "grid_density") || "normal"
+    }
+  end
+
+  defp get_brand_colors(portfolio) do
+    customization = portfolio.customization || %{}
+
+    %{
+      primary: Map.get(customization, "primary_color") || "#3b82f6",
+      secondary: Map.get(customization, "secondary_color") || "#64748b",
+      accent: Map.get(customization, "accent_color") || "#f59e0b"
+    }
+  end
+
+  defp filter_sections_by_type(sections, types) do
+    Enum.filter(sections, fn section ->
+      section_type = to_string(section.section_type)
+      section_type in types and section.visible
+    end)
+  end
+
+  defp get_section_excerpt(section) do
+    content = section.content || %{}
+
+    # Try to get main content or description
+    main_content = Map.get(content, "main_content") ||
+                  Map.get(content, "description") ||
+                  Map.get(content, "summary") ||
+                  ""
+
+    # Truncate to reasonable length
+    if String.length(main_content) > 150 do
+      String.slice(main_content, 0, 147) <> "..."
+    else
+      main_content
+    end
+  end
+
+  defp render_traditional_sections(assigns) do
+    ~H"""
+    <!-- Your existing traditional section rendering -->
+    <div class="traditional-portfolio">
+      <%= for section <- @sections do %>
+        <%= if section.visible do %>
+          <section class="mb-8">
+            <h2 class="text-2xl font-bold mb-4"><%= section.title %></h2>
+            <div class="prose max-w-none">
+              <%= get_section_excerpt(section) %>
+            </div>
+          </section>
+        <% end %>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp render_dynamic_card_layout(assigns, layout_style) do
+    # Get layout configuration
+    layout_config = get_dynamic_layout_config(assigns.portfolio, layout_style)
+
+    assigns = assigns
+    |> assign(:layout_style, layout_style)
+    |> assign(:layout_config, layout_config)
+    |> assign(:brand_colors, get_brand_colors(assigns.portfolio))
+
+    case layout_style do
+      "professional_service_provider" ->
+        render_service_provider_layout(assigns)
+
+      "creative_portfolio_showcase" ->
+        render_creative_showcase_layout(assigns)
+
+      "technical_expert_dashboard" ->
+        render_technical_expert_layout(assigns)
+
+      "content_creator_hub" ->
+        render_content_creator_layout(assigns)
+
+      "corporate_executive_profile" ->
+        render_corporate_executive_layout(assigns)
+
+      _ ->
+        render_service_provider_layout(assigns)  # Default fallback
+    end
+  end
+
+    defp load_portfolio_by_slug(slug) do
     try do
       case Portfolios.get_portfolio_by_slug_with_sections(slug) do
         nil -> {:error, :not_found}

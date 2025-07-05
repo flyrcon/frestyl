@@ -58,6 +58,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         |> assign_design_system(portfolio, account, available_layouts, brand_constraints)
         |> assign_ui_state()
         |> assign_live_preview_state()
+        |> load_dynamic_card_capabilities(portfolio, account)
 
         load_time = System.monotonic_time(:millisecond) - start_time
         IO.puts("🔥 PORTFOLIO EDITOR LOADED in #{load_time}ms")
@@ -69,6 +70,9 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         else
           socket
         end
+          IO.puts("🔥 DEBUG: Is dynamic layout: #{socket.assigns[:is_dynamic_layout]}")
+  IO.puts("🔥 DEBUG: Available tabs: #{inspect(get_available_tabs(socket.assigns))}")
+
 
         {:ok, socket}
 
@@ -85,6 +89,78 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         {:ok, socket |> put_flash(:error, "Error loading portfolio") |> redirect(to: "/hub")}
     end
   end
+
+  # Add to portfolio_editor.ex mount function
+  defp load_dynamic_card_capabilities(socket, portfolio, account) do
+    is_dynamic_layout = is_dynamic_card_layout?(portfolio)
+
+    if is_dynamic_layout do
+      # Get actual dynamic blocks based on subscription tier
+      available_blocks = get_dynamic_card_blocks(account.subscription_tier)
+
+      # Get layout configuration for this portfolio
+      layout_config = get_portfolio_layout_config(portfolio)
+
+      # Load existing layout zones
+      layout_zones = load_portfolio_layout_zones(portfolio.id)
+
+      socket
+      |> assign(:is_dynamic_layout, true)
+      |> assign(:show_dynamic_layout_manager, false)
+      |> assign(:available_dynamic_blocks, available_blocks)
+      |> assign(:layout_config, layout_config)
+      |> assign(:layout_zones, layout_zones)
+      |> assign(:active_layout_category, get_current_layout_category(portfolio))
+      |> assign(:brand_customization, get_brand_customization(portfolio))
+    else
+      socket
+      |> assign(:is_dynamic_layout, false)
+      |> assign(:show_dynamic_layout_manager, false)
+    end
+  end
+
+  defp load_portfolio_layout_zones(portfolio_id) do
+    # This would load actual zone configuration from database
+    # For now, return default zones structure
+    %{
+      "hero" => [],
+      "services" => [],
+      "testimonials" => [],
+      "pricing" => [],
+      "cta" => []
+    }
+  end
+
+  defp get_current_layout_category(portfolio) do
+    layout_style = case portfolio.customization do
+      %{"layout" => layout} when is_binary(layout) -> layout
+      _ -> portfolio.theme || "professional_service_provider"
+    end
+
+    case layout_style do
+      "professional_service_provider" -> :service_provider
+      "creative_portfolio_showcase" -> :creative_showcase
+      "technical_expert_dashboard" -> :technical_expert
+      "content_creator_hub" -> :content_creator
+      "corporate_executive_profile" -> :corporate_executive
+      _ -> :service_provider
+    end
+  end
+
+
+  defp get_portfolio_layout_config(portfolio) do
+  customization = portfolio.customization || %{}
+
+  %{
+    layout_style: Map.get(customization, "layout") || portfolio.theme || "professional_service_provider",
+    grid_density: Map.get(customization, "grid_density") || "normal",
+    mobile_layout: Map.get(customization, "mobile_layout") || "card",
+    animation_level: Map.get(customization, "animation_level") || "subtle",
+    primary_color: Map.get(customization, "primary_color") || "#3b82f6",
+    secondary_color: Map.get(customization, "secondary_color") || "#64748b",
+    accent_color: Map.get(customization, "accent_color") || "#f59e0b"
+  }
+end
 
   # ============================================================================
   # ASSIGNMENT HELPERS - FIXED
@@ -191,7 +267,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     tab_atom = String.to_atom(tab)
-    IO.puts("🔥 SWITCHING TAB: #{tab} -> #{tab_atom}")
     {:noreply, assign(socket, :active_tab, tab_atom)}
   end
 
@@ -210,38 +285,35 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   @impl true
-  def handle_event("edit_section", %{"section-id" => ""}, socket) do
-    # Clear editing section
-    IO.puts("🔥 CLEARING EDITING SECTION")
+  def handle_event("edit_section", %{"section_id" => section_id}, socket) do
+    IO.puts("🔧 Edit section clicked: #{section_id}")
 
-    socket = socket
-    |> assign(:editing_section, nil)
-    |> assign(:editing_mode, nil)
+    section_id_int = String.to_integer(section_id)
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
 
-    {:noreply, socket}
+    if section do
+      # Simply transition to editing mode without complex operations
+      {:noreply, socket
+      |> assign(:section_edit_id, to_string(section_id_int))
+      |> assign(:editing_section, section)
+      |> assign(:section_edit_tab, "content")
+      |> assign(:active_tab, :sections)
+      |> assign(:unsaved_changes, false)}
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
   end
 
+  # FIXED: Close section editor that properly resets state
   @impl true
-  def handle_event("update_section_content", %{"section_id" => section_id, "field" => field, "value" => value}, socket) do
-    section_id = String.to_integer(section_id)
+  def handle_event("close_section_editor", _params, socket) do
+    IO.puts("🔧 Closing section editor")
 
-    case update_section_content(section_id, field, value) do
-      {:ok, updated_section} ->
-        sections = update_section_in_list(socket.assigns.sections, updated_section)
-
-        socket = socket
-        |> assign(:sections, sections)
-        |> assign(:unsaved_changes, true)
-        |> assign(:editing_section, updated_section)
-
-        # Broadcast to live preview
-        broadcast_content_update(socket, updated_section)
-
-        {:noreply, socket}
-
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to update section")}
-    end
+    {:noreply, socket
+    |> assign(:section_edit_id, nil)
+    |> assign(:editing_section, nil)
+    |> assign(:section_edit_tab, nil)
+    |> assign(:unsaved_changes, false)}
   end
 
   @impl true
@@ -303,6 +375,227 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         {:noreply, put_flash(socket, :error, "Failed to save portfolio")}
     end
   end
+
+    @impl true
+  def handle_event("edit_section", %{"section_id" => section_id}, socket) do
+    IO.puts("🔧 Edit section clicked: #{section_id}")
+
+    section_id_int = String.to_integer(section_id)
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+    if section do
+      # Get media files for this section
+      section_media = try do
+        Portfolios.list_section_media(section.id)
+      rescue
+        _ -> []
+      end
+
+      {:noreply, socket
+      |> assign(:section_edit_id, to_string(section_id_int))
+      |> assign(:editing_section, section)
+      |> assign(:editing_section_media, section_media)
+      |> assign(:section_edit_tab, "content")
+      |> assign(:active_tab, :sections)
+      |> assign(:unsaved_changes, false)
+      |> push_event("section-edit-started", %{section_id: section_id_int})}
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_section_editor", _params, socket) do
+    IO.puts("🔧 Closing section editor")
+
+    {:noreply, socket
+    |> assign(:section_edit_id, nil)
+    |> assign(:editing_section, nil)
+    |> assign(:editing_section_media, [])
+    |> assign(:section_edit_tab, nil)
+    |> assign(:unsaved_changes, false)
+    |> push_event("section-edit-cancelled", %{})}
+  end
+
+
+  @impl true
+  def handle_event("save_section", %{"section_id" => section_id}, socket) do
+    IO.puts("🔧 Save section clicked: #{section_id}")
+
+    section_id_int = String.to_integer(section_id)
+    editing_section = socket.assigns.editing_section
+
+    if editing_section && editing_section.id == section_id_int do
+      # Section is already saved from field updates, just provide feedback
+      {:noreply, socket
+      |> put_flash(:info, "Section '#{editing_section.title}' saved successfully!")
+      |> assign(:unsaved_changes, false)}
+    else
+      {:noreply, put_flash(socket, :error, "Section not found or not being edited")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_section_field", %{"section_id" => section_id, "field" => field, "value" => value}, socket) do
+    IO.puts("🔧 Updating section field: #{field} = #{inspect(value)}")
+
+    section_id_int = String.to_integer(section_id)
+
+    # Find the section to update
+    section_to_update = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+    if section_to_update do
+      # Handle different field types properly
+      update_params = case field do
+        "title" ->
+          %{title: String.trim(value)}
+        "description" ->
+          %{description: String.trim(value)}
+        "visible" ->
+          %{visible: value == "true" || value == true}
+        "position" ->
+          case Integer.parse(to_string(value)) do
+            {pos, ""} -> %{position: pos}
+            _ -> %{}
+          end
+        "main_content" ->
+          # Handle main content updates
+          current_content = section_to_update.content || %{}
+          cleaned_value = strip_html_safely(value)
+          updated_content = Map.put(current_content, "main_content", cleaned_value)
+          %{content: updated_content}
+        content_field ->
+          # Handle other content fields
+          current_content = section_to_update.content || %{}
+          cleaned_value = if is_binary(value), do: strip_html_safely(value), else: value
+          updated_content = Map.put(current_content, content_field, cleaned_value)
+          %{content: updated_content}
+      end
+
+      if map_size(update_params) > 0 do
+        case Portfolios.update_section(section_to_update, update_params) do
+          {:ok, updated_section} ->
+            IO.puts("✅ Section field updated successfully!")
+
+            # Update sections list
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id_int, do: updated_section, else: s
+            end)
+
+            # Update editing_section if it's the same section
+            editing_section = if socket.assigns[:editing_section] && socket.assigns.editing_section.id == section_id_int do
+              updated_section
+            else
+              socket.assigns[:editing_section]
+            end
+
+            # CRITICAL: Don't use push_event which causes page refreshes
+            {:noreply, socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, editing_section)
+            |> assign(:unsaved_changes, false)}
+
+          {:error, changeset} ->
+            IO.puts("❌ Section update failed: #{inspect(changeset.errors)}")
+
+            {:noreply, socket
+            |> put_flash(:error, "Failed to update section")
+            |> assign(:unsaved_changes, true)}
+        end
+      else
+        {:noreply, socket}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  # Handler for toggling dynamic layout manager
+  def handle_event("toggle_dynamic_layout_manager", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_dynamic_layout_manager, false)
+    {:noreply, assign(socket, :show_dynamic_layout_manager, !current_state)}
+  end
+
+  @impl true
+  def handle_event("toggle_dynamic_layout_manager", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_dynamic_layout_manager, false)
+    {:noreply, assign(socket, :show_dynamic_layout_manager, !current_state)}
+  end
+
+  @impl true
+  def handle_event("select_layout_category", %{"category" => category}, socket) do
+    category_atom = String.to_atom(category)
+    portfolio = socket.assigns.portfolio
+
+    # Update portfolio with new layout
+    layout_name = case category_atom do
+      :service_provider -> "professional_service_provider"
+      :creative_showcase -> "creative_portfolio_showcase"
+      :technical_expert -> "technical_expert_dashboard"
+      :content_creator -> "content_creator_hub"
+      :corporate_executive -> "corporate_executive_profile"
+      _ -> "professional_service_provider"
+    end
+
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, "layout", layout_name)
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        # Broadcast the layout change to live previews
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio_preview:#{portfolio.id}",
+          {:layout_changed, layout_name, updated_customization}
+        )
+
+        # Reload dynamic capabilities with new layout
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:active_layout_category, category_atom)
+        |> load_dynamic_card_capabilities(updated_portfolio, socket.assigns[:account] || %{})
+        |> put_flash(:info, "Layout updated to #{humanize_category(category_atom)}")
+
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update layout")}
+    end
+  end
+
+
+  @impl true
+  def handle_event("update_brand_color", %{"color" => color_key, "value" => color_value}, socket) do
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, color_key, color_value)
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        # Refresh both the editor and any live previews
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio_preview:#{portfolio.id}",
+          {:customization_updated, updated_customization}
+        )
+
+        {:noreply, socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:brand_customization, get_brand_customization(updated_portfolio))
+        |> put_flash(:info, "Color updated successfully")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update color")}
+    end
+  end
+
+  defp strip_html_safely(value) when is_binary(value) do
+    value
+    |> String.replace(~r/<[^>]*>/, "")  # Remove HTML tags
+    |> String.replace(~r/&[a-zA-Z0-9#]+;/, "")  # Remove HTML entities
+    |> String.trim()
+  end
+  defp strip_html_safely(value), do: value
 
   # ============================================================================
   # HELPER FUNCTIONS
@@ -457,6 +750,18 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     }
   end
 
+  defp get_brand_customization(portfolio) do
+    customization = portfolio.customization || %{}
+
+    %{
+      primary_color: Map.get(customization, "primary_color") || "#3b82f6",
+      secondary_color: Map.get(customization, "secondary_color") || "#64748b",
+      accent_color: Map.get(customization, "accent_color") || "#f59e0b",
+      brand_enforcement: Map.get(customization, "brand_enforcement") || false
+    }
+  end
+
+
   defp generate_design_tokens(portfolio, _brand_constraints) do
     # Get customization from portfolio, with fallback
     customization = Map.get(portfolio, :customization, %{})
@@ -478,20 +783,39 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     :ok
   end
 
-  # Content management helpers
-  defp update_section_content(section_id, field, value) do
-    case Portfolios.get_portfolio_section(section_id) do
-      nil -> {:error, :not_found}
-      section ->
-        content = section.content || %{}
-        updated_content = Map.put(content, field, value)
+  @impl true
+  def handle_event("update_section_content", %{"section_id" => section_id, "field" => field, "value" => value}, socket) do
+    section_id_int = String.to_integer(section_id)
+    section_to_update = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
 
-        case Portfolios.update_portfolio_section(section, %{content: updated_content}) do
-          {:ok, updated_section} -> {:ok, updated_section}
-          {:error, changeset} -> {:error, changeset}
-        end
+    if section_to_update do
+      current_content = section_to_update.content || %{}
+      updated_content = Map.put(current_content, field, String.trim(value))
+
+      case Portfolios.update_section(section_to_update, %{content: updated_content}) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == section_id_int, do: updated_section, else: s
+          end)
+
+          editing_section = if socket.assigns[:editing_section] && socket.assigns.editing_section.id == section_id_int do
+            updated_section
+          else
+            socket.assigns[:editing_section]
+          end
+
+          {:noreply, socket
+          |> assign(:sections, updated_sections)
+          |> assign(:editing_section, editing_section)}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update content")}
+      end
+    else
+      {:noreply, socket}
     end
   end
+
 
   defp create_new_section(portfolio_id, section_type) do
     attrs = %{
@@ -530,6 +854,26 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   defp humanize_section_type(section_type) do
     section_type
+    |> String.replace("_", " ")
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp humanize_category(category) do
+    case category do
+      :service_provider -> "Service Provider"
+      :creative_showcase -> "Creative Portfolio"
+      :technical_expert -> "Technical Expert"
+      :content_creator -> "Content Creator"
+      :corporate_executive -> "Corporate Executive"
+      _ -> "Service Provider"
+    end
+  end
+
+  defp humanize_block_type(block_type) do
+    block_type
+    |> to_string()
     |> String.replace("_", " ")
     |> String.split()
     |> Enum.map(&String.capitalize/1)
@@ -677,54 +1021,322 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   defp render_design_tab(assigns) do
     ~H"""
-    <div class="design-tab">
-      <div class="mb-6">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Design Customization</h3>
+    <div class="space-y-8">
+      <!-- Header -->
+      <div>
+        <h3 class="text-xl font-semibold text-gray-900 mb-2">Design Settings</h3>
+        <p class="text-sm text-gray-600">Universal design controls that apply to all portfolio types</p>
+      </div>
 
-        <!-- Color Settings -->
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
-            <input
-              type="color"
-              value={@design_tokens.primary_color}
-              phx-change="update_design_token"
-              phx-value-token="primary_color"
-              class="w-full h-10 border border-gray-300 rounded-md">
+      <!-- Color Management - Single Row Layout -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Brand Colors</h4>
+        <div class="grid grid-cols-1 gap-6">
+          <%= for {color_key, color_label, description} <- [
+            {"primary_color", "Primary Color", "Main brand color used for headers and key elements"},
+            {"secondary_color", "Secondary Color", "Supporting color used for text and backgrounds"},
+            {"accent_color", "Accent Color", "Highlight color used for buttons and links"}
+          ] do %>
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-900 mb-1"><%= color_label %></label>
+                <p class="text-xs text-gray-600"><%= description %></p>
+              </div>
+              <div class="flex items-center space-x-3">
+                <input type="color"
+                      value={get_portfolio_color(@portfolio, color_key)}
+                      phx-change="update_design_color"
+                      phx-value-color={color_key}
+                      class="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer">
+                <input type="text"
+                      value={get_portfolio_color(@portfolio, color_key)}
+                      phx-change="update_design_color"
+                      phx-value-color={color_key}
+                      class="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono">
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Typography Settings -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Typography</h4>
+        <div class="grid grid-cols-1 gap-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm font-medium text-gray-900">Font Family</label>
+              <p class="text-xs text-gray-600">Primary font used throughout the portfolio</p>
+            </div>
+            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option>Inter (Default)</option>
+              <option>Roboto</option>
+              <option>Open Sans</option>
+              <option>Montserrat</option>
+            </select>
           </div>
 
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
-            <input
-              type="color"
-              value={@design_tokens.accent_color}
-              phx-change="update_design_token"
-              phx-value-token="accent_color"
-              class="w-full h-10 border border-gray-300 rounded-md">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm font-medium text-gray-900">Font Size Scale</label>
+              <p class="text-xs text-gray-600">Overall text size throughout the portfolio</p>
+            </div>
+            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option>Small</option>
+              <option>Medium (Default)</option>
+              <option>Large</option>
+            </select>
           </div>
         </div>
+      </div>
 
-        <!-- Layout Options -->
-        <div class="mt-6">
-          <h4 class="text-sm font-medium text-gray-700 mb-3">Layout Style</h4>
-          <div class="grid grid-cols-1 gap-3">
-            <%= for layout <- @available_layouts do %>
-              <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input
-                  type="radio"
-                  name="layout"
-                  value={layout}
-                  checked={@current_layout == layout}
-                  phx-change="update_layout"
-                  class="mr-3">
-                <span class="capitalize"><%= String.replace(layout, "_", " ") %></span>
-              </label>
-            <% end %>
+      <!-- Spacing & Layout -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Spacing & Layout</h4>
+        <div class="grid grid-cols-1 gap-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm font-medium text-gray-900">Section Spacing</label>
+              <p class="text-xs text-gray-600">Space between portfolio sections</p>
+            </div>
+            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option>Compact</option>
+              <option>Normal (Default)</option>
+              <option>Spacious</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm font-medium text-gray-900">Border Radius</label>
+              <p class="text-xs text-gray-600">Roundness of cards and buttons</p>
+            </div>
+            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option>Sharp</option>
+              <option>Rounded (Default)</option>
+              <option>Very Rounded</option>
+            </select>
           </div>
         </div>
       </div>
     </div>
     """
+  end
+
+  defp render_dynamic_layout_tab(assigns) do
+    ~H"""
+    <div class="space-y-8">
+      <!-- Header -->
+      <div>
+        <h3 class="text-xl font-semibold text-gray-900 mb-2">Dynamic Card Layout</h3>
+        <p class="text-sm text-gray-600">Configure your professional layout structure and content arrangement</p>
+      </div>
+
+      <!-- Layout Category Selection - Single Column -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Professional Layout Category</h4>
+        <p class="text-sm text-gray-600 mb-6">Choose the layout that best fits your professional focus</p>
+
+        <div class="space-y-3">
+          <%= for block_category <- @available_dynamic_blocks do %>
+            <button phx-click="select_layout_category"
+                    phx-value-category={block_category.category}
+                    class={[
+                      "w-full p-4 border-2 rounded-lg transition-all text-left hover:shadow-md",
+                      if(@active_layout_category == block_category.category,
+                        do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
+                        else: "border-gray-200 hover:border-gray-300")
+                    ]}>
+
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <div class="flex items-center space-x-3 mb-2">
+                    <h5 class="font-semibold text-gray-900"><%= block_category.name %></h5>
+                    <%= if @active_layout_category == block_category.category do %>
+                      <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">Current</span>
+                    <% end %>
+                  </div>
+                  <p class="text-sm text-gray-600 mb-3"><%= get_category_description(block_category.category) %></p>
+
+                  <!-- Available Blocks in Single Row -->
+                  <div class="flex flex-wrap gap-2">
+                    <%= for block_type <- block_category.blocks do %>
+                      <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded border">
+                        <%= humanize_block_type(block_type) %>
+                      </span>
+                    <% end %>
+                  </div>
+                </div>
+
+                <%= if @active_layout_category == block_category.category do %>
+                  <svg class="w-6 h-6 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                <% end %>
+              </div>
+            </button>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Functional Zone Manager -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h4 class="text-lg font-semibold text-gray-900">Layout Zones</h4>
+            <p class="text-sm text-gray-600">Arrange content blocks within your layout zones</p>
+          </div>
+          <button phx-click="toggle_dynamic_layout_manager"
+                  class={[
+                    "px-4 py-2 rounded-lg font-medium transition-colors",
+                    if(@show_dynamic_layout_manager,
+                      do: "bg-blue-600 text-white",
+                      else: "bg-gray-100 text-gray-700 hover:bg-gray-200")
+                  ]}>
+            <%= if @show_dynamic_layout_manager, do: "Hide Manager", else: "Open Manager" %>
+          </button>
+        </div>
+
+        <!-- Zone Configuration -->
+        <div class="space-y-4">
+          <%= for {zone_name, blocks} <- @layout_zones do %>
+            <div class="border border-gray-200 rounded-lg p-4">
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <h5 class="font-medium text-gray-900 capitalize"><%= zone_name %> Zone</h5>
+                  <p class="text-sm text-gray-600"><%= get_zone_description(zone_name) %></p>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs text-gray-500"><%= length(blocks) %> blocks</span>
+                  <button phx-click="add_block_to_zone"
+                          phx-value-zone={zone_name}
+                          class="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors">
+                    Add Block
+                  </button>
+                </div>
+              </div>
+
+              <!-- Zone Content -->
+              <div class="min-h-16 border-2 border-dashed border-gray-200 rounded-lg p-4 bg-gray-50">
+                <%= if length(blocks) > 0 do %>
+                  <div class="flex flex-wrap gap-2">
+                    <%= for {block, index} <- Enum.with_index(blocks) do %>
+                      <div class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-200 rounded">
+                        <span class="text-sm text-gray-700"><%= humanize_block_type(block.type || "content") %></span>
+                        <button phx-click="remove_block_from_zone"
+                                phx-value-zone={zone_name}
+                                phx-value-index={index}
+                                class="text-gray-400 hover:text-red-600">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                          </svg>
+                        </button>
+                      </div>
+                    <% end %>
+                  </div>
+                <% else %>
+                  <div class="text-center text-gray-400">
+                    <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                    </svg>
+                    <p class="text-sm">Drop content blocks here</p>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+
+        <!-- Available Blocks Library -->
+        <%= if @show_dynamic_layout_manager do %>
+          <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h5 class="font-medium text-blue-900 mb-3">Available Content Blocks</h5>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              <%= for block_category <- @available_dynamic_blocks do %>
+                <%= for block_type <- block_category.blocks do %>
+                  <button phx-click="add_content_block"
+                          phx-value-block_type={block_type}
+                          class="p-3 bg-white border border-blue-200 rounded text-left hover:bg-blue-50 transition-colors">
+                    <div class="text-sm font-medium text-blue-900"><%= humanize_block_type(block_type) %></div>
+                    <div class="text-xs text-blue-600 mt-1">Click to add</div>
+                  </button>
+                <% end %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  # Helper functions for the improved layout:
+
+  defp get_category_icon(category) do
+    case category do
+      :service_provider -> "💼"
+      :creative_showcase -> "🎨"
+      :technical_expert -> "⚡"
+      :content_creator -> "📺"
+      :corporate_executive -> "🏢"
+      _ -> "📄"
+    end
+  end
+
+  defp get_zones_for_category(category) do
+    case category do
+      :service_provider -> [
+        {"hero", []},
+        {"services", []},
+        {"testimonials", []},
+        {"pricing", []},
+        {"contact", []}
+      ]
+      :creative_showcase -> [
+        {"hero", []},
+        {"portfolio", []},
+        {"process", []},
+        {"testimonials", []},
+        {"commission", []}
+      ]
+      :technical_expert -> [
+        {"hero", []},
+        {"skills", []},
+        {"projects", []},
+        {"experience", []},
+        {"consultation", []}
+      ]
+      :content_creator -> [
+        {"hero", []},
+        {"content", []},
+        {"metrics", []},
+        {"partnerships", []},
+        {"subscribe", []}
+      ]
+      :corporate_executive -> [
+        {"hero", []},
+        {"summary", []},
+        {"achievements", []},
+        {"leadership", []},
+        {"contact", []}
+      ]
+      _ -> [{"hero", []}, {"content", []}, {"contact", []}]
+    end
+  end
+
+  defp get_zone_description(zone_name, category) do
+    case {zone_name, category} do
+      {"hero", _} -> "Primary introduction and value proposition"
+      {"services", :service_provider} -> "Service offerings and packages"
+      {"portfolio", :creative_showcase} -> "Visual work samples and case studies"
+      {"skills", :technical_expert} -> "Technical skills and expertise matrix"
+      {"content", :content_creator} -> "Featured content and media showcase"
+      {"summary", :corporate_executive} -> "Executive summary and key metrics"
+      {"testimonials", _} -> "Client testimonials and social proof"
+      {"pricing", _} -> "Pricing information and packages"
+      {"contact", _} -> "Contact information and call-to-action"
+      _ -> "Content area for #{zone_name} information"
+    end
   end
 
   defp render_analytics_tab(assigns) do
@@ -754,6 +1366,15 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
           Analytics data updates every 24 hours
         </div>
       </div>
+    </div>
+    """
+  end
+
+  defp render_analytics_tab(assigns) do
+    ~H"""
+    <div class="p-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-4">Analytics</h3>
+      <p class="text-gray-600">Portfolio analytics will be shown here.</p>
     </div>
     """
   end
@@ -810,9 +1431,482 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   @impl true
-def handle_event(event_name, params, socket) do
-  IO.puts("🔥 RECEIVED EVENT: #{event_name}")
-  IO.puts("🔥 PARAMS: #{inspect(params)}")
-  {:noreply, socket}
+  def handle_event(event_name, params, socket) do
+    IO.puts("🔥 RECEIVED EVENT: #{event_name}")
+    IO.puts("🔥 PARAMS: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
+
+  # CONSOLIDATED FIX: Replace both render_design_tab and render_dynamic_layout_tab in portfolio_editor.ex
+
+  # ============================================================================
+  # DESIGN TAB - Universal design settings for ALL portfolio types
+  # ============================================================================
+
+  defp render_design_tab(assigns) do
+    ~H"""
+    <div class="space-y-8">
+      <!-- Header -->
+      <div>
+        <h3 class="text-xl font-semibold text-gray-900 mb-2">Design Settings</h3>
+        <p class="text-sm text-gray-600">Universal design controls that apply to all portfolio types</p>
+      </div>
+
+      <!-- Color Management - Single Row Layout -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Brand Colors</h4>
+        <div class="grid grid-cols-1 gap-6">
+          <%= for {color_key, color_label, description} <- [
+            {"primary_color", "Primary Color", "Main brand color used for headers and key elements"},
+            {"secondary_color", "Secondary Color", "Supporting color used for text and backgrounds"},
+            {"accent_color", "Accent Color", "Highlight color used for buttons and links"}
+          ] do %>
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-900 mb-1"><%= color_label %></label>
+                <p class="text-xs text-gray-600"><%= description %></p>
+              </div>
+              <div class="flex items-center space-x-3">
+                <input type="color"
+                      value={get_portfolio_color(@portfolio, color_key)}
+                      phx-change="update_design_color"
+                      phx-value-color={color_key}
+                      class="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer">
+                <input type="text"
+                      value={get_portfolio_color(@portfolio, color_key)}
+                      phx-change="update_design_color"
+                      phx-value-color={color_key}
+                      class="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono">
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Typography Settings -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Typography</h4>
+        <div class="grid grid-cols-1 gap-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm font-medium text-gray-900">Font Family</label>
+              <p class="text-xs text-gray-600">Primary font used throughout the portfolio</p>
+            </div>
+            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option>Inter (Default)</option>
+              <option>Roboto</option>
+              <option>Open Sans</option>
+              <option>Montserrat</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm font-medium text-gray-900">Font Size Scale</label>
+              <p class="text-xs text-gray-600">Overall text size throughout the portfolio</p>
+            </div>
+            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option>Small</option>
+              <option>Medium (Default)</option>
+              <option>Large</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Spacing & Layout -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Spacing & Layout</h4>
+        <div class="grid grid-cols-1 gap-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm font-medium text-gray-900">Section Spacing</label>
+              <p class="text-xs text-gray-600">Space between portfolio sections</p>
+            </div>
+            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option>Compact</option>
+              <option>Normal (Default)</option>
+              <option>Spacious</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="text-sm font-medium text-gray-900">Border Radius</label>
+              <p class="text-xs text-gray-600">Roundness of cards and buttons</p>
+            </div>
+            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option>Sharp</option>
+              <option>Rounded (Default)</option>
+              <option>Very Rounded</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # DYNAMIC LAYOUT TAB - Layout structure and content blocks only
+  # ============================================================================
+
+  defp render_dynamic_layout_tab(assigns) do
+    ~H"""
+    <div class="space-y-8">
+      <!-- Header -->
+      <div>
+        <h3 class="text-xl font-semibold text-gray-900 mb-2">Dynamic Card Layout</h3>
+        <p class="text-sm text-gray-600">Configure your professional layout structure and content arrangement</p>
+      </div>
+
+      <!-- Layout Category Selection - Single Column -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Professional Layout Category</h4>
+        <p class="text-sm text-gray-600 mb-6">Choose the layout that best fits your professional focus</p>
+
+        <div class="space-y-3">
+          <%= for block_category <- @available_dynamic_blocks do %>
+            <button phx-click="select_layout_category"
+                    phx-value-category={block_category.category}
+                    class={[
+                      "w-full p-4 border-2 rounded-lg transition-all text-left hover:shadow-md",
+                      if(@active_layout_category == block_category.category,
+                        do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
+                        else: "border-gray-200 hover:border-gray-300")
+                    ]}>
+
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <div class="flex items-center space-x-3 mb-2">
+                    <h5 class="font-semibold text-gray-900"><%= block_category.name %></h5>
+                    <%= if @active_layout_category == block_category.category do %>
+                      <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">Current</span>
+                    <% end %>
+                  </div>
+                  <p class="text-sm text-gray-600 mb-3"><%= get_category_description(block_category.category) %></p>
+
+                  <!-- Available Blocks in Single Row -->
+                  <div class="flex flex-wrap gap-2">
+                    <%= for block_type <- block_category.blocks do %>
+                      <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded border">
+                        <%= humanize_block_type(block_type) %>
+                      </span>
+                    <% end %>
+                  </div>
+                </div>
+
+                <%= if @active_layout_category == block_category.category do %>
+                  <svg class="w-6 h-6 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                  </svg>
+                <% end %>
+              </div>
+            </button>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Functional Zone Manager -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h4 class="text-lg font-semibold text-gray-900">Layout Zones</h4>
+            <p class="text-sm text-gray-600">Arrange content blocks within your layout zones</p>
+          </div>
+          <button phx-click="toggle_dynamic_layout_manager"
+                  class={[
+                    "px-4 py-2 rounded-lg font-medium transition-colors",
+                    if(@show_dynamic_layout_manager,
+                      do: "bg-blue-600 text-white",
+                      else: "bg-gray-100 text-gray-700 hover:bg-gray-200")
+                  ]}>
+            <%= if @show_dynamic_layout_manager, do: "Hide Manager", else: "Open Manager" %>
+          </button>
+        </div>
+
+        <!-- Zone Configuration -->
+        <div class="space-y-4">
+          <%= for {zone_name, blocks} <- @layout_zones do %>
+            <div class="border border-gray-200 rounded-lg p-4">
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <h5 class="font-medium text-gray-900 capitalize"><%= zone_name %> Zone</h5>
+                  <p class="text-sm text-gray-600"><%= get_zone_description(zone_name) %></p>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs text-gray-500"><%= length(blocks) %> blocks</span>
+                  <button phx-click="add_block_to_zone"
+                          phx-value-zone={zone_name}
+                          class="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors">
+                    Add Block
+                  </button>
+                </div>
+              </div>
+
+              <!-- Zone Content -->
+              <div class="min-h-16 border-2 border-dashed border-gray-200 rounded-lg p-4 bg-gray-50">
+                <%= if length(blocks) > 0 do %>
+                  <div class="flex flex-wrap gap-2">
+                    <%= for {block, index} <- Enum.with_index(blocks) do %>
+                      <div class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-200 rounded">
+                        <span class="text-sm text-gray-700"><%= humanize_block_type(block.type || "content") %></span>
+                        <button phx-click="remove_block_from_zone"
+                                phx-value-zone={zone_name}
+                                phx-value-index={index}
+                                class="text-gray-400 hover:text-red-600">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                          </svg>
+                        </button>
+                      </div>
+                    <% end %>
+                  </div>
+                <% else %>
+                  <div class="text-center text-gray-400">
+                    <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                    </svg>
+                    <p class="text-sm">Drop content blocks here</p>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+
+        <!-- Available Blocks Library -->
+        <%= if @show_dynamic_layout_manager do %>
+          <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h5 class="font-medium text-blue-900 mb-3">Available Content Blocks</h5>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              <%= for block_category <- @available_dynamic_blocks do %>
+                <%= for block_type <- block_category.blocks do %>
+                  <button phx-click="add_content_block"
+                          phx-value-block_type={block_type}
+                          class="p-3 bg-white border border-blue-200 rounded text-left hover:bg-blue-50 transition-colors">
+                    <div class="text-sm font-medium text-blue-900"><%= humanize_block_type(block_type) %></div>
+                    <div class="text-xs text-blue-600 mt-1">Click to add</div>
+                  </button>
+                <% end %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS
+  # ============================================================================
+
+  defp get_portfolio_color(portfolio, color_key) do
+    case portfolio.customization do
+      %{^color_key => color} when is_binary(color) -> color
+      _ ->
+        case color_key do
+          "primary_color" -> "#3b82f6"
+          "secondary_color" -> "#64748b"
+          "accent_color" -> "#f59e0b"
+          _ -> "#3b82f6"
+        end
+    end
+  end
+
+  defp get_zone_description(zone_name) do
+    case zone_name do
+      "hero" -> "Main showcase area at the top of your portfolio"
+      "services" -> "Display your key services or offerings"
+      "testimonials" -> "Client feedback and social proof"
+      "pricing" -> "Pricing information and booking options"
+      "cta" -> "Call-to-action and contact information"
+      _ -> "Content area for #{zone_name}"
+    end
+  end
+
+  # ============================================================================
+  # EVENT HANDLERS - Updated for consolidated approach
+  # ============================================================================
+
+  @impl true
+  def handle_event("update_design_color", %{"color" => color_key, "value" => color_value}, socket) do
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, color_key, color_value)
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        {:noreply, assign(socket, :portfolio, updated_portfolio)}
+
+      {:error, _changeset} ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("add_block_to_zone", %{"zone" => zone_name}, socket) do
+    # Add a default content block to the specified zone
+    current_zones = socket.assigns.layout_zones
+    current_blocks = Map.get(current_zones, zone_name, [])
+    new_block = %{type: "content_block", id: System.unique_integer([:positive])}
+    updated_blocks = current_blocks ++ [new_block]
+    updated_zones = Map.put(current_zones, zone_name, updated_blocks)
+
+    {:noreply, assign(socket, :layout_zones, updated_zones)}
+  end
+
+  @impl true
+  def handle_event("remove_block_from_zone", %{"zone" => zone_name, "index" => index}, socket) do
+    current_zones = socket.assigns.layout_zones
+    current_blocks = Map.get(current_zones, zone_name, [])
+    block_index = String.to_integer(index)
+    updated_blocks = List.delete_at(current_blocks, block_index)
+    updated_zones = Map.put(current_zones, zone_name, updated_blocks)
+
+    {:noreply, assign(socket, :layout_zones, updated_zones)}
+  end
+
+  @impl true
+  def handle_event("add_content_block", %{"block_type" => block_type}, socket) do
+    # For now, add to the first available zone
+    current_zones = socket.assigns.layout_zones
+    first_zone_name = current_zones |> Map.keys() |> List.first()
+
+    if first_zone_name do
+      current_blocks = Map.get(current_zones, first_zone_name, [])
+      new_block = %{type: block_type, id: System.unique_integer([:positive])}
+      updated_blocks = current_blocks ++ [new_block]
+      updated_zones = Map.put(current_zones, first_zone_name, updated_blocks)
+
+      {:noreply, socket
+      |> assign(:layout_zones, updated_zones)
+      |> put_flash(:info, "#{humanize_block_type(block_type)} added to #{first_zone_name} zone")
+      }
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp is_dynamic_card_layout?(portfolio) do
+    theme = portfolio.theme || ""
+    customization = portfolio.customization || %{}
+
+    IO.puts("🔥 DEBUG DETECTION:")
+    IO.puts("🔥 Theme: #{theme}")
+    IO.puts("🔥 Customization: #{inspect(customization)}")
+
+    dynamic_layouts = [
+      "professional_service_provider",
+      "creative_portfolio_showcase",
+      "technical_expert_dashboard",
+      "content_creator_hub",
+      "corporate_executive_profile"
+    ]
+
+    theme_is_dynamic = theme in dynamic_layouts
+    layout_is_dynamic = case customization do
+      %{"layout" => layout} when is_binary(layout) -> layout in dynamic_layouts
+      _ -> false
+    end
+
+    result = theme_is_dynamic or layout_is_dynamic
+    IO.puts("🔥 Theme is dynamic: #{theme_is_dynamic}")
+    IO.puts("🔥 Layout is dynamic: #{layout_is_dynamic}")
+    IO.puts("🔥 FINAL RESULT: #{result}")
+
+    result
+  end
+
+  # Gets available dynamic blocks based on account subscription
+  defp get_dynamic_card_blocks(subscription_tier) do
+    # These represent the actual block categories from the system
+    base_blocks = [
+      %{category: :service_provider, name: "Service Provider", blocks: [:service_showcase, :testimonial_carousel, :pricing_display]},
+      %{category: :creative_showcase, name: "Creative Portfolio", blocks: [:portfolio_gallery, :process_showcase, :collaboration_display]}
+    ]
+
+    premium_blocks = [
+      %{category: :technical_expert, name: "Technical Expert", blocks: [:skill_matrix, :project_deep_dive, :consultation_booking]},
+      %{category: :content_creator, name: "Content Creator", blocks: [:content_metrics, :brand_partnerships, :subscription_tiers]},
+      %{category: :corporate_executive, name: "Corporate Executive", blocks: [:consultation_booking, :collaboration_display, :content_metrics]}
+    ]
+
+  # Temp testing FIX: Always return all blocks for now
+  base_blocks ++ premium_blocks
+
+  # Original logic (commented out):
+  # case subscription_tier do
+  #   tier when tier in ["creator", "professional", "enterprise"] -> base_blocks ++ premium_blocks
+  #   _ -> base_blocks
+  # end
+  end
+
+  # Loads layout zones configuration for dynamic portfolios
+  defp load_layout_zones(portfolio_id) do
+    # Stub implementation - returns default zone structure
+    # In full implementation, this would load from database
+    %{
+      "hero" => [],
+      "services" => [],
+      "testimonials" => [],
+      "pricing" => [],
+      "footer" => []
+    }
+  end
+
+  defp get_portfolio_color(portfolio, color_key) do
+    case portfolio.customization do
+      %{^color_key => color} when is_binary(color) -> color
+      _ ->
+        case color_key do
+          "primary_color" -> "#3b82f6"
+          "secondary_color" -> "#64748b"
+          "accent_color" -> "#f59e0b"
+          _ -> "#3b82f6"
+        end
+    end
+  end
+
+  defp get_category_description(category) do
+    case category do
+      :service_provider -> "Service-focused with booking and pricing showcase"
+      :creative_showcase -> "Visual portfolio with commission opportunities"
+      :technical_expert -> "Skill-based with consultation booking"
+      :content_creator -> "Content metrics with subscription options"
+      :corporate_executive -> "Achievement-focused executive presence"
+      _ -> "Professional layout"
+    end
+  end
+
+  # Helper function for available tabs based on portfolio type
+defp get_available_tabs(assigns) do
+  base_tabs = [content: "Content", design: "Design", analytics: "Analytics"]
+
+  IO.puts("🔥 DEBUG TABS: is_dynamic_layout = #{assigns[:is_dynamic_layout]}")
+
+  if Map.get(assigns, :is_dynamic_layout, false) do
+    tabs = [content: "Content", dynamic_layout: "Dynamic Layout", design: "Design", analytics: "Analytics"]
+    IO.puts("🔥 DEBUG: Returning dynamic tabs: #{inspect(tabs)}")
+    tabs
+  else
+    IO.puts("🔥 DEBUG: Returning base tabs: #{inspect(base_tabs)}")
+    base_tabs
+  end
+end
+
+defp force_dynamic_layout_for_testing(socket, portfolio, account) do
+  IO.puts("🔥 FORCING DYNAMIC LAYOUT FOR TESTING")
+
+  socket
+  |> assign(:is_dynamic_layout, true)  # Force to true
+  |> assign(:show_dynamic_layout_manager, false)
+  |> assign(:available_dynamic_blocks, get_dynamic_card_blocks("professional"))
+  |> assign(:layout_config, %{layout_style: "professional_service_provider"})
+  |> assign(:layout_zones, %{"hero" => [], "services" => []})
+  |> assign(:active_layout_category, :service_provider)
+  |> assign(:brand_customization, %{primary_color: "#3b82f6", secondary_color: "#64748b", accent_color: "#f59e0b"})
 end
 end

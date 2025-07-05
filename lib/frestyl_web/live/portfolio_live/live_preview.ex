@@ -263,6 +263,31 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
     end
   end
 
+  @impl true
+  def handle_info({:customization_updated, customization}, socket) do
+    # Refresh the preview with new customization
+    {:noreply, socket
+    |> assign(:customization, customization)
+    |> assign(:brand_colors, get_brand_colors_from_customization(customization))}
+  end
+
+  @impl true
+  def handle_info({:layout_changed, layout_name, customization}, socket) do
+    # Refresh the preview with new layout and customization
+    {:noreply, socket
+    |> assign(:layout_style, layout_name)
+    |> assign(:customization, customization)
+    |> assign(:brand_colors, get_brand_colors_from_customization(customization))}
+  end
+
+  defp get_brand_colors_from_customization(customization) do
+    %{
+      primary: Map.get(customization, "primary_color") || "#3b82f6",
+      secondary: Map.get(customization, "secondary_color") || "#64748b",
+      accent: Map.get(customization, "accent_color") || "#f59e0b"
+    }
+  end
+
   defp generate_portfolio_css(customization, theme) do
     primary_color = Map.get(customization, "primary_color", "#374151")
     accent_color = Map.get(customization, "accent_color", "#059669")
