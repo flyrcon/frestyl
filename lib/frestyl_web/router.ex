@@ -162,6 +162,12 @@ defmodule FrestylWeb.Router do
     live "/hub", PortfolioHubLive, :index        # Portfolio hub
     live "/hub/welcome", PortfolioHubLive, :welcome  # Welcome page
 
+    # Enhanced Portfolio Hub with Chat
+    live "/hub", PortfolioHubLiveEnhanced, :index
+    live "/hub/:section", PortfolioHubLiveEnhanced, :section
+
+
+
 
       # Studio routes
     live "/studio", StudioLive.Index, :index
@@ -319,6 +325,12 @@ defmodule FrestylWeb.Router do
     # 🎨 DYNAMIC THEME MANAGEMENT ROUTES
     post "/api/themes/switch", ThemeController, :switch_theme
     get "/api/themes/dynamic", ThemeController, :get_dynamic_theme
+
+    # Chat API endpoints
+    get "/api/chat/conversations", ChatController, :conversations
+    get "/api/chat/messages/:conversation_id", ChatController, :messages
+    post "/api/chat/messages", ChatController, :send_message
+    patch "/api/chat/conversations/:id/read", ChatController, :mark_read
 
     # 🌟 REAL-TIME REACTION ROUTES
     post "/api/content/media/:id/react", MediaController, :react

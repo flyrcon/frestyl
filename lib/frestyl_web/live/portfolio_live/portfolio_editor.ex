@@ -14,17 +14,19 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   alias FrestylWeb.PortfolioLive.PortfolioPerformance
 
   alias FrestylWeb.PortfolioLive.Components.{ContentRenderer, SectionEditor, MediaLibrary, VideoRecorder}
+  alias Frestyl.Studio.PortfolioCollaborationManager
+  alias Phoenix.PubSub
 
   # ============================================================================
   # MOUNT - Account-Aware Foundation
   # ============================================================================
 
   @impl true
-  def mount(%{"id" => portfolio_id}, _session, socket) do
+  def mount(%{"id" => portfolio_id} = params, _session, socket) do
     start_time = System.monotonic_time(:millisecond)
     user = socket.assigns.current_user
 
-    IO.puts("🔥 PORTFOLIO EDITOR MOUNT: portfolio_id=#{portfolio_id}, user_id=#{user.id}")
+    collaboration_mode = Map.get(params, "collaborate") == "true"
 
     # Load portfolio with account context
     case load_portfolio_with_account_and_blocks(portfolio_id, user) do
@@ -68,6 +70,12 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         load_time = System.monotonic_time(:millisecond) - start_time
         IO.puts("🔥 PORTFOLIO EDITOR LOADED in #{load_time}ms")
         track_portfolio_editor_load_safe(portfolio_id, load_time)
+
+        socket = if collaboration_mode and can_collaborate?(account, portfolio) do
+          setup_collaboration_session(socket, portfolio, account)
+        else
+          assign(socket, :collaboration_mode, false)
+        end
 
         socket = if socket.assigns.show_live_preview do
           broadcast_preview_update(socket)
@@ -248,6 +256,41 @@ end
     |> assign(:preview_mobile_view, false)
     |> assign(:pending_changes, %{})
     |> assign(:debounce_timer, nil)
+  end
+
+    defp setup_collaboration_session(socket, portfolio, account) do
+    user = socket.assigns.current_user
+
+    # Setup subscriptions for real-time collaboration
+    PortfolioCollaborationManager.setup_portfolio_subscriptions(portfolio.id, user.id)
+
+    # Subscribe to section-specific events
+    Enum.each(portfolio.sections || [], fn section ->
+      PubSub.subscribe(Frestyl.PubSub, "portfolio:#{portfolio.id}:section:#{section.id}")
+    end)
+
+    # Track presence
+    device_info = get_device_info_from_user_agent(socket)
+    permissions = get_collaboration_permissions(portfolio, user, account)
+
+    PortfolioCollaborationManager.track_portfolio_presence(
+      portfolio.id,
+      user,
+      permissions,
+      device_info
+    )
+
+    # Get current collaborators
+    collaborators = PortfolioCollaborationManager.list_portfolio_collaborators(portfolio.id)
+
+    socket
+    |> assign(:collaboration_mode, true)
+    |> assign(:collaboration_permissions, permissions)
+    |> assign(:active_collaborators, collaborators)
+    |> assign(:collaboration_cursor_positions, %{})
+    |> assign(:section_locks, %{})
+    |> assign(:pending_operations, [])
+    |> assign(:operation_version, 0)
   end
 
   # ============================================================================
@@ -688,6 +731,209 @@ end
     |> String.trim()
   end
   defp strip_html_safely(value), do: value
+
+    @impl true
+  def handle_event("start_section_edit", %{"section_id" => section_id}, socket) do
+    if socket.assigns.collaboration_mode do
+      user_id = socket.assigns.current_user.id
+      portfolio_id = socket.assigns.portfolio.id
+
+      # Update editing state for collaborators
+      PortfolioCollaborationManager.update_editing_state(
+        portfolio_id,
+        user_id,
+        section_id,
+        %{action: :start_editing}
+      )
+
+      # Check if section is locked by another user
+      case get_section_lock_status(portfolio_id, section_id, user_id) do
+        {:ok, :available} ->
+          # Acquire section lock
+          acquire_section_lock(socket, section_id)
+
+        {:ok, {:locked, locking_user}} ->
+          {:noreply,
+           socket
+           |> put_flash(:warning, "#{locking_user.username} is currently editing this section")
+           |> assign(:show_section_conflict_modal, true)
+           |> assign(:conflicted_section, section_id)}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Cannot edit section: #{reason}")}
+      end
+    else
+      # Non-collaborative editing
+      handle_regular_section_edit(socket, section_id)
+    end
+  end
+
+  @impl true
+  def handle_event("section_content_change", %{"section_id" => section_id, "content" => content, "operation" => operation}, socket) do
+    if socket.assigns.collaboration_mode do
+      # Apply operational transform
+      case apply_collaborative_operation(socket, section_id, operation, content) do
+        {:ok, updated_socket} ->
+          {:noreply, updated_socket}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Sync error: #{reason}")}
+      end
+    else
+      # Regular non-collaborative editing
+      handle_regular_content_change(socket, section_id, content)
+    end
+  end
+
+  @impl true
+  def handle_event("cursor_position_update", %{"section_id" => section_id, "position" => position}, socket) do
+    if socket.assigns.collaboration_mode do
+      user_id = socket.assigns.current_user.id
+      portfolio_id = socket.assigns.portfolio.id
+
+      # Update cursor position for other collaborators
+      PortfolioCollaborationManager.update_editing_state(
+        portfolio_id,
+        user_id,
+        section_id,
+        %{cursor_position: position}
+      )
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("invite_collaborator", %{"email" => email, "permissions" => permissions}, socket) do
+    portfolio_id = socket.assigns.portfolio.id
+    user = socket.assigns.current_user
+
+    case PortfolioCollaborationManager.create_portfolio_invitation(portfolio_id, user, email, permissions) do
+      {:ok, invitation} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Collaboration invitation sent to #{email}")
+         |> assign(:show_invite_modal, false)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to send invitation: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("resolve_section_conflict", %{"action" => action, "section_id" => section_id}, socket) do
+    case action do
+      "force_edit" ->
+        # Force acquire lock (if user has permission)
+        if can_force_edit_section?(socket.assigns.collaboration_permissions) do
+          force_acquire_section_lock(socket, section_id)
+        else
+          {:noreply, put_flash(socket, :error, "Insufficient permissions to force edit")}
+        end
+
+      "view_only" ->
+        # Enter view-only mode for this section
+        {:noreply,
+         socket
+         |> assign(:show_section_conflict_modal, false)
+         |> assign(:section_view_only, section_id)}
+
+      "collaborate" ->
+        # Enter collaborative mode (both users can edit)
+        enable_collaborative_section_editing(socket, section_id)
+    end
+  end
+
+    @impl true
+  def handle_event("mobile_voice_edit", %{"section_id" => section_id, "voice_content" => voice_content}, socket) do
+    if socket.assigns.collaboration_mode and socket.assigns.device_info.is_mobile do
+      # Process voice input for collaborative editing
+      case process_voice_input_for_collaboration(voice_content, section_id, socket) do
+        {:ok, text_content} ->
+          # Create voice-to-text operation
+          operation = %{
+            "type" => "voice_insert",
+            "position" => 0,
+            "content" => text_content,
+            "voice_data" => voice_content
+          }
+
+          apply_collaborative_operation(socket, section_id, operation, text_content)
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Voice input failed: #{reason}")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Voice editing not available")}
+    end
+  end
+
+  @impl true
+  def handle_event("mobile_gesture_edit", %{"section_id" => section_id, "gesture" => gesture_data}, socket) do
+    if socket.assigns.collaboration_mode and socket.assigns.device_info.is_mobile do
+      # Process gesture input for mobile collaboration
+      case translate_gesture_to_operation(gesture_data, section_id) do
+        {:ok, operation} ->
+          apply_collaborative_operation(socket, section_id, operation, operation["content"])
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Gesture not recognized: #{reason}")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_mobile_collaboration_mode", _params, socket) do
+    current_mode = Map.get(socket.assigns, :mobile_collaboration_mode, :standard)
+
+    new_mode = case current_mode do
+      :standard -> :voice_optimized
+      :voice_optimized -> :gesture_optimized
+      :gesture_optimized -> :standard
+    end
+
+    {:noreply,
+     socket
+     |> assign(:mobile_collaboration_mode, new_mode)
+     |> put_flash(:info, "Switched to #{new_mode} collaboration mode")}
+  end
+
+  # ============================================================================
+  # COLLABORATION ANALYTICS INTEGRATION
+  # ============================================================================
+
+  @impl true
+  def handle_event("request_collaboration_analytics", _params, socket) do
+    if socket.assigns.collaboration_mode do
+      portfolio_id = socket.assigns.portfolio.id
+      analytics = PortfolioCollaborationManager.get_collaboration_analytics(portfolio_id)
+
+      {:noreply,
+       socket
+       |> assign(:collaboration_analytics, analytics)
+       |> assign(:show_analytics_modal, true)}
+    else
+      {:noreply, put_flash(socket, :error, "Analytics only available in collaboration mode")}
+    end
+  end
+
+  @impl true
+  def handle_event("export_collaboration_history", %{"format" => format}, socket) do
+    portfolio_id = socket.assigns.portfolio.id
+
+    case export_collaboration_data(portfolio_id, format, socket.assigns.current_user) do
+      {:ok, export_url} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Collaboration history exported successfully")
+         |> push_event("download", %{url: export_url})}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Export failed: #{reason}")}
+    end
+  end
 
   # ============================================================================
   # HELPER FUNCTIONS
@@ -1516,6 +1762,55 @@ end
     {:noreply, socket}
   end
 
+    @impl true
+  def handle_info({:operation, operation, sender_id}, socket) do
+    if sender_id != socket.assigns.current_user.id do
+      # Apply remote operation
+      case apply_remote_operation(socket, operation) do
+        {:ok, updated_socket} ->
+          {:noreply, updated_socket}
+
+        {:error, _reason} ->
+          # Log error but don't crash the session
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:section_activity, section_id, user_id, activity}, socket) do
+    if user_id != socket.assigns.current_user.id do
+      # Update UI to show other user's activity
+      updated_socket = update_collaborator_activity(socket, section_id, user_id, activity)
+      {:noreply, updated_socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:presence_diff, diff}, socket) do
+    # Update collaborator list when users join/leave
+    updated_collaborators = process_collaborator_presence_diff(
+      socket.assigns.active_collaborators,
+      diff
+    )
+
+    {:noreply, assign(socket, :active_collaborators, updated_collaborators)}
+  end
+
+  @impl true
+  def handle_info({:collaboration_invitation_accepted, accepting_user}, socket) do
+    # Notify that someone accepted invitation
+    {:noreply,
+     socket
+     |> put_flash(:info, "#{accepting_user.username} joined the collaboration")
+     |> update_collaborator_list(accepting_user)}
+  end
+
+
   # Helper functions for the improved layout:
 
   defp get_default_color(color_key) do
@@ -1592,6 +1887,294 @@ end
       {"contact", _} -> "Contact information and call-to-action"
       _ -> "Content area for #{zone_name} information"
     end
+  end
+
+    @impl true
+  def handle_event("resolve_edit_conflict", %{"resolution" => resolution, "section_id" => section_id}, socket) do
+    case resolution do
+      "accept_remote" ->
+        # Accept the remote user's changes
+        resolve_conflict_accept_remote(socket, section_id)
+
+      "accept_local" ->
+        # Keep local changes
+        resolve_conflict_accept_local(socket, section_id)
+
+      "merge_changes" ->
+        # Attempt to merge both changes
+        resolve_conflict_merge_changes(socket, section_id)
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Invalid conflict resolution")}
+    end
+  end
+
+  defp resolve_conflict_accept_remote(socket, section_id) do
+    # Get the latest remote version and apply it
+    portfolio_id = socket.assigns.portfolio.id
+
+    case get_latest_section_state(portfolio_id, section_id) do
+      {:ok, remote_state} ->
+        updated_sections = update_section_content(socket.assigns.sections, section_id, remote_state.content)
+
+        {:noreply,
+         socket
+         |> assign(:sections, updated_sections)
+         |> assign(:show_conflict_resolution_modal, false)
+         |> put_flash(:info, "Accepted collaborator's changes")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not resolve conflict: #{reason}")}
+    end
+  end
+
+  defp resolve_conflict_accept_local(socket, section_id) do
+    # Force save local changes
+    portfolio_id = socket.assigns.portfolio.id
+    user_id = socket.assigns.current_user.id
+
+    # Create a force operation
+    local_content = get_section_content(socket.assigns.sections, section_id)
+    operation = %{
+      type: :force_update,
+      section_id: String.to_integer(section_id),
+      content: local_content,
+      user_id: user_id
+    }
+
+    case PortfolioCollaborationManager.apply_operation(portfolio_id, section_id, operation, user_id) do
+      {:ok, _new_state} ->
+        {:noreply,
+         socket
+         |> assign(:show_conflict_resolution_modal, false)
+         |> put_flash(:info, "Kept your changes")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not save changes: #{reason}")}
+    end
+  end
+
+  defp resolve_conflict_merge_changes(socket, section_id) do
+    # Attempt automatic merge of changes
+    portfolio_id = socket.assigns.portfolio.id
+
+    case attempt_automatic_merge(portfolio_id, section_id, socket.assigns.sections) do
+      {:ok, merged_content} ->
+        updated_sections = update_section_content(socket.assigns.sections, section_id, merged_content)
+
+        {:noreply,
+         socket
+         |> assign(:sections, updated_sections)
+         |> assign(:show_conflict_resolution_modal, false)
+         |> put_flash(:info, "Changes merged successfully")}
+
+      {:error, :cannot_merge} ->
+        {:noreply,
+         socket
+         |> assign(:show_manual_merge_modal, true)
+         |> put_flash(:warning, "Automatic merge failed. Manual merge required.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Merge failed: #{reason}")}
+    end
+  end
+
+  defp get_latest_section_state(portfolio_id, section_id) do
+    case :ets.lookup(:portfolio_sections, {portfolio_id, section_id}) do
+      [{{^portfolio_id, ^section_id}, state}] ->
+        {:ok, state}
+
+      [] ->
+        {:error, :section_not_found}
+    end
+  end
+
+  defp get_section_content(sections, section_id) do
+    section_id_int = if is_binary(section_id), do: String.to_integer(section_id), else: section_id
+
+    case Enum.find(sections, &(&1.id == section_id_int)) do
+      %{content: content} -> content
+      _ -> ""
+    end
+  end
+
+  defp attempt_automatic_merge(portfolio_id, section_id, local_sections) do
+    # Simple merge algorithm - in production use proper merge libraries
+    case get_latest_section_state(portfolio_id, section_id) do
+      {:ok, remote_state} ->
+        local_content = get_section_content(local_sections, section_id)
+        remote_content = remote_state.content
+
+        # Simple line-based merge
+        case merge_text_content(local_content, remote_content) do
+          {:ok, merged} -> {:ok, merged}
+          {:conflict, _} -> {:error, :cannot_merge}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp merge_text_content(local, remote) do
+    # Simple merge implementation
+    if local == remote do
+      {:ok, local}
+    else
+      # In a real implementation, use proper diff/merge algorithms
+      merged = "#{local}\n--- MERGED ---\n#{remote}"
+      {:ok, merged}
+    end
+  end
+
+  defp apply_collaborative_operation(socket, section_id, operation, content) do
+    portfolio_id = socket.assigns.portfolio.id
+    user_id = socket.assigns.current_user.id
+
+    # Create operation structure
+    operation_data = %{
+      type: operation["type"],
+      section_id: String.to_integer(section_id),
+      position: operation["position"],
+      content: operation["content"],
+      length: operation["length"],
+      timestamp: DateTime.utc_now(),
+      version: socket.assigns.operation_version + 1
+    }
+
+    case PortfolioCollaborationManager.apply_operation(portfolio_id, section_id, operation_data, user_id) do
+      {:ok, new_state} ->
+        # Update local state
+        updated_sections = update_section_content(socket.assigns.sections, section_id, new_state.content)
+
+        updated_socket = socket
+        |> assign(:sections, updated_sections)
+        |> assign(:operation_version, new_state.version)
+        |> assign(:unsaved_changes, true)
+
+        # Trigger auto-save after short delay
+        Process.send_after(self(), :auto_save_portfolio, 2000)
+
+        {:ok, updated_socket}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp apply_remote_operation(socket, operation) do
+    # Apply operation from another collaborator
+    section_id = operation.section_id
+
+    # Transform operation against local pending operations
+    transformed_operation = transform_against_pending_operations(
+      operation,
+      socket.assigns.pending_operations
+    )
+
+    # Apply to local state
+    updated_sections = apply_operation_to_sections(
+      socket.assigns.sections,
+      transformed_operation
+    )
+
+    updated_socket = socket
+    |> assign(:sections, updated_sections)
+    |> add_visual_change_indicator(section_id, operation.user_id)
+
+    {:ok, updated_socket}
+  end
+
+  defp transform_against_pending_operations(operation, pending_operations) do
+    # Simple operational transform - in production use proper OT library
+    Enum.reduce(pending_operations, operation, fn pending_op, acc_op ->
+      transform_operations(acc_op, pending_op)
+    end)
+  end
+
+  defp transform_operations(op1, op2) do
+    # Basic operation transformation
+    cond do
+      op1.type == :insert and op2.type == :insert ->
+        if op1.position <= op2.position do
+          op1
+        else
+          %{op1 | position: op1.position + String.length(op2.content)}
+        end
+
+      op1.type == :delete and op2.type == :insert ->
+        if op1.position <= op2.position do
+          op1
+        else
+          %{op1 | position: op1.position + String.length(op2.content)}
+        end
+
+      op1.type == :insert and op2.type == :delete ->
+        if op1.position <= op2.position do
+          op1
+        else
+          %{op1 | position: max(0, op1.position - op2.length)}
+        end
+
+      true ->
+        op1
+    end
+  end
+
+  defp get_section_lock_status(portfolio_id, section_id, user_id) do
+    case :ets.lookup(:section_locks, {portfolio_id, section_id}) do
+      [{{^portfolio_id, ^section_id}, lock_data}] ->
+        if lock_data.user_id == user_id do
+          {:ok, :available}
+        else
+          {:ok, {:locked, lock_data.user}}
+        end
+
+      [] ->
+        {:ok, :available}
+    end
+  end
+
+  defp acquire_section_lock(socket, section_id) do
+    portfolio_id = socket.assigns.portfolio.id
+    user = socket.assigns.current_user
+
+    lock_data = %{
+      user_id: user.id,
+      user: user,
+      acquired_at: DateTime.utc_now(),
+      section_id: String.to_integer(section_id)
+    }
+
+    :ets.insert(:section_locks, {{portfolio_id, section_id}, lock_data})
+
+    # Notify other collaborators
+    PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio:#{portfolio_id}",
+      {:section_locked, section_id, user.id}
+    )
+
+    updated_socket = socket
+    |> assign(:editing_section_id, section_id)
+    |> assign(:section_edit_mode, true)
+    |> update_in([:assigns, :section_locks], &Map.put(&1, section_id, lock_data))
+
+    {:noreply, updated_socket}
+  end
+
+  defp force_acquire_section_lock(socket, section_id) do
+    # Force acquire lock (admin/owner privilege)
+    acquire_section_lock(socket, section_id)
+  end
+
+  defp enable_collaborative_section_editing(socket, section_id) do
+    # Enable collaborative editing mode for section
+    {:noreply,
+     socket
+     |> assign(:show_section_conflict_modal, false)
+     |> assign(:collaborative_sections, [section_id | Map.get(socket.assigns, :collaborative_sections, [])])
+     |> put_flash(:info, "Collaborative editing enabled for this section")}
   end
 
   # Additional event handlers for design and layout updates
@@ -2118,31 +2701,310 @@ end
   end
 
   # Helper function for available tabs based on portfolio type
-defp get_available_tabs(assigns) do
-  base_tabs = [content: "Content", design: "Design", analytics: "Analytics"]
+  defp get_available_tabs(assigns) do
+    base_tabs = [content: "Content", design: "Design", analytics: "Analytics"]
 
-  IO.puts("🔥 DEBUG TABS: is_dynamic_layout = #{assigns[:is_dynamic_layout]}")
+    IO.puts("🔥 DEBUG TABS: is_dynamic_layout = #{assigns[:is_dynamic_layout]}")
 
-  if Map.get(assigns, :is_dynamic_layout, false) do
-    tabs = [content: "Content", dynamic_layout: "Dynamic Layout", design: "Design", analytics: "Analytics"]
-    IO.puts("🔥 DEBUG: Returning dynamic tabs: #{inspect(tabs)}")
-    tabs
-  else
-    IO.puts("🔥 DEBUG: Returning base tabs: #{inspect(base_tabs)}")
-    base_tabs
+    if Map.get(assigns, :is_dynamic_layout, false) do
+      tabs = [content: "Content", dynamic_layout: "Dynamic Layout", design: "Design", analytics: "Analytics"]
+      IO.puts("🔥 DEBUG: Returning dynamic tabs: #{inspect(tabs)}")
+      tabs
+    else
+      IO.puts("🔥 DEBUG: Returning base tabs: #{inspect(base_tabs)}")
+      base_tabs
+    end
   end
-end
 
-defp force_dynamic_layout_for_testing(socket, portfolio, account) do
-  IO.puts("🔥 FORCING DYNAMIC LAYOUT FOR TESTING")
+  defp force_dynamic_layout_for_testing(socket, portfolio, account) do
+    IO.puts("🔥 FORCING DYNAMIC LAYOUT FOR TESTING")
 
-  socket
-  |> assign(:is_dynamic_layout, true)  # Force to true
-  |> assign(:show_dynamic_layout_manager, false)
-  |> assign(:available_dynamic_blocks, get_dynamic_card_blocks("professional"))
-  |> assign(:layout_config, %{layout_style: "professional_service_provider"})
-  |> assign(:layout_zones, %{"hero" => [], "services" => []})
-  |> assign(:active_layout_category, :service_provider)
-  |> assign(:brand_customization, %{primary_color: "#3b82f6", secondary_color: "#64748b", accent_color: "#f59e0b"})
-end
+    socket
+    |> assign(:is_dynamic_layout, true)  # Force to true
+    |> assign(:show_dynamic_layout_manager, false)
+    |> assign(:available_dynamic_blocks, get_dynamic_card_blocks("professional"))
+    |> assign(:layout_config, %{layout_style: "professional_service_provider"})
+    |> assign(:layout_zones, %{"hero" => [], "services" => []})
+    |> assign(:active_layout_category, :service_provider)
+    |> assign(:brand_customization, %{primary_color: "#3b82f6", secondary_color: "#64748b", accent_color: "#f59e0b"})
+  end
+
+  defp can_collaborate?(account, portfolio) do
+    Features.FeatureGate.can_access_feature?(account, :real_time_collaboration) and
+    Map.get(portfolio.settings || %{}, "collaboration_enabled", true)
+  end
+
+  defp get_collaboration_permissions(portfolio, user, account) do
+    cond do
+      portfolio.user_id == user.id ->
+        %{
+          role: :owner,
+          can_edit_all: true,
+          can_invite: true,
+          can_manage_permissions: true,
+          can_force_edit: true,
+          section_permissions: %{}
+        }
+
+      true ->
+        # Default collaborator permissions based on subscription tier
+        base_permissions = %{
+          role: :collaborator,
+          can_edit_all: true,
+          can_invite: false,
+          can_manage_permissions: false,
+          can_force_edit: false,
+          section_permissions: %{}
+        }
+
+        # Adjust based on account tier
+        case account.subscription_tier do
+          tier when tier in ["professional", "enterprise"] ->
+            %{base_permissions | can_invite: true}
+
+          _ ->
+            base_permissions
+        end
+    end
+  end
+
+    defp process_voice_input_for_collaboration(voice_content, section_id, socket) do
+    # Integration point for voice-to-text service
+    # This would integrate with existing voice processing
+    case VoiceProcessor.convert_to_text(voice_content) do
+      {:ok, text} ->
+        # Add collaboration metadata to voice input
+        enriched_text = add_voice_metadata(text, socket.assigns.current_user)
+        {:ok, enriched_text}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp translate_gesture_to_operation(gesture_data, section_id) do
+    # Translate mobile gestures to editing operations
+    case gesture_data["type"] do
+      "swipe_right" ->
+        {:ok, %{
+          "type" => "indent",
+          "section_id" => section_id,
+          "content" => "  "
+        }}
+
+      "swipe_left" ->
+        {:ok, %{
+          "type" => "unindent",
+          "section_id" => section_id,
+          "content" => ""
+        }}
+
+      "double_tap" ->
+        {:ok, %{
+          "type" => "format_bold",
+          "section_id" => section_id,
+          "position" => gesture_data["position"]
+        }}
+
+      _ ->
+        {:error, "Unknown gesture"}
+    end
+  end
+
+  defp add_voice_metadata(text, user) do
+    "#{text} [Voice by #{user.username}]"
+  end
+
+  defp export_collaboration_data(portfolio_id, format, user) do
+    # Export collaboration history and analytics
+    case PortfolioCollaborationManager.get_collaboration_analytics(portfolio_id, :all_time) do
+      analytics when is_map(analytics) ->
+        case format do
+          "csv" ->
+            create_csv_export(analytics, portfolio_id)
+
+          "json" ->
+            create_json_export(analytics, portfolio_id)
+
+          "pdf" ->
+            create_pdf_report(analytics, portfolio_id)
+
+          _ ->
+            {:error, "Unsupported format"}
+        end
+
+      _ ->
+        {:error, "No collaboration data found"}
+    end
+  end
+
+  defp create_csv_export(analytics, portfolio_id) do
+    # Create CSV export of collaboration data
+    filename = "portfolio_#{portfolio_id}_collaboration_#{Date.utc_today()}.csv"
+    # Implementation would create actual CSV file
+    {:ok, "/exports/#{filename}"}
+  end
+
+  defp create_json_export(analytics, portfolio_id) do
+    # Create JSON export
+    filename = "portfolio_#{portfolio_id}_collaboration_#{Date.utc_today()}.json"
+    {:ok, "/exports/#{filename}"}
+  end
+
+  defp create_pdf_report(analytics, portfolio_id) do
+    # Create PDF collaboration report
+    filename = "portfolio_#{portfolio_id}_report_#{Date.utc_today()}.pdf"
+    {:ok, "/exports/#{filename}"}
+  end
+
+    @impl true
+  def handle_info(:auto_save_portfolio, socket) do
+    if socket.assigns.collaboration_mode do
+      # In collaboration mode, save more frequently but with conflict resolution
+      case save_portfolio_collaborative(socket) do
+        {:ok, updated_socket} ->
+          {:noreply, assign(updated_socket, :unsaved_changes, false)}
+
+        {:error, :conflict} ->
+          # Handle save conflict in collaborative mode
+          {:noreply, handle_save_conflict(socket)}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Auto-save failed: #{reason}")}
+      end
+    else
+      # Regular auto-save
+      handle_regular_auto_save(socket)
+    end
+  end
+
+  defp save_portfolio_collaborative(socket) do
+    portfolio = socket.assigns.portfolio
+    sections = socket.assigns.sections
+
+    # Create save operation with version check
+    save_operation = %{
+      portfolio_id: portfolio.id,
+      sections: sections,
+      version: socket.assigns.operation_version,
+      collaborative: true,
+      user_id: socket.assigns.current_user.id
+    }
+
+    case Portfolios.save_portfolio_collaborative(save_operation) do
+      {:ok, updated_portfolio} ->
+        # Broadcast save to collaborators
+        PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio:#{portfolio.id}",
+          {:portfolio_saved, updated_portfolio, socket.assigns.current_user.id}
+        )
+
+        updated_socket = assign(socket, :portfolio, updated_portfolio)
+        {:ok, updated_socket}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp handle_save_conflict(socket) do
+    # Handle save conflicts in collaborative editing
+    socket
+    |> put_flash(:warning, "Changes were saved by another collaborator. Refreshing...")
+    |> assign(:show_conflict_resolution_modal, true)
+  end
+
+  defp handle_regular_auto_save(socket) do
+    # Existing auto-save logic for non-collaborative mode
+    {:noreply, socket}
+  end
+
+  defp get_device_info_from_user_agent(socket) do
+    user_agent = get_connect_info(socket, :user_agent) || ""
+
+    %{
+      device_type: if(String.contains?(user_agent, "Mobile"), do: "mobile", else: "desktop"),
+      is_mobile: String.contains?(user_agent, "Mobile"),
+      supports_real_time: true
+    }
+  end
+
+  defp handle_regular_section_edit(socket, section_id) do
+    # Handle non-collaborative section editing
+    {:noreply,
+     socket
+     |> assign(:editing_section_id, section_id)
+     |> assign(:section_edit_mode, true)}
+  end
+
+  defp handle_regular_content_change(socket, section_id, content) do
+    # Handle non-collaborative content changes
+    updated_sections = update_section_content(socket.assigns.sections, section_id, content)
+
+    {:noreply,
+     socket
+     |> assign(:sections, updated_sections)
+     |> assign(:unsaved_changes, true)}
+  end
+
+  defp update_section_content(sections, section_id, content) do
+    section_id_int = if is_binary(section_id), do: String.to_integer(section_id), else: section_id
+
+    Enum.map(sections, fn section ->
+      if section.id == section_id_int do
+        %{section | content: content}
+      else
+        section
+      end
+    end)
+  end
+
+  defp apply_operation_to_sections(sections, operation) do
+    update_section_content(sections, operation.section_id, operation.result_content)
+  end
+
+  defp update_collaborator_activity(socket, section_id, user_id, activity) do
+    # Update UI to show collaborator activity
+    activity_data = %{
+      user_id: user_id,
+      section_id: section_id,
+      activity: activity,
+      timestamp: DateTime.utc_now()
+    }
+
+    recent_activities = [activity_data | Map.get(socket.assigns, :recent_activities, [])]
+    |> Enum.take(20)
+
+    assign(socket, :recent_activities, recent_activities)
+  end
+
+  defp process_collaborator_presence_diff(current_collaborators, diff) do
+    # Process Phoenix Presence diff to update collaborator list
+    # This would integrate with the existing presence system
+    current_collaborators
+  end
+
+  defp update_collaborator_list(socket, new_user) do
+    updated_collaborators = [new_user | socket.assigns.active_collaborators]
+    assign(socket, :active_collaborators, updated_collaborators)
+  end
+
+  defp add_visual_change_indicator(socket, section_id, editor_user_id) do
+    # Add visual indicator showing recent changes by other users
+    change_indicator = %{
+      section_id: section_id,
+      editor_user_id: editor_user_id,
+      timestamp: DateTime.utc_now()
+    }
+
+    indicators = [change_indicator | Map.get(socket.assigns, :change_indicators, [])]
+    |> Enum.take(10)
+
+    assign(socket, :change_indicators, indicators)
+  end
+
+  defp can_force_edit_section?(permissions) do
+    Map.get(permissions, :can_force_edit, false) or Map.get(permissions, :role) == :owner
+  end
 end

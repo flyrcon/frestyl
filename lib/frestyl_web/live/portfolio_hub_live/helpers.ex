@@ -151,6 +151,77 @@ defmodule FrestylWeb.PortfolioHubLive.Helpers do
   end
 
   # ============================================================================
+  # CHANNEL INTEGRATION
+  # ============================================================================
+
+    def get_portfolio_channel_recommendations(user, portfolios, account) do
+    # Extract portfolio intelligence for recommendations
+    portfolio_skills = extract_skills_from_portfolios(portfolios)
+    portfolio_topics = extract_topics_from_portfolios(portfolios)
+    career_level = determine_career_level_from_portfolios(portfolios)
+    industry_focus = extract_industry_focus(portfolios)
+
+    # Smart recommendation logic
+    skill_based_channels = find_channels_by_skills(portfolio_skills, user.id)
+    topic_related_channels = find_channels_by_topics(portfolio_topics, user.id)
+    engagement_driving_channels = find_high_engagement_channels_for_level(career_level)
+
+    # Combine and rank recommendations
+    recommendations = (skill_based_channels ++ topic_related_channels ++ engagement_driving_channels)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.map(&add_relevance_score(&1, portfolios, user))
+    |> Enum.sort_by(& &1.relevance_score, :desc)
+    |> Enum.take(8)
+
+    recommendations
+  end
+
+  defp extract_skills_from_portfolios(portfolios) do
+    portfolios
+    |> Enum.flat_map(fn portfolio ->
+      sections = Portfolios.list_portfolio_sections(portfolio.id)
+      extract_skills_from_sections(sections)
+    end)
+    |> Enum.uniq()
+  end
+
+  defp extract_skills_from_sections(sections) do
+    sections
+    |> Enum.flat_map(fn section ->
+      case section.section_type do
+        "skills" -> get_nested_value(section.content, ["skills"], [])
+        "projects" ->
+          projects = get_nested_value(section.content, ["projects"], [])
+          Enum.flat_map(projects, &get_nested_value(&1, ["technologies"], []))
+        "experience" ->
+          experiences = get_nested_value(section.content, ["experiences"], [])
+          Enum.flat_map(experiences, &get_nested_value(&1, ["technologies"], []))
+        _ -> []
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp find_channels_by_skills(skills, user_id) do
+    Channels.list_channels_by_tags(skills)
+    |> Enum.reject(&Channels.user_member?(%{id: user_id}, &1))
+    |> Enum.filter(&(&1.visibility in ["public", "unlisted"]))
+  end
+
+  defp add_relevance_score(channel, portfolios, user) do
+    skill_match_score = calculate_skill_match_score(channel, portfolios)
+    activity_score = calculate_channel_activity_score(channel)
+    career_alignment_score = calculate_career_alignment_score(channel, portfolios)
+
+    relevance_score = (skill_match_score * 0.4) + (activity_score * 0.3) + (career_alignment_score * 0.3)
+
+    Map.put(channel, :relevance_score, relevance_score)
+    |> Map.put(:recommendation_reason, generate_recommendation_reason(channel, portfolios))
+  end
+
+
+
+  # ============================================================================
   # SERVICE DASHBOARD FUNCTIONS (NEW)
   # ============================================================================
 
@@ -484,6 +555,273 @@ defmodule FrestylWeb.PortfolioHubLive.Helpers do
 
   def get_portfolio_title(_, _), do: "Unknown Portfolio"
 
+      def create_portfolio_channel_sharing(portfolio_id, channel_id, user_id, sharing_options \\ %{}) do
+    sharing_data = %{
+      activity_type: :portfolio_shared,
+      portfolio_id: portfolio_id,
+      channel_id: channel_id,
+      user_id: user_id,
+      activity_data: %{
+        "shared_sections" => sharing_options["sections"] || ["all"],
+        "sharing_context" => sharing_options["context"] || "showcase",
+        "permissions" => %{
+          "can_comment" => sharing_options["allow_comments"] || true,
+          "can_suggest_edits" => sharing_options["allow_edit_suggestions"] || false
+        },
+        "message" => sharing_options["message"] || ""
+      },
+      tags: extract_portfolio_tags(portfolio_id),
+      visibility: sharing_options["visibility"] || :public
+    }
+
+    case Channels.create_portfolio_activity(sharing_data) do
+      {:ok, activity} ->
+        # Broadcast to channel members
+        broadcast_portfolio_shared(activity)
+        # Update portfolio hub metrics
+        update_portfolio_engagement_metrics(portfolio_id, :shared)
+        {:ok, activity}
+      error -> error
+    end
+  end
+
+  def request_portfolio_feedback(portfolio_id, channel_id, user_id, feedback_request) do
+    feedback_data = %{
+      activity_type: :portfolio_feedback_requested,
+      portfolio_id: portfolio_id,
+      channel_id: channel_id,
+      user_id: user_id,
+      activity_data: %{
+        "feedback_type" => feedback_request["type"], # "general", "design", "content", "technical"
+        "specific_areas" => feedback_request["areas"] || [],
+        "deadline" => feedback_request["deadline"],
+        "feedback_format" => feedback_request["format"] || "comments", # "comments", "video", "written"
+        "experience_level_sought" => feedback_request["experience_level"] || "any"
+      },
+      tags: ["feedback", "portfolio-review"] ++ (feedback_request["additional_tags"] || []),
+      visibility: :public
+    }
+
+    case Channels.create_portfolio_activity(feedback_data) do
+      {:ok, activity} ->
+        # Create feedback tracking record
+        create_feedback_tracking(activity.id, feedback_request)
+        # Notify relevant channel members
+        notify_potential_reviewers(activity)
+        {:ok, activity}
+      error -> error
+    end
+  end
+
+  def create_portfolio_channel_sharing(portfolio_id, channel_id, user_id, sharing_options) do
+    sharing_data = %{
+      activity_type: :portfolio_shared,
+      portfolio_id: portfolio_id,
+      channel_id: channel_id,
+      user_id: user_id,
+      activity_data: %{
+        "shared_sections" => sharing_options["sections"] || ["all"],
+        "sharing_context" => sharing_options["context"] || "showcase",
+        "permissions" => %{
+          "can_comment" => sharing_options["allow_comments"] || true,
+          "can_suggest_edits" => sharing_options["allow_edit_suggestions"] || false
+        },
+        "message" => sharing_options["message"] || ""
+      },
+      tags: extract_portfolio_tags(portfolio_id),
+      visibility: sharing_options["visibility"] || :public
+    }
+
+    case Channels.create_portfolio_activity(sharing_data) do
+      {:ok, activity} ->
+        # Broadcast to channel members
+        broadcast_portfolio_shared(activity)
+        # Update portfolio hub metrics
+        update_portfolio_engagement_metrics(portfolio_id, :shared)
+        {:ok, activity}
+      error -> error
+    end
+  end
+
+  def request_portfolio_feedback(portfolio_id, channel_id, user_id, feedback_request) do
+    feedback_data = %{
+      activity_type: :portfolio_feedback_requested,
+      portfolio_id: portfolio_id,
+      channel_id: channel_id,
+      user_id: user_id,
+      activity_data: %{
+        "feedback_type" => feedback_request["type"], # "general", "design", "content", "technical"
+        "specific_areas" => feedback_request["areas"] || [],
+        "deadline" => feedback_request["deadline"],
+        "feedback_format" => feedback_request["format"] || "comments", # "comments", "video", "written"
+        "experience_level_sought" => feedback_request["experience_level"] || "any"
+      },
+      tags: ["feedback", "portfolio-review"] ++ (feedback_request["additional_tags"] || []),
+      visibility: :public
+    }
+
+    case Channels.create_portfolio_activity(feedback_data) do
+      {:ok, activity} ->
+        # Create feedback tracking record
+        create_feedback_tracking(activity.id, feedback_request)
+        # Notify relevant channel members
+        notify_potential_reviewers(activity)
+        {:ok, activity}
+      error -> error
+    end
+  end
+
+    def create_portfolio_showcase_event(channel_id, user_id, showcase_data) do
+    event_data = %{
+      activity_type: :portfolio_showcase_scheduled,
+      channel_id: channel_id,
+      user_id: user_id,
+      activity_data: %{
+        "showcase_date" => showcase_data["date"],
+        "showcase_type" => showcase_data["type"], # "demo", "presentation", "walkthrough"
+        "duration_minutes" => showcase_data["duration"] || 30,
+        "max_participants" => showcase_data["max_participants"] || 20,
+        "requires_registration" => showcase_data["requires_registration"] || false,
+        "showcase_description" => showcase_data["description"],
+        "featured_portfolios" => showcase_data["portfolio_ids"] || []
+      },
+      tags: ["showcase", "demo", "portfolio-presentation"],
+      visibility: :public,
+      is_featured: true
+    }
+
+    case Channels.create_portfolio_activity(event_data) do
+      {:ok, activity} ->
+        # Create calendar event
+        create_showcase_calendar_event(activity)
+        # Setup streaming integration if needed
+        setup_showcase_streaming(activity, showcase_data)
+        # Notify channel members
+        broadcast_showcase_announcement(activity)
+        {:ok, activity}
+      error -> error
+    end
+  end
+
+  defp setup_showcase_streaming(activity, showcase_data) do
+    if showcase_data["enable_streaming"] do
+      streaming_config = %{
+        integration_type: :portfolio_tour,
+        session_duration_minutes: showcase_data["duration"] || 30,
+        max_participants: showcase_data["max_participants"] || 20,
+        is_public_stream: true,
+        requires_payment: false
+      }
+
+      Portfolios.create_streaming_integration(streaming_config)
+    end
+  end
+
+  # ============================================================================
+  # ENHANCED CHANNEL METRICS FOR HUB DISPLAY
+  # ============================================================================
+
+  @doc """
+  Calculate comprehensive channel metrics for hub display
+  """
+  def get_enhanced_channel_metrics(channel) do
+    base_metrics = calculate_basic_channel_metrics(channel)
+    portfolio_metrics = calculate_portfolio_specific_metrics(channel)
+
+    Map.merge(base_metrics, portfolio_metrics)
+  end
+
+  defp calculate_portfolio_specific_metrics(channel) do
+    %{
+      portfolio_shares_count: count_portfolio_activities(channel.id, :portfolio_shared),
+      active_feedback_sessions: count_active_feedback_sessions(channel.id),
+      portfolio_collaboration_count: count_portfolio_collaborations(channel.id),
+      showcase_events_count: count_upcoming_showcases(channel.id),
+      member_portfolio_quality_avg: calculate_avg_member_portfolio_quality(channel.id),
+      portfolio_improvement_rate: calculate_portfolio_improvement_rate(channel.id)
+    }
+  end
+
+  # ============================================================================
+  # INTERACTIVE MEDIA WALLS INTEGRATION
+  # ============================================================================
+
+  @doc """
+  Create portfolio-focused media wall integration
+  """
+  def create_portfolio_media_wall_item(channel_id, user_id, media_data) do
+    wall_item = %{
+      media_type: media_data["type"],
+      title: media_data["title"],
+      description: media_data["description"],
+      media_url: media_data["url"],
+      thumbnail_url: media_data["thumbnail"],
+      tags: media_data["tags"] ++ ["portfolio", "inspiration"],
+      category: media_data["category"] || "portfolio-inspiration",
+      channel_id: channel_id,
+      user_id: user_id,
+      metadata: %{
+        "portfolio_relevance" => media_data["relevance_score"] || 1,
+        "skill_areas" => media_data["skill_areas"] || [],
+        "difficulty_level" => media_data["difficulty"] || "intermediate"
+      }
+    }
+
+    case Channels.create_media_wall_item(wall_item) do
+      {:ok, item} ->
+        # Broadcast to channel
+        broadcast_media_wall_update(channel_id, item)
+        {:ok, item}
+      error -> error
+    end
+  end
+
+  # ============================================================================
+  # ENHANCED USER SOCKET FOR REAL-TIME PORTFOLIO FEATURES
+  # ============================================================================
+
+  @doc """
+  Enhanced real-time features for portfolio-channel integration
+  """
+  def setup_portfolio_channel_subscriptions(user_id) do
+    # Subscribe to portfolio-specific channel activities
+    Phoenix.PubSub.subscribe(Frestyl.PubSub, "user:#{user_id}:portfolio_feedback")
+    Phoenix.PubSub.subscribe(Frestyl.PubSub, "user:#{user_id}:collaboration_invites")
+    Phoenix.PubSub.subscribe(Frestyl.PubSub, "user:#{user_id}:showcase_notifications")
+
+    # Subscribe to channels user is member of
+    user_channels = Channels.list_user_channels(user_id)
+    Enum.each(user_channels, fn channel ->
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "channel:#{channel.id}:portfolio_activity")
+    end)
+  end
+
+  # ============================================================================
+  # ADDITIONAL HELPER FUNCTIONS
+  # ============================================================================
+
+  defp get_nested_value(map, keys, default \\ nil) do
+    Enum.reduce(keys, map, fn key, acc ->
+      if is_map(acc), do: Map.get(acc, key), else: default
+    end) || default
+  end
+
+  defp broadcast_portfolio_shared(activity) do
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "channel:#{activity.channel_id}:portfolio_activity",
+      {:portfolio_shared, activity}
+    )
+  end
+
+  defp broadcast_media_wall_update(channel_id, item) do
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "channel:#{channel_id}:media_wall",
+      {:media_wall_updated, item}
+    )
+  end
+
   # ============================================================================
   # ANALYTICS & METRICS FUNCTIONS (NEW)
   # ============================================================================
@@ -537,6 +875,390 @@ defmodule FrestylWeb.PortfolioHubLive.Helpers do
     end
   end
 
+    defp extract_topics_from_portfolios(portfolios) do
+    portfolios
+    |> Enum.flat_map(fn portfolio ->
+      sections = Portfolios.list_portfolio_sections(portfolio.id)
+      extract_topics_from_sections(sections)
+    end)
+    |> Enum.uniq()
+  end
+
+  defp extract_topics_from_sections(sections) do
+    sections
+    |> Enum.flat_map(fn section ->
+      case section.section_type do
+        "about" -> extract_keywords_from_text(get_nested_value(section.content, ["description"], ""))
+        "projects" ->
+          projects = get_nested_value(section.content, ["projects"], [])
+          Enum.flat_map(projects, fn project ->
+            description = get_nested_value(project, ["description"], "")
+            extract_keywords_from_text(description)
+          end)
+        _ -> []
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp extract_keywords_from_text(text) when is_binary(text) do
+    text
+    |> String.downcase()
+    |> String.split(~r/[^\w]+/, trim: true)
+    |> Enum.filter(&(String.length(&1) > 3))
+    |> Enum.take(10) # Limit to prevent overwhelming
+  end
+  defp extract_keywords_from_text(_), do: []
+
+  defp determine_career_level_from_portfolios(portfolios) do
+    experience_indicators = portfolios
+    |> Enum.flat_map(fn portfolio ->
+      sections = Portfolios.list_portfolio_sections(portfolio.id)
+      extract_experience_indicators(sections)
+    end)
+
+    years_of_experience = calculate_total_experience_years(experience_indicators)
+    project_complexity = calculate_project_complexity_score(experience_indicators)
+
+    cond do
+      years_of_experience < 2 -> "entry"
+      years_of_experience < 5 -> "mid"
+      years_of_experience < 10 -> "senior"
+      project_complexity > 8 -> "lead"
+      true -> "senior"
+    end
+  end
+
+  defp extract_experience_indicators(sections) do
+    sections
+    |> Enum.flat_map(fn section ->
+      case section.section_type do
+        "experience" -> get_nested_value(section.content, ["experiences"], [])
+        "projects" -> get_nested_value(section.content, ["projects"], [])
+        _ -> []
+      end
+    end)
+  end
+
+  defp calculate_total_experience_years(indicators) do
+    # Simple heuristic based on number of experiences/projects
+    length(indicators) * 1.5 # Rough estimate
+  end
+
+  defp calculate_project_complexity_score(indicators) do
+    indicators
+    |> Enum.map(fn item ->
+      tech_count = length(get_nested_value(item, ["technologies"], []))
+      team_size = get_nested_value(item, ["team_size"], 1)
+      tech_count + (team_size * 0.5)
+    end)
+    |> Enum.sum()
+    |> div(max(length(indicators), 1))
+  end
+
+  defp extract_industry_focus(portfolios) do
+    portfolios
+    |> Enum.map(fn portfolio ->
+      sections = Portfolios.list_portfolio_sections(portfolio.id)
+      extract_industry_from_projects(sections)
+    end)
+    |> List.flatten()
+    |> Enum.frequencies()
+    |> Enum.max_by(fn {_industry, count} -> count end, fn -> {"general", 1} end)
+    |> elem(0)
+  end
+
+  defp extract_industry_from_projects(sections) do
+    sections
+    |> Enum.flat_map(fn section ->
+      case section.section_type do
+        "projects" ->
+          projects = get_nested_value(section.content, ["projects"], [])
+          Enum.map(projects, &classify_project_industry/1)
+        _ -> []
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp classify_project_industry(project) do
+    description = get_nested_value(project, ["description"], "")
+    title = get_nested_value(project, ["title"], "")
+    text = "#{title} #{description}" |> String.downcase()
+
+    cond do
+      String.contains?(text, ["ecommerce", "retail", "shopping"]) -> "retail"
+      String.contains?(text, ["fintech", "banking", "payment"]) -> "fintech"
+      String.contains?(text, ["health", "medical", "healthcare"]) -> "healthcare"
+      String.contains?(text, ["education", "learning", "course"]) -> "education"
+      String.contains?(text, ["game", "gaming", "entertainment"]) -> "gaming"
+      true -> "general"
+    end
+  end
+
+  # Channel matching functions
+  defp find_channels_by_topics(topics, user_id) do
+    # This would need to be implemented in the Channels context
+    try do
+      Channels.find_channels_by_topics(topics)
+      |> Enum.reject(&Channels.user_member?(%{id: user_id}, &1))
+    rescue
+      _ -> []
+    end
+  end
+
+  defp find_high_engagement_channels_for_level(career_level) do
+    try do
+      Channels.get_high_engagement_channels_for_career_level(career_level)
+    rescue
+      _ -> []
+    end
+  end
+
+  # Scoring functions
+  defp calculate_skill_match_score(channel, portfolios) do
+    channel_tags = channel.tags || []
+    portfolio_skills = extract_skills_from_portfolios(portfolios)
+
+    matching_skills = Enum.count(channel_tags, &(&1 in portfolio_skills))
+    total_channel_tags = max(length(channel_tags), 1)
+
+    (matching_skills / total_channel_tags) * 10
+  end
+
+  defp calculate_channel_activity_score(channel) do
+    # Base score on recent activity
+    recent_activity_count = try do
+      Channels.count_recent_activity(channel.id, hours: 24)
+    rescue
+      _ -> 0
+    end
+
+    member_count = try do
+      Channels.get_member_count(channel.id)
+    rescue
+      _ -> 0
+    end
+
+    activity_ratio = if member_count > 0, do: recent_activity_count / member_count, else: 0
+    min(activity_ratio * 10, 10)
+  end
+
+  defp calculate_career_alignment_score(channel, portfolios) do
+    career_level = determine_career_level_from_portfolios(portfolios)
+    channel_level_focus = determine_channel_career_focus(channel)
+
+    case {career_level, channel_level_focus} do
+      {level, level} -> 10 # Perfect match
+      {"entry", "beginner"} -> 9
+      {"mid", "intermediate"} -> 9
+      {"senior", "advanced"} -> 9
+      {"lead", "advanced"} -> 8
+      _ -> 5 # Default moderate alignment
+    end
+  end
+
+  defp determine_channel_career_focus(channel) do
+    description = channel.description || ""
+    tags = channel.tags || []
+    text = "#{description} #{Enum.join(tags, " ")}" |> String.downcase()
+
+    cond do
+      String.contains?(text, ["beginner", "entry", "junior", "learning"]) -> "beginner"
+      String.contains?(text, ["senior", "lead", "expert", "advanced"]) -> "advanced"
+      String.contains?(text, ["intermediate", "mid-level"]) -> "intermediate"
+      true -> "general"
+    end
+  end
+
+  defp generate_recommendation_reason(channel, portfolios) do
+    portfolio_skills = extract_skills_from_portfolios(portfolios)
+    channel_tags = channel.tags || []
+    matching_skills = Enum.filter(channel_tags, &(&1 in portfolio_skills))
+
+    cond do
+      length(matching_skills) > 2 ->
+        "Strong skill match: #{Enum.take(matching_skills, 3) |> Enum.join(", ")}"
+      length(matching_skills) > 0 ->
+        "Skill alignment: #{Enum.join(matching_skills, ", ")}"
+      true ->
+        "Active community for your career level"
+    end
+  end
+
+  # Portfolio and engagement functions
+  defp extract_portfolio_tags(portfolio_id) do
+    try do
+      portfolio = Portfolios.get_portfolio!(portfolio_id)
+      sections = Portfolios.list_portfolio_sections(portfolio_id)
+      skills = extract_skills_from_sections(sections)
+      topics = extract_topics_from_sections(sections)
+
+      (skills ++ topics)
+      |> Enum.uniq()
+      |> Enum.take(10)
+    rescue
+      _ -> ["portfolio", "showcase"]
+    end
+  end
+
+  defp update_portfolio_engagement_metrics(portfolio_id, action) do
+    try do
+      # This would update engagement tracking
+      Analytics.track_portfolio_engagement(portfolio_id, action)
+    rescue
+      _ -> :ok
+    end
+  end
+
+  defp notify_potential_reviewers(activity) do
+    try do
+      # Send notifications to qualified reviewers
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "channel:#{activity.channel_id}:feedback_requests",
+        {:new_feedback_request, activity}
+      )
+    rescue
+      _ -> :ok
+    end
+  end
+
+  # Showcase functions
+  defp create_showcase_calendar_event(activity) do
+    try do
+      showcase_data = activity.activity_data
+
+      # Create calendar event (would integrate with calendar system)
+      Calendar.create_event(%{
+        title: "Portfolio Showcase",
+        start_time: showcase_data["showcase_date"],
+        duration: showcase_data["duration_minutes"] || 30,
+        description: showcase_data["showcase_description"],
+        channel_id: activity.channel_id
+      })
+    rescue
+      _ -> :ok
+    end
+  end
+
+  defp broadcast_showcase_announcement(activity) do
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "channel:#{activity.channel_id}:announcements",
+      {:showcase_scheduled, activity}
+    )
+  end
+
+  # Metrics calculation functions
+  defp calculate_basic_channel_metrics(channel) do
+    %{
+      member_count: get_channel_member_count(channel.id),
+      activity_score: calculate_channel_activity_score(channel),
+      engagement_rate: calculate_engagement_rate(channel.id)
+    }
+  end
+
+  defp get_channel_member_count(channel_id) do
+    try do
+      Channels.get_member_count(channel_id)
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp calculate_engagement_rate(channel_id) do
+    try do
+      member_count = Channels.get_member_count(channel_id)
+      active_members = Channels.count_active_members(channel_id, days: 7)
+      if member_count > 0, do: active_members / member_count, else: 0
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp count_portfolio_activities(channel_id, activity_type) do
+    try do
+      Channels.count_activities_by_type(channel_id, activity_type)
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp count_active_feedback_sessions(channel_id) do
+    try do
+      Channels.count_active_feedback_sessions(channel_id)
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp count_portfolio_collaborations(channel_id) do
+    try do
+      Channels.count_portfolio_collaborations(channel_id)
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp count_upcoming_showcases(channel_id) do
+    try do
+      Channels.count_upcoming_showcases(channel_id)
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp calculate_avg_member_portfolio_quality(channel_id) do
+    try do
+      member_portfolios = Channels.get_member_portfolios(channel_id)
+
+      if length(member_portfolios) > 0 do
+        total_quality = member_portfolios
+        |> Enum.map(&calculate_portfolio_quality_score/1)
+        |> Enum.map(& &1[:total])
+        |> Enum.sum()
+
+        total_quality / length(member_portfolios)
+      else
+        0
+      end
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp calculate_portfolio_improvement_rate(channel_id) do
+    try do
+      # Calculate how much member portfolios have improved over time
+      member_ids = Channels.get_channel_member_ids(channel_id)
+
+      improvements = member_ids
+      |> Enum.map(&calculate_user_portfolio_improvement/1)
+      |> Enum.reject(&is_nil/1)
+
+      if length(improvements) > 0 do
+        Enum.sum(improvements) / length(improvements)
+      else
+        0
+      end
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp calculate_user_portfolio_improvement(user_id) do
+    # This would track portfolio quality changes over time
+    # Simplified implementation
+    try do
+      portfolios = Portfolios.list_user_portfolios(user_id)
+      # Return improvement percentage (simplified)
+      if length(portfolios) > 0, do: 5.0, else: 0.0
+    rescue
+      _ -> 0.0
+    end
+  end
+
   # ============================================================================
   # UTILITY & FORMATTING FUNCTIONS
   # ============================================================================
@@ -582,7 +1304,19 @@ defmodule FrestylWeb.PortfolioHubLive.Helpers do
   # PRIVATE HELPER FUNCTIONS
   # ============================================================================
 
-  # Access control helpers
+
+
+  defp create_feedback_tracking(activity_id, feedback_request) do
+    Channels.create_feedback_session(%{
+      activity_id: activity_id,
+      status: "open",
+      deadline: feedback_request["deadline"],
+      feedback_received_count: 0,
+      target_feedback_count: feedback_request["target_reviewers"] || 3
+    })
+  end
+
+    # Access control helpers
   defp if_can_access_services(user_id, fun) do
     user = Accounts.get_user!(user_id)
     if can_access_services?(user), do: fun.(), else: nil

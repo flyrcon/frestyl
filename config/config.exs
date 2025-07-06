@@ -173,7 +173,8 @@ config :chromic_pdf,
   timeout: 30_000,  # 30 seconds instead of default 5 seconds
 
   # Optional: Disable sandbox mode if you're having issues
-  sandbox: false
+  sandbox: false,
+  on_demand: true
 
 # Configure tailwind (the version is required)
 config :tailwind,
