@@ -6,7 +6,8 @@ defmodule FrestylWeb.PortfolioHubLive do
   import Phoenix.LiveView.Helpers
   import Phoenix.Component
 
-  alias Frestyl.{Accounts, Portfolios, Channels, Billing, Lab, Features, Analytics, Studio, Services, Revenue}
+  alias Frestyl.{Accounts, Portfolios, Channels, Billing, Lab, Features, Analytics, Studio, Services, Revenue, Sessions}
+  alias Frestyl.Studio.PortfolioCollaborationManager
   alias FrestylWeb.PortfolioHubLive.{Helpers, EnhancementEngine, Components}
 
  @impl true
@@ -64,8 +65,9 @@ defmodule FrestylWeb.PortfolioHubLive do
     # 5. SERVICE DASHBOARD DATA (NEW - Creator+ tiers only)
     service_data = load_service_data(user, account)
 
-    # 6. REVENUE CENTER DATA (NEW - Professional+ tiers only)
     revenue_data = load_revenue_data(user, account)
+
+    broadcast_data = load_broadcast_data(user, account)
 
     # ============================================================================
     # HUB CUSTOMIZATION BASED ON SUBSCRIPTION TIER
@@ -153,6 +155,12 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:revenue_trends, revenue_data.trends)
       |> assign(:platform_fees, revenue_data.platform_fees)
       |> assign(:payout_schedule, revenue_data.payout_schedule)
+      |> assign(:broadcast_data, broadcast_data)
+      |> assign(:active_broadcasts, broadcast_data.active_broadcasts)
+      |> assign(:scheduled_broadcasts, broadcast_data.scheduled_broadcasts)
+      |> assign(:recent_broadcasts, broadcast_data.recent_broadcasts)
+      |> assign(:broadcast_analytics, broadcast_data.broadcast_analytics)
+      |> assign(:recording_library, broadcast_data.recording_library)
 
       # ======== USER JOURNEY & ONBOARDING ========
       |> assign(:recent_activity, recent_activity)
@@ -160,6 +168,18 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:is_first_visit, is_first_visit)
       |> assign(:just_completed_onboarding, just_completed_onboarding)
       |> assign(:recently_created_portfolio, recently_created_portfolio)
+      |> assign(:show_broadcast_modal, false)
+      |> assign(:show_broadcast_scheduler, false)
+      |> assign(:selected_portfolio_for_broadcast, nil)
+      |> assign(:broadcast_creation_step, :setup)
+
+      # ======== STUDIO MODAL STATE MANAGEMENT (NEW) ========
+      |> assign(:show_studio_modal, false)
+      |> assign(:studio_step, :tool_selection)
+      |> assign(:studio_enhancement_type, nil)
+      |> assign(:available_studio_tools, get_studio_tools_for_account(account))
+      |> assign(:selected_studio_tools, [])
+      |> assign(:studio_layout_config, %{})
       |> assign(:show_welcome_celebration, just_completed_onboarding)
 
       # ======== UI STATE MANAGEMENT ========
@@ -456,6 +476,78 @@ defmodule FrestylWeb.PortfolioHubLive do
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Failed to generate share link: #{reason}")}
     end
+  end
+
+    @impl true
+  def handle_event("start_portfolio_collaboration", %{"portfolio_id" => portfolio_id}, socket) do
+    user = socket.assigns.current_user
+
+    case validate_collaboration_access(socket.assigns.current_account, portfolio_id) do
+      {:ok, portfolio} ->
+        # Setup collaboration session
+        PortfolioCollaborationManager.setup_portfolio_subscriptions(portfolio_id, user.id)
+
+        # Track presence
+        device_info = get_device_info_from_socket(socket)
+        permissions = get_user_portfolio_permissions(portfolio, user)
+
+        PortfolioCollaborationManager.track_portfolio_presence(
+          portfolio_id,
+          user,
+          permissions,
+          device_info
+        )
+
+        # Navigate to collaborative editor
+        {:noreply, push_navigate(socket, to: "/portfolios/#{portfolio_id}/edit?collaborate=true")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Cannot start collaboration: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("invite_to_portfolio", %{"portfolio_id" => portfolio_id, "email" => email, "permissions" => permissions}, socket) do
+    user = socket.assigns.current_user
+
+    case PortfolioCollaborationManager.create_portfolio_invitation(portfolio_id, user, email, permissions) do
+      {:ok, invitation} ->
+        # Update collaboration data to show pending invitation
+        updated_collaboration_data = update_collaboration_data_with_invitation(
+          socket.assigns.collaboration_data,
+          invitation
+        )
+
+        {:noreply,
+         socket
+         |> assign(:collaboration_data, updated_collaboration_data)
+         |> put_flash(:info, "Collaboration invitation sent to #{email}")
+         |> assign(:show_invite_modal, false)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to send invitation: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("show_portfolio_collaborators", %{"portfolio_id" => portfolio_id}, socket) do
+    # Get real-time collaborator list
+    collaborators = PortfolioCollaborationManager.list_portfolio_collaborators(portfolio_id)
+    analytics = PortfolioCollaborationManager.get_collaboration_analytics(portfolio_id)
+
+    {:noreply,
+     socket
+     |> assign(:selected_portfolio_collaborators, collaborators)
+     |> assign(:collaboration_analytics, analytics)
+     |> assign(:show_collaborators_modal, true)}
+  end
+
+  @impl true
+  def handle_event("toggle_collaboration_section", %{"section" => section}, socket) do
+    current_section = Map.get(socket.assigns, :active_collaboration_section, "active")
+    new_section = if current_section == section, do: nil, else: section
+
+    {:noreply, assign(socket, :active_collaboration_section, new_section)}
   end
 
 
@@ -866,6 +958,267 @@ defmodule FrestylWeb.PortfolioHubLive do
     rescue
       _ ->
         %{total_visits: 0, total_portfolios: 0, total_shares: 0}
+    end
+  end
+
+
+    defp load_collaboration_data(user, account) do
+    # Get user's portfolios that support collaboration
+    collaborative_portfolios = get_collaborative_portfolios(user.id, account)
+
+    # Get active collaboration sessions
+    active_collaborations = get_active_portfolio_collaborations(user.id)
+
+    # Get collaboration invitations (sent and received)
+    sent_invitations = get_sent_collaboration_invitations(user.id)
+    received_invitations = get_received_collaboration_invitations(user.id)
+
+    # Get collaboration opportunities
+    opportunities = generate_collaboration_opportunities(user, account, collaborative_portfolios)
+
+    # Get collaboration analytics
+    collaboration_stats = get_user_collaboration_stats(user.id)
+
+    %{
+      # Existing fields
+      active_collaborations: active_collaborations,
+      opportunities: opportunities,
+
+      # Enhanced fields
+      collaborative_portfolios: collaborative_portfolios,
+      sent_invitations: sent_invitations,
+      received_invitations: received_invitations,
+      collaboration_stats: collaboration_stats,
+      real_time_sessions: get_real_time_collaboration_sessions(user.id),
+      collaboration_history: get_recent_collaboration_history(user.id, 10)
+    }
+  end
+
+  defp get_collaborative_portfolios(user_id, account) do
+    # Get portfolios that can be used for collaboration
+    user_portfolios = Portfolios.list_user_portfolios(user_id)
+
+    Enum.map(user_portfolios, fn portfolio ->
+      # Add collaboration metadata
+      collaboration_enabled = Features.FeatureGate.can_access_feature?(account, :real_time_collaboration)
+      active_sessions = get_portfolio_active_sessions(portfolio.id)
+
+      %{
+        portfolio: portfolio,
+        collaboration_enabled: collaboration_enabled,
+        active_sessions: length(active_sessions),
+        collaborators: active_sessions,
+        last_collaborative_edit: get_last_collaborative_edit(portfolio.id),
+        collaboration_permissions: get_portfolio_collaboration_settings(portfolio.id)
+      }
+    end)
+  end
+
+  defp get_active_portfolio_collaborations(user_id) do
+    # Get currently active collaboration sessions for this user
+    case :ets.match(:portfolio_presence, {{:_, user_id}, :"$1"}) do
+      sessions when is_list(sessions) ->
+        Enum.map(sessions, fn [presence_data] ->
+          %{
+            portfolio_id: presence_data.portfolio_id,
+            joined_at: presence_data.joined_at,
+            active_section: presence_data.active_section,
+            other_collaborators: get_other_collaborators(presence_data.portfolio_id, user_id),
+            last_activity: presence_data.last_activity,
+            device_type: presence_data.device_type
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp get_sent_collaboration_invitations(user_id) do
+    # Get invitations sent by this user
+    case :ets.match(:portfolio_invitations, {:"$1", %{inviting_user_id: user_id, status: :pending}}) do
+      invitations when is_list(invitations) ->
+        Enum.map(invitations, fn [token] ->
+          [{^token, invitation}] = :ets.lookup(:portfolio_invitations, token)
+
+          %{
+            token: token,
+            portfolio_id: invitation.portfolio_id,
+            invitee_email: invitation.invitee_email,
+            permissions: invitation.permissions,
+            created_at: invitation.created_at,
+            expires_at: invitation.expires_at
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp get_received_collaboration_invitations(user_id) do
+    # Get invitations received by this user (by email)
+    user = Accounts.get_user!(user_id)
+
+    case :ets.match(:portfolio_invitations, {:"$1", %{invitee_email: user.email, status: :pending}}) do
+      invitations when is_list(invitations) ->
+        Enum.map(invitations, fn [token] ->
+          [{^token, invitation}] = :ets.lookup(:portfolio_invitations, token)
+          inviting_user = Accounts.get_user!(invitation.inviting_user_id)
+          portfolio = Portfolios.get_portfolio!(invitation.portfolio_id)
+
+          %{
+            token: token,
+            portfolio: portfolio,
+            inviting_user: inviting_user,
+            permissions: invitation.permissions,
+            created_at: invitation.created_at,
+            expires_at: invitation.expires_at
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp generate_collaboration_opportunities(user, account, portfolios) do
+    opportunities = []
+
+    # Suggest collaboration based on portfolio content and user tier
+    opportunities = if Features.FeatureGate.can_access_feature?(account, :real_time_collaboration) do
+      content_based_opportunities = Enum.flat_map(portfolios, fn %{portfolio: portfolio} ->
+        case suggest_collaboration_for_portfolio(portfolio, account) do
+          [] -> []
+          suggestions -> suggestions
+        end
+      end)
+
+      opportunities ++ content_based_opportunities
+    else
+      opportunities
+    end
+
+    # Add upgrade opportunities for collaboration features
+    opportunities = if account.subscription_tier in ["personal", "free"] do
+      upgrade_opportunity = %{
+        type: :upgrade,
+        title: "Unlock Real-time Collaboration",
+        description: "Collaborate with others in real-time on your portfolios",
+        action: :upgrade_subscription,
+        suggested_tier: :creator,
+        benefits: ["Real-time editing", "10 collaborators", "Version history"]
+      }
+
+      [upgrade_opportunity | opportunities]
+    else
+      opportunities
+    end
+
+    opportunities
+  end
+
+  defp suggest_collaboration_for_portfolio(portfolio, account) do
+    suggestions = []
+
+    # Suggest based on portfolio completeness
+    sections = portfolio.sections || []
+    incomplete_sections = Enum.filter(sections, &section_needs_collaboration?/1)
+
+    suggestions = if length(incomplete_sections) > 0 do
+      collaboration_suggestion = %{
+        type: :content_collaboration,
+        portfolio_id: portfolio.id,
+        title: "Get help completing your portfolio",
+        description: "#{length(incomplete_sections)} sections could benefit from collaboration",
+        action: :find_collaborators,
+        priority: :medium,
+        sections: Enum.map(incomplete_sections, & &1.id)
+      }
+
+      [collaboration_suggestion | suggestions]
+    else
+      suggestions
+    end
+
+    # Suggest review collaboration for completed portfolios
+    suggestions = if portfolio.visibility == :public and length(sections) > 2 do
+      review_suggestion = %{
+        type: :review_collaboration,
+        portfolio_id: portfolio.id,
+        title: "Get expert feedback",
+        description: "Your portfolio is ready for professional review",
+        action: :request_review,
+        priority: :low
+      }
+
+      [review_suggestion | suggestions]
+    else
+      suggestions
+    end
+
+    suggestions
+  end
+
+  defp section_needs_collaboration?(section) do
+    content = section.content || %{}
+
+    # Check if section has minimal content
+    text_content = Map.get(content, "text", "")
+    media_items = Map.get(content, "media_items", [])
+
+    String.length(text_content) < 100 and length(media_items) == 0
+  end
+
+  defp get_user_collaboration_stats(user_id) do
+    # Calculate collaboration statistics for the user
+    case :ets.lookup(:user_collaboration_stats, user_id) do
+      [{^user_id, stats}] ->
+        stats
+
+      [] ->
+        %{
+          total_collaborations: 0,
+          portfolios_collaborated: 0,
+          time_spent_collaborating: 0,
+          invitations_sent: 0,
+          invitations_received: 0,
+          successful_collaborations: 0
+        }
+    end
+  end
+
+  defp get_real_time_collaboration_sessions(user_id) do
+    # Get currently active real-time sessions
+    case :ets.match(:portfolio_sessions, {{user_id, :"$1"}, :"$2"}) do
+      sessions when is_list(sessions) ->
+        Enum.map(sessions, fn [portfolio_id, session_data] ->
+          portfolio = Portfolios.get_portfolio!(portfolio_id)
+
+          %{
+            portfolio: portfolio,
+            session_start: session_data.started_at,
+            active_section: session_data.active_section,
+            collaborators: get_session_collaborators(portfolio_id),
+            last_activity: session_data.last_activity
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp get_recent_collaboration_history(user_id, limit \\ 10) do
+    # Get recent collaboration activities
+    case :ets.lookup(:collaboration_history, user_id) do
+      [{^user_id, history}] ->
+        history
+        |> Enum.sort_by(& &1.timestamp, {:desc, DateTime})
+        |> Enum.take(limit)
+
+      [] ->
+        []
     end
   end
 
@@ -1508,6 +1861,50 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, assign(socket, :show_create_modal, false)}
   end
 
+    @impl true
+  def handle_info({:collaboration_joined, portfolio_id, joining_user}, socket) do
+    # Update collaboration data when someone joins
+    updated_data = update_collaboration_data_with_new_collaborator(
+      socket.assigns.collaboration_data,
+      portfolio_id,
+      joining_user
+    )
+
+    {:noreply,
+     socket
+     |> assign(:collaboration_data, updated_data)
+     |> put_flash(:info, "#{joining_user.username} joined your portfolio collaboration")}
+  end
+
+  @impl true
+  def handle_info({:collaboration_invitation_accepted, invitation, accepting_user}, socket) do
+    # Update UI when invitation is accepted
+    updated_data = remove_pending_invitation(socket.assigns.collaboration_data, invitation.token)
+
+    {:noreply,
+     socket
+     |> assign(:collaboration_data, updated_data)
+     |> put_flash(:info, "#{accepting_user.username} accepted your collaboration invitation")}
+  end
+
+  @impl true
+  def handle_info({:real_time_edit, portfolio_id, section_id, operation, editor_user}, socket) do
+    # Show real-time editing indicators in hub
+    if Map.get(socket.assigns, :show_collaboration_panel, false) do
+      updated_data = add_real_time_activity(
+        socket.assigns.collaboration_data,
+        portfolio_id,
+        section_id,
+        operation,
+        editor_user
+      )
+
+      {:noreply, assign(socket, :collaboration_data, updated_data)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   # Portfolio Creation Methods
   @impl true
   def handle_event("create_from_template", _params, socket) do
@@ -1542,6 +1939,42 @@ defmodule FrestylWeb.PortfolioHubLive do
   def handle_event("toggle_collaboration_panel", _params, socket) do
     current_state = Map.get(socket.assigns, :show_collaboration_panel, false)
     {:noreply, assign(socket, :show_collaboration_panel, !current_state)}
+  end
+
+
+  @impl true
+  def handle_event("start_mobile_collaboration", %{"portfolio_id" => portfolio_id}, socket) do
+    user = socket.assigns.current_user
+
+    case validate_mobile_collaboration_access(socket.assigns.current_account, portfolio_id) do
+      {:ok, portfolio} ->
+        # Setup mobile-optimized collaboration
+        device_info = %{device_type: "mobile", is_mobile: true, supports_real_time: true}
+        permissions = get_mobile_collaboration_permissions(portfolio, user)
+
+        PortfolioCollaborationManager.track_portfolio_presence(
+          portfolio_id,
+          user,
+          permissions,
+          device_info
+        )
+
+        # Navigate to mobile collaboration view
+        {:noreply, push_navigate(socket, to: "/portfolios/#{portfolio_id}/mobile-edit?collaborate=true")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Mobile collaboration unavailable: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("show_mobile_collaboration_options", %{"portfolio_id" => portfolio_id}, socket) do
+    mobile_options = get_mobile_collaboration_options(portfolio_id, socket.assigns.current_account)
+
+    {:noreply,
+     socket
+     |> assign(:mobile_collaboration_options, mobile_options)
+     |> assign(:show_mobile_collab_modal, true)}
   end
 
   # Missing Community Channels Event Handlers
@@ -1613,20 +2046,30 @@ defmodule FrestylWeb.PortfolioHubLive do
   @impl true
   def handle_event("access_story_lab", _params, socket) do
     account = socket.assigns.current_account || %{subscription_tier: "personal"}
-
     # For now, let's just navigate directly to lab features
     {:noreply, push_navigate(socket, to: "/lab")}
   end
 
-  # Enhanced Studio Integration
   @impl true
   def handle_event("show_studio_modal", _params, socket) do
-    {:noreply, assign(socket, :show_studio_modal, true)}
+    available_tools = get_studio_tools_for_account(socket.assigns.account)
+
+    {:noreply,
+     socket
+     |> assign(:show_studio_modal, true)
+     |> assign(:studio_step, :tool_selection)
+     |> assign(:available_studio_tools, available_tools)}
   end
 
   @impl true
   def handle_event("hide_studio_modal", _params, socket) do
-    {:noreply, assign(socket, :show_studio_modal, false)}
+    {:noreply,
+     socket
+     |> assign(:show_studio_modal, false)
+     |> assign(:studio_step, :tool_selection)
+     |> assign(:studio_enhancement_type, nil)
+     |> assign(:selected_studio_tools, [])
+     |> assign(:studio_layout_config, %{})}
   end
 
   @impl true
@@ -1639,7 +2082,6 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, assign(socket, :show_studio_welcome_modal, false)}
   end
 
-  @impl true
   def handle_event("create_studio_session", %{"type" => session_type}, socket) do
     # For now, just navigate to the studio route or close modal with message
     {:noreply,
@@ -1649,10 +2091,162 @@ defmodule FrestylWeb.PortfolioHubLive do
     |> push_navigate(to: "/studio")}
   end
 
-  # Navigation Helpers
+
+# ==============================================================================
+# PHASE 2: STUDIO MODAL SYSTEM IMPLEMENTATION PATCHES
+# ==============================================================================
+
+# PATCH 1: UPDATE EXISTING STUDIO EVENT HANDLERS
+# ==============================================================================
+# FIND in portfolio_hub_live.ex around line 600-700:
+
   @impl true
   def handle_event("navigate_to_studio", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/studio")}
+    # Now opens studio modal instead of navigating
+    {:noreply, assign(socket, :show_studio_modal, true)}
+  end
+
+  @impl true
+  def handle_event("access_story_lab", _params, socket) do
+    account = socket.assigns.current_account || %{subscription_tier: "personal"}
+
+    if Features.FeatureGate.can_access_feature?(account, :creator_lab) do
+      {:noreply,
+       socket
+       |> assign(:show_studio_modal, true)
+       |> assign(:studio_enhancement_type, :creator_lab)}
+    else
+      {:noreply,
+       socket
+       |> put_flash(:warning, "Creator Lab requires Creator+ subscription")
+       |> assign(:show_upgrade_modal, true)}
+    end
+  end
+
+  @impl true
+  def handle_event("create_studio_session", %{"type" => session_type}, socket) do
+    user = socket.assigns.user
+    account = socket.assigns.account
+
+    case create_contextual_studio_session(user, account, session_type, socket) do
+      {:ok, session_url} ->
+        {:noreply,
+         socket
+         |> assign(:show_studio_modal, false)
+         |> put_flash(:info, "Studio session created!")
+         |> push_navigate(to: session_url)}
+
+      {:error, :upgrade_required} ->
+        {:noreply,
+         socket
+         |> assign(:show_upgrade_modal, true)
+         |> put_flash(:warning, "This studio feature requires a higher subscription tier")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to create studio session: #{reason}")}
+    end
+  end
+
+    @impl true
+  def handle_event("show_studio_launcher", _params, socket) do
+    available_tools = get_studio_tools_for_account(socket.assigns.account)
+
+    {:noreply,
+     socket
+     |> assign(:show_studio_modal, true)
+     |> assign(:studio_step, :tool_selection)
+     |> assign(:available_studio_tools, available_tools)
+     |> assign(:selected_studio_tools, [])
+     |> assign(:studio_enhancement_type, nil)}
+  end
+
+  @impl true
+  def handle_event("select_enhancement_type", %{"type" => enhancement_type}, socket) do
+    enhancement_atom = String.to_atom(enhancement_type)
+    tools = get_tools_for_enhancement(enhancement_atom, socket.assigns.account)
+    layout = get_layout_for_enhancement(enhancement_atom)
+
+    {:noreply,
+     socket
+     |> assign(:studio_enhancement_type, enhancement_atom)
+     |> assign(:selected_studio_tools, tools)
+     |> assign(:studio_layout_config, layout)
+     |> assign(:studio_step, :configuration)}
+  end
+
+  @impl true
+  def handle_event("launch_studio_with_config", %{"config" => config}, socket) do
+    user = socket.assigns.user
+    account = socket.assigns.account
+    enhancement_type = socket.assigns.studio_enhancement_type
+
+    session_attrs = %{
+      "title" => config["session_title"] || "Studio Session",
+      "session_type" => "portfolio_enhancement",
+      "enhancement_context" => %{
+        type: enhancement_type,
+        tools: socket.assigns.selected_studio_tools,
+        layout: socket.assigns.studio_layout_config,
+        portfolio_id: config["portfolio_id"]
+      },
+      "creator_id" => user.id,
+      "host_id" => user.id,
+      "is_public" => false
+    }
+
+    case Sessions.create_studio_session(session_attrs) do
+      {:ok, session} ->
+        {:noreply,
+         socket
+         |> assign(:show_studio_modal, false)
+         |> put_flash(:info, "Studio session launched!")
+         |> push_navigate(to: ~p"/studio/#{session.id}")}
+
+      {:error, _changeset} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to create studio session")}
+    end
+  end
+
+  @impl true
+  def handle_event("quick_studio_launch", %{"enhancement" => enhancement_type}, socket) do
+    # Quick launch with default settings for common enhancements
+    account = socket.assigns.account
+
+    case enhancement_type do
+      "voice_intro" ->
+        if Features.FeatureGate.can_access_feature?(account, :voice_recording) do
+          launch_quick_studio_session(socket, :voice_intro, ["audio_recorder", "script_editor"])
+        else
+          {:noreply, show_upgrade_prompt(socket, "voice recording")}
+        end
+
+      "writing_enhancement" ->
+        if Features.FeatureGate.can_access_feature?(account, :real_time_collaboration) do
+          launch_quick_studio_session(socket, :writing_enhancement, ["text_editor", "ai_assistant"])
+        else
+          {:noreply, show_upgrade_prompt(socket, "writing collaboration")}
+        end
+
+      "background_music" ->
+        if Features.FeatureGate.can_access_feature?(account, :audio_creation) do
+          launch_quick_studio_session(socket, :background_music, ["beat_machine", "audio_mixer"])
+        else
+          {:noreply, show_upgrade_prompt(socket, "music creation")}
+        end
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Unknown enhancement type")}
+    end
+  end
+
+  @impl true
+  def handle_event("navigate_to_studio", _params, socket) do
+    # Now opens studio modal instead of navigating
+    {:noreply, assign(socket, :show_studio_modal, true)}
   end
 
   @impl true
@@ -6131,6 +6725,289 @@ defmodule FrestylWeb.PortfolioHubLive do
     """
   end
 
+    # ============================================================================
+  # BROADCAST EVENT HANDLERS (NEW)
+  # ============================================================================
+
+  @impl true
+  def handle_event("show_broadcast_modal", _params, socket) do
+    if can_user_go_live?(socket.assigns.user, socket.assigns.account) do
+      {:noreply,
+       socket
+       |> assign(:show_broadcast_modal, true)
+       |> assign(:broadcast_creation_step, :setup)}
+    else
+      {:noreply,
+       socket
+       |> put_flash(:error, "Broadcast limit reached or feature not available")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_broadcast_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_broadcast_modal, false)
+     |> assign(:selected_portfolio_for_broadcast, nil)}
+  end
+
+  @impl true
+  def handle_event("create_portfolio_showcase", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+
+    if portfolio do
+      {:noreply,
+       socket
+       |> assign(:selected_portfolio_for_broadcast, portfolio)
+       |> assign(:show_broadcast_modal, true)}
+    else
+      {:noreply, put_flash(socket, :error, "Portfolio not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("create_broadcast", %{"broadcast" => broadcast_params}, socket) do
+    user = socket.assigns.user
+    portfolio = socket.assigns.selected_portfolio_for_broadcast
+
+    broadcast_attrs = broadcast_params
+    |> Map.put("creator_id", user.id)
+    |> Map.put("host_id", user.id)
+    |> Map.put("session_type", "portfolio_broadcast")
+    |> Map.put("context", %{
+      portfolio_id: portfolio && portfolio.id,
+      broadcast_mode: if(portfolio, do: "portfolio_showcase", else: "general"),
+      allow_portfolio_sharing: portfolio != nil
+    })
+    |> add_broadcast_settings(socket.assigns.account)
+
+    case Sessions.create_broadcast(broadcast_attrs) do
+      {:ok, broadcast} ->
+        Features.FeatureGate.track_feature_usage(socket.assigns.account, :live_broadcast, 1)
+        updated_broadcast_data = load_broadcast_data(user, socket.assigns.account)
+
+        {:noreply,
+         socket
+         |> assign(:broadcast_data, updated_broadcast_data)
+         |> assign(:show_broadcast_modal, false)
+         |> put_flash(:info, "Broadcast created successfully!")
+         |> push_navigate(to: ~p"/channels/broadcasts/#{broadcast.id}")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to create broadcast")}
+    end
+  end
+
+  @impl true
+  def handle_event("join_live_broadcast", %{"broadcast_id" => broadcast_id}, socket) do
+    {:noreply, push_navigate(socket, to: ~p"/channels/broadcasts/#{broadcast_id}/live")}
+  end
+
+  @impl true
+  def handle_event("manage_broadcast", %{"broadcast_id" => broadcast_id}, socket) do
+    {:noreply, push_navigate(socket, to: ~p"/channels/broadcasts/#{broadcast_id}/manage")}
+  end
+
+  @impl true
+  def handle_event("view_recording", %{"recording_id" => recording_id}, socket) do
+    {:noreply, push_navigate(socket, to: ~p"/recordings/#{recording_id}")}
+  end
+
+  defp add_broadcast_settings(broadcast_attrs, account) do
+    limits = get_broadcast_limits(account)
+
+    broadcast_attrs
+    |> Map.put("max_viewers", limits.max_viewers_per_broadcast)
+    |> Map.put("max_duration_minutes", limits.max_duration_minutes)
+    |> Map.put("recording_enabled", limits.recording_enabled)
+  end
+
+  # ============================================================================
+  # SAFE DATA LOADING FUNCTIONS FOR BROADCASTS (NEW)
+  # ============================================================================
+
+  defp safe_get_active_broadcasts(user_id) do
+    try do
+      Sessions.list_user_active_broadcasts(user_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_scheduled_broadcasts(user_id) do
+    try do
+      Sessions.list_user_scheduled_broadcasts(user_id, days_ahead: 30)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_recent_broadcasts(user_id) do
+    try do
+      Sessions.list_user_recent_broadcasts(user_id, days_back: 7)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_broadcast_analytics(user_id) do
+    try do
+      Analytics.get_user_broadcast_analytics(user_id)
+    rescue
+      _ -> %{
+        total_broadcasts: 0,
+        total_viewers: 0,
+        total_watch_time_hours: 0,
+        average_duration_minutes: 0,
+        engagement_rate: 0,
+        recorded_broadcasts_count: 0
+      }
+    end
+  end
+
+  defp safe_get_channel_broadcast_activity(user_id) do
+    try do
+      Analytics.get_channel_broadcast_activity(user_id)
+    rescue
+      _ -> %{total_channel_broadcasts: 0, avg_channel_viewers: 0}
+    end
+  end
+
+  defp safe_get_portfolio_broadcast_activity(user_id) do
+    try do
+      Analytics.get_portfolio_broadcast_activity(user_id)
+    rescue
+      _ -> %{total_portfolio_showcases: 0, avg_showcase_engagement: 0}
+    end
+  end
+
+  defp safe_get_monetization_insights(user_id) do
+    try do
+      Revenue.get_broadcast_monetization_insights(user_id)
+    rescue
+      _ -> %{potential_revenue: 0, recorded_content_value: 0}
+    end
+  end
+
+  defp safe_get_recording_library(user_id) do
+    try do
+      Sessions.list_user_broadcast_recordings(user_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp get_broadcast_usage(user_id) do
+    try do
+      Sessions.get_user_broadcast_usage(user_id)
+    rescue
+      _ -> %{concurrent_broadcasts: 0, monthly_broadcasts: 0}
+    end
+  end
+
+  # ============================================================================
+  # BROADCAST DATA LOADING (NEW)
+  # ============================================================================
+
+  defp load_broadcast_data(user, account) do
+    if Features.FeatureGate.can_access_feature?(account, :live_broadcast) do
+      %{
+        active_broadcasts: safe_get_active_broadcasts(user.id),
+        scheduled_broadcasts: safe_get_scheduled_broadcasts(user.id),
+        recent_broadcasts: safe_get_recent_broadcasts(user.id),
+        broadcast_analytics: safe_get_broadcast_analytics(user.id),
+        channel_activity: safe_get_channel_broadcast_activity(user.id),
+        portfolio_activity: safe_get_portfolio_broadcast_activity(user.id),
+        monetization_potential: safe_get_monetization_insights(user.id),
+        recording_library: safe_get_recording_library(user.id),
+        broadcast_limits: get_broadcast_limits(account),
+        current_usage: get_broadcast_usage(user.id),
+        can_go_live: can_user_go_live?(user, account),
+        live_quota_remaining: get_live_quota_remaining(user.id, account)
+      }
+    else
+      %{
+        active_broadcasts: [],
+        scheduled_broadcasts: [],
+        recent_broadcasts: [],
+        broadcast_analytics: %{},
+        channel_activity: %{},
+        portfolio_activity: %{},
+        monetization_potential: %{},
+        recording_library: [],
+        broadcast_limits: %{},
+        current_usage: %{},
+        can_go_live: false,
+        live_quota_remaining: 0,
+        upgrade_prompt: true,
+        tier_required: "creator"
+      }
+    end
+  end
+
+  defp get_broadcast_limits(account) do
+    case account.subscription_tier do
+      "creator" ->
+        %{
+          max_concurrent_broadcasts: 1,
+          max_viewers_per_broadcast: 25,
+          max_duration_minutes: 60,
+          recording_enabled: true,
+          recording_auto_archive: true,
+          analytics_retention_days: 30,
+          monetization_enabled: false
+        }
+      "professional" ->
+        %{
+          max_concurrent_broadcasts: 1,
+          max_viewers_per_broadcast: 100,
+          max_duration_minutes: 180,
+          recording_enabled: true,
+          recording_auto_archive: true,
+          analytics_retention_days: 90,
+          monetization_enabled: true
+        }
+      "enterprise" ->
+        %{
+          max_concurrent_broadcasts: 3,
+          max_viewers_per_broadcast: -1,
+          max_duration_minutes: -1,
+          recording_enabled: true,
+          recording_auto_archive: true,
+          analytics_retention_days: 365,
+          monetization_enabled: true
+        }
+      _ ->
+        %{
+          max_concurrent_broadcasts: 0,
+          max_viewers_per_broadcast: 0,
+          max_duration_minutes: 0,
+          recording_enabled: false,
+          recording_auto_archive: false,
+          analytics_retention_days: 0,
+          monetization_enabled: false
+        }
+    end
+  end
+
+  defp can_user_go_live?(user, account) do
+    limits = get_broadcast_limits(account)
+    usage = get_broadcast_usage(user.id)
+
+    Features.FeatureGate.can_access_feature?(account, :live_broadcast) &&
+    usage.concurrent_broadcasts < limits.max_concurrent_broadcasts
+  end
+
+  defp get_live_quota_remaining(user_id, account) do
+    limits = get_broadcast_limits(account)
+    usage = get_broadcast_usage(user_id)
+
+    case limits.max_concurrent_broadcasts do
+      -1 -> :unlimited
+      max -> max - usage.concurrent_broadcasts
+    end
+  end
+
   # ============================================================================
   # REVENUE CENTER HELPER FUNCTIONS
   # ============================================================================
@@ -6424,6 +7301,241 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
 
     Map.merge(base_sections, advanced_sections)
+  end
+
+    defp validate_collaboration_access(account, portfolio_id) do
+    portfolio = Portfolios.get_portfolio!(portfolio_id)
+
+    cond do
+      not Features.FeatureGate.can_access_feature?(account, :real_time_collaboration) ->
+        {:error, "Real-time collaboration requires Creator tier or higher"}
+
+      not collaboration_enabled_for_portfolio?(portfolio) ->
+        {:error, "Collaboration is not enabled for this portfolio"}
+
+      reached_collaboration_limit?(account, portfolio_id) ->
+        {:error, "Collaboration limit reached for your subscription tier"}
+
+      true ->
+        {:ok, portfolio}
+    end
+  end
+
+  defp validate_mobile_collaboration_access(account, portfolio_id) do
+    case validate_collaboration_access(account, portfolio_id) do
+      {:ok, portfolio} ->
+        if Features.FeatureGate.can_access_feature?(account, :mobile_collaboration) do
+          {:ok, portfolio}
+        else
+          {:error, "Mobile collaboration requires Professional tier or higher"}
+        end
+
+      error ->
+        error
+    end
+  end
+
+  defp get_device_info_from_socket(socket) do
+    user_agent = get_connect_info(socket, :user_agent) || ""
+
+    %{
+      device_type: if(String.contains?(user_agent, "Mobile"), do: "mobile", else: "desktop"),
+      is_mobile: String.contains?(user_agent, "Mobile"),
+      supports_real_time: true,
+      screen_size: "unknown"
+    }
+  end
+
+  defp get_user_portfolio_permissions(portfolio_id, user_id) do
+    # Look up user permissions for this portfolio
+    case :ets.lookup(:portfolio_permissions, {portfolio_id, user_id}) do
+      [{_key, permissions}] ->
+        {:ok, permissions}
+
+      [] ->
+        {:error, :no_permissions}
+    end
+  end
+
+  defp get_mobile_collaboration_permissions(portfolio, user) do
+    base_permissions = get_user_portfolio_permissions(portfolio, user)
+
+    # Mobile collaboration might have restricted permissions
+    %{base_permissions |
+      can_edit_all: base_permissions.can_edit_all && portfolio.mobile_editing_enabled,
+      mobile_optimized: true,
+      supports_voice_input: true,
+      supports_camera: true
+    }
+  end
+
+  defp get_mobile_collaboration_options(portfolio_id, account) do
+    %{
+      voice_editing: Features.FeatureGate.can_access_feature?(account, :voice_editing),
+      camera_integration: Features.FeatureGate.can_access_feature?(account, :camera_integration),
+      offline_sync: Features.FeatureGate.can_access_feature?(account, :offline_collaboration),
+      touch_optimized_ui: true,
+      gesture_controls: account.subscription_tier in ["professional", "enterprise"]
+    }
+  end
+
+  defp update_collaboration_data_with_invitation(collaboration_data, invitation) do
+    updated_sent = [invitation | collaboration_data.sent_invitations]
+    %{collaboration_data | sent_invitations: updated_sent}
+  end
+
+  defp update_collaboration_data_with_new_collaborator(collaboration_data, portfolio_id, user) do
+    # Find the collaboration session and add the new collaborator
+    updated_active = Enum.map(collaboration_data.active_collaborations, fn collab ->
+      if collab.portfolio_id == portfolio_id do
+        updated_collaborators = [user | collab.other_collaborators]
+        %{collab | other_collaborators: updated_collaborators}
+      else
+        collab
+      end
+    end)
+
+    %{collaboration_data | active_collaborations: updated_active}
+  end
+
+  defp remove_pending_invitation(collaboration_data, token) do
+    updated_sent = Enum.reject(collaboration_data.sent_invitations, &(&1.token == token))
+    %{collaboration_data | sent_invitations: updated_sent}
+  end
+
+  defp add_real_time_activity(collaboration_data, portfolio_id, section_id, operation, editor_user) do
+    # Add real-time activity indicator
+    activity = %{
+      portfolio_id: portfolio_id,
+      section_id: section_id,
+      operation_type: operation.type,
+      editor: editor_user,
+      timestamp: DateTime.utc_now()
+    }
+
+    recent_activities = [activity | Map.get(collaboration_data, :recent_activities, [])]
+    |> Enum.take(10) # Keep only latest 10 activities
+
+    %{collaboration_data | recent_activities: recent_activities}
+  end
+
+  defp collaboration_enabled_for_portfolio?(portfolio) do
+    # Check if collaboration is enabled for this specific portfolio
+    Map.get(portfolio.settings || %{}, "collaboration_enabled", true)
+  end
+
+  defp reached_collaboration_limit?(account, portfolio_id) do
+    # Check if user has reached their collaboration limit
+    current_sessions = get_user_active_collaboration_count(account.user_id)
+    max_sessions = Features.FeatureGate.get_limit(account, :max_collaboration_sessions)
+
+    current_sessions >= max_sessions
+  end
+
+  defp get_user_active_collaboration_count(user_id) do
+    case :ets.match(:portfolio_sessions, {{user_id, :"$1"}, :"$2"}) do
+      sessions when is_list(sessions) -> length(sessions)
+      _ -> 0
+    end
+  end
+
+  defp get_portfolio_active_sessions(portfolio_id) do
+    case :ets.match(:portfolio_presence, {{portfolio_id, :"$1"}, :"$2"}) do
+      sessions when is_list(sessions) ->
+        Enum.map(sessions, fn [user_id, presence_data] ->
+          %{
+            user_id: user_id,
+            username: presence_data.username,
+            joined_at: presence_data.joined_at,
+            active_section: presence_data.active_section,
+            device_type: presence_data.device_type
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp get_last_collaborative_edit(portfolio_id) do
+    case :ets.lookup(:portfolio_analytics, portfolio_id) do
+      [{^portfolio_id, analytics}] ->
+        analytics.last_activity
+
+      [] ->
+        nil
+    end
+  end
+
+  defp get_portfolio_collaboration_settings(portfolio_id) do
+    # Get collaboration settings for portfolio
+    %{
+      collaboration_enabled: true,
+      auto_save: true,
+      conflict_resolution: :operational_transform,
+      max_collaborators: 10,
+      section_locking: true,
+      mobile_collaboration: true
+    }
+  end
+
+  defp get_other_collaborators(portfolio_id, exclude_user_id) do
+    case :ets.match(:portfolio_presence, {{portfolio_id, :"$1"}, :"$2"}) do
+      sessions when is_list(sessions) ->
+        sessions
+        |> Enum.reject(fn [user_id, _] -> user_id == exclude_user_id end)
+        |> Enum.map(fn [user_id, presence_data] ->
+          %{
+            user_id: user_id,
+            username: presence_data.username,
+            avatar_url: presence_data.avatar_url,
+            active_section: presence_data.active_section,
+            last_activity: presence_data.last_activity
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp get_session_collaborators(portfolio_id) do
+    get_other_collaborators(portfolio_id, nil)
+  end
+
+  # ============================================================================
+  # ETS TABLE INITIALIZATION (Add to mount/3 or init)
+  # ============================================================================
+
+  defp ensure_collaboration_ets_tables do
+    # Initialize ETS tables for collaboration if they don't exist
+    tables = [
+      :portfolio_invitations,
+      :portfolio_permissions,
+      :portfolio_presence,
+      :portfolio_sessions,
+      :portfolio_analytics,
+      :portfolio_sections,
+      :user_collaboration_stats,
+      :collaboration_history
+    ]
+
+    Enum.each(tables, fn table_name ->
+      case :ets.whereis(table_name) do
+        :undefined ->
+          :ets.new(table_name, [:set, :public, :named_table])
+        _ ->
+          :ok
+      end
+    end)
+  end
+
+  # Add this to the mount function
+  defp initialize_collaboration_system do
+    ensure_collaboration_ets_tables()
+
+    # Subscribe to collaboration events
+    PubSub.subscribe(Frestyl.PubSub, "collaboration:global")
   end
 
   # ============================================================================
@@ -6752,5 +7864,214 @@ defmodule FrestylWeb.PortfolioHubLive do
     |> DateTime.to_naive()
     |> NaiveDateTime.to_iso8601()
     |> String.slice(0, 16)  # Remove seconds for datetime-local input
+  end
+
+    defp get_studio_tools_for_account(account) do
+    base_tools = [
+      %{id: "text_editor", name: "Text Editor", icon: "📝", category: "writing"},
+      %{id: "audio_recorder", name: "Audio Recorder", icon: "🎙️", category: "audio"}
+    ]
+
+    creator_tools = if Features.FeatureGate.can_access_feature?(account, :real_time_collaboration) do
+      [
+        %{id: "collaboration_editor", name: "Collaborative Editor", icon: "👥", category: "collaboration"},
+        %{id: "script_editor", name: "Script Editor", icon: "📋", category: "writing"},
+        %{id: "voice_recorder", name: "Voice Recorder", icon: "🎤", category: "audio"}
+      ]
+    else
+      []
+    end
+
+    professional_tools = if Features.FeatureGate.can_access_feature?(account, :audio_creation) do
+      [
+        %{id: "beat_machine", name: "Beat Machine", icon: "🥁", category: "music"},
+        %{id: "audio_mixer", name: "Audio Mixer", icon: "🎛️", category: "audio"},
+        %{id: "ai_assistant", name: "AI Assistant", icon: "🤖", category: "ai"}
+      ]
+    else
+      []
+    end
+
+    base_tools ++ creator_tools ++ professional_tools
+  end
+
+  defp get_tools_for_enhancement(enhancement_type, account) do
+    case enhancement_type do
+      :voice_intro ->
+        tools = ["audio_recorder", "script_editor"]
+        if Features.FeatureGate.can_access_feature?(account, :real_time_collaboration) do
+          tools ++ ["collaboration_editor"]
+        else
+          tools
+        end
+
+      :writing_enhancement ->
+        tools = ["text_editor"]
+        if Features.FeatureGate.can_access_feature?(account, :real_time_collaboration) do
+          tools ++ ["collaboration_editor", "ai_assistant"]
+        else
+          tools
+        end
+
+      :background_music ->
+        if Features.FeatureGate.can_access_feature?(account, :audio_creation) do
+          ["beat_machine", "audio_mixer", "audio_recorder"]
+        else
+          ["audio_recorder"]
+        end
+
+      :creator_lab ->
+        if Features.FeatureGate.can_access_feature?(account, :creator_lab) do
+          ["text_editor", "audio_recorder", "ai_assistant", "collaboration_editor"]
+        else
+          []
+        end
+
+      _ ->
+        ["text_editor", "audio_recorder"]
+    end
+  end
+
+  defp get_layout_for_enhancement(enhancement_type) do
+    case enhancement_type do
+      :voice_intro ->
+        %{
+          collaboration_mode: "audio_with_script",
+          primary_tools: ["script_editor", "audio_recorder"],
+          layout: %{
+            left_dock: ["script_editor"],
+            right_dock: ["chat"],
+            bottom_dock: ["audio_recorder"]
+          }
+        }
+
+      :writing_enhancement ->
+        %{
+          collaboration_mode: "collaborative_writing",
+          primary_tools: ["text_editor", "collaboration_editor"],
+          layout: %{
+            left_dock: ["text_editor"],
+            right_dock: ["chat"],
+            bottom_dock: []
+          }
+        }
+
+      :background_music ->
+        %{
+          collaboration_mode: "audio_production",
+          primary_tools: ["beat_machine", "audio_mixer"],
+          layout: %{
+            left_dock: ["beat_machine"],
+            right_dock: ["chat"],
+            bottom_dock: ["audio_mixer"]
+          }
+        }
+
+      :creator_lab ->
+        %{
+          collaboration_mode: "multimedia_creation",
+          primary_tools: ["text_editor", "audio_recorder", "ai_assistant"],
+          layout: %{
+            left_dock: ["text_editor"],
+            right_dock: ["chat"],
+            bottom_dock: ["audio_recorder"]
+          }
+        }
+
+      _ ->
+        %{
+          collaboration_mode: "general",
+          primary_tools: ["text_editor"],
+          layout: %{
+            left_dock: ["text_editor"],
+            right_dock: ["chat"],
+            bottom_dock: []
+          }
+        }
+    end
+  end
+
+  defp create_contextual_studio_session(user, account, session_type, socket) do
+    # Validate feature access
+    case session_type do
+      "voice_intro" ->
+        if Features.FeatureGate.can_access_feature?(account, :voice_recording) do
+          create_studio_session_with_context(user, :voice_intro)
+        else
+          {:error, :upgrade_required}
+        end
+
+      "writing_lab" ->
+        if Features.FeatureGate.can_access_feature?(account, :real_time_collaboration) do
+          create_studio_session_with_context(user, :writing_enhancement)
+        else
+          {:error, :upgrade_required}
+        end
+
+      "audio_studio" ->
+        if Features.FeatureGate.can_access_feature?(account, :audio_creation) do
+          create_studio_session_with_context(user, :background_music)
+        else
+          {:error, :upgrade_required}
+        end
+
+      _ ->
+        create_studio_session_with_context(user, :general)
+    end
+  end
+
+  defp create_studio_session_with_context(user, enhancement_type) do
+    session_attrs = %{
+      "title" => "#{String.capitalize(to_string(enhancement_type))} Studio",
+      "session_type" => "portfolio_enhancement",
+      "enhancement_context" => %{type: enhancement_type},
+      "creator_id" => user.id,
+      "host_id" => user.id,
+      "is_public" => false
+    }
+
+    case Sessions.create_studio_session(session_attrs) do
+      {:ok, session} ->
+        {:ok, ~p"/studio/#{session.id}"}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp launch_quick_studio_session(socket, enhancement_type, tools) do
+    user = socket.assigns.user
+    layout_config = get_layout_for_enhancement(enhancement_type)
+
+    session_attrs = %{
+      "title" => "Quick #{String.capitalize(to_string(enhancement_type))} Session",
+      "session_type" => "portfolio_enhancement",
+      "enhancement_context" => %{
+        type: enhancement_type,
+        tools: tools,
+        layout: layout_config
+      },
+      "creator_id" => user.id,
+      "host_id" => user.id,
+      "is_public" => false
+    }
+
+    case Sessions.create_studio_session(session_attrs) do
+      {:ok, session} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Studio session launched!")
+         |> push_navigate(to: ~p"/studio/#{session.id}")}
+
+      {:error, _changeset} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to create studio session")}
+    end
+  end
+
+  defp show_upgrade_prompt(socket, feature_name) do
+    socket
+    |> assign(:show_upgrade_modal, true)
+    |> put_flash(:warning, "#{String.capitalize(feature_name)} requires a higher subscription tier")
   end
 end

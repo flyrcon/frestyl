@@ -42,13 +42,19 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
   end
 
   @impl true
-  def handle_info({:preview_update, customization, css}, socket) do
-    socket =
-      socket
-      |> assign(:customization, customization)
-      |> assign(:preview_css, css)
-      |> push_event("update_preview_styles", %{css: css})
+  def handle_info({:preview_update, data}, socket) when is_map(data) do
+    css = Map.get(data, :css, "")
+    customization = Map.get(data, :customization, %{})
 
+    {:noreply, socket
+    |> assign(:portfolio_css, css)
+    |> assign(:customization, customization)}
+  end
+
+  # Catch-all for any other preview messages
+  @impl true
+  def handle_info(msg, socket) do
+    IO.puts("🔥 LivePreview received unhandled message: #{inspect(msg)}")
     {:noreply, socket}
   end
 

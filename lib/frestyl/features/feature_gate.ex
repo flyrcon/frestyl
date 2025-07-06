@@ -26,6 +26,12 @@ defmodule Frestyl.Features.FeatureGate do
       :video_recording ->
         check_video_limit(limits, current_usage, context)
 
+      :live_broadcast ->
+        limits.live_broadcast_enabled != false
+
+      :live_broadcast ->
+        Map.get(limits, :live_broadcast_enabled, false) != false
+
       :cross_account_sharing ->
         limits.cross_account_sharing != :disabled
 
@@ -38,8 +44,8 @@ defmodule Frestyl.Features.FeatureGate do
       {:collaborator_invite, count} ->
         check_collaborator_limit(limits, current_usage, count)
 
-          :service_booking ->
-      limits.service_booking_enabled
+      :service_booking ->
+        limits.service_booking_enabled
 
       :service_creation ->
         check_service_limit(limits, current_usage)
@@ -522,16 +528,86 @@ defmodule Frestyl.Features.FeatureGate do
     end
   end
 
-  defp get_account_limits(account) do
-    tier = normalize_subscription_tier(account.subscription_tier)
+  def get_account_limits(account) do
+    subscription_tier = Map.get(account, :subscription_tier, "personal")
 
-    case tier do
-      :free -> free_limits()           # Add case for free tier
-      :personal -> personal_limits()
-      :creator -> creator_limits()
-      :professional -> professional_limits()
-      :enterprise -> enterprise_limits()
-      _ -> free_limits()               # Default to free for unknown tiers
+    case subscription_tier do
+
+      "free" ->
+        %{
+          cross_account_sharing: :disabled,
+          real_time_collaboration: false,
+          custom_branding: false,
+          analytics_depth: :basic,
+          max_collaborators: 1,
+          storage_quota_gb: 0.5,
+          max_stories: 1,
+          story_type_access: [:personal_narrative],
+          video_recording_minutes: 5,
+          live_broadcast_enabled: false,
+          service_booking_enabled: false,
+          service_calendar_integration: false,
+          service_analytics_enabled: false,
+          creator_lab_enabled: false,
+          voice_recording_enabled: false,
+          audio_creation_enabled: false
+        }
+
+      "personal" ->
+        %{
+          cross_account_sharing: :view_only,
+          real_time_collaboration: false,
+          custom_branding: false,
+          analytics_depth: :basic,
+          max_collaborators: 2,
+          storage_quota_gb: 1,
+          max_stories: 3,
+          story_type_access: [:personal_narrative, :professional_showcase],
+          video_recording_minutes: 30,
+          live_broadcast_enabled: false  # ADD THIS LINE
+        }
+
+      "creator" ->
+        %{
+          cross_account_sharing: :edit,
+          real_time_collaboration: true,
+          custom_branding: false,
+          analytics_depth: :intermediate,
+          max_collaborators: 10,
+          storage_quota_gb: 10,
+          max_stories: 25,
+          story_type_access: [:personal_narrative, :professional_showcase, :case_study],
+          video_recording_minutes: 120,
+          live_broadcast_enabled: true   # ADD THIS LINE
+        }
+
+      "professional" ->
+        %{
+          cross_account_sharing: :full,
+          real_time_collaboration: true,
+          custom_branding: true,
+          analytics_depth: :advanced,
+          max_collaborators: 50,
+          storage_quota_gb: 100,
+          max_stories: -1,
+          story_type_access: [:all],
+          video_recording_minutes: -1,
+          live_broadcast_enabled: true   # ADD THIS LINE
+        }
+
+      "enterprise" ->
+        %{
+          cross_account_sharing: :full,
+          real_time_collaboration: true,
+          custom_branding: true,
+          analytics_depth: :enterprise,
+          max_collaborators: -1,
+          storage_quota_gb: -1,
+          max_stories: -1,
+          story_type_access: [:all],
+          video_recording_minutes: -1,
+          live_broadcast_enabled: true   # ADD THIS LINE
+        }
     end
   end
 
@@ -717,6 +793,18 @@ defmodule Frestyl.Features.FeatureGate do
             pro: %{usage_type: :history_days, limit: 30},
             premium: %{usage_type: :history_days, limit: 365},
             enterprise: true
+          }
+        }
+
+      :live_broadcast ->
+        %{
+          name: "Live Broadcasting",
+          description: "Host live portfolio showcases and presentations",
+          tiers: %{
+            personal: false,
+            creator: %{usage_type: :broadcasts, limit: 1},
+            professional: %{usage_type: :broadcasts, limit: 1},
+            enterprise: %{usage_type: :broadcasts, limit: 3}
           }
         }
 

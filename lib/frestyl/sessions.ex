@@ -80,6 +80,12 @@ defmodule Frestyl.Sessions do
     |> Repo.insert()
   end
 
+  def create_studio_session(attrs) do
+    %Session{}
+    |> Session.studio_changeset(attrs)
+    |> Repo.insert()
+  end
+
   # Helper function to ensure datetime is in UTC
   defp ensure_utc_datetime(params, key) do
     case Map.get(params, key) do

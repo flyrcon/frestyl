@@ -50,6 +50,11 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         available_layouts = get_available_layouts(account)
         brand_constraints = get_brand_constraints(account)
 
+        # Subscribe to preview updates for live preview functionality
+        if connected?(socket) do
+          Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
+        end
+
         socket = socket
         |> assign_core_data(portfolio, account, user)
         |> assign_features_and_limits(features, limits)
@@ -70,9 +75,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         else
           socket
         end
-          IO.puts("🔥 DEBUG: Is dynamic layout: #{socket.assigns[:is_dynamic_layout]}")
-  IO.puts("🔥 DEBUG: Available tabs: #{inspect(get_available_tabs(socket.assigns))}")
-
 
         {:ok, socket}
 
@@ -201,18 +203,30 @@ end
   end
 
   defp assign_design_system(socket, portfolio, account, available_layouts, brand_constraints) do
-    # Get layout from portfolio, with fallback
-    current_layout = Map.get(portfolio, :layout, "professional_service")
+    customization = portfolio.customization || %{}  # Move this line to the top
 
-    # Get customization from portfolio, with fallback
-    customization = Map.get(portfolio, :customization, %{})
+    # Extract design values with persistence
+    portfolio_layout = customization["layout"] || "minimal"
+    primary_color = customization["primary_color"] || "#374151"
+    secondary_color = customization["secondary_color"] || "#6b7280"
+    accent_color = customization["accent_color"] || "#059669"
+    background_color = customization["background_color"] || "#ffffff"
+    text_color = customization["text_color"] || "#1f2937"
+
+    # Generate CSS for live preview (now customization is defined)
+    portfolio_css = generate_portfolio_css(customization)
 
     socket
+    |> assign(:portfolio_layout, portfolio_layout)
+    |> assign(:primary_color, primary_color)
+    |> assign(:secondary_color, secondary_color)
+    |> assign(:accent_color, accent_color)
+    |> assign(:background_color, background_color)
+    |> assign(:text_color, text_color)
+    |> assign(:customization, customization)
+    |> assign(:portfolio_css, portfolio_css)
     |> assign(:available_layouts, available_layouts)
     |> assign(:brand_constraints, brand_constraints)
-    |> assign(:current_layout, current_layout)
-    |> assign(:design_tokens, generate_design_tokens(portfolio, brand_constraints))
-    |> assign(:customization, customization)
   end
 
   defp assign_ui_state(socket) do
@@ -271,38 +285,21 @@ end
   end
 
   @impl true
-  def handle_event("edit_section", %{"section-id" => section_id}, socket) when section_id != "" do
-    section_id_int = String.to_integer(section_id)
-    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
-
-    IO.puts("🔥 EDITING SECTION: #{section_id_int}")
-
-    socket = socket
-    |> assign(:editing_section, section)
-    |> assign(:editing_mode, :content)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("edit_section", %{"section_id" => section_id}, socket) do
-    IO.puts("🔧 Edit section clicked: #{section_id}")
-
+  def handle_event("edit_section", %{"id" => section_id}, socket) do
     section_id_int = String.to_integer(section_id)
     section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
 
     if section do
-      # Simply transition to editing mode without complex operations
+      IO.puts("🔥 EDITING SECTION: #{section.title}")
+
       {:noreply, socket
-      |> assign(:section_edit_id, to_string(section_id_int))
       |> assign(:editing_section, section)
-      |> assign(:section_edit_tab, "content")
-      |> assign(:active_tab, :sections)
-      |> assign(:unsaved_changes, false)}
+      |> assign(:section_edit_mode, true)}
     else
       {:noreply, put_flash(socket, :error, "Section not found")}
     end
   end
+
 
   # FIXED: Close section editor that properly resets state
   @impl true
@@ -376,34 +373,6 @@ end
     end
   end
 
-    @impl true
-  def handle_event("edit_section", %{"section_id" => section_id}, socket) do
-    IO.puts("🔧 Edit section clicked: #{section_id}")
-
-    section_id_int = String.to_integer(section_id)
-    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
-
-    if section do
-      # Get media files for this section
-      section_media = try do
-        Portfolios.list_section_media(section.id)
-      rescue
-        _ -> []
-      end
-
-      {:noreply, socket
-      |> assign(:section_edit_id, to_string(section_id_int))
-      |> assign(:editing_section, section)
-      |> assign(:editing_section_media, section_media)
-      |> assign(:section_edit_tab, "content")
-      |> assign(:active_tab, :sections)
-      |> assign(:unsaved_changes, false)
-      |> push_event("section-edit-started", %{section_id: section_id_int})}
-    else
-      {:noreply, put_flash(socket, :error, "Section not found")}
-    end
-  end
-
   @impl true
   def handle_event("close_section_editor", _params, socket) do
     IO.puts("🔧 Closing section editor")
@@ -417,22 +386,49 @@ end
     |> push_event("section-edit-cancelled", %{})}
   end
 
-
   @impl true
-  def handle_event("save_section", %{"section_id" => section_id}, socket) do
-    IO.puts("🔧 Save section clicked: #{section_id}")
-
+  def handle_event("save_section", %{"id" => section_id}, socket) do
     section_id_int = String.to_integer(section_id)
     editing_section = socket.assigns.editing_section
 
     if editing_section && editing_section.id == section_id_int do
-      # Section is already saved from field updates, just provide feedback
-      {:noreply, socket
-      |> put_flash(:info, "Section '#{editing_section.title}' saved successfully!")
-      |> assign(:unsaved_changes, false)}
+      case Portfolios.update_section(editing_section, %{}) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == section_id_int, do: updated_section, else: s
+          end)
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:editing_section, nil)
+          |> assign(:section_edit_mode, false)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Section saved successfully")
+
+          # Update preview if active
+          socket = if socket.assigns.show_live_preview do
+            broadcast_preview_update(socket)
+            socket
+          else
+            socket
+          end
+
+          {:noreply, socket}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to save section")}
+      end
     else
-      {:noreply, put_flash(socket, :error, "Section not found or not being edited")}
+      {:noreply, put_flash(socket, :error, "Section not found")}
     end
+  end
+
+  @impl true
+  def handle_event("cancel_section_edit", _params, socket) do
+    {:noreply, socket
+    |> assign(:editing_section, nil)
+    |> assign(:section_edit_mode, false)
+    |> assign(:unsaved_changes, false)}
   end
 
   @impl true
@@ -586,6 +582,102 @@ end
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to update color")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_color_live", %{"field" => field, "value" => value}, socket) do
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, field, value)
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(String.to_atom(field), value)
+        |> assign(:unsaved_changes, false)
+
+        # Broadcast to live preview
+        if socket.assigns.show_live_preview do
+          broadcast_preview_update(socket)
+        end
+
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to save design changes")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_color", %{"field" => field, "value" => value}, socket) do
+    # Same as update_color_live but without immediate broadcast
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, field, value)
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(String.to_atom(field), value)
+        |> assign(:unsaved_changes, false)
+
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to save design changes")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_layout_live", %{"field" => "layout", "value" => layout_value}, socket) do
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, "layout", layout_value)
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(:portfolio_layout, layout_value)
+        |> assign(:unsaved_changes, false)
+
+        # Broadcast to live preview
+        if socket.assigns.show_live_preview do
+          broadcast_preview_update(socket)
+        end
+
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to save layout changes")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_layout", %{"field" => "layout", "value" => layout_value}, socket) do
+    # Same as update_layout_live but without immediate broadcast
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, "layout", layout_value)
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(:portfolio_layout, layout_value)
+        |> assign(:unsaved_changes, false)
+
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to save layout changes")}
     end
   end
 
@@ -784,32 +876,41 @@ end
   end
 
   @impl true
-  def handle_event("update_section_content", %{"section_id" => section_id, "field" => field, "value" => value}, socket) do
+  def handle_event("update_section_content", %{"field" => field, "value" => value, "section-id" => section_id}, socket) do
     section_id_int = String.to_integer(section_id)
-    section_to_update = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+    editing_section = socket.assigns.editing_section
 
-    if section_to_update do
-      current_content = section_to_update.content || %{}
-      updated_content = Map.put(current_content, field, String.trim(value))
+    if editing_section && editing_section.id == section_id_int do
+      # Update the section content
+      current_content = editing_section.content || %{}
+      updated_content = Map.put(current_content, field, value)
+      updated_section = %{editing_section | content: updated_content}
 
-      case Portfolios.update_section(section_to_update, %{content: updated_content}) do
-        {:ok, updated_section} ->
+      # Save to database immediately
+      case Portfolios.update_section(editing_section, %{content: updated_content}) do
+        {:ok, saved_section} ->
+          # Update sections list
           updated_sections = Enum.map(socket.assigns.sections, fn s ->
-            if s.id == section_id_int, do: updated_section, else: s
+            if s.id == section_id_int, do: saved_section, else: s
           end)
 
-          editing_section = if socket.assigns[:editing_section] && socket.assigns.editing_section.id == section_id_int do
-            updated_section
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:editing_section, saved_section)
+          |> assign(:unsaved_changes, false)
+
+          # Update live preview
+          socket = if socket.assigns.show_live_preview do
+            broadcast_preview_update(socket)
+            socket
           else
-            socket.assigns[:editing_section]
+            socket
           end
 
-          {:noreply, socket
-          |> assign(:sections, updated_sections)
-          |> assign(:editing_section, editing_section)}
+          {:noreply, socket}
 
         {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to update content")}
+          {:noreply, put_flash(socket, :error, "Failed to save content")}
       end
     else
       {:noreply, socket}
@@ -888,16 +989,52 @@ end
     end
   end
 
-  # Broadcasting helpers for live preview
   defp broadcast_preview_update(socket) do
     portfolio = socket.assigns.portfolio
-    customization = socket.assigns.customization
+    customization = socket.assigns.customization || portfolio.customization || %{}
 
+    # Generate CSS from current customization
+    css = generate_portfolio_css(customization)
+
+    # Broadcast via PubSub to both live_preview and show.ex
     Phoenix.PubSub.broadcast(
       Frestyl.PubSub,
       "portfolio_preview:#{portfolio.id}",
-      {:preview_update, customization, generate_css(customization)}
+      {:preview_update, %{css: css, customization: customization}}
     )
+
+    socket
+  end
+
+  defp generate_portfolio_css(customization) do
+    primary_color = customization["primary_color"] || "#374151"
+    secondary_color = customization["secondary_color"] || "#6b7280"
+    accent_color = customization["accent_color"] || "#059669"
+    background_color = customization["background_color"] || "#ffffff"
+    text_color = customization["text_color"] || "#1f2937"
+
+    """
+    :root {
+      --primary-color: #{primary_color};
+      --secondary-color: #{secondary_color};
+      --accent-color: #{accent_color};
+      --background-color: #{background_color};
+      --text-color: #{text_color};
+    }
+
+    body {
+      background-color: var(--background-color);
+      color: var(--text-color);
+    }
+
+    .primary { color: var(--primary-color); }
+    .secondary { color: var(--secondary-color); }
+    .accent { color: var(--accent-color); }
+
+    .bg-primary { background-color: var(--primary-color); }
+    .bg-secondary { background-color: var(--secondary-color); }
+    .bg-accent { background-color: var(--accent-color); }
+    """
   end
 
   defp broadcast_content_update(socket, section) do
@@ -950,7 +1087,35 @@ end
   # ============================================================================
 
   defp build_preview_url(portfolio, preview_token) do
-    "/live_preview/#{portfolio.id}/#{preview_token}"
+    # Build URL with customization data
+    base_url = "/live_preview/#{portfolio.id}/#{preview_token}"
+
+    # Add preview parameter if needed
+    params = if preview_token do
+      [{"preview", preview_token}]
+    else
+      []
+    end
+
+    # Add customization as URL parameter for immediate CSS application
+    customization = portfolio.customization || %{}
+    if map_size(customization) > 0 do
+      customization_json = Jason.encode!(customization)
+      params = [{"customization", customization_json} | params]
+    end
+
+    # Add cache busting
+    params = [{"t", :os.system_time(:millisecond)} | params]
+
+    if params == [] do
+      base_url
+    else
+      query_string = params
+      |> Enum.map(fn {key, value} -> "#{key}=#{URI.encode(to_string(value))}" end)
+      |> Enum.join("&")
+
+      "#{base_url}?#{query_string}"
+    end
   end
 
   defp render_content_tab(assigns) do
@@ -1044,12 +1209,12 @@ end
               </div>
               <div class="flex items-center space-x-3">
                 <input type="color"
-                      value={get_portfolio_color(@portfolio, color_key)}
+                      value={Map.get(@customization || @portfolio.customization || %{}, color_key, get_default_color(color_key))}
                       phx-change="update_design_color"
                       phx-value-color={color_key}
                       class="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer">
                 <input type="text"
-                      value={get_portfolio_color(@portfolio, color_key)}
+                      value={Map.get(@customization || @portfolio.customization || %{}, color_key, get_default_color(color_key))}
                       phx-change="update_design_color"
                       phx-value-color={color_key}
                       class="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono">
@@ -1270,7 +1435,97 @@ end
     """
   end
 
+  defp render_analytics_tab(assigns) do
+    ~H"""
+    <div class="analytics-tab">
+      <div class="mb-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Portfolio Analytics</h3>
+
+        <div class="space-y-4">
+          <div class="bg-gray-50 rounded-lg p-4">
+            <div class="text-2xl font-bold text-gray-900">0</div>
+            <div class="text-sm text-gray-600">Total Views</div>
+          </div>
+
+          <div class="bg-gray-50 rounded-lg p-4">
+            <div class="text-2xl font-bold text-gray-900">0</div>
+            <div class="text-sm text-gray-600">Unique Visitors</div>
+          </div>
+
+          <div class="bg-gray-50 rounded-lg p-4">
+            <div class="text-2xl font-bold text-gray-900">0%</div>
+            <div class="text-sm text-gray-600">Conversion Rate</div>
+          </div>
+        </div>
+
+        <div class="mt-4 text-xs text-gray-500">
+          Analytics data updates every 24 hours
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @impl true
+  def handle_info({:preview_update, data}, socket) when is_map(data) do
+    css = Map.get(data, :css, "")
+    customization = Map.get(data, :customization, %{})
+
+    {:noreply, socket
+    |> assign(:portfolio_css, css)
+    |> assign(:customization, customization)}
+  end
+
+  @impl true
+  def handle_info({:layout_changed, layout_name, customization}, socket) do
+    # Generate new CSS with the layout change
+    css = generate_portfolio_css(customization)
+
+    {:noreply, socket
+    |> assign(:portfolio_layout, Map.get(customization, "layout", "minimal"))
+    |> assign(:customization, customization)
+    |> assign(:portfolio_css, css)}
+  end
+
+  @impl true
+  def handle_info({:customization_updated, customization}, socket) do
+    # Generate new CSS with updated customization
+    css = generate_portfolio_css(customization)
+
+    {:noreply, socket
+    |> assign(:customization, customization)
+    |> assign(:portfolio_css, css)}
+  end
+
+  # Catch-all for unhandled messages
+  @impl true
+  def handle_info(msg, socket) do
+    IO.puts("🔥 Show received unhandled message: #{inspect(msg)}")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:layout_changed, _layout_name, _customization}, socket) do
+    # Portfolio editor doesn't need to handle its own layout change broadcasts
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(msg, socket) do
+    IO.puts("🔥 PortfolioEditor received unhandled message: #{inspect(msg)}")
+    {:noreply, socket}
+  end
+
   # Helper functions for the improved layout:
+
+  defp get_default_color(color_key) do
+    case color_key do
+      "primary_color" -> "#374151"
+      "secondary_color" -> "#6b7280"
+      "accent_color" -> "#059669"
+      _ -> "#374151"
+    end
+  end
 
   defp get_category_icon(category) do
     case category do
@@ -1337,46 +1592,6 @@ end
       {"contact", _} -> "Contact information and call-to-action"
       _ -> "Content area for #{zone_name} information"
     end
-  end
-
-  defp render_analytics_tab(assigns) do
-    ~H"""
-    <div class="analytics-tab">
-      <div class="mb-6">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Portfolio Analytics</h3>
-
-        <div class="space-y-4">
-          <div class="bg-gray-50 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900">0</div>
-            <div class="text-sm text-gray-600">Total Views</div>
-          </div>
-
-          <div class="bg-gray-50 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900">0</div>
-            <div class="text-sm text-gray-600">Unique Visitors</div>
-          </div>
-
-          <div class="bg-gray-50 rounded-lg p-4">
-            <div class="text-2xl font-bold text-gray-900">0%</div>
-            <div class="text-sm text-gray-600">Conversion Rate</div>
-          </div>
-        </div>
-
-        <div class="mt-4 text-xs text-gray-500">
-          Analytics data updates every 24 hours
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_analytics_tab(assigns) do
-    ~H"""
-    <div class="p-6">
-      <h3 class="text-lg font-semibold text-gray-900 mb-4">Analytics</h3>
-      <p class="text-gray-600">Portfolio analytics will be shown here.</p>
-    </div>
-    """
   end
 
   # Additional event handlers for design and layout updates
@@ -1739,12 +1954,33 @@ end
 
     case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
       {:ok, updated_portfolio} ->
-        {:noreply, assign(socket, :portfolio, updated_portfolio)}
+        # Generate new CSS
+        new_css = generate_portfolio_css(updated_customization)
 
-      {:error, _changeset} ->
-        {:noreply, socket}
-    end
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> assign(:portfolio_css, new_css)
+        |> assign(String.to_atom(color_key), color_value)
+        |> assign(:unsaved_changes, false)
+
+        # Push event to update the hex input field
+        socket = push_event(socket, "update_color_input", %{
+          color_key: color_key,
+          color_value: color_value
+        })
+
+        # Broadcast to live preview
+        if socket.assigns.show_live_preview do
+          broadcast_preview_update(socket)
+        end
+
+      {:noreply, socket}
+
+    {:error, _changeset} ->
+      {:noreply, put_flash(socket, :error, "Failed to save color changes")}
   end
+end
 
   @impl true
   def handle_event("add_block_to_zone", %{"zone" => zone_name}, socket) do

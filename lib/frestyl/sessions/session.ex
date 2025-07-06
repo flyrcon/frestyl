@@ -109,4 +109,12 @@ defmodule Frestyl.Sessions.Session do
         changeset
     end
   end
+
+  def studio_changeset(session, attrs) do
+    session
+    |> cast(attrs, [:title, :session_type, :enhancement_context, :creator_id, :host_id, :is_public])
+    |> validate_required([:title, :session_type, :creator_id])
+    |> validate_inclusion(:session_type, ["portfolio_enhancement", "collaboration", "broadcast"])
+    |> put_change(:status, "active")
+  end
 end

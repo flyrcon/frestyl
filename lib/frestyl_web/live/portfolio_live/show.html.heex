@@ -1,26 +1,27 @@
 <!-- lib/frestyl_web/live/portfolio_live/show.html.heex -->
 
 <div class="min-h-screen bg-gray-50">
-      <%= if assigns[:preview_mode] && @customization do %>
-    <style>
-      :root {
-        --primary-color: <%= Map.get(@customization, "primary_color", "#374151") %>;
-        --accent-color: <%= Map.get(@customization, "accent_color", "#059669") %>;
-      }
-      .portfolio-container {
-        background: var(--primary-color);
-        color: white;
-      }
-      .portfolio-header {
-        background: var(--primary-color);
-        color: white;
-      }
-      .section {
-        background: rgba(255,255,255,0.1);
-        color: white;
-      }
-      .accent { color: var(--accent-color); }
-    </style>
+  <style id="portfolio-custom-styles">
+    <%= raw(@portfolio_css || "") %>
+  </style>
+
+  <%
+    customization = @customization || @portfolio.customization || %{}
+  %>
+
+  <style>
+    :root {
+      --primary-color: <%= Map.get(customization, "primary_color", "#374151") %>;
+      --secondary-color: <%= Map.get(customization, "secondary_color", "#6b7280") %>;
+      --accent-color: <%= Map.get(customization, "accent_color", "#059669") %>;
+    }
+
+    /* Apply custom colors to portfolio elements */
+    .bg-white { background-color: white !important; }
+    .text-gray-900 { color: var(--primary-color) !important; }
+    .border-gray-200 { border-color: var(--secondary-color) !important; }
+    .text-blue-600 { color: var(--accent-color) !important; }
+  </style>
   <% end %>
   <!-- Header -->
   <div class="bg-white shadow-sm border-b border-gray-200">
@@ -180,5 +181,64 @@
   // Basic interactions
   document.addEventListener('DOMContentLoaded', function() {
     console.log('Portfolio show page loaded');
+  });
+
+  // Listen for style updates from parent (portfolio editor)
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'style_update') {
+      updatePortfolioStyles(event.data.css, event.data.customization);
+    }
+  });
+
+  // Listen for live CSS updates
+  window.addEventListener("phx:update_portfolio_styles", (e) => {
+    console.log("🎨 Updating portfolio styles:", e.detail);
+    const styleEl = document.getElementById("portfolio-custom-styles");
+    if (styleEl && e.detail.css) {
+      styleEl.textContent = e.detail.css;
+      console.log("✅ CSS updated successfully");
+    }
+  });
+
+  // Debug: Log current CSS on load
+  document.addEventListener('DOMContentLoaded', () => {
+    const styleEl = document.getElementById("portfolio-custom-styles");
+    if (styleEl) {
+      console.log("🎨 Initial CSS:", styleEl.textContent);
+    }
+  });
+
+  function updatePortfolioStyles(css, customization) {
+    // Update or create the custom style element
+    let styleElement = document.getElementById('portfolio-custom-styles');
+    if (!styleElement) {
+      styleElement = document.createElement('style');
+      styleElement.id = 'portfolio-custom-styles';
+      document.head.appendChild(styleElement);
+    }
+    
+    // Update the CSS content
+    if (css) {
+      styleElement.textContent = css;
+    }
+    
+    // Store current data globally for iframe communication
+    window.currentCustomization = customization;
+    window.currentPortfolioCSS = css;
+    
+    // Add a subtle flash effect to show the update
+    document.body.style.transition = 'background-color 0.3s ease';
+    const originalBg = document.body.style.backgroundColor;
+    document.body.style.backgroundColor = 'rgba(59, 130, 246, 0.05)';
+    setTimeout(() => {
+      document.body.style.backgroundColor = originalBg;
+    }, 300);
+  }
+
+  // Notify parent that preview is ready (for iframe embedding)
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'preview-ready' }, '*');
+    }
   });
 </script>

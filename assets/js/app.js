@@ -12,6 +12,9 @@ import FileUpload from "./hooks/file_upload"
 // Import template hooks
 import TemplateHooks from "./hooks/template_hooks"
 
+// Portfolio collaboration
+import PortfolioCollaboration from './portfolio_collaboration_hooks'
+
 // Import Sortable Hooks
 import SortableHooks from "./hooks/sortable_hooks"
 
@@ -19,6 +22,7 @@ import SortableSections from "./hooks/section_sortable"
 
 // Import Sortable for drag-and-drop
 import Sortable from 'sortablejs'
+
 
 // Add safety checks for potentially undefined imports
 const DragDropOutline = window.DragDropOutline || {};
@@ -329,6 +333,9 @@ let Hooks = {
   VideoCapture,
   ...PortfolioEditorHooks,
   FileUpload,
+
+  // Portfolio Collaboration
+  PortfolioCollaboration,
 
   // Drag & Drop Hooks - FIXED: No duplicates
   SortableSections: SortableHooks.SectionSortable,
