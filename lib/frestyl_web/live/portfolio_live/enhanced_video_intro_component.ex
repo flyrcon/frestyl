@@ -4,6 +4,7 @@
 defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   use FrestylWeb, :live_component
   alias Frestyl.{Portfolios, Accounts}
+  alias Frestyl.Features.TierManager
 
   @impl true
   def mount(socket) do
@@ -34,7 +35,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   @impl true
   def update(%{portfolio: portfolio, current_user: user} = assigns, socket) do
     # Get user subscription tier for quality settings
-    user_tier = get_user_tier(user)
+    user_tier = TierManager.get_user_tier(user)
 
     # Check if video intro section already exists
     existing_video_section = get_existing_video_section(portfolio.id)
@@ -418,31 +419,38 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   # TIER-BASED SETTINGS
   # ============================================================================
 
-  defp get_user_tier(user) do
-    cond do
-      Map.has_key?(user, :subscription_tier) && user.subscription_tier ->
-        user.subscription_tier
-      Map.has_key?(user, :account) && user.account && Map.has_key?(user.account, :subscription_tier) ->
-        user.account.subscription_tier
-      true -> "free"
+  defp get_user_subscription_tier(user) do
+    TierManager.get_user_tier(user)
+  end
+
+  defp get_max_duration_for_tier(tier) do
+    normalized = TierManager.normalize_tier(tier)
+    limits = TierManager.get_tier_limits(normalized)
+
+    # Convert video recording minutes to seconds
+    case limits.video_recording_minutes do
+      :unlimited -> 600  # 10 minutes default for unlimited
+      minutes when is_integer(minutes) -> minutes * 60
+      _ -> 60  # 1 minute fallback
     end
   end
 
-  defp get_max_duration_for_tier("free"), do: 60
-  defp get_max_duration_for_tier("pro"), do: 120
-  defp get_max_duration_for_tier("premium"), do: 180
-  defp get_max_duration_for_tier(_), do: 60
+  defp get_quality_info_for_tier(tier) do
+    normalized = TierManager.normalize_tier(tier)
 
-  defp get_quality_info_for_tier("free") do
-    %{resolution: "720p", bitrate: "1 Mbps", features: ["Basic recording"]}
+    case normalized do
+      "personal" ->
+        %{resolution: "720p", bitrate: "1 Mbps", features: ["Basic recording"]}
+      "creator" ->
+        %{resolution: "1080p", bitrate: "2.5 Mbps", features: ["HD recording", "File upload", "Extended duration"]}
+      "professional" ->
+        %{resolution: "1080p", bitrate: "4 Mbps", features: ["HD recording", "File upload", "Extended duration", "Premium quality"]}
+      "enterprise" ->
+        %{resolution: "4K", bitrate: "8 Mbps", features: ["4K recording", "File upload", "Unlimited duration", "Enterprise quality"]}
+      _ ->
+        get_quality_info_for_tier("personal")
+    end
   end
-  defp get_quality_info_for_tier("pro") do
-    %{resolution: "1080p", bitrate: "2.5 Mbps", features: ["HD recording", "File upload", "Extended duration"]}
-  end
-  defp get_quality_info_for_tier("premium") do
-    %{resolution: "1080p", bitrate: "4 Mbps", features: ["HD recording", "File upload", "Extended duration", "Premium quality"]}
-  end
-  defp get_quality_info_for_tier(_), do: get_quality_info_for_tier("free")
 
   # ============================================================================
   # FILE SAVING AND SECTION CREATION

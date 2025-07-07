@@ -27,7 +27,7 @@ defmodule Frestyl.Accounts.AccountLimits do
 
   defp get_base_limits(:personal) do
     %{
-      max_stories: 3,
+      max_stories: 2,
       storage_quota_gb: 1,
       max_collaborators: 2,
       max_chapters_per_story: 10,

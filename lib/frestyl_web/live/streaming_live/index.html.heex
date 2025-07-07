@@ -6,7 +6,7 @@
         <div>
           <h1 class="text-2xl font-bold text-gray-900">Live Streaming</h1>
           <p class="text-sm text-gray-600">
-            <%= @current_user.subscription_tier |> String.capitalize() %> Plan • 
+            <%= @normalized_tier |> String.capitalize() %> Plan • 
             Max Quality: <%= @streaming_limits.max_quality %> • 
             Max Viewers: <%= if @streaming_limits.max_viewers == -1, do: "Unlimited", else: @streaming_limits.max_viewers %>
           </p>
@@ -343,7 +343,7 @@
           </div>
           
           <!-- Upgrade CTA -->
-          <%= if @current_user.subscription_tier in ["personal", "creator"] do %>
+          <%= if @normalized_tier in ["personal", "creator"] do %>
             <div class="mt-6 pt-4 border-t border-gray-200">
               <button phx-click={JS.navigate("/account/subscription")}
                       class="w-full inline-flex justify-center items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-colors">

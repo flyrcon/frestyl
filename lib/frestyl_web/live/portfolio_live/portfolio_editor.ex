@@ -12,6 +12,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   alias Frestyl.Stories.MediaBinding
   alias Frestyl.Accounts.{User, Account}
   alias FrestylWeb.PortfolioLive.PortfolioPerformance
+  alias Frestyl.Features.TierManager
 
   alias FrestylWeb.PortfolioLive.Components.{ContentRenderer, SectionEditor, MediaLibrary, VideoRecorder}
   alias Frestyl.Studio.PortfolioCollaborationManager
@@ -1024,22 +1025,31 @@ end
   end
 
   defp get_account_features(account) do
-    %{
-      monetization: account.subscription_tier in ["creator", "professional"],
-      streaming: account.subscription_tier in ["professional"],
-      brand_customization: account.subscription_tier in ["creator", "professional"],
-      analytics: true
-    }
+    tier = TierManager.get_account_tier(account)
+    limits = TierManager.get_tier_limits(tier)
+
+    features = []
+    features = if limits.custom_branding, do: [:custom_branding | features], else: features
+    features = if limits.api_access, do: [:api_access | features], else: features
+    features = if limits.analytics_depth in [:advanced, :enterprise], do: [:advanced_analytics | features], else: features
+
+    features
   end
 
   defp get_account_limits(account) do
-    case account.subscription_tier do
-      "personal" -> %{max_sections: 5, max_media_mb: 50}
-      "creator" -> %{max_sections: 15, max_media_mb: 200}
-      "professional" -> %{max_sections: 50, max_media_mb: 1000}
-      _ -> %{max_sections: 5, max_media_mb: 50}
-    end
+    tier = TierManager.get_account_tier(account)
+    limits = TierManager.get_tier_limits(tier)
+
+    %{
+      max_sections: format_limit_for_ui(limits.max_stories),
+      max_media: format_limit_for_ui(limits.storage_quota_gb),
+      max_templates: format_limit_for_ui(limits.max_portfolios)
+    }
   end
+
+  defp format_limit_for_ui(:unlimited), do: -1
+  defp format_limit_for_ui(value) when is_integer(value), do: value
+  defp format_limit_for_ui(_), do: 0
 
   defp load_portfolio_sections(portfolio_id) do
     try do

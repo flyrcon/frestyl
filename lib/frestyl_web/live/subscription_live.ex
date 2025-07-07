@@ -6,23 +6,28 @@ defmodule FrestylWeb.SubscriptionLive do
   alias Frestyl.Portfolios
   alias Frestyl.Billing
   alias Frestyl.Billing.StripeService
+  alias Frestyl.Features.TierManager
 
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
-    limits = Portfolios.get_portfolio_limits(user)
-    usage_data = get_usage_data(user)
+
+    # Normalize user tier using TierManager
+    normalized_tier = TierManager.get_user_tier(user)
+    limits = TierManager.get_tier_limits(normalized_tier)
+    usage_data = get_usage_data(user, normalized_tier)
 
     # Enhanced subscription analytics
     current_subscription = safe_get_subscription(user.id)
     subscription_analytics = safe_get_analytics(user.id)
     upgrade_suggestions = safe_get_suggestions(user)
-    pricing_tiers = get_pricing_tiers()
+    pricing_tiers = get_unified_pricing_tiers()  # Updated function name
 
     {:ok,
     socket
     |> assign(:page_title, "Subscription")
     |> assign(:active_tab, "overview")
+    |> assign(:normalized_tier, normalized_tier)  # Add normalized tier
     |> assign(:limits, limits)
     |> assign(:usage_data, usage_data)
     |> assign(:show_upgrade_modal, false)
@@ -33,6 +38,90 @@ defmodule FrestylWeb.SubscriptionLive do
     |> assign(:loading_upgrade, false)
     |> assign(:show_cancel_modal, false)
     |> assign(:stripe_public_key, Application.get_env(:frestyl, :stripe)[:public_key] || "")}
+  end
+
+  defp get_unified_pricing_tiers do
+    %{
+      "personal" => %{  # Was "free"
+        name: "Personal",
+        price: "Free",
+        price_cents: 0,
+        billing_interval: nil,
+        color: TierManager.get_tier_color("personal"),
+        features: [
+          "2 portfolios maximum",
+          "Video recording",
+          "Collaboration features",
+          "Basic analytics",
+          "1GB storage",
+          "Public sharing"
+        ],
+        limitations: [
+          "No custom domains",
+          "No advanced analytics",
+          "No service booking",
+          "No custom themes"
+        ]
+      },
+      "creator" => %{  # Was "basic"
+        name: "Creator",
+        price: "$19",
+        price_cents: 1900,
+        billing_interval: "month",
+        color: TierManager.get_tier_color("creator"),
+        stripe_price_id: Application.get_env(:frestyl, :stripe)[:creator_price_id],
+        features: [
+          "10 portfolios",
+          "Advanced analytics",
+          "Service booking",
+          "Video recording",
+          "Real-time collaboration",
+          "10GB storage"
+        ],
+        limitations: [
+          "No custom domains",
+          "No white-label options"
+        ]
+      },
+      "professional" => %{  # Was "premium"
+        name: "Professional",
+        price: "$49",
+        price_cents: 4900,
+        billing_interval: "month",
+        color: TierManager.get_tier_color("professional"),
+        stripe_price_id: Application.get_env(:frestyl, :stripe)[:professional_price_id],
+        features: [
+          "Unlimited portfolios",
+          "Custom domains",
+          "Advanced analytics",
+          "Custom branding",
+          "API access",
+          "100GB storage",
+          "Priority support"
+        ],
+        limitations: [],
+        popular: true
+      },
+      "enterprise" => %{  # Was "pro"
+        name: "Enterprise",
+        price: "Contact Sales",
+        price_cents: nil,
+        billing_interval: nil,
+        color: TierManager.get_tier_color("enterprise"),
+        stripe_price_id: Application.get_env(:frestyl, :stripe)[:enterprise_price_id],
+        features: [
+          "Unlimited everything",
+          "White-label options",
+          "Custom domains",
+          "Advanced analytics",
+          "API access",
+          "Unlimited storage",
+          "Priority support",
+          "Custom integrations"
+        ],
+        limitations: []
+      }
+    }
   end
 
   # Add these helper functions at the bottom of your module
@@ -79,37 +168,42 @@ defmodule FrestylWeb.SubscriptionLive do
   @impl true
   def handle_event("upgrade_plan", %{"plan" => plan}, socket) do
     user = socket.assigns.current_user
+    normalized_plan = TierManager.normalize_tier(plan)
     socket = assign(socket, loading_upgrade: true)
 
-    case StripeService.create_checkout_session(user, plan) do
-      {:ok, session} ->
-        {:noreply,
-         socket
-         |> assign(loading_upgrade: false)
-         |> push_event("redirect_to_stripe", %{url: session.url})}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(loading_upgrade: false)
-         |> put_flash(:error, "Failed to start upgrade process: #{reason}")}
-    end
-  rescue
-    _ ->
-      # Fallback to legacy upgrade
-      case upgrade_user_plan(socket.assigns.current_user, plan) do
-        {:ok, _user} ->
+    try do
+      case StripeService.create_checkout_session(user, normalized_plan) do
+        {:ok, session} ->
           {:noreply,
-           socket
-           |> assign(:show_upgrade_modal, false)
-           |> put_flash(:info, "Successfully upgraded to #{String.capitalize(plan)} plan!")
-           |> push_navigate(to: "/portfolios")}
+          socket
+          |> assign(loading_upgrade: false)
+          |> push_event("redirect_to_stripe", %{url: session.url})}
 
-        {:error, _reason} ->
+        {:error, reason} ->
           {:noreply,
-           socket
-           |> put_flash(:error, "Failed to upgrade plan. Please try again.")}
+          socket
+          |> assign(loading_upgrade: false)
+          |> put_flash(:error, "Failed to start upgrade process: #{reason}")}
       end
+    rescue
+      _error ->
+        # Fallback to legacy upgrade - redeclare normalized_plan here
+        normalized_plan = TierManager.normalize_tier(plan)
+
+        case upgrade_user_plan(socket.assigns.current_user, normalized_plan) do
+          {:ok, _user} ->
+            {:noreply,
+            socket
+            |> assign(:show_upgrade_modal, false)
+            |> put_flash(:info, "Successfully upgraded to #{TierManager.get_tier_display_name(normalized_plan)} plan!")
+            |> push_navigate(to: "/portfolios")}
+
+          {:error, _reason} ->
+            {:noreply,
+            socket
+            |> put_flash(:error, "Failed to upgrade plan. Please try again.")}
+        end
+    end
   end
 
   # Subscription cancellation
@@ -238,39 +332,37 @@ defmodule FrestylWeb.SubscriptionLive do
     }
   end
 
-  defp get_usage_data(user) do
+  defp get_usage_data(user, normalized_tier) do
     portfolios = Portfolios.list_user_portfolios(user.id)
-    limits = Portfolios.get_portfolio_limits(user)
+    limits = TierManager.get_tier_limits(normalized_tier)
 
     %{
       portfolios: %{used: length(portfolios), limit: limits.max_portfolios},
-      storage: %{used: 2.3, limit: get_storage_limit_from_limits(limits)},
-      custom_domains: %{used: count_user_custom_domains(user.id), limit: get_domain_limit_from_limits(limits)},
+      storage: %{used: 2.3, limit: get_storage_limit_from_tier(normalized_tier)},
+      custom_domains: %{used: count_user_custom_domains(user.id), limit: get_domain_limit_from_tier(normalized_tier)},
       monthly_views: %{used: 1247, limit: :unlimited},
-      video_recording: %{enabled: limits.video_recording},
-      collaboration: %{enabled: limits.collaboration_features},
-      analytics: %{enabled: limits.advanced_analytics},
-      ats_optimization: %{enabled: limits.ats_optimization}
+      video_recording: %{enabled: TierManager.feature_available?(normalized_tier, :video_recording)},
+      collaboration: %{enabled: TierManager.feature_available?(normalized_tier, :real_time_collaboration)},
+      analytics: %{enabled: TierManager.feature_available?(normalized_tier, :advanced_analytics)},
+      service_booking: %{enabled: TierManager.feature_available?(normalized_tier, :service_booking)}
     }
   end
 
   # Helper functions to work with your limits structure
-  defp get_storage_limit_from_limits(limits) do
-    case limits.max_media_size_mb do
-      50 -> 1    # Free tier gets 1GB total storage
-      200 -> 5   # Basic tier gets 5GB total storage
-      500 -> 15  # Premium tier gets 15GB total storage
-      1000 -> 50 # Pro tier gets 50GB total storage
-      _ -> 1
+  defp get_storage_limit_from_tier(normalized_tier) do
+    limits = TierManager.get_tier_limits(normalized_tier)
+    case limits.storage_quota_gb do
+      :unlimited -> 1000  # Display as 1TB for unlimited
+      gb_limit -> gb_limit
     end
   end
 
-  defp get_domain_limit_from_limits(limits) do
-    if limits.custom_domain do
-      case limits.max_portfolios do
-        15 -> 3      # Premium: 3 domains
-        -1 -> :unlimited  # Pro: unlimited domains
-        _ -> 1       # Fallback: 1 domain
+  defp get_domain_limit_from_tier(normalized_tier) do
+    if TierManager.feature_available?(normalized_tier, :custom_domains) do
+      case normalized_tier do
+        "professional" -> 5
+        "enterprise" -> :unlimited
+        _ -> 0
       end
     else
       0
@@ -282,8 +374,8 @@ defmodule FrestylWeb.SubscriptionLive do
     0
   end
 
-  defp upgrade_user_plan(user, plan) do
-    Accounts.update_user(user, %{"subscription_tier" => plan})
+  defp upgrade_user_plan(user, normalized_plan) do
+    Accounts.update_user(user, %{"subscription_tier" => normalized_plan})
   end
 
   defp get_plan_data do
@@ -312,73 +404,77 @@ defmodule FrestylWeb.SubscriptionLive do
 
   defp get_feature_comparison do
     [
-      {"Portfolios", ["2", "5", "15", "Unlimited"]},
+      {"Portfolios", ["2", "10", "Unlimited", "Unlimited"]},
       {"Custom Domains", ["❌", "❌", "✅", "✅"]},
       {"Advanced Analytics", ["❌", "✅", "✅", "✅"]},
-      {"Custom Themes", ["❌", "✅", "✅", "✅"]},
-      {"ATS Optimization", ["❌", "❌", "✅", "✅"]},
-      {"File Upload Size", ["50MB", "200MB", "500MB", "1GB"]},
+      {"Service Booking", ["❌", "✅", "✅", "✅"]},
+      {"Real-time Collaboration", ["❌", "✅", "✅", "✅"]},
+      {"Storage", ["1GB", "10GB", "100GB", "Unlimited"]},
       {"Video Recording", ["✅", "✅", "✅", "✅"]},
-      {"Collaboration", ["✅", "✅", "✅", "✅"]},
+      {"API Access", ["❌", "❌", "✅", "✅"]},
+      {"White Label", ["❌", "❌", "❌", "✅"]},
       {"Priority Support", ["❌", "❌", "✅", "✅"]}
     ]
   end
 
   # Helper function to get available upgrade tiers based on current tier
   defp get_available_upgrade_tiers(current_tier) do
-    all_tiers = get_pricing_tiers()
+    normalized_current = TierManager.normalize_tier(current_tier)
+    all_tiers = get_unified_pricing_tiers()
 
-    case current_tier do
-      "free" ->
-        Map.take(all_tiers, ["basic", "premium", "pro"])
-      "basic" ->
-        Map.take(all_tiers, ["premium", "pro"])
-      "premium" ->
-        Map.take(all_tiers, ["pro"])
-      "pro" ->
+    case normalized_current do
+      "personal" ->
+        Map.take(all_tiers, ["creator", "professional", "enterprise"])
+      "creator" ->
+        Map.take(all_tiers, ["professional", "enterprise"])
+      "professional" ->
+        Map.take(all_tiers, ["enterprise"])
+      "enterprise" ->
         %{}
       _ ->
-        Map.take(all_tiers, ["basic", "premium", "pro"])
+        Map.take(all_tiers, ["creator", "professional", "enterprise"])
     end
   end
 
   defp get_available_features(tier) do
+    normalized_tier = TierManager.normalize_tier(tier)
+
     [
       %{
         title: "Video Recording",
         description: "Record and add video introductions to your portfolios",
-        available: true,
+        available: true,  # Available on all tiers
         icon: ~s(<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>)
       },
       %{
-        title: "Collaboration Features",
+        title: "Real-time Collaboration",
         description: "Work together with others on your portfolio projects",
-        available: true,
+        available: TierManager.feature_available?(normalized_tier, :real_time_collaboration),
         icon: ~s(<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>)
       },
       %{
         title: "Advanced Analytics",
         description: "Track detailed performance metrics and visitor insights",
-        available: tier in ["basic", "premium", "pro"],
+        available: TierManager.feature_available?(normalized_tier, :advanced_analytics),
         icon: ~s(<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>)
       },
       %{
-        title: "Custom Themes",
-        description: "Customize your portfolio with premium themes and layouts",
-        available: tier in ["basic", "premium", "pro"],
-        icon: ~s(<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>)
+        title: "Service Booking",
+        description: "Allow clients to book your services directly",
+        available: TierManager.feature_available?(normalized_tier, :service_booking),
+        icon: ~s(<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>)
       },
       %{
         title: "Custom Domains",
         description: "Use your own domain for professional branding",
-        available: tier in ["premium", "pro"],
-        icon: ~s(<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>)
+        available: TierManager.feature_available?(normalized_tier, :custom_domains),
+        icon: ~s(<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9 3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>)
       },
       %{
-        title: "ATS Optimization",
-        description: "Make your portfolio searchable and recruiter-friendly",
-        available: tier in ["premium", "pro"],
-        icon: ~s(<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>)
+        title: "White Label",
+        description: "Remove Frestyl branding completely",
+        available: TierManager.feature_available?(normalized_tier, :white_label),
+        icon: ~s(<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>)
       }
     ]
   end
@@ -442,12 +538,27 @@ defmodule FrestylWeb.SubscriptionLive do
     ]
   end
 
-  defp is_feature_available?("video-recording", _tier), do: true
-  defp is_feature_available?("collaboration", _tier), do: true
-  defp is_feature_available?("advanced-analytics", tier), do: tier in ["basic", "premium", "pro"]
-  defp is_feature_available?("custom-themes", tier), do: tier in ["basic", "premium", "pro"]
-  defp is_feature_available?("custom-domain", tier), do: tier in ["premium", "pro"]
-  defp is_feature_available?("ats-optimization", tier), do: tier in ["premium", "pro"]
+  defp is_feature_available?("video-recording", _tier), do: true  # Available on all tiers
+  defp is_feature_available?("collaboration", tier) do
+    normalized_tier = TierManager.normalize_tier(tier)
+    TierManager.feature_available?(normalized_tier, :real_time_collaboration)
+  end
+  defp is_feature_available?("advanced-analytics", tier) do
+    normalized_tier = TierManager.normalize_tier(tier)
+    TierManager.feature_available?(normalized_tier, :advanced_analytics)
+  end
+  defp is_feature_available?("service-booking", tier) do
+    normalized_tier = TierManager.normalize_tier(tier)
+    TierManager.feature_available?(normalized_tier, :service_booking)
+  end
+  defp is_feature_available?("custom-domain", tier) do
+    normalized_tier = TierManager.normalize_tier(tier)
+    TierManager.feature_available?(normalized_tier, :custom_domains)
+  end
+  defp is_feature_available?("white-label", tier) do
+    normalized_tier = TierManager.normalize_tier(tier)
+    TierManager.feature_available?(normalized_tier, :white_label)
+  end
   defp is_feature_available?(_feature, _tier), do: false
 
   @impl true
@@ -499,29 +610,29 @@ defmodule FrestylWeb.SubscriptionLive do
 
         <!-- Current Plan Overview -->
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8">
-          <div class={"h-2 bg-gradient-to-r #{get_plan_data()[@current_user.subscription_tier].color}"}></div>
+          <div class={"h-2 bg-gradient-to-r #{get_plan_data()[@normalized_tier].color}"}></div>
 
           <div class="p-8">
             <div class="flex items-center justify-between mb-6">
               <div class="flex items-center space-x-4">
-                <div class={"w-16 h-16 bg-gradient-to-r #{get_plan_data()[@current_user.subscription_tier].color} rounded-2xl flex items-center justify-center"}>
+                <div class={"w-16 h-16 bg-gradient-to-r #{get_plan_data()[@normalized_tier].color} rounded-2xl flex items-center justify-center"}>
                   <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 0 0 11c0 6-4 9-7 9s-7-3-7-9l0-11z"/>
                   </svg>
                 </div>
                 <div>
-                  <h2 class="text-2xl font-bold text-gray-900"><%= get_plan_data()[@current_user.subscription_tier].name %> Plan</h2>
+                  <h2 class="text-2xl font-bold text-gray-900"><%= get_plan_data()[@normalized_tier].name %> Plan</h2>
                   <p class="text-gray-600">
-                    <%= get_plan_data()[@current_user.subscription_tier].price %>
-                    <%= if get_plan_data()[@current_user.subscription_tier].billing_interval do %>
-                      /<%= get_plan_data()[@current_user.subscription_tier].billing_interval %> • Billed monthly
+                    <%= get_plan_data()[@normalized_tier].price %>
+                    <%= if get_plan_data()[@normalized_tier].billing_interval do %>
+                      /<%= get_plan_data()[@normalized_tier].billing_interval %> • Billed monthly
                     <% end %>
                   </p>
                 </div>
               </div>
 
               <div class="flex items-center space-x-3">
-                <%= if @current_user.subscription_tier != "pro" do %>
+                <%= if @normalized_tier != "pro" do %>
                   <button
                     phx-click="show_upgrade_modal"
                     class="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:shadow-lg transition-all"
@@ -533,7 +644,7 @@ defmodule FrestylWeb.SubscriptionLive do
                   </button>
                 <% end %>
 
-                <%= if @current_user.subscription_tier != "free" do %>
+                <%= if @normalized_tier != "personal" do %>
                   <button
                     phx-click="show_cancel_modal"
                     class="text-red-600 hover:text-red-700 text-sm font-medium px-4 py-2 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
@@ -547,7 +658,7 @@ defmodule FrestylWeb.SubscriptionLive do
               <div>
                 <h3 class="font-bold text-gray-900 mb-4">What's Included</h3>
                 <ul class="space-y-2">
-                  <%= for feature <- get_plan_data()[@current_user.subscription_tier].features do %>
+                  <%= for feature <- get_plan_data()[@normalized_tier].features do %>
                     <li class="flex items-center space-x-2">
                       <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
@@ -558,11 +669,11 @@ defmodule FrestylWeb.SubscriptionLive do
                 </ul>
               </div>
 
-              <%= if length(get_plan_data()[@current_user.subscription_tier].limitations) > 0 do %>
+              <%= if length(get_plan_data()[@normalized_tier].limitations) > 0 do %>
                 <div>
                   <h3 class="font-bold text-gray-900 mb-4">Upgrade to Unlock</h3>
                   <ul class="space-y-2">
-                    <%= for limitation <- get_plan_data()[@current_user.subscription_tier].limitations do %>
+                    <%= for limitation <- get_plan_data()[@normalized_tier].limitations do %>
                       <li class="flex items-center space-x-2">
                         <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -691,7 +802,7 @@ defmodule FrestylWeb.SubscriptionLive do
 
         <!-- Pricing Cards -->
         <div class="p-6">
-          <%= if @current_user.subscription_tier == "pro" do %>
+          <%= if @normalized_tier == "pro" do %>
             <!-- Pro user - show congratulations message -->
             <div class="text-center p-8">
               <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -733,12 +844,12 @@ defmodule FrestylWeb.SubscriptionLive do
             </div>
           <% else %>
             <!-- Show upgrade options for other users -->
-            <div class={"grid grid-cols-1 md:grid-cols-#{case map_size(get_available_upgrade_tiers(@current_user.subscription_tier)) do
+            <div class={"grid grid-cols-1 md:grid-cols-#{case map_size(get_available_upgrade_tiers(@normalized_tier)) do
               1 -> "1"
               2 -> "2"
               _ -> "3"
             end} gap-6"}>
-              <%= for {tier_key, tier} <- get_available_upgrade_tiers(@current_user.subscription_tier) do %>
+              <%= for {tier_key, tier} <- get_available_upgrade_tiers(@normalized_tier) do %>
                 <div class={[
                   "relative bg-white rounded-2xl shadow-sm border-2 transition-all duration-300 hover:shadow-lg p-6",
                   if(Map.get(tier, :popular), do: "border-purple-500 ring-2 ring-purple-200", else: "border-gray-200 hover:border-purple-300")
@@ -805,7 +916,7 @@ defmodule FrestylWeb.SubscriptionLive do
           <% end %>
 
           <!-- Feature Comparison Table -->
-          <%= unless @current_user.subscription_tier == "pro" do %>
+          <%= unless @normalized_tier == "pro" do %>
             <div class="mt-8 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-semibold text-gray-900">Feature Comparison</h3>
@@ -816,8 +927,8 @@ defmodule FrestylWeb.SubscriptionLive do
                   <thead class="bg-gray-50">
                     <tr>
                       <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Feature</th>
-                      <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Free</th>
-                      <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Basic</th>
+                      <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Personal</th>
+                      <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Creator</th>
                       <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Premium</th>
                       <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Pro</th>
                     </tr>
@@ -921,7 +1032,7 @@ defmodule FrestylWeb.SubscriptionLive do
           <h3 class="font-bold text-gray-900 mb-4">Maximize Your Plan</h3>
 
           <div class="space-y-4">
-            <%= for feature <- get_available_features(@current_user.subscription_tier) do %>
+            <%= for feature <- get_available_features(@normalized_tier) do %>
               <div class={"p-4 rounded-xl border-2 transition-all #{
                 if feature.available,
                   do: "border-blue-200 bg-white hover:shadow-md",
@@ -1084,15 +1195,15 @@ defmodule FrestylWeb.SubscriptionLive do
       </div>
 
       <!-- Upgrade Prompt for Free and Basic tiers -->
-      <%= if @current_user.subscription_tier in ["free", "basic"] do %>
+      <%= if @normalized_tier in ["free", "basic"] do %>
         <div class="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-8 text-white">
           <div class="flex items-center justify-between">
             <div>
               <h3 class="text-2xl font-bold mb-2">
-               <%= if @current_user.subscription_tier == "free", do: "Ready to upgrade?", else: "Unlock more features" %>
+               <%= if @normalized_tier == "free", do: "Ready to upgrade?", else: "Unlock more features" %>
               </h3>
               <p class="text-purple-100 mb-4">
-                <%= if @current_user.subscription_tier == "free" do %>
+                <%= if @normalized_tier == "free" do %>
                   You're using <%= @usage_data.portfolios.used %> of <%= @usage_data.portfolios.limit %> portfolios.
                   Upgrade to get more portfolios and unlock premium features.
                 <% else %>
@@ -1119,7 +1230,7 @@ defmodule FrestylWeb.SubscriptionLive do
       <!-- Features Grid -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <%= for feature <- get_all_features() do %>
-          <% available = is_feature_available?(feature.id, @current_user.subscription_tier) %>
+          <% available = is_feature_available?(feature.id, @normalized_tier) %>
 
           <div class={"rounded-2xl border-2 p-6 transition-all hover:shadow-lg #{
             if available,
@@ -1198,26 +1309,26 @@ defmodule FrestylWeb.SubscriptionLive do
           <div>
             <div class="text-sm font-medium text-gray-500 mb-1">Plan</div>
             <div class="text-2xl font-bold text-gray-900">
-              <%= get_plan_data()[@current_user.subscription_tier].name %>
+              <%= get_plan_data()[@normalized_tier].name %>
             </div>
           </div>
 
           <div>
             <div class="text-sm font-medium text-gray-500 mb-1">Monthly Cost</div>
             <div class="text-2xl font-bold text-gray-900">
-              <%= get_plan_data()[@current_user.subscription_tier].price %>
+              <%= get_plan_data()[@normalized_tier].price %>
             </div>
           </div>
 
           <div>
             <div class="text-sm font-medium text-gray-500 mb-1">Next Billing Date</div>
             <div class="text-2xl font-bold text-gray-900">
-              <%= if @current_user.subscription_tier == "free", do: "-", else: "Mar 15, 2024" %>
+              <%= if @normalized_tier == "personal", do: "-", else: "Mar 15, 2024" %>
             </div>
           </div>
         </div>
 
-        <%= if @current_user.subscription_tier != "free" do %>
+        <%= if @normalized_tier != "personal" do %>
           <div class="mt-6 flex space-x-4">
             <button
               phx-click="show_upgrade_modal"

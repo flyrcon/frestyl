@@ -2028,6 +2028,75 @@ defmodule FrestylWeb.PortfolioHubLive do
   end
 
   # Template Selection Handlers
+
+    @impl true
+  def handle_event("select_portfolio_for_studio", %{"portfolio_id" => portfolio_id}, socket) do
+    portfolio = Enum.find(socket.assigns.portfolios, &(&1.id == String.to_integer(portfolio_id)))
+    tools_for_enhancement = get_tools_for_enhancement(socket.assigns.selected_enhancement.type)
+
+    {:noreply,
+     socket
+     |> assign(:selected_portfolio, portfolio)
+     |> assign(:studio_step, :tool_configuration)
+     |> assign(:tools_for_enhancement, tools_for_enhancement)}
+  end
+
+    @impl true
+  def handle_event("create_studio_session", %{"configuration" => config}, socket) do
+    user = socket.assigns.user
+    enhancement = socket.assigns.selected_enhancement
+    portfolio = socket.assigns.selected_portfolio
+
+    # Create studio session with enhanced configuration
+    session_attrs = %{
+      "title" => "#{enhancement.title} - #{portfolio.title}",
+      "description" => "Enhancing #{portfolio.title} with #{enhancement.title}",
+      "session_type" => "portfolio_enhancement",
+      "creator_id" => user.id,
+      "host_id" => user.id,
+      "context" => %{
+        enhancement_type: enhancement.type,
+        portfolio_id: portfolio.id,
+        tools: Map.get(config, "tools", []),
+        collaboration_mode: Map.get(config, "collaboration_mode", "solo")
+      }
+    }
+
+    case create_enhancement_session(session_attrs, user) do
+      {:ok, session} ->
+        # Track studio usage
+        Features.FeatureGate.track_feature_usage(socket.assigns.account, :studio_session, 1)
+
+        {:noreply,
+         socket
+         |> assign(:show_studio_modal, false)
+         |> put_flash(:info, "Studio session created! Redirecting...")
+         |> push_navigate(to: ~p"/studio/#{session.id}")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to create studio session: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("back_to_enhancement_selection", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:studio_step, :enhancement_selection)
+     |> assign(:selected_enhancement, nil)
+     |> assign(:selected_portfolio, nil)}
+  end
+
+  @impl true
+  def handle_event("back_to_portfolio_selection", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:studio_step, :portfolio_selection)
+     |> assign(:selected_portfolio, nil)}
+  end
+
   @impl true
   def handle_event("select_template", %{"template" => template}, socket) do
     {:noreply, assign(socket, :selected_template, template)}
@@ -2052,13 +2121,17 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   @impl true
   def handle_event("show_studio_modal", _params, socket) do
-    available_tools = get_studio_tools_for_account(socket.assigns.account)
+    available_enhancements = get_available_enhancements(socket.assigns.account)
+    available_tools = get_available_studio_tools(socket.assigns.account)
 
     {:noreply,
      socket
      |> assign(:show_studio_modal, true)
-     |> assign(:studio_step, :tool_selection)
-     |> assign(:available_studio_tools, available_tools)}
+     |> assign(:studio_step, :enhancement_selection)
+     |> assign(:available_enhancements, available_enhancements)
+     |> assign(:available_tools, available_tools)
+     |> assign(:selected_enhancement, nil)
+     |> assign(:selected_portfolio, nil)}
   end
 
   @impl true
@@ -2066,10 +2139,9 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply,
      socket
      |> assign(:show_studio_modal, false)
-     |> assign(:studio_step, :tool_selection)
-     |> assign(:studio_enhancement_type, nil)
-     |> assign(:selected_studio_tools, [])
-     |> assign(:studio_layout_config, %{})}
+     |> assign(:studio_step, :enhancement_selection)
+     |> assign(:selected_enhancement, nil)
+     |> assign(:selected_portfolio, nil)}
   end
 
   @impl true
@@ -2163,17 +2235,15 @@ defmodule FrestylWeb.PortfolioHubLive do
   end
 
   @impl true
-  def handle_event("select_enhancement_type", %{"type" => enhancement_type}, socket) do
-    enhancement_atom = String.to_atom(enhancement_type)
-    tools = get_tools_for_enhancement(enhancement_atom, socket.assigns.account)
-    layout = get_layout_for_enhancement(enhancement_atom)
+  def handle_event("select_enhancement", %{"type" => enhancement_type}, socket) do
+    enhancement = Enum.find(socket.assigns.available_enhancements, &(&1.type == enhancement_type))
+    portfolios_for_enhancement = get_portfolios_for_enhancement(socket.assigns.portfolios, enhancement_type)
 
     {:noreply,
      socket
-     |> assign(:studio_enhancement_type, enhancement_atom)
-     |> assign(:selected_studio_tools, tools)
-     |> assign(:studio_layout_config, layout)
-     |> assign(:studio_step, :configuration)}
+     |> assign(:selected_enhancement, enhancement)
+     |> assign(:studio_step, :portfolio_selection)
+     |> assign(:portfolios_for_enhancement, portfolios_for_enhancement)}
   end
 
   @impl true
@@ -2947,6 +3017,52 @@ defmodule FrestylWeb.PortfolioHubLive do
         </div>
 
         <div class="flex items-center space-x-4">
+          <!-- Action Buttons -->
+          <div class="flex items-center space-x-3">
+            <!-- Creative Studio Button (NEW) -->
+            <button phx-click="show_studio_modal"
+                    class="flex items-center px-4 py-2.5 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-xl hover:from-green-600 hover:to-teal-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+              </svg>
+              Creative Studio
+            </button>
+
+            <!-- Go Live Button (NEW) -->
+            <%= if @broadcast_data.can_go_live do %>
+              <button phx-click="show_broadcast_modal"
+                      class="flex items-center px-4 py-2.5 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:from-red-600 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z"/>
+                </svg>
+                Go Live
+                <%= if length(@broadcast_data.active_broadcasts) > 0 do %>
+                  <span class="ml-2 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                <% end %>
+              </button>
+            <% else %>
+              <!-- Upgrade prompt for non-Creator users -->
+              <button phx-click="show_upgrade_modal"
+                      class="flex items-center px-4 py-2.5 bg-gray-500 text-white rounded-xl opacity-75 cursor-not-allowed">
+                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z"/>
+                </svg>
+                Go Live
+                <svg class="w-3 h-3 ml-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/>
+                </svg>
+              </button>
+            <% end %>
+
+            <!-- Create New Button (existing) -->
+            <button phx-click="show_create_modal"
+                    class="flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+              </svg>
+              Create New
+            </button>
+          </div>
           <!-- View Toggle (FIXED) -->
           <div class="flex bg-gray-100 rounded-lg p-1">
             <button phx-click="set_view_mode" phx-value-mode="grid"
@@ -2974,15 +3090,6 @@ defmodule FrestylWeb.PortfolioHubLive do
               List
             </button>
           </div>
-
-          <!-- Create New Button -->
-          <button phx-click="show_create_modal"
-                  class="flex items-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-            </svg>
-            Create New
-          </button>
         </div>
       </div>
 
@@ -7695,6 +7802,48 @@ defmodule FrestylWeb.PortfolioHubLive do
     :ok
   end
 
+    defp humanize_collaboration_mode(mode) do
+    case mode do
+      "solo" -> "Solo Work"
+      "peer_review" -> "Peer Review"
+      "expert_review" -> "Expert Review"
+      "with_coach" -> "With Coach"
+      "designer_collaboration" -> "Designer Help"
+      "musician_collaboration" -> "Musician Help"
+      "developer_collaboration" -> "Developer Help"
+      _ -> String.capitalize(String.replace(mode, "_", " "))
+    end
+  end
+
+  defp get_collaboration_mode_description(mode) do
+    case mode do
+      "solo" -> "Work independently at your own pace"
+      "peer_review" -> "Get feedback from fellow creators"
+      "expert_review" -> "Professional review and guidance"
+      "with_coach" -> "One-on-one coaching session"
+      "designer_collaboration" -> "Work with a visual designer"
+      "musician_collaboration" -> "Collaborate with a musician"
+      "developer_collaboration" -> "Technical implementation help"
+      _ -> "Collaborative workspace"
+    end
+  end
+
+  defp humanize_tool_name(tool) do
+    case tool do
+      "text_editor" -> "Text Editor"
+      "audio_recorder" -> "Audio Recorder"
+      "script_editor" -> "Script Editor"
+      "collaboration_tools" -> "Collaboration"
+      "chat" -> "Chat"
+      "beat_machine" -> "Beat Machine"
+      "audio_mixer" -> "Audio Mixer"
+      "media_editor" -> "Media Editor"
+      "ai_assistant" -> "AI Assistant"
+      "teleprompter" -> "Teleprompter"
+      _ -> String.capitalize(String.replace(tool, "_", " "))
+    end
+  end
+
 
   # Helper functions for icons (you can replace with your preferred icons)
   defp portfolio_icon do
@@ -8073,5 +8222,210 @@ defmodule FrestylWeb.PortfolioHubLive do
     socket
     |> assign(:show_upgrade_modal, true)
     |> put_flash(:warning, "#{String.capitalize(feature_name)} requires a higher subscription tier")
+  end
+
+    defp get_available_enhancements(account) do
+    base_enhancements = [
+      %{
+        type: "voice_intro",
+        title: "Voice Introduction",
+        description: "Record a compelling personal introduction",
+        icon: "🎙️",
+        tools: ["audio_recorder", "script_editor", "teleprompter"],
+        estimated_time: "15-30 minutes",
+        collaboration_modes: ["solo", "with_coach"],
+        tier_required: "personal"
+      },
+      %{
+        type: "writing_enhancement",
+        title: "Writing Enhancement",
+        description: "Improve your portfolio content with expert feedback",
+        icon: "✍️",
+        tools: ["text_editor", "collaboration_tools", "ai_assistant"],
+        estimated_time: "30-60 minutes",
+        collaboration_modes: ["solo", "peer_review", "expert_review"],
+        tier_required: "personal"
+      },
+      %{
+        type: "visual_polish",
+        title: "Visual Polish",
+        description: "Enhance your portfolio's visual appeal",
+        icon: "🎨",
+        tools: ["media_editor", "layout_designer", "collaboration_tools"],
+        estimated_time: "45-90 minutes",
+        collaboration_modes: ["solo", "designer_collaboration"],
+        tier_required: "creator"
+      }
+    ]
+
+    premium_enhancements = [
+      %{
+        type: "background_music",
+        title: "Background Music",
+        description: "Create custom background music for your portfolio",
+        icon: "🎵",
+        tools: ["beat_machine", "audio_mixer", "collaboration_tools"],
+        estimated_time: "60-120 minutes",
+        collaboration_modes: ["solo", "musician_collaboration"],
+        tier_required: "creator"
+      },
+      %{
+        type: "interactive_elements",
+        title: "Interactive Elements",
+        description: "Add interactive features to engage visitors",
+        icon: "⚡",
+        tools: ["interaction_builder", "animation_tools", "collaboration_tools"],
+        estimated_time: "90-180 minutes",
+        collaboration_modes: ["solo", "developer_collaboration"],
+        tier_required: "professional"
+      }
+    ]
+
+    # Filter by subscription tier
+    all_enhancements = base_enhancements ++ premium_enhancements
+    tier_priority = tier_to_priority(account.subscription_tier)
+
+    Enum.filter(all_enhancements, fn enhancement ->
+      enhancement_priority = tier_to_priority(enhancement.tier_required)
+      tier_priority >= enhancement_priority
+    end)
+  end
+
+  defp get_available_studio_tools(account) do
+    base_tools = [
+      %{id: "text_editor", name: "Text Editor", category: "writing"},
+      %{id: "audio_recorder", name: "Audio Recorder", category: "audio"},
+      %{id: "script_editor", name: "Script Editor", category: "writing"},
+      %{id: "collaboration_tools", name: "Collaboration", category: "collaboration"},
+      %{id: "chat", name: "Chat", category: "collaboration"}
+    ]
+
+    premium_tools = [
+      %{id: "beat_machine", name: "Beat Machine", category: "audio"},
+      %{id: "audio_mixer", name: "Audio Mixer", category: "audio"},
+      %{id: "media_editor", name: "Media Editor", category: "visual"},
+      %{id: "ai_assistant", name: "AI Assistant", category: "ai"},
+      %{id: "teleprompter", name: "Teleprompter", category: "presentation"}
+    ]
+
+    case account.subscription_tier do
+      tier when tier in ["creator", "professional", "enterprise"] ->
+        base_tools ++ premium_tools
+      _ ->
+        base_tools
+    end
+  end
+
+  defp get_portfolios_for_enhancement(portfolios, enhancement_type) do
+    case enhancement_type do
+      "voice_intro" ->
+        # Portfolios that don't have voice introductions yet
+        Enum.filter(portfolios, fn p -> !has_voice_intro?(p) end)
+      "writing_enhancement" ->
+        # Portfolios with content that could be improved
+        Enum.filter(portfolios, fn p -> has_content_to_enhance?(p) end)
+      "visual_polish" ->
+        # Portfolios that could benefit from visual improvements
+        Enum.filter(portfolios, fn p -> needs_visual_improvement?(p) end)
+      "background_music" ->
+        # Portfolios that don't have background music
+        Enum.filter(portfolios, fn p -> !has_background_music?(p) end)
+      _ ->
+        portfolios
+    end
+  end
+
+  defp get_tools_for_enhancement(enhancement_type) do
+    case enhancement_type do
+      "voice_intro" ->
+        ["script_editor", "audio_recorder", "teleprompter", "collaboration_tools"]
+      "writing_enhancement" ->
+        ["text_editor", "ai_assistant", "collaboration_tools", "chat"]
+      "visual_polish" ->
+        ["media_editor", "layout_designer", "collaboration_tools", "chat"]
+      "background_music" ->
+        ["beat_machine", "audio_mixer", "audio_recorder", "collaboration_tools"]
+      "interactive_elements" ->
+        ["interaction_builder", "animation_tools", "collaboration_tools", "chat"]
+      _ ->
+        ["text_editor", "collaboration_tools", "chat"]
+    end
+  end
+
+  defp tier_to_priority(tier) do
+    case tier do
+      "personal" -> 1
+      "creator" -> 2
+      "professional" -> 3
+      "enterprise" -> 4
+      _ -> 0
+    end
+  end
+
+  defp create_enhancement_session(session_attrs, user) do
+    # Use existing Sessions context to create studio session
+    try do
+      Sessions.create_session(session_attrs)
+    rescue
+      _ -> {:error, "Failed to create session"}
+    end
+  end
+
+  # Portfolio analysis helpers
+  defp has_voice_intro?(portfolio) do
+    # Check if portfolio has voice introduction section
+    case Ecto.assoc_loaded?(portfolio.sections) do
+      true ->
+        sections = portfolio.sections || []
+        Enum.any?(sections, &(&1.section_type == "voice_intro"))
+      false ->
+        false
+    end
+  end
+
+  defp has_content_to_enhance?(portfolio) do
+    case Ecto.assoc_loaded?(portfolio.sections) do
+      true ->
+        sections = portfolio.sections || []
+        Enum.any?(sections, fn section ->
+          content = section.content || %{}
+          text_content = get_text_content_length(content)
+          text_content > 50 && text_content < 500 # Has content but could be enhanced
+        end)
+      false ->
+        false
+    end
+  end
+
+  defp needs_visual_improvement?(portfolio) do
+    case Ecto.assoc_loaded?(portfolio.sections) do
+      true ->
+        sections = portfolio.sections || []
+        media_count = Enum.count(sections, fn section ->
+          content = section.content || %{}
+          has_media = Map.has_key?(content, "images") || Map.has_key?(content, "media_items")
+          has_media
+        end)
+        media_count < 3 # Has fewer than 3 sections with media
+      false ->
+        true
+    end
+  end
+
+  defp has_background_music?(portfolio) do
+    # Check if portfolio has background music
+    customization = portfolio.customization || %{}
+    Map.has_key?(customization, "background_music_url")
+  end
+
+  defp get_text_content_length(content) do
+    text_fields = ["description", "summary", "content", "bio"]
+
+    text_fields
+    |> Enum.map(&(content[&1] || ""))
+    |> Enum.filter(&is_binary/1)
+    |> Enum.join(" ")
+    |> String.trim()
+    |> String.length()
   end
 end

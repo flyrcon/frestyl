@@ -8,6 +8,7 @@ defmodule FrestylWeb.PortfolioHubLive.DynamicCardSection do
   use FrestylWeb, :live_component
   alias Frestyl.Portfolios.ContentBlocks.DynamicCardBlocks
   alias Frestyl.Accounts.BrandSettings
+  alias Frestyl.Features.TierManager
 
   @impl true
   def update(assigns, socket) do
@@ -582,38 +583,28 @@ defmodule FrestylWeb.PortfolioHubLive.DynamicCardSection do
   # ============================================================================
 
   defp get_available_card_categories(subscription_tier) do
+    normalized_tier = TierManager.normalize_tier(subscription_tier)
+
     base_categories = [
       %{
         key: :service_provider,
         name: "Professional Service Provider",
         description: "Emphasizes booking/pricing with trust-building elements",
         icon: "💼",
-        tier_required: :personal,
-        monetization_level: 3,
-        key_features: [
-          "Service showcase cards",
-          "Testimonial carousels",
-          "Pricing displays",
-          "Booking integrations"
-        ]
+        tier_required: "personal",
+        monetization_level: 3
       },
       %{
         key: :creative_showcase,
         name: "Creative Showcase",
         description: "Portfolio-focused with commission options",
         icon: "🎨",
-        tier_required: :personal,
-        monetization_level: 2,
-        key_features: [
-          "Portfolio galleries",
-          "Process showcases",
-          "Commission inquiries",
-          "Collaboration displays"
-        ]
+        tier_required: "personal",
+        monetization_level: 2
       }
     ]
 
-    case subscription_tier do
+    case normalized_tier do
       tier when tier in ["creator", "professional", "enterprise"] ->
         base_categories ++ [
           %{
@@ -621,45 +612,20 @@ defmodule FrestylWeb.PortfolioHubLive.DynamicCardSection do
             name: "Technical Expert",
             description: "Skill-based with project pricing",
             icon: "⚡",
-            tier_required: :creator,
-            monetization_level: 3,
-            key_features: [
-              "Interactive skill matrix",
-              "Project deep dives",
-              "Consultation booking",
-              "Technical insights"
-            ]
+            tier_required: "creator",
+            monetization_level: 3
           },
           %{
             key: :content_creator,
             name: "Content Creator/Performer",
             description: "Streaming-focused with subscription options",
             icon: "📱",
-            tier_required: :creator,
-            monetization_level: 3,
-            key_features: [
-              "Content metrics dashboard",
-              "Brand partnerships",
-              "Subscription tiers",
-              "Community engagement"
-            ]
-          },
-          %{
-            key: :corporate_executive,
-            name: "Corporate Executive",
-            description: "Achievement-focused with consultation booking",
-            icon: "🏢",
-            tier_required: :professional,
-            monetization_level: 2,
-            key_features: [
-              "Achievement metrics",
-              "Leadership showcase",
-              "Thought leadership",
-              "Executive consultation"
-            ]
+            tier_required: "creator",
+            monetization_level: 3
           }
         ]
-      _ -> base_categories
+      _ ->
+        base_categories
     end
   end
 
@@ -876,24 +842,24 @@ defp render_template_preview(template_key, assigns) do
   end
 
   defp can_access_category?(category, subscription_tier) do
-    case category.tier_required do
-      :personal -> true
-      :creator -> subscription_tier in ["creator", "professional", "enterprise"]
-      :professional -> subscription_tier in ["professional", "enterprise"]
-      :enterprise -> subscription_tier == "enterprise"
-      _ -> true
-    end
+    user_tier = TierManager.normalize_tier(subscription_tier)
+    required_tier = Map.get(category, :tier_required, "personal")
+
+    TierManager.has_tier_access?(user_tier, required_tier)
   end
 
   defp get_subscription_upgrade_message(current_tier, required_tier) do
-    case {current_tier, required_tier} do
-      {"personal", :creator} ->
+    current_normalized = TierManager.normalize_tier(current_tier)
+    required_normalized = TierManager.normalize_tier(required_tier)
+
+    case {current_normalized, required_normalized} do
+      {"personal", "creator"} ->
         "Upgrade to Creator to unlock advanced monetization blocks and content metrics."
-      {"personal", :professional} ->
+      {"personal", "professional"} ->
         "Upgrade to Professional to access enterprise features and brand partnerships."
-      {"creator", :professional} ->
+      {"creator", "professional"} ->
         "Upgrade to Professional for advanced analytics and brand control."
-      {_, :enterprise} ->
+      {_, "enterprise"} ->
         "Contact sales for enterprise features and custom brand control."
       _ ->
         "Upgrade your account to access more layout options."

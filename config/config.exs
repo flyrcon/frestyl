@@ -114,6 +114,11 @@ config :mime, :types, %{
   "application/ogg" => ["ogx"]
 }
 
+config :frestyl, :subscription_tiers,
+  valid_tiers: ["personal", "creator", "professional", "enterprise"],
+  default_tier: "creator",
+  tier_hierarchy: ["personal", "creator", "professional", "enterprise"]
+
   # For production, you might use something like:
 # config/prod.exs
 # config :frestyl, Frestyl.Mailer,

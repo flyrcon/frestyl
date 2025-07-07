@@ -2,6 +2,8 @@
 defmodule FrestylWeb.Components.AccountSwitcher do
   use FrestylWeb, :live_component
 
+  alias Frestyl.Features.TierManager
+
   @impl true
   def mount(socket) do
     {:ok,
@@ -72,32 +74,30 @@ defmodule FrestylWeb.Components.AccountSwitcher do
   end
 
   defp get_account_color(account) do
-    case account.subscription_tier do
-      "storyteller" -> "from-gray-600 to-gray-800"
-      "professional" -> "from-purple-500 to-indigo-500"
-      "business" -> "from-blue-500 to-cyan-500"
-      _ -> "from-blue-500 to-purple-500"
-    end
+    tier = TierManager.get_account_tier(account)
+    TierManager.get_tier_color(tier)
   end
 
+  # Update stats function to use unified limits
   defp get_account_stats(account) do
-    # Mock data - replace with actual stats
-    case account.subscription_tier do
-      "storyteller" -> %{portfolios: 2, storage: "1 GB"}
-      "professional" -> %{portfolios: "∞", storage: "50 GB"}
-      "business" -> %{portfolios: "∞", storage: "500 GB"}
-      _ -> %{portfolios: 1, storage: "500 MB"}
-    end
+    tier = TierManager.get_account_tier(account)
+    limits = TierManager.get_tier_limits(tier)
+
+    %{
+      portfolios: format_limit(limits.max_portfolios),
+      storage: "#{format_limit(limits.storage_quota_gb)} GB"
+    }
   end
 
+  # Update tier formatting to use unified display names
   defp format_subscription_tier(tier) do
-    case tier do
-      "storyteller" -> "Storyteller"
-      "professional" -> "Professional"
-      "business" -> "Business"
-      _ -> String.capitalize(tier)
-    end
+    TierManager.get_tier_display_name(tier)
   end
+
+  defp format_limit(:unlimited), do: "∞"
+  defp format_limit(value) when is_integer(value), do: to_string(value)
+  defp format_limit(value), do: to_string(value)
+
 
   @impl true
   def render(assigns) do

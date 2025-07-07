@@ -3,11 +3,14 @@ defmodule Frestyl.Features.FeatureGate do
 
   alias Frestyl.Accounts
   alias Frestyl.Billing.UsageTracker
+  alias Frestyl.Features.TierManager
   require Logger
 
 
   def can_access_feature?(account, feature, context \\ %{}) do
-    limits = get_account_limits(account)
+    # Get normalized tier and limits using TierManager
+    user_tier = TierManager.get_account_tier(account)
+    limits = TierManager.get_tier_limits(user_tier)
     current_usage = get_current_usage(account)
 
     case feature do
@@ -15,22 +18,19 @@ defmodule Frestyl.Features.FeatureGate do
         check_story_limit(limits, current_usage)
 
       :real_time_collaboration ->
-        limits.real_time_collaboration != false
+        TierManager.feature_available?(user_tier, :real_time_collaboration)
 
       :advanced_analytics ->
-        limits.analytics_depth in [:advanced, :enterprise]
+        TierManager.feature_available?(user_tier, :advanced_analytics)
 
       :custom_branding ->
-        limits.custom_branding != false
+        TierManager.feature_available?(user_tier, :custom_branding)
 
       :video_recording ->
         check_video_limit(limits, current_usage, context)
 
       :live_broadcast ->
-        limits.live_broadcast_enabled != false
-
-      :live_broadcast ->
-        Map.get(limits, :live_broadcast_enabled, false) != false
+        check_live_broadcast_access(user_tier, current_usage)
 
       :cross_account_sharing ->
         limits.cross_account_sharing != :disabled
@@ -45,7 +45,7 @@ defmodule Frestyl.Features.FeatureGate do
         check_collaborator_limit(limits, current_usage, count)
 
       :service_booking ->
-        limits.service_booking_enabled
+        TierManager.feature_available?(user_tier, :service_booking)
 
       :service_creation ->
         check_service_limit(limits, current_usage)
@@ -54,13 +54,46 @@ defmodule Frestyl.Features.FeatureGate do
         check_service_booking_payment_limit(limits, current_usage, amount_cents)
 
       :service_calendar_integration ->
-        limits.service_calendar_integration
+        check_service_calendar_access(user_tier)
 
       :service_analytics ->
-        limits.service_analytics_enabled
+        check_service_analytics_access(user_tier)
+
+      :api_access ->
+        TierManager.feature_available?(user_tier, :api_access)
+
+      :white_label ->
+        TierManager.feature_available?(user_tier, :white_label)
+
+      :custom_domains ->
+        TierManager.feature_available?(user_tier, :custom_domains)
+
+      :priority_support ->
+        TierManager.feature_available?(user_tier, :priority_support)
 
       _ ->
         false
+    end
+  end
+
+  defp check_service_calendar_access(user_tier) do
+    case TierManager.normalize_tier(user_tier) do
+      tier when tier in ["creator", "professional", "enterprise"] -> true
+      _ -> false
+    end
+  end
+
+  defp check_service_analytics_access(user_tier) do
+    case TierManager.normalize_tier(user_tier) do
+      tier when tier in ["creator", "professional", "enterprise"] -> true
+      _ -> false
+    end
+  end
+
+  defp check_live_broadcast_access(user_tier, _current_usage) do
+    case TierManager.normalize_tier(user_tier) do
+      tier when tier in ["creator", "professional", "enterprise"] -> true
+      _ -> false
     end
   end
 
@@ -73,17 +106,10 @@ defmodule Frestyl.Features.FeatureGate do
   """
   def can_access_template?(user, template_key) do
     template_config = get_template_config_safe(template_key)
-    required_tier = Map.get(template_config, :subscription_tier, :personal)
-    user_tier = get_user_tier(user)
+    required_tier = Map.get(template_config, :subscription_tier, "personal")
+    user_tier = TierManager.get_user_tier(user)
 
-    # Check access based on tier hierarchy
-    case user_tier do
-      :enterprise -> true  # Enterprise can access everything
-      :professional -> required_tier in [:professional, :creator, :personal]
-      :creator -> required_tier in [:creator, :personal]
-      :personal -> required_tier == :personal
-      _ -> false
-    end
+    TierManager.can_access_template?(user_tier, required_tier)
   end
 
   @doc """
@@ -137,65 +163,25 @@ defmodule Frestyl.Features.FeatureGate do
       nil
     else
       template_config = get_template_config_safe(template_key)
-      required_tier = Map.get(template_config, :subscription_tier, :personal)
-      user_tier = get_user_tier(user)
+      required_tier = Map.get(template_config, :subscription_tier, "personal")
+      user_tier = TierManager.get_user_tier(user)
       template_name = Map.get(template_config, :name, String.capitalize(to_string(template_key)))
 
-      case {user_tier, required_tier} do
-        {:personal, :creator} ->
-          %{
-            suggested_tier: :creator,
-            title: "Upgrade to Creator",
-            reason: "The '#{template_name}' template requires Creator tier or higher",
-            benefits: [
-              "Access to all Audio-First templates",
-              "Access to all Gallery templates",
-              "Advanced customization options",
-              "10GB storage"
-            ],
-            price: "$19/month",
-            cta: "Upgrade to Creator"
-          }
+      # Use TierManager's upgrade suggestion logic
+      base_suggestion = TierManager.get_upgrade_suggestion(user_tier, :template_access)
 
-        {:personal, :professional} ->
-          %{
-            suggested_tier: :professional,
-            title: "Upgrade to Professional",
-            reason: "The '#{template_name}' template requires Professional tier",
-            benefits: [
-              "Access to all template categories",
-              "Service booking integration",
-              "Advanced analytics",
-              "Custom branding options"
-            ],
-            price: "$49/month",
-            cta: "Go Professional"
-          }
-
-        {:creator, :professional} ->
-          %{
-            suggested_tier: :professional,
-            title: "Upgrade to Professional",
-            reason: "The '#{template_name}' template includes professional features",
-            benefits: [
-              "Service Provider templates",
-              "Social-First templates with metrics",
-              "Advanced dashboard templates",
-              "Client portal access"
-            ],
-            price: "$49/month",
-            cta: "Unlock Professional Features"
-          }
-
-        _ ->
-          %{
-            suggested_tier: :professional,
-            title: "Template Access Restricted",
-            reason: "This template requires a higher subscription tier",
-            benefits: ["Access to all premium templates", "Advanced features", "Priority support"],
-            price: "Starting at $19/month",
-            cta: "View Plans"
-          }
+      if base_suggestion do
+        %{base_suggestion |
+          reason: "The '#{template_name}' template requires #{TierManager.get_tier_display_name(required_tier)} tier"
+        }
+      else
+        %{
+          suggested_tier: required_tier,
+          title: "Template Access Restricted",
+          reason: "The '#{template_name}' template requires #{TierManager.get_tier_display_name(required_tier)} tier",
+          benefits: ["Access to premium templates", "Advanced features", "Priority support"],
+          price: "Upgrade required"
+        }
       end
     end
   end
@@ -208,13 +194,11 @@ defmodule Frestyl.Features.FeatureGate do
     unless can_access_template?(user, template_key) do
       false
     else
-      # Then check feature-specific access
-      template_config = get_template_config_safe(template_key)
-      template_features = Map.get(template_config, :features, [])
-      user_tier = get_user_tier(user)
+      # Then check feature-specific access using TierManager
+      user_tier = TierManager.get_user_tier(user)
 
       # Check tier-based feature access
-      tier_allows_feature = case user_tier do
+      tier_allows_feature = case TierManager.normalize_tier_atom(user_tier) do
         :enterprise ->
           true
 
@@ -239,7 +223,10 @@ defmodule Frestyl.Features.FeatureGate do
           false
       end
 
-      # Check if feature is in template's feature list or tier allows it
+      # Also check template's feature list
+      template_config = get_template_config_safe(template_key)
+      template_features = Map.get(template_config, :features, [])
+
       tier_allows_feature || feature_name in template_features
     end
   end
@@ -252,23 +239,7 @@ defmodule Frestyl.Features.FeatureGate do
   Get user's subscription tier from user struct or account
   """
   defp get_user_tier(user) do
-    cond do
-      # Check if user has subscription_tier directly
-      Map.has_key?(user, :subscription_tier) && user.subscription_tier ->
-        user.subscription_tier
-
-      # Check if user has account with subscription_tier
-      Map.has_key?(user, :account) && user.account && Map.has_key?(user.account, :subscription_tier) ->
-        user.account.subscription_tier
-
-      # Check if user has accounts list (get first account's tier)
-      Map.has_key?(user, :accounts) && is_list(user.accounts) && length(user.accounts) > 0 ->
-        user.accounts |> List.first() |> Map.get(:subscription_tier, :personal)
-
-      # Default to personal tier
-      true ->
-        :personal
-    end
+    TierManager.get_user_tier(user)
   end
 
   @doc """
@@ -372,79 +343,26 @@ defmodule Frestyl.Features.FeatureGate do
   Get readable tier name for display
   """
   def get_tier_display_name(tier) do
-    case tier do
-      :personal -> "Personal"
-      :creator -> "Creator"
-      :professional -> "Professional"
-      :enterprise -> "Enterprise"
-      _ -> "Unknown"
-    end
+    TierManager.get_tier_display_name(tier)
   end
 
   @doc """
   Get tier hierarchy for upgrade suggestions
   """
   def get_tier_hierarchy() do
-    [:personal, :creator, :professional, :enterprise]
+    TierManager.tier_hierarchy() |> Enum.map(&String.to_atom/1)
   end
 
   @doc """
   Check if target tier is an upgrade from current tier
   """
   def is_tier_upgrade?(current_tier, target_tier) do
-    hierarchy = get_tier_hierarchy()
-    current_index = Enum.find_index(hierarchy, &(&1 == current_tier)) || 0
-    target_index = Enum.find_index(hierarchy, &(&1 == target_tier)) || 0
-    target_index > current_index
+    TierManager.is_tier_upgrade?(current_tier, target_tier)
   end
 
   def get_upgrade_suggestion(account, failed_feature, context \\ %{}) do
-    current_tier = account.subscription_tier
-
-    case {current_tier, failed_feature} do
-      {:personal, :real_time_collaboration} ->
-        %{
-          suggested_tier: :creator,
-          title: "Upgrade to Creator",
-          reason: "Real-time collaboration requires Creator tier or higher",
-          benefits: ["10 collaborators", "Real-time editing", "Advanced templates", "10GB storage"],
-          price: "$19/month",
-          cta: "Upgrade to Creator"
-        }
-
-      {:personal, :create_story} ->
-        %{
-          suggested_tier: :creator,
-          title: "Story Limit Reached",
-          reason: "Personal accounts are limited to 3 stories",
-          benefits: ["25 stories", "All story types", "Advanced sharing", "Priority support"],
-          price: "$19/month",
-          cta: "Upgrade for More Stories"
-        }
-
-      {:creator, :unlimited_stories} ->
-        %{
-          suggested_tier: :professional,
-          title: "Upgrade to Professional",
-          reason: "Professional tier offers unlimited stories and team features",
-          benefits: ["Unlimited stories", "Team accounts", "Advanced analytics", "Custom branding"],
-          price: "$49/month",
-          cta: "Go Professional"
-        }
-
-      {:creator, :advanced_analytics} ->
-        %{
-          suggested_tier: :professional,
-          title: "Analytics Upgrade",
-          reason: "Advanced analytics require Professional tier",
-          benefits: ["Detailed engagement metrics", "Audience insights", "Performance tracking"],
-          price: "$49/month",
-          cta: "Unlock Analytics"
-        }
-
-      _ ->
-        nil
-    end
+    current_tier = TierManager.get_account_tier(account)
+    TierManager.get_upgrade_suggestion(current_tier, failed_feature)
   end
 
   defp get_current_usage(account) do
@@ -529,181 +447,8 @@ defmodule Frestyl.Features.FeatureGate do
   end
 
   def get_account_limits(account) do
-    subscription_tier = Map.get(account, :subscription_tier, "personal")
-
-    case subscription_tier do
-
-      "free" ->
-        %{
-          cross_account_sharing: :disabled,
-          real_time_collaboration: false,
-          custom_branding: false,
-          analytics_depth: :basic,
-          max_collaborators: 1,
-          storage_quota_gb: 0.5,
-          max_stories: 1,
-          story_type_access: [:personal_narrative],
-          video_recording_minutes: 5,
-          live_broadcast_enabled: false,
-          service_booking_enabled: false,
-          service_calendar_integration: false,
-          service_analytics_enabled: false,
-          creator_lab_enabled: false,
-          voice_recording_enabled: false,
-          audio_creation_enabled: false
-        }
-
-      "personal" ->
-        %{
-          cross_account_sharing: :view_only,
-          real_time_collaboration: false,
-          custom_branding: false,
-          analytics_depth: :basic,
-          max_collaborators: 2,
-          storage_quota_gb: 1,
-          max_stories: 3,
-          story_type_access: [:personal_narrative, :professional_showcase],
-          video_recording_minutes: 30,
-          live_broadcast_enabled: false  # ADD THIS LINE
-        }
-
-      "creator" ->
-        %{
-          cross_account_sharing: :edit,
-          real_time_collaboration: true,
-          custom_branding: false,
-          analytics_depth: :intermediate,
-          max_collaborators: 10,
-          storage_quota_gb: 10,
-          max_stories: 25,
-          story_type_access: [:personal_narrative, :professional_showcase, :case_study],
-          video_recording_minutes: 120,
-          live_broadcast_enabled: true   # ADD THIS LINE
-        }
-
-      "professional" ->
-        %{
-          cross_account_sharing: :full,
-          real_time_collaboration: true,
-          custom_branding: true,
-          analytics_depth: :advanced,
-          max_collaborators: 50,
-          storage_quota_gb: 100,
-          max_stories: -1,
-          story_type_access: [:all],
-          video_recording_minutes: -1,
-          live_broadcast_enabled: true   # ADD THIS LINE
-        }
-
-      "enterprise" ->
-        %{
-          cross_account_sharing: :full,
-          real_time_collaboration: true,
-          custom_branding: true,
-          analytics_depth: :enterprise,
-          max_collaborators: -1,
-          storage_quota_gb: -1,
-          max_stories: -1,
-          story_type_access: [:all],
-          video_recording_minutes: -1,
-          live_broadcast_enabled: true   # ADD THIS LINE
-        }
-    end
-  end
-
-  defp normalize_subscription_tier(tier) when is_binary(tier) do
-    case tier do
-      "free" -> :free
-      "personal" -> :personal
-      "creator" -> :creator
-      "professional" -> :professional
-      "enterprise" -> :enterprise
-      _ -> :free  # Default to free for unknown string tiers
-    end
-  end
-
-  defp normalize_subscription_tier(tier) when is_atom(tier) do
-    case tier do
-      :free -> :free
-      :personal -> :personal
-      :creator -> :creator
-      :professional -> :professional
-      :enterprise -> :enterprise
-      _ -> :free  # Default to free for unknown atom tiers
-    end
-  end
-
-  defp normalize_subscription_tier(_), do: :free  # Fallback for nil or other types
-
-  # Add free_limits function (most restrictive)
-  defp free_limits do
-    %{
-      max_stories: 1,                    # Very limited for free
-      storage_quota_gb: 0.5,             # 500MB for free
-      max_collaborators: 0,              # No collaborators for free
-      video_recording_minutes: 10,       # 10 minutes max
-      story_type_access: [:personal_narrative], # Only basic story type
-      real_time_collaboration: false,
-      custom_branding: false,
-      analytics_depth: :none,            # No analytics for free
-      cross_account_sharing: :disabled,
-      service_booking_enabled: false,
-      service_calendar_integration: false,
-      service_analytics_enabled: false
-    }
-  end
-
-  defp personal_limits do
-    %{
-      max_stories: 3,
-      storage_quota_gb: 1,
-      max_collaborators: 2,
-      video_recording_minutes: 30,
-      story_type_access: [:personal_narrative, :professional_showcase],
-      real_time_collaboration: false,
-      custom_branding: false,
-      analytics_depth: :basic,
-      cross_account_sharing: :view_only
-    }
-  end
-
-  defp creator_limits do
-    %{
-      max_stories: 25,
-      storage_quota_gb: 10,
-      max_collaborators: 10,
-      video_recording_minutes: 300,
-      story_type_access: [:all],
-      real_time_collaboration: :limited,
-      custom_branding: :basic,
-      analytics_depth: :standard,
-      cross_account_sharing: :comment_and_suggest
-    }
-  end
-
-  defp professional_limits do
-    %{
-      max_stories: :unlimited,
-      storage_quota_gb: 100,
-      max_collaborators: :unlimited,
-      video_recording_minutes: :unlimited,
-      story_type_access: [:all],
-      real_time_collaboration: :full,
-      custom_branding: :full,
-      analytics_depth: :advanced,
-      cross_account_sharing: :full_edit
-    }
-  end
-
-  defp enterprise_limits do
-    professional_limits()
-    |> Map.merge(%{
-      storage_quota_gb: :unlimited,
-      custom_branding: :white_label,
-      analytics_depth: :enterprise,
-      sso_enabled: true,
-      api_access: true
-    })
+    user_tier = TierManager.get_account_tier(account)
+    TierManager.get_tier_limits(user_tier)
   end
 
   # ============================================================================
@@ -717,9 +462,9 @@ defmodule Frestyl.Features.FeatureGate do
           name: "Real-time Collaboration",
           description: "Collaborate with others in real-time",
           tiers: %{
-            free: false,
-            pro: true,
-            premium: true,
+            personal: false,
+            creator: true,
+            professional: true,
             enterprise: true
           }
         }
@@ -729,9 +474,9 @@ defmodule Frestyl.Features.FeatureGate do
           name: "Advanced Analytics",
           description: "Detailed analytics and insights",
           tiers: %{
-            free: false,
-            pro: %{usage_type: :analytics_views, limit: 100},
-            premium: true,
+            personal: false,
+            creator: %{usage_type: :analytics_views, limit: 100},
+            professional: true,
             enterprise: true
           }
         }
@@ -741,9 +486,9 @@ defmodule Frestyl.Features.FeatureGate do
           name: "Premium Export",
           description: "Export in high-quality formats",
           tiers: %{
-            free: %{usage_type: :exports, limit: 5},
-            pro: %{usage_type: :exports, limit: 50},
-            premium: true,
+            personal: %{usage_type: :exports, limit: 5},
+            creator: %{usage_type: :exports, limit: 50},
+            professional: true,
             enterprise: true
           }
         }
@@ -753,45 +498,9 @@ defmodule Frestyl.Features.FeatureGate do
           name: "Custom Domains",
           description: "Use your own domain for portfolios",
           tiers: %{
-            free: false,
-            pro: %{usage_type: :custom_domains, limit: 1},
-            premium: %{usage_type: :custom_domains, limit: 5},
-            enterprise: true
-          }
-        }
-
-      :ai_optimization ->
-        %{
-          name: "AI Optimization",
-          description: "AI-powered content optimization",
-          tiers: %{
-            free: false,
-            pro: %{usage_type: :ai_operations, limit: 20},
-            premium: %{usage_type: :ai_operations, limit: 200},
-            enterprise: true
-          }
-        }
-
-      :priority_support ->
-        %{
-          name: "Priority Support",
-          description: "Priority customer support",
-          tiers: %{
-            free: false,
-            pro: true,
-            premium: true,
-            enterprise: true
-          }
-        }
-
-      :collaboration_history ->
-        %{
-          name: "Collaboration History",
-          description: "Extended collaboration history",
-          tiers: %{
-            free: %{usage_type: :history_days, limit: 7},
-            pro: %{usage_type: :history_days, limit: 30},
-            premium: %{usage_type: :history_days, limit: 365},
+            personal: false,
+            creator: %{usage_type: :custom_domains, limit: 1},
+            professional: %{usage_type: :custom_domains, limit: 5},
             enterprise: true
           }
         }
@@ -803,34 +512,22 @@ defmodule Frestyl.Features.FeatureGate do
           tiers: %{
             personal: false,
             creator: %{usage_type: :broadcasts, limit: 1},
-            professional: %{usage_type: :broadcasts, limit: 1},
-            enterprise: %{usage_type: :broadcasts, limit: 3}
-          }
-        }
-
-      :guest_access_enabled ->
-        %{
-          name: "Guest Access",
-          description: "Allow guest collaborators",
-          tiers: %{
-            free: %{usage_type: :guest_sessions, limit: 5},
-            pro: %{usage_type: :guest_sessions, limit: 25},
-            premium: %{usage_type: :guest_sessions, limit: 100},
+            professional: %{usage_type: :broadcasts, limit: 5},
             enterprise: true
           }
         }
 
       :service_booking ->
-      %{
-        name: "Service Booking",
-        description: "Allow clients to book your services",
-        tiers: %{
-          personal: false,
-          creator: %{usage_type: :services, limit: 10},
-          professional: true,
-          enterprise: true
+        %{
+          name: "Service Booking",
+          description: "Allow clients to book your services",
+          tiers: %{
+            personal: false,
+            creator: %{usage_type: :services, limit: 10},
+            professional: true,
+            enterprise: true
+          }
         }
-      }
 
       :service_analytics ->
         %{
@@ -844,14 +541,26 @@ defmodule Frestyl.Features.FeatureGate do
           }
         }
 
-      :service_calendar_integration ->
+      :api_access ->
         %{
-          name: "Calendar Integration",
-          description: "Sync bookings with external calendars",
+          name: "API Access",
+          description: "Programmatic access to your data",
           tiers: %{
             personal: false,
-            creator: true,
+            creator: false,
             professional: true,
+            enterprise: true
+          }
+        }
+
+      :white_label ->
+        %{
+          name: "White Label",
+          description: "Remove Frestyl branding",
+          tiers: %{
+            personal: false,
+            creator: false,
+            professional: false,
             enterprise: true
           }
         }
@@ -861,9 +570,9 @@ defmodule Frestyl.Features.FeatureGate do
           name: "Unknown Feature",
           description: "Feature not configured",
           tiers: %{
-            free: false,
-            pro: false,
-            premium: false,
+            personal: false,
+            creator: false,
+            professional: false,
             enterprise: false
           }
         }
