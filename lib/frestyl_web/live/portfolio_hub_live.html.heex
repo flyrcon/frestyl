@@ -32,48 +32,124 @@
         </div>
       </div>
 
-      <!-- Hub Navigation Tabs -->
+      <!-- Hub Navigation Tabs - COMPLETE TAB SYSTEM -->
       <div class="mb-8">
+        <!-- Desktop Navigation - Original Style -->
         <div class="border-b border-gray-200">
-          <nav class="-mb-px flex space-x-8">
-            <%= for {section_key, section_data} <- @hub_sections do %>
-              <button phx-click="switch_hub_section" phx-value-section={section_key}
-                      class={[
-                        "py-2 px-1 border-b-2 font-medium text-sm transition-colors",
-                        if(@active_hub_section == section_key,
-                          do: "border-purple-500 text-purple-600",
-                          else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                        )
-                      ]}>
-                <div class="flex items-center space-x-2">
-                  <%= section_data.icon %>
-                  <span><%= section_data.title %></span>
-                  <%= if section_data.badge do %>
-                    <span class="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-1 rounded-full">
-                      <%= section_data.badge %>
-                    </span>
-                  <% end %>
-                </div>
-              </button>
+          <nav class="-mb-px flex space-x-8 overflow-x-auto">
+            <!-- All Sections with Original Styling -->
+            <%= for section <- @hub_config.all_sections do %>
+              <%= if should_show_tab?(@hub_config, section) do %>
+                <button phx-click="switch_section" phx-value-section={section}
+                        class={[
+                          "py-2 px-1 border-b-2 font-medium text-sm transition-colors",
+                          get_original_tab_classes(@hub_config, section, @active_section)
+                        ]}
+                        title={get_tab_tooltip(@hub_config, section)}>
+                  <div class="flex items-center space-x-2">
+                    <span><%= get_section_icon(section) %></span>
+                    <span><%= humanize_section_name(section) %></span>
+                    <%= if get_section_badge(@hub_config, section) do %>
+                      <span class="bg-purple-100 text-purple-800 text-xs font-medium px-2 py-1 rounded-full">
+                        <%= get_section_badge(@hub_config, section) %>
+                      </span>
+                    <% end %>
+                  </div>
+                </button>
+              <% end %>
             <% end %>
           </nav>
         </div>
+
+        <!-- Mobile Navigation - Keep Simple Dropdown -->
+        <div class="md:hidden">
+          <div class="relative">
+            <button phx-click="toggle_mobile_nav" 
+                    class="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-left flex items-center justify-between shadow-sm">
+              <div class="flex items-center space-x-3">
+                <span><%= get_section_icon(@active_section) %></span>
+                <span class="font-medium"><%= humanize_section_name(@active_section) %></span>
+              </div>
+              <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            
+            <%= if @show_mobile_nav do %>
+              <div class="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50"
+                  phx-click-away="close_mobile_nav">
+                <div class="py-2">
+                  <%= for section <- @hub_config.all_sections do %>
+                    <%= if should_show_tab?(@hub_config, section) do %>
+                      <button phx-click="switch_section" phx-value-section={section}
+                              class={[
+                                "w-full flex items-center px-4 py-3 text-left transition-colors",
+                                get_mobile_tab_classes(@hub_config, section, @active_section)
+                              ]}
+                              title={get_tab_tooltip(@hub_config, section)}>
+                        <span class="mr-3"><%= get_section_icon(section) %></span>
+                        <span><%= humanize_section_name(section) %></span>
+                        <%= if is_section_locked?(@hub_config, section) do %>
+                          <span class="ml-auto text-xs text-gray-400">Upgrade</span>
+                        <% end %>
+                      </button>
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
       </div>
 
+
       <!-- Dynamic Content Based on Active Section -->
-      <%= case @active_hub_section do %>
+      <%= case @active_section do %>
         <% "portfolio_studio" -> %>
           <!-- Enhanced Portfolio Grid Section -->
           <%= enhanced_portfolio_grid_section(assigns) %>
         
         <% "analytics" -> %>
-          <%= render_analytics_section(assigns) %>
+          <%= if is_section_available?(@hub_config, "analytics") do %>
+            <%= render_analytics_section(assigns) %>
+          <% else %>
+            <%= render_locked_section_content(assigns, "analytics") %>
+          <% end %>
         
-        <% "collaboration" -> %>
-          <%= render_collaboration_section(assigns) %>
-        
-        <% "live_streaming" -> %>
-          <%= render_live_streaming_section(assigns) %>
+        <% "collaboration_hub" -> %>
+          <%= if is_section_available?(@hub_config, "collaboration_hub") do %>
+            <%= render_collaboration_section(assigns) %>
+          <% else %>
+            <%= render_locked_section_content(assigns, "collaboration_hub") %>
+          <% end %>
+          
+        <% "community_channels" -> %>
+          <%= if is_section_available?(@hub_config, "community_channels") do %>
+            <%= community_channels_section(assigns) %>
+          <% else %>
+            <%= render_locked_section_content(assigns, "community_channels") %>
+          <% end %>
+          
+        <% "creator_lab" -> %>
+          <%= if is_section_available?(@hub_config, "creator_lab") do %>
+            <%= creator_lab_section(assigns) %>
+          <% else %>
+            <%= render_locked_section_content(assigns, "creator_lab") %>
+          <% end %>
+          
+        <% "service_dashboard" -> %>
+          <%= if is_section_available?(@hub_config, "service_dashboard") do %>
+            <%= service_dashboard_section(assigns) %>
+          <% else %>
+            <%= render_locked_section_content(assigns, "service_dashboard") %>
+          <% end %>
+          
+        <% "revenue_center" -> %>
+          <%= if is_section_available?(@hub_config, "revenue_center") do %>
+            <%= revenue_center_section(assigns) %>
+          <% else %>
+            <%= render_locked_section_content(assigns, "revenue_center") %>
+          <% end %>
         
         <% _ -> %>
           <!-- Default to Portfolio Studio -->
@@ -433,6 +509,106 @@
                   <% end %>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <!-- Upgrade Modal -->
+    <%= if @show_upgrade_modal do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
+          <!-- Modal Header -->
+          <div class="bg-gradient-to-r from-purple-600 to-indigo-600 px-8 py-6">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 class="text-2xl font-bold text-white">Upgrade Required</h2>
+                  <p class="text-purple-100">Unlock <%= humanize_section_name(@requested_feature || "this feature") %></p>
+                </div>
+              </div>
+              <button phx-click="close_upgrade_modal"
+                      class="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-10 rounded-lg">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Modal Content -->
+          <div class="p-8">
+            <div class="text-center mb-8">
+              <div class="text-6xl mb-4"><%= get_section_icon(@requested_feature || "portfolio_studio") %></div>
+              <h3 class="text-2xl font-bold text-gray-900 mb-2">
+                <%= humanize_section_name(@requested_feature || "Advanced Features") %>
+              </h3>
+              <p class="text-gray-600">
+                This feature requires a <%= String.capitalize(@upgrade_tier_needed || "premium") %> subscription to access.
+              </p>
+            </div>
+
+            <!-- Pricing Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <!-- Creator Plan -->
+              <%= if (@upgrade_tier_needed || "creator") in ["creator", "professional"] do %>
+                <div class="relative border-2 border-purple-200 rounded-xl p-6 hover:border-purple-400 transition-all">
+                  <div class="text-center">
+                    <h4 class="text-xl font-bold text-gray-900 mb-2">Creator</h4>
+                    <div class="text-3xl font-bold text-purple-600 mb-4">$29<span class="text-lg text-gray-500">/mo</span></div>
+                    <ul class="text-sm text-gray-600 space-y-2 mb-6">
+                      <li class="flex items-center"><svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Analytics & Insights</li>
+                      <li class="flex items-center"><svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Service Dashboard</li>
+                      <li class="flex items-center"><svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Creator Lab Access</li>
+                      <li class="flex items-center"><svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Unlimited Portfolios</li>
+                    </ul>
+                    <button phx-click="upgrade_to_creator"
+                            class="w-full bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 transition-colors font-semibold">
+                      Start Creator Trial
+                    </button>
+                  </div>
+                </div>
+              <% end %>
+
+              <!-- Professional Plan -->
+              <%= if (@upgrade_tier_needed || "professional") == "professional" do %>
+                <div class="relative border-2 border-blue-200 rounded-xl p-6 hover:border-blue-400 transition-all">
+                  <div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                    <span class="bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">RECOMMENDED</span>
+                  </div>
+                  <div class="text-center">
+                    <h4 class="text-xl font-bold text-gray-900 mb-2">Professional</h4>
+                    <div class="text-3xl font-bold text-blue-600 mb-4">$79<span class="text-lg text-gray-500">/mo</span></div>
+                    <ul class="text-sm text-gray-600 space-y-2 mb-6">
+                      <li class="flex items-center"><svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Everything in Creator</li>
+                      <li class="flex items-center"><svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Revenue Center</li>
+                      <li class="flex items-center"><svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Advanced Analytics</li>
+                      <li class="flex items-center"><svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Priority Support</li>
+                    </ul>
+                    <button phx-click="upgrade_to_professional"
+                            class="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+                      Start Professional Trial
+                    </button>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+
+            <!-- Feature Guarantee -->
+            <div class="text-center">
+              <p class="text-sm text-gray-500 mb-4">
+                ✨ 14-day free trial • Cancel anytime • Access all features immediately
+              </p>
+              <button phx-click="close_upgrade_modal"
+                      class="text-gray-400 hover:text-gray-600 text-sm transition-colors">
+                Maybe later
+              </button>
             </div>
           </div>
         </div>

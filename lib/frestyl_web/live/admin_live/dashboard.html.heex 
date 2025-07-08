@@ -1,0 +1,760 @@
+<!-- lib/frestyl_web/live/admin_live/dashboard.html.heex -->
+
+<div class="min-h-screen bg-gray-50">
+  <!-- Header -->
+  <div class="bg-white border-b border-gray-200">
+    <div class="px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center py-6">
+        <div class="flex items-center">
+          <h1 class="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+          <%= if @maintenance_mode do %>
+            <span class="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+              <span class="w-2 h-2 bg-red-400 rounded-full mr-1"></span>
+              Maintenance Mode
+            </span>
+          <% end %>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+          <button 
+            phx-click="toggle_maintenance_mode"
+            class={"btn #{if @maintenance_mode, do: "btn-success", else: "btn-warning"}"}
+          >
+            <%= if @maintenance_mode, do: "Exit Maintenance", else: "Enter Maintenance" %>
+          </button>
+          
+          <div class="flex items-center space-x-2 text-sm text-gray-500">
+            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+            <span>System Healthy</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation Tabs -->
+  <div class="bg-white border-b border-gray-200">
+    <div class="px-4 sm:px-6 lg:px-8">
+      <nav class="flex space-x-8" aria-label="Tabs">
+        <%= for {tab_key, tab_name} <- [
+          {"overview", "Overview"},
+          {"users", "Users & Tiers"},
+          {"channels", "Channels & Official"},
+          {"roles", "Admin Roles"},
+          {"analytics", "Analytics"}
+        ] do %>
+          <button
+            phx-click="switch_tab"
+            phx-value-tab={tab_key}
+            class={[
+              "py-4 px-1 border-b-2 font-medium text-sm",
+              if @active_tab == tab_key do
+                "border-blue-500 text-blue-600"
+              else
+                "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              end
+            ]}
+          >
+            <%= tab_name %>
+          </button>
+        <% end %>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="px-4 sm:px-6 lg:px-8 py-8">
+    <%= case @active_tab do %>
+      <% "overview" -> %>
+        <%= render_overview_tab(assigns) %>
+      <% "users" -> %>
+        <%= render_users_tab(assigns) %>
+      <% "channels" -> %>
+        <%= render_channels_tab(assigns) %>
+      <% "roles" -> %>
+        <%= render_roles_tab(assigns) %>
+      <% "analytics" -> %>
+        <%= render_analytics_tab(assigns) %>
+    <% end %>
+  </div>
+
+  <!-- User Management Modal -->
+  <%= if @show_user_modal && @selected_user do %>
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Manage User</h3>
+            <button phx-click="close_user_modal" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="space-y-4">
+            <div>
+              <p class="text-sm font-medium text-gray-700">User: <%= @selected_user.email %></p>
+              <p class="text-sm text-gray-500">Current Tier: <%= @selected_user.account.subscription_tier %></p>
+            </div>
+            
+            <!-- Tier Management -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Update Subscription Tier</label>
+              <select 
+                name="tier" 
+                phx-change="update_user_tier" 
+                phx-value-user_id={@selected_user.id}
+                class="block w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="personal" selected={@selected_user.account.subscription_tier == "personal"}>Personal</option>
+                <option value="creator" selected={@selected_user.account.subscription_tier == "creator"}>Creator</option>
+                <option value="professional" selected={@selected_user.account.subscription_tier == "professional"}>Professional</option>
+                <option value="enterprise" selected={@selected_user.account.subscription_tier == "enterprise"}>Enterprise</option>
+              </select>
+            </div>
+            
+            <!-- Admin Role Assignment -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Assign Admin Role</label>
+              <div class="space-y-2">
+                <%= for role <- ["moderator", "content_admin", "support_admin", "billing_admin", "super_admin"] do %>
+                  <button
+                    phx-click="assign_admin_role"
+                    phx-value-user_id={@selected_user.id}
+                    phx-value-role={role}
+                    class="w-full text-left px-3 py-2 text-sm bg-gray-50 hover:bg-gray-100 rounded border"
+                  >
+                    Assign <%= Phoenix.Naming.humanize(role) %>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+</div>
+
+<!-- Tab Content Functions -->
+<%= content_tag :div, class: "hidden" do %>
+  <%= def render_overview_tab(assigns) do %>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <!-- Stats Cards -->
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+              </div>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Total Users</dt>
+                <dd class="text-lg font-medium text-gray-900"><%= @dashboard_stats.total_users %></dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"></path>
+                </svg>
+              </div>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Active Today</dt>
+                <dd class="text-lg font-medium text-gray-900"><%= @dashboard_stats.active_users_today %></dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z"></path>
+                </svg>
+              </div>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Revenue Today</dt>
+                <dd class="text-lg font-medium text-gray-900">$<%= @dashboard_stats.revenue_today %></dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <div class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                </svg>
+              </div>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Open Tickets</dt>
+                <dd class="text-lg font-medium text-gray-900"><%= @dashboard_stats.support_tickets_open %></dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Activity and System Health -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Recent Activity -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Recent Activity</h3>
+        </div>
+        <div class="divide-y divide-gray-200">
+          <%= for activity <- @recent_activity do %>
+            <div class="px-6 py-4">
+              <div class="flex items-center space-x-3">
+                <div class="flex-shrink-0">
+                  <div class={"w-2 h-2 rounded-full #{activity_color(activity.type)}"}>
+                  </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-gray-900">
+                    <span class="font-medium"><%= activity.user %></span>
+                    <%= activity_description(activity) %>
+                  </p>
+                  <p class="text-xs text-gray-500">
+                    <%= relative_time(activity.timestamp) %>
+                  </p>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- System Health -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">System Health</h3>
+        </div>
+        <div class="px-6 py-4 space-y-4">
+          <%= for {service, status} <- [
+            {"Database", @system_health.database},
+            {"Redis Cache", @system_health.redis},
+            {"File Storage", @system_health.storage},
+            {"External APIs", @system_health.external_apis}
+          ] do %>
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-gray-700"><%= service %></span>
+              <span class={"inline-flex px-2 py-1 text-xs font-semibold rounded-full #{status_color(status)}"}>
+                <%= Phoenix.Naming.humanize(status) %>
+              </span>
+            </div>
+          <% end %>
+          
+          <div class="mt-6 space-y-3">
+            <div>
+              <div class="flex justify-between text-sm">
+                <span class="text-gray-700">Memory Usage</span>
+                <span class="text-gray-900"><%= @system_health.memory_usage %>%</span>
+              </div>
+              <div class="mt-1 w-full bg-gray-200 rounded-full h-2">
+                <div class="bg-blue-500 h-2 rounded-full" style={"width: #{@system_health.memory_usage}%"}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <%= def render_users_tab(assigns) do %>
+    <div class="bg-white shadow rounded-lg">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-medium text-gray-900">User Management & Tier Control</h3>
+      </div>
+      
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Admin Roles</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Active</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            <%= for user <- @users do %>
+              <tr>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="flex items-center">
+                    <div class="flex-shrink-0 h-10 w-10">
+                      <div class="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
+                        <span class="text-sm font-medium text-gray-700">
+                          <%= String.first(user.email) |> String.upcase() %>
+                        </span>
+                      </div>
+                    </div>
+                    <div class="ml-4">
+                      <div class="text-sm font-medium text-gray-900"><%= user.email %></div>
+                      <div class="text-sm text-gray-500">ID: <%= user.id %></div>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <span class={"inline-flex px-2 py-1 text-xs font-semibold rounded-full #{tier_color(user.account.subscription_tier)}"}>
+                    <%= Phoenix.Naming.humanize(user.account.subscription_tier) %>
+                  </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <%= if user.admin_roles && length(user.admin_roles) > 0 do %>
+                    <%= Enum.join(user.admin_roles, ", ") %>
+                  <% else %>
+                    None
+                  <% end %>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <%= relative_time(user.last_sign_in_at || user.inserted_at) %>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <button 
+                    phx-click="manage_user" 
+                    phx-value-user_id={user.id}
+                    class="text-blue-600 hover:text-blue-900"
+                  >
+                    Manage
+                  </button>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  <% end %>
+
+  <%= def render_channels_tab(assigns) do %>
+    <div class="space-y-6">
+      <!-- Frestyl Official Channel Management -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Frestyl Official Channel</h3>
+          <p class="text-sm text-gray-500">Manage the official channel that appears in every user's Community section</p>
+        </div>
+        
+        <div class="px-6 py-4 space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Channel Name</label>
+              <input 
+                type="text" 
+                value={@frestyl_official_channel.name || "Frestyl Official"}
+                phx-blur="update_official_channel"
+                name="channel[name]"
+                class="block w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <select 
+                name="channel[status]" 
+                phx-change="update_official_channel"
+                class="block w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="active" selected={@frestyl_official_channel.status == "active"}>Active</option>
+                <option value="maintenance" selected={@frestyl_official_channel.status == "maintenance"}>Maintenance</option>
+                <option value="disabled" selected={@frestyl_official_channel.status == "disabled"}>Disabled</option>
+              </select>
+            </div>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <textarea 
+              name="channel[description]"
+              phx-blur="update_official_channel"
+              rows="3"
+              class="block w-full px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Welcome to the official Frestyl community..."
+            ><%= @frestyl_official_channel.description %></textarea>
+          </div>
+          
+          <!-- Broadcast Message -->
+          <div class="border-t pt-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Broadcast Message to All Users</label>
+            <div class="flex space-x-2">
+              <input 
+                type="text" 
+                name="message"
+                placeholder="Type your announcement here..."
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+              />
+              <button 
+                phx-click="broadcast_to_all"
+                phx-value-message=""
+                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Broadcast
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">This message will appear in the official channel for all users</p>
+          </div>
+          
+          <!-- Channel Stats -->
+          <div class="grid grid-cols-3 gap-4 pt-4 border-t">
+            <div class="text-center">
+              <div class="text-2xl font-bold text-gray-900"><%= @frestyl_official_channel.member_count || 0 %></div>
+              <div class="text-sm text-gray-500">Total Members</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-gray-900"><%= @frestyl_official_channel.messages_today || 0 %></div>
+              <div class="text-sm text-gray-500">Messages Today</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-gray-900"><%= @frestyl_official_channel.active_now || 0 %></div>
+              <div class="text-sm text-gray-500">Active Now</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- All Channels Overview -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">All Channels</h3>
+        </div>
+        
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Channel</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Members</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              <%= for channel <- (@channels.public_channels ++ @channels.trending_channels) |> Enum.uniq_by(& &1.id) do %>
+                <tr>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                      <div class="flex-shrink-0 h-8 w-8">
+                        <div class="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                          <span class="text-xs font-medium text-blue-600">#</span>
+                        </div>
+                      </div>
+                      <div class="ml-3">
+                        <div class="text-sm font-medium text-gray-900"><%= channel.name %></div>
+                        <div class="text-sm text-gray-500"><%= String.slice(channel.description || "", 0, 50) %>...</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                      <%= Phoenix.Naming.humanize(channel.channel_type || "general") %>
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <%= channel.member_count || 0 %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <span class={"inline-flex px-2 py-1 text-xs font-semibold rounded-full #{status_color(channel.visibility)}"}>
+                      <%= Phoenix.Naming.humanize(channel.visibility) %>
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <%= relative_time(channel.inserted_at) %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                    <button class="text-blue-600 hover:text-blue-900">View</button>
+                    <button class="text-yellow-600 hover:text-yellow-900">Edit</button>
+                    <button class="text-red-600 hover:text-red-900">Moderate</button>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <%= def render_roles_tab(assigns) do %>
+    <div class="space-y-6">
+      <!-- Current Admin Role Assignments -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Admin Role Assignments</h3>
+          <p class="text-sm text-gray-500">Manage administrative roles and responsibilities</p>
+        </div>
+        
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned By</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date Assigned</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              <%= for role_assignment <- @admin_roles do %>
+                <tr>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                      <div class="flex-shrink-0 h-8 w-8">
+                        <div class="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center">
+                          <span class="text-xs font-medium text-gray-700">
+                            <%= String.first(role_assignment.user.email) |> String.upcase() %>
+                          </span>
+                        </div>
+                      </div>
+                      <div class="ml-3">
+                        <div class="text-sm font-medium text-gray-900"><%= role_assignment.user.email %></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <span class={"inline-flex px-2 py-1 text-xs font-semibold rounded-full #{role_color(role_assignment.role)}"}>
+                      <%= Phoenix.Naming.humanize(role_assignment.role) %>
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <%= role_assignment.assigned_by_user.email %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <%= relative_time(role_assignment.inserted_at) %>
+                  </td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button 
+                      phx-click="revoke_admin_role"
+                      phx-value-user_id={role_assignment.user_id}
+                      phx-value-role={role_assignment.role}
+                      class="text-red-600 hover:text-red-900"
+                    >
+                      Revoke
+                    </button>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Available Admin Roles -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Available Admin Roles</h3>
+        </div>
+        
+        <div class="px-6 py-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <%= for {role, description, permissions} <- [
+              {"moderator", "Content and community moderation", ["Moderate channels", "Review reports", "Manage user content"]},
+              {"content_admin", "Content management and curation", ["Manage official content", "Feature content", "Content guidelines"]},
+              {"support_admin", "User support and assistance", ["Handle support tickets", "User account assistance", "Billing inquiries"]},
+              {"billing_admin", "Billing and subscription management", ["Manage subscriptions", "Process refunds", "Billing analytics"]},
+              {"analytics_admin", "Analytics and reporting", ["View all analytics", "Generate reports", "Data insights"]},
+              {"super_admin", "Full system administration", ["All permissions", "System configuration", "Emergency access"]}
+            ] do %>
+              <div class="border border-gray-200 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <h4 class="text-sm font-medium text-gray-900">
+                    <%= Phoenix.Naming.humanize(role) %>
+                  </h4>
+                  <span class={"inline-flex px-2 py-1 text-xs font-semibold rounded-full #{role_color(role)}"}>
+                    <%= String.upcase(role) %>
+                  </span>
+                </div>
+                <p class="text-sm text-gray-600 mb-3"><%= description %></p>
+                <div class="space-y-1">
+                  <p class="text-xs font-medium text-gray-500">Permissions:</p>
+                  <%= for permission <- permissions do %>
+                    <div class="flex items-center text-xs text-gray-600">
+                      <svg class="w-3 h-3 text-green-500 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                      </svg>
+                      <%= permission %>
+                    </div>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <%= def render_analytics_tab(assigns) do %>
+    <div class="space-y-6">
+      <!-- Key Metrics -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white shadow rounded-lg p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">User Growth (30d)</p>
+              <p class="text-2xl font-bold text-gray-900">+<%= @analytics_data.user_growth.percentage %>%</p>
+            </div>
+            <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+              <svg class="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white shadow rounded-lg p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">Conversion Rate</p>
+              <p class="text-2xl font-bold text-gray-900"><%= @dashboard_stats.conversion_rate %>%</p>
+            </div>
+            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <svg class="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white shadow rounded-lg p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-600">Churn Rate</p>
+              <p class="text-2xl font-bold text-gray-900"><%= @dashboard_stats.churn_rate %>%</p>
+            </div>
+            <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <svg class="w-6 h-6 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature Usage Chart -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Feature Usage</h3>
+        </div>
+        <div class="px-6 py-4">
+          <div class="space-y-4">
+            <%= for {feature, usage} <- @analytics_data.feature_usage do %>
+              <div>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-700"><%= Phoenix.Naming.humanize(feature) %></span>
+                  <span class="text-gray-900"><%= usage %>% usage</span>
+                </div>
+                <div class="mt-1 w-full bg-gray-200 rounded-full h-2">
+                  <div class="bg-blue-500 h-2 rounded-full" style={"width: #{usage}%"}></div>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
+      <!-- Geographic Distribution -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Geographic Distribution</h3>
+        </div>
+        <div class="px-6 py-4">
+          <div class="space-y-3">
+            <%= for {country, percentage} <- @analytics_data.geographic_distribution do %>
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-gray-700"><%= country %></span>
+                <div class="flex items-center space-x-2">
+                  <div class="w-20 bg-gray-200 rounded-full h-2">
+                    <div class="bg-green-500 h-2 rounded-full" style={"width: #{percentage}%"}></div>
+                  </div>
+                  <span class="text-sm text-gray-600 w-10"><%= percentage %>%</span>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+<% end %>
+
+<!-- Helper Functions -->
+<%= content_tag :script, type: "text/javascript" do %>
+  window.AdminDashboard = {
+    activityColor: function(type) {
+      const colors = {
+        'user_signup': 'bg-green-400',
+        'subscription_upgrade': 'bg-blue-400',
+        'channel_created': 'bg-purple-400',
+        'support_ticket': 'bg-red-400'
+      };
+      return colors[type] || 'bg-gray-400';
+    },
+    
+    statusColor: function(status) {
+      const colors = {
+        'healthy': 'bg-green-100 text-green-800',
+        'warning': 'bg-yellow-100 text-yellow-800',
+        'error': 'bg-red-100 text-red-800',
+        'public': 'bg-green-100 text-green-800',
+        'private': 'bg-yellow-100 text-yellow-800',
+        'unlisted': 'bg-gray-100 text-gray-800'
+      };
+      return colors[status] || 'bg-gray-100 text-gray-800';
+    },
+    
+    tierColor: function(tier) {
+      const colors = {
+        'personal': 'bg-gray-100 text-gray-800',
+        'creator': 'bg-blue-100 text-blue-800',
+        'professional': 'bg-purple-100 text-purple-800',
+        'enterprise': 'bg-gold-100 text-gold-800'
+      };
+      return colors[tier] || 'bg-gray-100 text-gray-800';
+    },
+    
+    roleColor: function(role) {
+      const colors = {
+        'moderator': 'bg-blue-100 text-blue-800',
+        'content_admin': 'bg-green-100 text-green-800',
+        'support_admin': 'bg-yellow-100 text-yellow-800',
+        'billing_admin': 'bg-purple-100 text-purple-800',
+        'analytics_admin': 'bg-indigo-100 text-indigo-800',
+        'super_admin': 'bg-red-100 text-red-800'
+      };
+      return colors[role] || 'bg-gray-100 text-gray-800';
+    }
+  };
+<% end %>

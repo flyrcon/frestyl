@@ -73,7 +73,8 @@ defmodule FrestylWeb.PortfolioHubLive do
     # HUB CUSTOMIZATION BASED ON SUBSCRIPTION TIER
     # ============================================================================
 
-    hub_config = configure_hub_for_subscription(account.subscription_tier)
+    hub_config = configure_hub_for_subscription_fixed(account.subscription_tier)
+    default_section = determine_default_section(account.subscription_tier)
     quick_actions = generate_quick_actions(user, account, portfolios)
 
     # ============================================================================
@@ -138,8 +139,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:selected_portfolio_for_share, nil)    # Selected portfolio for sharing
       |> assign(:show_live_stream_modal, false)        # Live streaming modal
       |> assign(:show_clone_modal, false)              # Clone portfolio modal
-      # |> assign(:active_collaborations, [])            # Collaboration data
-      |> assign(:hub_sections, get_hub_sections(current_account)) # Dynamic sections
+      |> assign(:hub_sections, get_hub_sections_with_state(current_account, hub_config))
 
       # ======== SERVICE DASHBOARD SECTION (Creator+ only) ========
       |> assign(:service_data, service_data)
@@ -180,7 +180,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:available_studio_tools, get_studio_tools_for_account(account))
       |> assign(:selected_studio_tools, [])
       |> assign(:studio_layout_config, %{})
-      |> assign(:show_welcome_celebration, just_completed_onboarding)
+      |> assign(:show_welcome_celebration, is_first_visit || just_completed_onboarding)
 
       # ======== UI STATE MANAGEMENT ========
       |> assign(:active_section, "portfolio_studio")
@@ -218,6 +218,8 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:show_mobile_nav, false)      # ADD THIS LINE
       |> assign(:mobile_section, "portfolio") # ADD THIS LINE
       |> assign(:mobile_sidebar_open, false)  # ADD THIS LINE (if needed)
+      |> assign(:discovery_active_tab, "recommendations")
+      |> assign(:active_section, determine_default_section(account.subscription_tier))
 
     {:ok, socket}
   end
@@ -390,6 +392,8 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, assign(socket, :show_settings_modal, false)}
   end
 
+
+
   @impl true
   def handle_event("update_visibility_tier", %{"tier" => tier}, socket) do
     portfolio = socket.assigns.selected_portfolio_for_settings
@@ -554,6 +558,47 @@ defmodule FrestylWeb.PortfolioHubLive do
   # ============================================================================
   # PORTFOLIO ENHANCEMENTS
   # ============================================================================
+
+  # Tab visibility configuration
+  defp should_show_tab?(hub_config, section) do
+    is_section_available?(hub_config, section)
+  end
+
+  # Original tab styling functions
+  defp get_original_tab_classes(hub_config, section, active_section) do
+    cond do
+      active_section == section ->
+        "border-purple-500 text-purple-600"
+
+      is_section_locked?(hub_config, section) ->
+        "border-transparent text-gray-300 hover:text-gray-400 cursor-not-allowed"
+
+      true ->
+        "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+    end
+  end
+
+  defp get_mobile_tab_classes(hub_config, section, active_section) do
+    cond do
+      active_section == section ->
+        "bg-purple-50 text-purple-600 border-r-2 border-purple-500"
+
+      is_section_locked?(hub_config, section) ->
+        "text-gray-300 cursor-not-allowed"
+
+      true ->
+        "text-gray-700 hover:bg-gray-50"
+    end
+  end
+
+  defp get_tab_tooltip(hub_config, section) do
+    if is_section_locked?(hub_config, section) do
+      upgrade_info = get_upgrade_prompt_for_section(hub_config, section)
+      "Upgrade to #{String.capitalize(upgrade_info.tier)} required"
+    else
+      nil
+    end
+  end
 
   defp load_studio_data(user, portfolios, account) do
     %{
@@ -1227,14 +1272,59 @@ defmodule FrestylWeb.PortfolioHubLive do
   # HUB CONFIGURATION BASED ON SUBSCRIPTION TIER
   # ============================================================================
 
-  defp configure_hub_for_subscription(tier) do
+  defp configure_hub_for_subscription_fixed(tier) do
+    # Always show all 7 sections in navigation
+    all_sections = [
+      "portfolio_studio",
+      "analytics",
+      "collaboration_hub",
+      "community_channels",
+      "creator_lab",
+      "service_dashboard",
+      "revenue_center"
+    ]
+
+    # Define primary and secondary sections for navigation structure
+    {primary_sections, secondary_sections} = case tier do
+      "personal" ->
+        {["portfolio_studio", "analytics"],
+        ["collaboration_hub", "community_channels", "creator_lab", "service_dashboard", "revenue_center"]}
+
+      "creator" ->
+        {["portfolio_studio", "analytics", "collaboration_hub", "creator_lab"],
+        ["community_channels", "service_dashboard", "revenue_center"]}
+
+      "professional" ->
+        {["portfolio_studio", "analytics", "collaboration_hub", "service_dashboard", "revenue_center"],
+        ["community_channels", "creator_lab"]}
+
+      "enterprise" ->
+        {all_sections, []}
+
+      _ ->
+        {["portfolio_studio", "analytics"],
+        ["collaboration_hub", "community_channels", "creator_lab", "service_dashboard", "revenue_center"]}
+    end
+
     case tier do
       "personal" ->
         %{
-          primary_sections: ["portfolio_studio", "collaboration_hub"],
-          secondary_sections: ["community_channels"],
-          hidden_sections: ["service_dashboard", "revenue_center"],
-          upgrade_prompts: ["creator_lab", "service_dashboard", "revenue_center"],
+          # Navigation structure
+          primary_sections: primary_sections,
+          secondary_sections: secondary_sections,
+          all_sections: all_sections,
+
+          # Section states
+          available_sections: ["portfolio_studio", "collaboration_hub", "community_channels"],
+          locked_sections: ["analytics", "creator_lab", "service_dashboard", "revenue_center"],
+          upgrade_prompts: %{
+            "analytics" => %{tier: "creator", message: "Upgrade to Creator to access detailed analytics"},
+            "creator_lab" => %{tier: "creator", message: "Unlock experimental features with Creator tier"},
+            "service_dashboard" => %{tier: "creator", message: "Manage bookings and services with Creator tier"},
+            "revenue_center" => %{tier: "professional", message: "Track revenue and earnings with Professional tier"}
+          },
+
+          # Limits and features
           max_portfolios: 3,
           collaboration_limits: %{max_active: 2},
           feature_focus: "portfolio_creation"
@@ -1242,10 +1332,19 @@ defmodule FrestylWeb.PortfolioHubLive do
 
       "creator" ->
         %{
-          primary_sections: ["portfolio_studio", "service_dashboard", "collaboration_hub"],
-          secondary_sections: ["community_channels", "creator_lab"],
-          hidden_sections: ["revenue_center"],
-          upgrade_prompts: ["revenue_center"],
+          # Navigation structure
+          primary_sections: primary_sections,
+          secondary_sections: secondary_sections,
+          all_sections: all_sections,
+
+          # Section states
+          available_sections: ["portfolio_studio", "analytics", "collaboration_hub", "community_channels", "creator_lab", "service_dashboard"],
+          locked_sections: ["revenue_center"],
+          upgrade_prompts: %{
+            "revenue_center" => %{tier: "professional", message: "Advanced revenue tracking requires Professional tier"}
+          },
+
+          # Limits and features
           max_portfolios: 10,
           collaboration_limits: %{max_active: 10},
           feature_focus: "service_offering"
@@ -1253,10 +1352,17 @@ defmodule FrestylWeb.PortfolioHubLive do
 
       "professional" ->
         %{
-          primary_sections: ["revenue_center", "service_dashboard", "portfolio_studio"],
-          secondary_sections: ["creator_lab", "collaboration_hub", "community_channels"],
-          hidden_sections: [],
-          upgrade_prompts: [],
+          # Navigation structure
+          primary_sections: primary_sections,
+          secondary_sections: secondary_sections,
+          all_sections: all_sections,
+
+          # Section states
+          available_sections: all_sections,
+          locked_sections: [],
+          upgrade_prompts: %{},
+
+          # Limits and features
           max_portfolios: -1,
           collaboration_limits: %{max_active: -1},
           feature_focus: "revenue_optimization"
@@ -1264,17 +1370,25 @@ defmodule FrestylWeb.PortfolioHubLive do
 
       "enterprise" ->
         %{
-          primary_sections: ["revenue_center", "service_dashboard", "portfolio_studio", "creator_lab"],
-          secondary_sections: ["collaboration_hub", "community_channels"],
-          hidden_sections: [],
-          upgrade_prompts: [],
+          # Navigation structure
+          primary_sections: primary_sections,
+          secondary_sections: secondary_sections,
+          all_sections: all_sections,
+
+          # Section states
+          available_sections: all_sections,
+          locked_sections: [],
+          upgrade_prompts: %{},
+
+          # Limits and features
           max_portfolios: -1,
           collaboration_limits: %{max_active: -1},
           feature_focus: "team_management",
           enterprise_features: ["white_label", "api_access", "custom_domains"]
         }
 
-      _ -> configure_hub_for_subscription("personal")
+      _ ->
+        configure_hub_for_subscription_fixed("personal")
     end
   end
 
@@ -1488,8 +1602,52 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-  defp get_section_icon(section) do
-    []
+  def is_section_available?(hub_config, section) do
+    section in hub_config.available_sections
+  end
+
+  def is_section_locked?(hub_config, section) do
+    section in hub_config.locked_sections
+  end
+
+  def get_upgrade_prompt_for_section(hub_config, section) do
+    Map.get(hub_config.upgrade_prompts, section)
+  end
+
+  def get_section_upgrade_tier(hub_config, section) do
+    case Map.get(hub_config.upgrade_prompts, section) do
+      %{tier: tier} -> tier
+      _ -> nil
+    end
+  end
+
+  defp get_section_tab_classes(hub_config, section) do
+    if is_section_locked?(hub_config, section) do
+      "border-transparent text-gray-400 hover:text-gray-500 hover:border-gray-200 cursor-pointer"
+    else
+      "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 cursor-pointer"
+    end
+  end
+
+  defp get_mobile_section_classes(hub_config, section) do
+    if is_section_locked?(hub_config, section) do
+      "text-gray-400 hover:bg-gray-50"
+    else
+      "text-gray-700 hover:bg-gray-50"
+    end
+  end
+
+  def get_section_icon(section) do
+    case section do
+      "portfolio_studio" -> "🎨"
+      "analytics" -> "📊"
+      "collaboration_hub" -> "🤝"
+      "community_channels" -> "💬"
+      "creator_lab" -> "🧪"
+      "service_dashboard" -> "⚡"
+      "revenue_center" -> "💰"
+      _ -> "📁"
+    end
   end
 
   defp get_active_section_title(active_section) do
@@ -1501,6 +1659,8 @@ defmodule FrestylWeb.PortfolioHubLive do
       _ -> "Unknown Section"
     end
   end
+
+
 
   defp safe_get_user_channels(user) do
     try do
@@ -1846,19 +2006,120 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   @impl true
   def handle_event("show_create_modal", _params, socket) do
-    if can_create_portfolio?(socket.assigns.current_user) do
-      {:noreply, assign(socket, :show_create_modal, true)}
-    else
-      {:noreply,
-      socket
-      |> put_flash(:error, "You've reached your portfolio limit. Upgrade to create more.")
-      |> push_navigate(to: "/account/subscription")}
+    IO.puts("=== CREATE MODAL CLICKED ===")
+    {:noreply, assign(socket, :show_create_modal, true)}
+  end
+
+  @impl true
+  def handle_event("close_create_modal", _params, socket) do
+    {:noreply, assign(socket, :show_create_modal, false)}
+  end
+
+  @impl true
+  def handle_event("close_upgrade_modal", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_upgrade_modal, false)
+    |> assign(:requested_feature, nil)
+    |> assign(:upgrade_tier_needed, nil)}
+  end
+
+  @impl true
+  def handle_event("create_from_template", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/portfolios/new?method=template")}
+  end
+
+  @impl true
+  def handle_event("create_from_resume", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/onboarding/resume-upload")}
+  end
+
+  @impl true
+  def handle_event("create_blank", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/portfolios/new?method=blank")}
+  end
+
+    @impl true
+  def handle_event("toggle_mobile_menu", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_mobile_menu, false)
+    {:noreply, assign(socket, :show_mobile_menu, !current_state)}
+  end
+
+  @impl true
+  def handle_event("toggle_collaboration_panel", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_collaboration_panel, false)
+    {:noreply, assign(socket, :show_collaboration_panel, !current_state)}
+  end
+
+  @impl true
+  def handle_event("show_community_channels", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_channels_modal, true)
+     |> assign(:discovery_active_tab, "channels")}
+  end
+
+  @impl true
+  def handle_event("navigate_to_channels", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/channels")}
+  end
+
+  @impl true
+  def handle_event("create_portfolio", %{"title" => title} = params, socket) when title != "" do
+    user = socket.assigns.current_user
+    template = Map.get(params, "template", "professional")
+
+    portfolio_attrs = %{
+      title: String.trim(title),
+      template: template,
+      user_id: user.id,
+      status: "draft",
+      visibility: :private,
+      slug: Portfolios.generate_slug(title)
+    }
+
+    case Portfolios.create_portfolio(portfolio_attrs, user) do
+      {:ok, portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:show_create_modal, false)
+        |> put_flash(:info, "Portfolio '#{portfolio.title}' created successfully!")
+        |> push_navigate(to: "/portfolios/#{portfolio.id}/edit")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to create portfolio. Please try again.")}
     end
   end
 
   @impl true
-  def handle_info(:close_create_modal, socket) do
-    {:noreply, assign(socket, :show_create_modal, false)}
+  def handle_event("create_portfolio", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Please enter a portfolio title")}
+  end
+
+  # Upgrade event handlers
+  @impl true
+  def handle_event("upgrade_to_creator", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?plan=creator")}
+  end
+
+  @impl true
+  def handle_event("upgrade_to_professional", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?plan=professional")}
+  end
+
+  @impl true
+  def handle_event("upgrade_to_enterprise", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?plan=enterprise")}
+  end
+
+  @impl true
+  def handle_event("upgrade_for_lab", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/account/subscription?feature=creator_lab")}
+  end
+
+  @impl true
+  def handle_event("create_service", _params, socket) do
+    {:noreply, push_navigate(socket, to: "/services/new")}
   end
 
     @impl true
@@ -1905,26 +2166,32 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-  # Portfolio Creation Methods
-  @impl true
-  def handle_event("create_from_template", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/portfolios/new?method=template")}
-  end
-
-  @impl true
-  def handle_event("create_from_resume", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/onboarding/resume-upload")}
-  end
-
-  @impl true
-  def handle_event("create_blank", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/portfolios/new?method=blank")}
-  end
-
-  # Section Switching (for Collaboration Hub)
   @impl true
   def handle_event("switch_section", %{"section" => section}, socket) do
-    {:noreply, assign(socket, :active_section, section)}
+    hub_config = socket.assigns.hub_config
+
+    cond do
+      # If section is available, switch to it
+      is_section_available?(hub_config, section) ->
+        {:noreply, assign(socket, :active_section, section)}
+
+      # If section is locked, show upgrade prompt and don't switch
+      is_section_locked?(hub_config, section) ->
+        upgrade_info = get_upgrade_prompt_for_section(hub_config, section)
+        upgrade_tier = upgrade_info.tier
+        upgrade_message = upgrade_info.message
+
+        {:noreply,
+        socket
+        |> put_flash(:info, "#{humanize_section_name(section)} requires #{String.capitalize(upgrade_tier)} subscription")
+        |> assign(:show_upgrade_modal, true)
+        |> assign(:requested_feature, section)
+        |> assign(:upgrade_tier_needed, upgrade_tier)}
+
+      # Default case
+      true ->
+        {:noreply, put_flash(socket, :error, "Unable to access #{humanize_section_name(section)}")}
+    end
   end
 
   # Mobile Menu Toggle
@@ -1932,6 +2199,17 @@ defmodule FrestylWeb.PortfolioHubLive do
   def handle_event("toggle_mobile_menu", _params, socket) do
     current_state = Map.get(socket.assigns, :show_mobile_menu, false)
     {:noreply, assign(socket, :show_mobile_menu, !current_state)}
+  end
+
+  @impl true
+  def handle_event("toggle_mobile_nav", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_mobile_nav, false)
+    {:noreply, assign(socket, :show_mobile_nav, !current_state)}
+  end
+
+  @impl true
+  def handle_event("close_mobile_nav", _params, socket) do
+    {:noreply, assign(socket, :show_mobile_nav, false)}
   end
 
   # Collaboration Panel Toggle
@@ -1975,56 +2253,6 @@ defmodule FrestylWeb.PortfolioHubLive do
      socket
      |> assign(:mobile_collaboration_options, mobile_options)
      |> assign(:show_mobile_collab_modal, true)}
-  end
-
-  # Missing Community Channels Event Handlers
-  @impl true
-  def handle_event("show_community_channels", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_channels_modal, true)
-     |> assign(:discovery_active_tab, "channels")}
-  end
-
-  @impl true
-  def handle_event("navigate_to_channels", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/channels")}
-  end
-
-  # Enhanced Portfolio Creation
-  @impl true
-  def handle_event("create_portfolio", %{"title" => title} = params, socket) when title != "" do
-    user = socket.assigns.current_user
-    template = Map.get(params, "template", "professional")
-
-    portfolio_attrs = %{
-      title: String.trim(title),
-      template: template,
-      user_id: user.id,
-      status: "draft",
-      visibility: :private,  # Use atom instead of string
-      slug: Portfolios.generate_slug(title)
-    }
-
-    case Portfolios.create_portfolio(portfolio_attrs, user) do
-      {:ok, portfolio} ->
-        {:noreply,
-        socket
-        |> assign(:show_create_modal, false)
-        |> put_flash(:info, "Portfolio '#{portfolio.title}' created successfully!")
-        |> push_navigate(to: "/portfolios/#{portfolio.id}/edit")}
-
-      {:error, changeset} ->
-        {:noreply,
-        socket
-        |> put_flash(:error, "Failed to create portfolio")
-        |> assign(:portfolio_changeset, changeset)}
-    end
-  end
-
-  @impl true
-  def handle_event("create_portfolio", _params, socket) do
-    {:noreply, put_flash(socket, :error, "Portfolio title is required")}
   end
 
   # Template Selection Handlers
@@ -2902,28 +3130,6 @@ defmodule FrestylWeb.PortfolioHubLive do
     :ok
   end
 
-  # Upgrade event handlers
-  @impl true
-  def handle_event("upgrade_to_creator", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/account/subscription?plan=creator")}
-  end
-
-  @impl true
-  def handle_event("upgrade_to_professional", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/account/subscription?plan=professional")}
-  end
-
-  @impl true
-  def handle_event("upgrade_for_lab", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/account/subscription?feature=creator_lab")}
-  end
-
-  # Add service-related handlers
-  @impl true
-  def handle_event("create_service", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/services/new")}
-  end
-
   @impl true
   def handle_event("view_calendar", _params, socket) do
     {:noreply, push_navigate(socket, to: "/calendar")}
@@ -2997,6 +3203,81 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
+
+
+
+  defp show_as_upgrade_prompt?(hub_config, section) do
+    # Show upgrade prompts for sections that are one tier away
+    upgrade_info = get_upgrade_prompt_for_section(hub_config, section)
+    current_tier = get_current_tier_level(hub_config)
+    required_tier = get_tier_level(upgrade_info.tier)
+
+    # Show if the required tier is only 1 level higher
+    required_tier - current_tier <= 1
+  end
+
+  defp get_current_tier_level(hub_config) do
+    cond do
+      length(hub_config.locked_sections) == 0 -> 4  # enterprise
+      "revenue_center" not in hub_config.locked_sections -> 3  # professional
+      "service_dashboard" not in hub_config.locked_sections -> 2  # creator
+      true -> 1  # personal
+    end
+  end
+
+  defp get_tier_level(tier) do
+    case tier do
+      "personal" -> 1
+      "creator" -> 2
+      "professional" -> 3
+      "enterprise" -> 4
+      _ -> 1
+    end
+  end
+
+  defp get_original_tab_classes(hub_config, section, active_section) do
+    cond do
+      active_section == section ->
+        "border-purple-500 text-purple-600"
+
+      is_section_locked?(hub_config, section) ->
+        "border-transparent text-gray-300 hover:text-gray-400 cursor-not-allowed"
+
+      true ->
+        "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+    end
+  end
+
+  defp get_mobile_tab_classes(hub_config, section, active_section) do
+    cond do
+      active_section == section ->
+        "bg-purple-50 text-purple-600 border-r-2 border-purple-500"
+
+      is_section_locked?(hub_config, section) ->
+        "text-gray-300 cursor-not-allowed"
+
+      true ->
+        "text-gray-700 hover:bg-gray-50"
+    end
+  end
+
+  defp get_tab_tooltip(hub_config, section) do
+    if is_section_locked?(hub_config, section) do
+      upgrade_info = get_upgrade_prompt_for_section(hub_config, section)
+      "Upgrade to #{String.capitalize(upgrade_info.tier)} required"
+    else
+      nil
+    end
+  end
+
+  # Update the existing get_section_badge function to be simpler
+  defp get_section_badge(hub_config, section) do
+    cond do
+      section == "creator_lab" -> "BETA"
+      section == "revenue_center" -> "NEW"
+      true -> nil
+    end
+  end
 
 
   # ============================================================================
@@ -3531,6 +3812,243 @@ defmodule FrestylWeb.PortfolioHubLive do
     """
   end
 
+  defp render_locked_section_content(assigns, section) do
+    upgrade_info = get_upgrade_prompt_for_section(assigns.hub_config, section)
+    section_config = get_section_config(section)
+
+    assigns = assign(assigns, :upgrade_info, upgrade_info)
+    assigns = assign(assigns, :section_config, section_config)
+    assigns = assign(assigns, :current_section, section)
+
+    ~H"""
+    <div class="max-w-4xl mx-auto">
+      <!-- Locked Section Header -->
+      <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-yellow-100 to-orange-100 rounded-2xl mb-6">
+          <div class="text-4xl"><%= get_section_icon(@current_section) %></div>
+        </div>
+        <h1 class="text-3xl font-bold text-gray-900 mb-4">
+          <%= humanize_section_name(@current_section) %>
+        </h1>
+        <p class="text-xl text-gray-600 mb-6"><%= @section_config.description %></p>
+
+        <!-- Upgrade Badge -->
+        <div class="inline-flex items-center space-x-2 bg-yellow-50 border border-yellow-200 rounded-full px-4 py-2">
+          <svg class="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+          <span class="text-sm font-medium text-yellow-800">
+            Requires <%= String.capitalize(@upgrade_info.tier) %> Subscription
+          </span>
+        </div>
+      </div>
+
+      <!-- Feature Preview Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <%= for feature <- @section_config.key_features do %>
+          <div class="relative bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+            <!-- Overlay for locked state -->
+            <div class="absolute inset-0 bg-white bg-opacity-75 rounded-xl flex items-center justify-center z-10">
+              <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+              </svg>
+            </div>
+
+            <!-- Feature Content -->
+            <div class="text-center">
+              <div class="text-3xl mb-3"><%= feature.icon %></div>
+              <h3 class="text-lg font-semibold text-gray-900 mb-2"><%= feature.title %></h3>
+              <p class="text-sm text-gray-600"><%= feature.description %></p>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Benefits List -->
+      <div class="bg-gradient-to-br from-purple-50 to-blue-50 rounded-2xl p-8 mb-8 border border-purple-200">
+        <h2 class="text-2xl font-bold text-gray-900 mb-6 text-center">
+          What You'll Get with <%= String.capitalize(@upgrade_info.tier) %>
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <%= for benefit <- @section_config.benefits do %>
+            <div class="flex items-start space-x-3">
+              <div class="flex-shrink-0 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center mt-0.5">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+              </div>
+              <div>
+                <h4 class="font-medium text-gray-900"><%= benefit.title %></h4>
+                <p class="text-sm text-gray-600 mt-1"><%= benefit.description %></p>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Upgrade CTA -->
+      <div class="text-center">
+        <button phx-click={"upgrade_to_#{@upgrade_info.tier}"}
+                class="inline-flex items-center px-8 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl">
+          <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Upgrade to <%= String.capitalize(@upgrade_info.tier) %>
+        </button>
+
+        <p class="text-sm text-gray-500 mt-4">
+          Start your free trial • Cancel anytime • Immediate access
+        </p>
+      </div>
+    </div>
+    """
+  end
+
+  defp get_section_config(section) do
+    case section do
+      "analytics" ->
+        %{
+          description: "Track portfolio performance with detailed visitor analytics and engagement metrics",
+          key_features: [
+            %{icon: "📈", title: "Real-time Analytics", description: "See who's viewing your portfolio as it happens"},
+            %{icon: "🎯", title: "Visitor Insights", description: "Understand your audience demographics and behavior"},
+            %{icon: "📊", title: "Performance Metrics", description: "Track views, engagement, and conversion rates"},
+            %{icon: "🔍", title: "SEO Analytics", description: "Monitor search rankings and organic traffic"},
+            %{icon: "📱", title: "Device Breakdown", description: "See how visitors access your portfolio"},
+            %{icon: "🌍", title: "Geographic Data", description: "Discover where your viewers are located"}
+          ],
+          benefits: [
+            %{title: "Detailed visitor tracking", description: "Know exactly who visits your portfolio and when"},
+            %{title: "Engagement heatmaps", description: "See which sections get the most attention"},
+            %{title: "Conversion tracking", description: "Measure how many visitors take action"},
+            %{title: "Performance insights", description: "Optimize your portfolio based on data"},
+            %{title: "SEO optimization", description: "Improve your search engine visibility"},
+            %{title: "Export analytics data", description: "Download reports for presentations"}
+          ]
+        }
+
+      "collaboration_hub" ->
+        %{
+          description: "Work together with other creators, get feedback, and manage collaborative projects",
+          key_features: [
+            %{icon: "👥", title: "Real-time Collaboration", description: "Edit portfolios together in real-time"},
+            %{icon: "💬", title: "Feedback System", description: "Request and provide structured feedback"},
+            %{icon: "🔄", title: "Version Control", description: "Track changes and revert when needed"},
+            %{icon: "📝", title: "Comment System", description: "Leave contextual comments on sections"},
+            %{icon: "🎯", title: "Project Management", description: "Organize collaborative projects"},
+            %{icon: "📊", title: "Collaboration Analytics", description: "Track team productivity and engagement"}
+          ],
+          benefits: [
+            %{title: "Invite unlimited collaborators", description: "Work with teammates, clients, and mentors"},
+            %{title: "Real-time editing", description: "See changes as they happen"},
+            %{title: "Professional feedback tools", description: "Get structured, actionable feedback"},
+            %{title: "Project organization", description: "Manage multiple collaborative projects"},
+            %{title: "Revision history", description: "Never lose work with automatic versioning"},
+            %{title: "Team communication", description: "Built-in chat and discussion tools"}
+          ]
+        }
+
+      "community_channels" ->
+        %{
+          description: "Connect with other creators, join specialized communities, and discover new opportunities",
+          key_features: [
+            %{icon: "🌟", title: "Creator Communities", description: "Join communities based on your expertise"},
+            %{icon: "💼", title: "Professional Networking", description: "Connect with industry professionals"},
+            %{icon: "🎓", title: "Learning Groups", description: "Participate in skill-building communities"},
+            %{icon: "🚀", title: "Project Showcases", description: "Share work and get community feedback"},
+            %{icon: "💡", title: "Opportunity Board", description: "Discover jobs, gigs, and collaborations"},
+            %{icon: "🏆", title: "Community Challenges", description: "Participate in creative challenges"}
+          ],
+          benefits: [
+            %{title: "Access to all communities", description: "Join unlimited specialized communities"},
+            %{title: "Direct messaging", description: "Connect privately with other creators"},
+            %{title: "Community moderation tools", description: "Create and manage your own communities"},
+            %{title: "Priority support", description: "Get help from community moderators"},
+            %{title: "Event notifications", description: "Stay updated on workshops and meetups"},
+            %{title: "Networking tools", description: "Advanced search and connection features"}
+          ]
+        }
+
+      "creator_lab" ->
+        %{
+          description: "Experiment with cutting-edge tools, AI features, and beta functionality before anyone else",
+          key_features: [
+            %{icon: "🤖", title: "AI Content Generation", description: "Generate portfolio content with AI assistance"},
+            %{icon: "🎨", title: "Design Experiments", description: "Try new layouts and visual styles"},
+            %{icon: "🔬", title: "Beta Features", description: "Early access to upcoming functionality"},
+            %{icon: "⚡", title: "Automation Tools", description: "Automate repetitive portfolio tasks"},
+            %{icon: "📱", title: "Mobile Experiments", description: "Test mobile-first features"},
+            %{icon: "🌐", title: "Integration Testing", description: "Connect with new platforms and tools"}
+          ],
+          benefits: [
+            %{title: "Early access to new features", description: "Try new tools weeks before public release"},
+            %{title: "AI-powered assistance", description: "Get help writing, designing, and optimizing"},
+            %{title: "Experimental workflows", description: "Test new ways to create and manage portfolios"},
+            %{title: "Direct feedback channel", description: "Influence product development"},
+            %{title: "Advanced automation", description: "Save time with smart automation tools"},
+            %{title: "Priority feature requests", description: "Get your feature ideas implemented faster"}
+          ]
+        }
+
+      "service_dashboard" ->
+        %{
+          description: "Manage your freelance business with booking, client management, and service offerings",
+          key_features: [
+            %{icon: "📅", title: "Booking Management", description: "Automated scheduling and calendar sync"},
+            %{icon: "👥", title: "Client Management", description: "Track client relationships and history"},
+            %{icon: "💰", title: "Invoice & Payments", description: "Generate invoices and process payments"},
+            %{icon: "📊", title: "Business Analytics", description: "Track revenue and business metrics"},
+            %{icon: "⚙️", title: "Service Packages", description: "Create and manage service offerings"},
+            %{icon: "🔔", title: "Automated Workflows", description: "Streamline client communication"}
+          ],
+          benefits: [
+            %{title: "Unlimited service offerings", description: "Create packages for all your services"},
+            %{title: "Automated booking system", description: "Let clients book directly from your portfolio"},
+            %{title: "Payment processing", description: "Accept payments through multiple methods"},
+            %{title: "Client communication tools", description: "Built-in messaging and project updates"},
+            %{title: "Revenue tracking", description: "Monitor your business performance"},
+            %{title: "Contract management", description: "Digital contracts and agreements"}
+          ]
+        }
+
+      "revenue_center" ->
+        %{
+          description: "Advanced revenue tracking, financial analytics, and monetization optimization tools",
+          key_features: [
+            %{icon: "💎", title: "Revenue Analytics", description: "Comprehensive financial reporting and insights"},
+            %{icon: "📈", title: "Growth Tracking", description: "Monitor revenue trends and projections"},
+            %{icon: "🎯", title: "Conversion Optimization", description: "Optimize portfolios for maximum revenue"},
+            %{icon: "💳", title: "Payment Analytics", description: "Track payment methods and success rates"},
+            %{icon: "🧾", title: "Tax Documentation", description: "Automated tax reporting and documents"},
+            %{icon: "🔮", title: "Predictive Analytics", description: "AI-powered revenue forecasting"}
+          ],
+          benefits: [
+            %{title: "Complete financial dashboard", description: "See all revenue streams in one place"},
+            %{title: "Advanced tax features", description: "Automated tax calculations and reporting"},
+            %{title: "Revenue optimization", description: "AI recommendations to increase earnings"},
+            %{title: "Multiple income streams", description: "Track various monetization methods"},
+            %{title: "Payout management", description: "Flexible payout schedules and methods"},
+            %{title: "Financial forecasting", description: "Predict future earnings and plan ahead"}
+          ]
+        }
+
+      _ ->
+        %{
+          description: "Advanced portfolio features and professional tools",
+          key_features: [
+            %{icon: "⭐", title: "Premium Features", description: "Access to advanced functionality"},
+            %{icon: "🔧", title: "Professional Tools", description: "Tools designed for professionals"},
+            %{icon: "📊", title: "Analytics", description: "Detailed insights and reporting"}
+          ],
+          benefits: [
+            %{title: "Enhanced capabilities", description: "More powerful features for professionals"},
+            %{title: "Priority support", description: "Get help when you need it most"}
+          ]
+        }
+    end
+  end
+
   defp portfolio_status_badge(portfolio) do
     case Map.get(portfolio, :visibility, :private) do
       :public ->
@@ -3778,31 +4296,6 @@ defmodule FrestylWeb.PortfolioHubLive do
      |> push_navigate(to: "/portfolios/new?method=story&flow=guided")}
   end
 
-  # You might also want to enhance the existing handlers to close the modal
-  @impl true
-  def handle_event("create_from_template", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_create_modal, false)
-     |> push_navigate(to: "/portfolios/new?method=template")}
-  end
-
-  @impl true
-  def handle_event("create_from_resume", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_create_modal, false)
-     |> push_navigate(to: "/onboarding/resume-upload")}
-  end
-
-  @impl true
-  def handle_event("create_blank", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_create_modal, false)
-     |> push_navigate(to: "/portfolios/new?method=blank")}
-  end
-
     @impl true
   def handle_event("toggle_export_menu", _params, socket) do
     current_state = Map.get(socket.assigns, :show_export_menu, false)
@@ -3842,19 +4335,6 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, assign(socket, :active_hub_section, "analytics")}
   end
 
-  # Hub section switching handler
-  @impl true
-  def handle_event("switch_hub_section", %{"section" => section}, socket) do
-    {:noreply, assign(socket, :active_hub_section, section)}
-  end
-
-  # Collaboration panel toggle
-  @impl true
-  def handle_event("toggle_collaboration_panel", _params, socket) do
-    current_state = Map.get(socket.assigns, :show_collaboration_panel, false)
-    {:noreply, assign(socket, :show_collaboration_panel, !current_state)}
-  end
-
   # Mobile menu toggle
   @impl true
   def handle_event("toggle_mobile_menu", _params, socket) do
@@ -3878,21 +4358,6 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, push_navigate(socket, to: "/lab")}
   end
 
-  # Upgrade handlers
-  @impl true
-  def handle_event("upgrade_to_creator", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/account/subscription?plan=creator")}
-  end
-
-  @impl true
-  def handle_event("upgrade_to_professional", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/account/subscription?plan=professional")}
-  end
-
-  @impl true
-  def handle_event("upgrade_for_lab", _params, socket) do
-    {:noreply, push_navigate(socket, to: "/account/subscription?feature=creator_lab")}
-  end
 
   defp can_access_premium_features?(user) do
     user.account.subscription_tier in ["creator", "creator_plus"]
@@ -5349,16 +5814,16 @@ defmodule FrestylWeb.PortfolioHubLive do
   # RENDER FUNCTIONS - Add these to the LiveView module
   # ============================================================================
 
-  # Helper function for humanizing section names
-  defp humanize_section_name(section) do
+  def humanize_section_name(section) do
     case section do
       "portfolio_studio" -> "Portfolio Studio"
+      "analytics" -> "Analytics"
       "collaboration_hub" -> "Collaboration Hub"
       "community_channels" -> "Community Channels"
       "creator_lab" -> "Creator Lab"
       "service_dashboard" -> "Service Dashboard"
       "revenue_center" -> "Revenue Center"
-      _ -> Phoenix.Naming.humanize(section)
+      _ -> String.replace(section, "_", " ") |> String.split(" ") |> Enum.map(&String.capitalize/1) |> Enum.join(" ")
     end
   end
 
@@ -7408,6 +7873,31 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
 
     Map.merge(base_sections, advanced_sections)
+  end
+
+  defp get_hub_sections_with_state(account, hub_config) do
+    hub_config.all_sections
+    |> Enum.map(fn section ->
+      {section, %{
+        title: humanize_section_name(section),
+        icon: get_section_icon(section),
+        badge: get_section_badge(hub_config, section),
+        locked: is_section_locked?(hub_config, section),
+        upgrade_tier: get_section_upgrade_tier(hub_config, section)
+      }}
+    end)
+    |> Enum.into(%{})
+  end
+
+  defp get_section_badge(hub_config, section) do
+    cond do
+      is_section_locked?(hub_config, section) ->
+        upgrade_info = get_upgrade_prompt_for_section(hub_config, section)
+        String.capitalize(upgrade_info.tier)
+      section == "creator_lab" -> "BETA"
+      section == "revenue_center" -> "NEW"
+      true -> nil
+    end
   end
 
     defp validate_collaboration_access(account, portfolio_id) do
