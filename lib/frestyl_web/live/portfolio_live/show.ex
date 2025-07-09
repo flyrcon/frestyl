@@ -3,45 +3,39 @@
 
 defmodule FrestylWeb.PortfolioLive.Show do
   use FrestylWeb, :live_view
+  import Phoenix.Controller, only: [get_csrf_token: 0]
 
   alias Frestyl.Portfolios
   alias Frestyl.Portfolios.PortfolioTemplates
   alias Phoenix.PubSub
+  alias FrestylWeb.PortfolioLive.DynamicCardCssManager
 
-  # ============================================================================
-  # MOUNT - Load and render portfolio
-  # ============================================================================
-
-  # ============================================================================
-  # MOUNT - Load and render portfolio
-  # ============================================================================
 
   @impl true
-  def mount(%{"slug" => slug}, _session, socket) do
-    case load_portfolio_by_slug(slug) do
-      {:ok, portfolio} ->
-        mount_portfolio(portfolio, socket)
-      {:error, :not_found} ->
-        {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
+  def mount(params, _session, socket) do
+    case params do
+      # Public view via slug
+      %{"slug" => slug} ->
+        mount_public_portfolio(slug, socket)
+
+      # Shared view via token
+      %{"token" => token} ->
+        mount_shared_portfolio(token, socket)
+
+      # Preview for editor
+      %{"id" => id, "preview_token" => token} ->
+        mount_preview_portfolio(id, token, socket)
+
+      # Authenticated view by ID
+      %{"id" => id} ->
+        mount_authenticated_portfolio(id, socket)
+
+      _ ->
+        {:ok, socket |> put_flash(:error, "Invalid portfolio") |> redirect(to: "/")}
     end
   end
 
-  @impl true
-  def mount(%{"id" => id}, _session, socket) do
-    case load_portfolio_by_id(id) do
-      {:ok, portfolio} ->
-        mount_portfolio(portfolio, socket)
-      {:error, :not_found} ->
-        {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
-    end
-  end
-
-  @impl true
-  def mount(_params, _session, socket) do
-    {:ok, socket |> put_flash(:error, "Invalid portfolio") |> redirect(to: "/")}
-  end
-
-  defp mount_portfolio(portfolio, socket) do
+  defp mount_portfolio(portfolio, socket, view_type) do
     # Subscribe to live updates from editor
     Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
 
@@ -50,14 +44,260 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
     socket = socket
     |> assign_portfolio_data(portfolio)
-    |> assign_rendering_data(portfolio)
+    |> assign_dynamic_card_layout_data(portfolio)  # NEW: Use Dynamic Card engine
+    |> assign_view_context(view_type)              # NEW: Track view context
     |> assign_ui_state()
+    |> enhance_portfolio_for_public_view()         # NEW: Add Dynamic Card Layout integration
+    |> assign(:customization_css, "")
+    |> assign_dynamic_layout_data()
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
     end
 
     {:ok, socket}
+  end
+
+  defp mount_public_portfolio(slug, socket) do
+    case load_portfolio_by_slug(slug) do
+      {:ok, portfolio} ->
+        mount_portfolio(portfolio, socket, :public)
+      {:error, :not_found} ->
+        {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
+    end
+  end
+
+  defp mount_authenticated_portfolio(id, socket) do
+    user = socket.assigns.current_user
+    case load_portfolio_by_id(id) do
+      {:ok, portfolio} ->
+        if can_view_portfolio?(portfolio, user) do
+          mount_portfolio(portfolio, socket, :authenticated)
+        else
+          {:ok, socket |> put_flash(:error, "Access denied") |> redirect(to: "/portfolios")}
+        end
+      {:error, :not_found} ->
+        {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/portfolios")}
+    end
+  end
+
+  defp mount_shared_portfolio(token, socket) do
+    case load_portfolio_by_share_token(token) do
+      {:ok, portfolio} ->
+        mount_portfolio(portfolio, socket, :shared)
+      {:error, :not_found} ->
+        {:ok, socket |> put_flash(:error, "Invalid share link") |> redirect(to: "/")}
+    end
+  end
+
+  defp mount_preview_portfolio(id, preview_token, socket) do
+    case load_portfolio_by_id(id) do
+      {:ok, portfolio} ->
+        if verify_preview_token(portfolio.id, preview_token) do
+          mount_portfolio(portfolio, socket, :preview)
+        else
+          {:ok, socket |> put_flash(:error, "Invalid preview link") |> redirect(to: "/")}
+        end
+      {:error, :not_found} ->
+        {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
+    end
+  end
+
+  defp enhance_portfolio_for_public_view(socket) do
+    portfolio = socket.assigns.portfolio
+
+    # Get or load sections if not already loaded
+    sections = case Map.get(socket.assigns, :sections, []) do
+      [] -> load_portfolio_sections(portfolio.id)
+      sections when is_list(sections) -> sections
+      _ -> []
+    end
+
+    # Convert sections to content blocks (same as editor)
+    content_blocks = convert_sections_to_content_blocks(sections)
+
+    # Get brand settings
+    brand_settings = get_portfolio_brand_settings(portfolio)
+
+    # Generate CSS for public view
+    customization = portfolio.customization || %{}
+    dynamic_card_css = try do
+      FrestylWeb.PortfolioLive.DynamicCardCssManager.generate_portfolio_css(
+        portfolio,
+        brand_settings,
+        customization
+      )
+    rescue
+      _ ->
+        # Fallback CSS if DynamicCardCssManager is not available
+        generate_fallback_css(customization, brand_settings)
+    end
+
+    # Create layout zones
+    layout_zones = organize_content_into_layout_zones(content_blocks, portfolio)
+
+    socket
+    |> assign(:sections, sections)
+    |> assign(:content_blocks, content_blocks)
+    |> assign(:brand_settings, brand_settings)
+    |> assign(:layout_zones, layout_zones)
+    |> assign(:customization_css, dynamic_card_css)
+  end
+
+  defp generate_fallback_css(customization, brand_settings) do
+    primary = Map.get(brand_settings, :primary_color) || "#3b82f6"
+    secondary = Map.get(brand_settings, :secondary_color) || "#64748b"
+    accent = Map.get(brand_settings, :accent_color) || "#f59e0b"
+    background = Map.get(customization, "background_color") || "#ffffff"
+    text = Map.get(customization, "text_color") || "#1f2937"
+
+    """
+    :root {
+      --primary-color: #{primary};
+      --secondary-color: #{secondary};
+      --accent-color: #{accent};
+      --background-color: #{background};
+      --text-color: #{text};
+    }
+
+    body {
+      font-family: system-ui, sans-serif;
+      color: var(--text-color);
+      background-color: var(--background-color);
+    }
+
+    .portfolio-public-view {
+      min-height: 100vh;
+    }
+    """
+  end
+
+  defp get_portfolio_layout(portfolio) do
+    case portfolio.customization do
+      %{"layout" => layout} when is_binary(layout) -> layout
+      _ -> portfolio.theme || "dynamic_card_layout"
+    end
+  end
+
+  defp assign_dynamic_layout_data(socket) do
+    portfolio = socket.assigns.portfolio
+    sections = socket.assigns.sections
+
+    use_dynamic = should_use_dynamic_card_layout?(portfolio)
+
+    if use_dynamic do
+      content_blocks = convert_sections_to_content_blocks(sections)
+      layout_zones = organize_content_into_layout_zones(content_blocks, portfolio)
+
+      socket
+      |> assign(:use_dynamic_layout, true)
+      |> assign(:content_blocks, content_blocks)
+      |> assign(:layout_zones, layout_zones)
+    else
+      socket
+      |> assign(:use_dynamic_layout, false)
+      |> assign(:content_blocks, [])
+      |> assign(:layout_zones, %{})
+    end
+  end
+
+  defp assign_dynamic_card_layout_data(socket, portfolio) do
+    # Get the portfolio's account for brand settings
+    account = get_portfolio_account(portfolio)
+
+    socket
+    |> assign(:account, account)
+    |> assign(:portfolio, portfolio)
+  end
+
+  defp assign_view_context(socket, view_type) do
+    current_user = Map.get(socket.assigns, :current_user, nil)
+    is_owner = current_user && portfolio_owned_by?(socket.assigns.portfolio, current_user)
+
+    socket
+    |> assign(:view_type, view_type)
+    |> assign(:is_owner, is_owner)
+    |> assign(:is_shared_view, view_type == :shared)
+  end
+
+  defp get_portfolio_account(portfolio) do
+    case portfolio do
+      %{account: %{} = account} -> account
+      %{user: %{accounts: [account | _]}} -> account
+      %{user: %{} = user} ->
+        # Load account from user
+        case Frestyl.Accounts.list_user_accounts(user.id) do
+          [account | _] -> account
+          [] -> create_default_account_for_user(user)
+        end
+      _ ->
+        # Create a default account structure
+        %{
+          id: nil,
+          subscription_tier: "personal",
+          features: %{}
+        }
+    end
+  rescue
+    _ ->
+      %{
+        id: nil,
+        subscription_tier: "personal",
+        features: %{}
+      }
+  end
+
+  defp default_brand_settings do
+    %{
+      primary_color: "#3b82f6",
+      secondary_color: "#64748b",
+      accent_color: "#f59e0b",
+      font_family: "system-ui, sans-serif",
+      logo_url: nil
+    }
+  end
+
+  defp portfolio_owned_by?(portfolio, user) do
+    portfolio.user_id == user.id
+  end
+
+  defp create_default_account_for_user(user) do
+    case Frestyl.Accounts.create_account_for_user(user.id) do
+      {:ok, account} -> account
+      _ -> %{id: nil, subscription_tier: "personal", features: %{}}
+    end
+  rescue
+    _ -> %{id: nil, subscription_tier: "personal", features: %{}}
+  end
+
+  defp load_portfolio_sections(portfolio_id) do
+    try do
+      Frestyl.Portfolios.list_portfolio_sections(portfolio_id)
+    rescue
+      _ -> []
+    end
+  end
+
+
+  # ADD THESE HELPER FUNCTIONS:
+  defp can_view_portfolio?(portfolio, user) do
+    # Add your authorization logic here
+    portfolio.user_id == user.id || portfolio.visibility == :public
+  end
+
+  defp can_edit_portfolio?(portfolio, user) do
+    portfolio.user_id == user.id
+  end
+
+  defp load_portfolio_by_share_token(token) do
+    # Implement share token loading logic
+    {:error, :not_found}  # Placeholder
+  end
+
+  defp verify_preview_token(portfolio_id, token) do
+    expected_token = :crypto.hash(:sha256, "preview_#{portfolio_id}_#{Date.utc_today()}")
+                    |> Base.encode16(case: :lower)
+    token == expected_token
   end
 
   # ============================================================================
@@ -165,41 +405,164 @@ defmodule FrestylWeb.PortfolioLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="portfolio-show" data-portfolio-id={@portfolio.id}>
-      <!-- Dynamic CSS injection -->
-      <%= if @custom_css do %>
-        <style><%= raw(@custom_css) %></style>
-      <% end %>
+    <!DOCTYPE html>
+    <html lang="en" class="h-full">
+      <head>
+        <meta charset="utf-8"/>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <meta name="csrf-token" content={get_csrf_token()} />
 
-      <!-- Portfolio Header -->
-      <div class="portfolio-header">
-        <h1 class="portfolio-title"><%= @portfolio.title %></h1>
-        <%= if @portfolio.description do %>
-          <p class="portfolio-description"><%= @portfolio.description %></p>
-        <% end %>
-      </div>
+        <title><%= @portfolio.title %></title>
+        <meta name="description" content={@portfolio.description || "Portfolio by #{@owner.name}"} />
 
-      <!-- Portfolio Content -->
-      <div class={["portfolio-content", portfolio_layout_class(@portfolio)]}>
-        <%= if @is_dynamic_layout do %>
-          <!-- Dynamic Card Layout -->
-          <%= render_dynamic_card_layout(assigns) %>
-        <% else %>
-          <!-- Traditional Section Layout -->
-          <%= render_traditional_layout(assigns) %>
-        <% end %>
-      </div>
+        <!-- Simple CSS -->
+        <style>
+          :root {
+            --primary-color: <%= Map.get(@portfolio.customization || %{}, "primary_color") || "#3b82f6" %>;
+            --accent-color: <%= Map.get(@portfolio.customization || %{}, "accent_color") || "#f59e0b" %>;
+          }
 
-      <!-- Portfolio Footer -->
-      <div class="portfolio-footer">
-        <%= if @show_branding do %>
-          <p class="powered-by">
-            Powered by <a href="/" class="frestyl-link">Frestyl</a>
-          </p>
+          body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            color: #374151;
+            margin: 0;
+            padding: 0;
+          }
+
+          .portfolio-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+          }
+
+          .portfolio-header {
+            text-align: center;
+            padding: 3rem 0;
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            color: white;
+            margin-bottom: 3rem;
+          }
+
+          .portfolio-title {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+          }
+
+          .portfolio-description {
+            font-size: 1.25rem;
+            opacity: 0.9;
+          }
+
+          .section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e5e7eb;
+          }
+
+          .section-title {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+          }
+
+          .section-content {
+            color: #6b7280;
+          }
+
+          .owner-controls {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 50;
+          }
+
+          .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.2s;
+          }
+
+          .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+          }
+        </style>
+
+        <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
+        <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+      </head>
+
+      <body>
+        <!-- Owner Controls -->
+        <%= if @is_owner do %>
+          <div class="owner-controls">
+            <.link navigate={~p"/portfolios/#{@portfolio.id}/edit"} class="btn">
+              Edit Portfolio
+            </.link>
+          </div>
         <% end %>
-      </div>
-    </div>
+
+        <!-- Portfolio Header -->
+        <div class="portfolio-header">
+          <div class="portfolio-container">
+            <h1 class="portfolio-title"><%= @portfolio.title %></h1>
+            <p class="portfolio-description"><%= @portfolio.description %></p>
+          </div>
+        </div>
+
+        <!-- Portfolio Content -->
+        <div class="portfolio-container">
+          <%= if Map.get(assigns, :use_dynamic_layout, false) do %>
+            <%= render_dynamic_card_public_view(assigns) %>
+          <% else %>
+            <%= render_traditional_public_view(assigns) %>
+          <% end %>
+        </div>
+
+        <!-- Flash Messages -->
+        <div id="flash-messages" style="position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 100;">
+          <%= if live_flash(@flash, :info) do %>
+            <div style="background: #10b981; color: white; padding: 1rem; border-radius: 8px; margin-bottom: 0.5rem;">
+              <%= live_flash(@flash, :info) %>
+            </div>
+          <% end %>
+
+          <%= if live_flash(@flash, :error) do %>
+            <div style="background: #ef4444; color: white; padding: 1rem; border-radius: 8px; margin-bottom: 0.5rem;">
+              <%= live_flash(@flash, :error) %>
+            </div>
+          <% end %>
+        </div>
+      </body>
+    </html>
     """
+  end
+
+  # Simple helper function for section content
+  defp render_section_content_safe(section) do
+    content = Map.get(section, :content, %{})
+
+    text = case content do
+      %{"main_content" => text} when is_binary(text) -> text
+      %{"summary" => text} when is_binary(text) -> text
+      %{"description" => text} when is_binary(text) -> text
+      %{"headline" => text} when is_binary(text) -> text
+      _ -> "Section content..."
+    end
+
+    Phoenix.HTML.raw("<p>#{Phoenix.HTML.html_escape(text)}</p>")
   end
 
   # ============================================================================
@@ -913,6 +1276,224 @@ defmodule FrestylWeb.PortfolioLive.Show do
     """
   end
 
+  defp render_traditional_public_view(assigns) do
+    ~H"""
+    <%= if length(@sections || []) > 0 do %>
+      <%= for section <- (@sections || []) do %>
+        <%= if Map.get(section, :visible, true) do %>
+          <div class="section">
+            <h2 class="section-title"><%= section.title %></h2>
+            <div class="section-content">
+              <%= render_section_content_safe(section) %>
+            </div>
+          </div>
+        <% end %>
+      <% end %>
+    <% else %>
+      <div class="section text-center">
+        <h2 class="section-title">Portfolio Under Construction</h2>
+        <p class="section-content">This portfolio is being set up. Check back soon!</p>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_dynamic_card_public_view(assigns) do
+    ~H"""
+    <%= if map_size(@layout_zones || %{}) > 0 do %>
+      <%= for {zone_name, blocks} <- (@layout_zones || %{}) do %>
+        <%= if length(blocks) > 0 do %>
+          <%= render_zone_public(zone_name, blocks, assigns) %>
+        <% end %>
+      <% end %>
+    <% else %>
+      <div class="section text-center">
+        <h2 class="section-title">Portfolio</h2>
+        <p class="section-content">Content loading...</p>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_zone_public(zone_name, blocks, assigns) do
+    zone_class = get_zone_css_class(zone_name)
+    assigns = assign(assigns, :zone_name, zone_name) |> assign(:blocks, blocks)
+
+    ~H"""
+    <section class={"#{zone_class} py-12"}>
+      <%= for block <- @blocks do %>
+        <%= render_content_block_public(block, assigns) %>
+      <% end %>
+    </section>
+    """
+  end
+
+  defp get_zone_css_class(zone_name) do
+    case zone_name do
+      :hero -> "hero-zone"
+      :about -> "about-zone"
+      :experience -> "experience-zone"
+      :skills -> "skills-zone"
+      :projects -> "projects-zone"
+      :services -> "services-zone"
+      :contact -> "contact-zone"
+      _ -> "content-zone"
+    end
+  end
+
+  defp render_content_block_public(block, assigns) do
+    block_type = block.block_type
+    content = block.content_data
+    assigns = assign(assigns, :block, block) |> assign(:content, content)
+
+    ~H"""
+    <%= case block_type do %>
+      <% :hero_card -> %>
+        <div class="hero-card text-center py-16 px-6">
+          <h1 class="text-5xl font-bold mb-6" style="color: var(--primary-color);">
+            <%= @content.title %>
+          </h1>
+          <%= if @content.subtitle && @content.subtitle != "" do %>
+            <p class="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+              <%= @content.subtitle %>
+            </p>
+          <% end %>
+          <%= if @content.content && @content.content != "" do %>
+            <p class="text-lg text-gray-700 mb-8 max-w-4xl mx-auto">
+              <%= @content.content %>
+            </p>
+          <% end %>
+          <%= if @content.video_url do %>
+            <div class="max-w-md mx-auto mb-8">
+              <video controls class="w-full rounded-lg shadow-lg" style="aspect-ratio: 4/5;">
+                <source src={@content.video_url} type="video/webm">
+                Your browser does not support the video tag.
+              </video>
+            </div>
+          <% end %>
+        </div>
+
+      <% :about_card -> %>
+        <div class="about-card bg-white rounded-lg shadow-sm border p-8 mb-8">
+          <h2 class="text-3xl font-bold mb-6" style="color: var(--primary-color);">
+            <%= @content.title %>
+          </h2>
+          <%= if @content.subtitle && @content.subtitle != "" do %>
+            <p class="text-xl text-gray-600 mb-4">
+              <%= @content.subtitle %>
+            </p>
+          <% end %>
+          <%= if @content.content && @content.content != "" do %>
+            <div class="text-gray-700 leading-relaxed">
+              <%= raw(String.replace(@content.content, "\n", "<br>")) %>
+            </div>
+          <% end %>
+        </div>
+
+      <% :experience_card -> %>
+        <div class="experience-card bg-white rounded-lg shadow-sm border p-8 mb-8">
+          <h2 class="text-3xl font-bold mb-6" style="color: var(--primary-color);">
+            <%= @content.title %>
+          </h2>
+          <%= if @content.jobs && length(@content.jobs) > 0 do %>
+            <div class="space-y-6">
+              <%= for job <- @content.jobs do %>
+                <div class="border-l-4 pl-6" style="border-color: var(--accent-color);">
+                  <h3 class="text-xl font-semibold text-gray-900">
+                    <%= Map.get(job, "title", "Position") %>
+                  </h3>
+                  <p class="text-lg text-gray-700 mb-2">
+                    <%= Map.get(job, "company", "Company") %>
+                  </p>
+                  <p class="text-gray-600 mb-3">
+                    <%= Map.get(job, "start_date", "") %>
+                    <%= if Map.get(job, "current", false), do: " - Present", else: " - #{Map.get(job, "end_date", "")}" %>
+                  </p>
+                  <%= if Map.get(job, "description") do %>
+                    <p class="text-gray-700 mb-4">
+                      <%= String.slice(Map.get(job, "description", ""), 0, 300) %>
+                      <%= if String.length(Map.get(job, "description", "")) > 300, do: "..." %>
+                    </p>
+                  <% end %>
+                  <%= if Map.get(job, "responsibilities") && length(Map.get(job, "responsibilities", [])) > 0 do %>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700">
+                      <%= for responsibility <- Enum.take(Map.get(job, "responsibilities", []), 3) do %>
+                        <li><%= responsibility %></li>
+                      <% end %>
+                    </ul>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
+          <% else %>
+            <p class="text-gray-700"><%= @content.content || @content.description %></p>
+          <% end %>
+        </div>
+
+      <% :achievement_card -> %>
+        <div class="achievement-card bg-white rounded-lg shadow-sm border p-8 mb-8">
+          <h2 class="text-3xl font-bold mb-6" style="color: var(--primary-color);">
+            <%= @content.title %>
+          </h2>
+          <%= if @content.content && @content.content != "" do %>
+            <div class="text-gray-700 leading-relaxed mb-6">
+              <%= raw(String.replace(@content.content, "\n", "<br>")) %>
+            </div>
+          <% end %>
+          <%= if @content.achievements && length(@content.achievements) > 0 do %>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <%= for achievement <- @content.achievements do %>
+                <div class="bg-gray-50 rounded-lg p-4 border-l-4" style="border-color: var(--accent-color);">
+                  <h3 class="font-semibold text-gray-900">
+                    <%= Map.get(achievement, "title", "Achievement") %>
+                  </h3>
+                  <%= if Map.get(achievement, "description") do %>
+                    <p class="text-gray-700 mt-2">
+                      <%= Map.get(achievement, "description") %>
+                    </p>
+                  <% end %>
+                  <%= if Map.get(achievement, "date") do %>
+                    <p class="text-sm text-gray-500 mt-2">
+                      <%= Map.get(achievement, "date") %>
+                    </p>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+          <%= if @content.awards && length(@content.awards) > 0 do %>
+            <div class="mt-6">
+              <h3 class="text-xl font-semibold mb-4" style="color: var(--accent-color);">Awards</h3>
+              <div class="space-y-3">
+                <%= for award <- @content.awards do %>
+                  <div class="flex items-center">
+                    <div class="w-3 h-3 rounded-full mr-3" style="background-color: var(--accent-color);"></div>
+                    <span class="text-gray-700"><%= award %></span>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+
+      <% _ -> %>
+        <div class="content-card bg-white rounded-lg shadow-sm border p-6 mb-6">
+          <h2 class="text-2xl font-bold mb-4" style="color: var(--primary-color);">
+            <%= @content.title %>
+          </h2>
+          <div class="text-gray-700">
+            <%= if @content.content && @content.content != "" do %>
+              <%= raw(String.replace(@content.content, "\n", "<br>")) %>
+            <% else %>
+              <p>Section type: <%= @content.section_type || "unknown" %></p>
+              <p>Available data: <%= inspect(Map.keys(@content)) %></p>
+            <% end %>
+          </div>
+        </div>
+    <% end %>
+    """
+  end
+
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
@@ -1093,34 +1674,65 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   defp assign_rendering_data(socket, portfolio) do
-    # Determine if this is a dynamic card layout
-    is_dynamic_layout = is_dynamic_card_layout?(portfolio)
+    # Use Dynamic Card Layout system as the rendering engine
+    case determine_layout_type_safe(portfolio) do
+      {:dynamic_card, layout_config} ->
+        layout_zones = load_dynamic_layout_zones_safe(portfolio.id)
+        custom_css = generate_safe_portfolio_css(portfolio.customization || %{}, layout_config)
 
-    # Load appropriate data based on layout type
-    {sections, layout_zones} = if is_dynamic_layout do
-      {[], load_dynamic_layout_zones(portfolio.id)}
-    else
-      # Try to load sections from multiple sources
-      sections = load_portfolio_sections_for_display(portfolio)
-      {sections, %{}}
+        socket
+        |> assign(:is_dynamic_layout, true)
+        |> assign(:layout_type, :dynamic_card)
+        |> assign(:layout_config, layout_config)
+        |> assign(:layout_zones, layout_zones)
+        |> assign(:sections, [])  # Dynamic card layouts use zones, not sections
+        |> assign(:custom_css, custom_css)
+
+      {:traditional, layout_config} ->
+        sections = load_portfolio_sections_for_display(portfolio)
+        # For traditional layouts, still use sections but prepare for dynamic rendering
+        custom_css = generate_safe_portfolio_css(portfolio.customization || %{}, layout_config)
+
+        socket
+        |> assign(:is_dynamic_layout, false)
+        |> assign(:layout_type, :traditional)
+        |> assign(:layout_config, layout_config)
+        |> assign(:layout_zones, %{})
+        |> assign(:sections, sections)
+        |> assign(:custom_css, custom_css)
     end
-
-    # Process customization and generate CSS safely
-    customization = Map.get(portfolio, :customization, %{})
-    theme = Map.get(portfolio, :theme, "professional")
-    template_config = get_template_config(theme)
-    custom_css = generate_safe_portfolio_css(customization, template_config)
-
-    socket
-    |> assign(:sections, sections)
-    |> assign(:layout_zones, layout_zones)
-    |> assign(:is_dynamic_layout, is_dynamic_layout)
-    |> assign(:customization, customization)
-    |> assign(:template_config, template_config)
-    |> assign(:custom_css, custom_css)
+    |> assign(:customization, Map.get(portfolio, :customization, %{}))
+    |> assign(:template_config, get_template_config(portfolio.theme || "professional"))
     |> assign(:design_tokens, generate_design_tokens(portfolio))
     |> assign(:brand_settings, nil)
   end
+
+  defp determine_layout_type_safe(portfolio) do
+    try do
+      # Try to use Dynamic Card Layout system if available
+      if Code.ensure_loaded?(DynamicCardLayoutManager) do
+        DynamicCardLayoutManager.determine_layout_type(portfolio)
+      else
+        {:traditional, get_template_config(portfolio.theme || "professional")}
+      end
+    rescue
+      _ ->
+        {:traditional, get_template_config(portfolio.theme || "professional")}
+    end
+  end
+
+  defp load_dynamic_layout_zones_safe(portfolio_id) do
+    try do
+      if Code.ensure_loaded?(DynamicCardLayoutManager) do
+        DynamicCardLayoutManager.load_layout_zones(portfolio_id)
+      else
+        %{}
+      end
+    rescue
+      _ -> %{}
+    end
+  end
+
 
   # Safe CSS generation function
   defp generate_safe_portfolio_css(customization, template_config) do
@@ -1435,6 +2047,97 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+  defp should_use_dynamic_card_layout?(portfolio) do
+    customization = portfolio.customization || %{}
+    layout = Map.get(customization, "layout", portfolio.theme)
+
+    layout in [
+      "dynamic_card_layout",
+      "professional_service_provider",
+      "creative_portfolio_showcase",
+      "technical_expert_dashboard",
+      "content_creator_hub",
+      "corporate_executive_profile"
+    ]
+  end
+
+  # ADD the same content block conversion functions (copy from portfolio_editor.ex):
+  defp convert_sections_to_content_blocks(sections) do
+    sections
+    |> Enum.with_index()
+    |> Enum.map(fn {section, index} ->
+      %{
+        id: section.id,
+        portfolio_id: section.portfolio_id,
+        block_type: map_section_type_to_block_type(section.section_type),
+        position: index,
+        content_data: extract_content_from_section(section),
+        original_section: section
+      }
+    end)
+  end
+
+  defp map_section_type_to_block_type(section_type) do
+    case to_string(section_type) do
+      "intro" -> :hero_card
+      "media_showcase" -> :hero_card
+      "experience" -> :experience_card
+      "achievements" -> :achievement_card
+      "skills" -> :skill_card
+      "portfolio" -> :project_card
+      "projects" -> :project_card
+      "services" -> :service_card
+      "testimonials" -> :testimonial_card
+      "contact" -> :contact_card
+      _ -> :text_card
+    end
+  end
+
+  defp extract_content_from_section(section) do
+    content = section.content || %{}
+
+    case section.section_type do
+      :intro ->
+        %{
+          title: section.title,
+          subtitle: Map.get(content, "headline", ""),
+          content: Map.get(content, "main_content", Map.get(content, "summary", "")),
+          call_to_action: %{text: "Learn More", url: "#about"}
+        }
+
+      :media_showcase ->
+        %{
+          title: section.title,
+          subtitle: Map.get(content, "description", ""),
+          video_url: Map.get(content, "video_url"),
+          background_type: "video"
+        }
+
+      :experience ->
+        %{
+          title: section.title,
+          jobs: Map.get(content, "jobs", []),
+          content: Map.get(content, "main_content", "")
+        }
+
+      :achievements ->
+        %{
+          title: section.title,
+          achievements: Map.get(content, "achievements", []),
+          content: Map.get(content, "main_content", ""),
+          description: Map.get(content, "description", ""),
+          awards: Map.get(content, "awards", [])
+        }
+
+      _ ->
+        %{
+          title: section.title,
+          content: Map.get(content, "main_content", Map.get(content, "summary", "")),
+          description: Map.get(content, "description", "")
+        }
+    end
+  end
+
   defp update_section_in_list(sections, updated_section) do
     Enum.map(sections, fn section ->
       if section.id == updated_section.id do
@@ -1531,23 +2234,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  defp render_section_content_safe(section) do
-    try do
-      content = section.content || %{}
-
-      # Simple content extraction
-      description = get_simple_value(content, ["description", "summary", "content", "text", "main_content"])
-
-      if description != "" do
-        Phoenix.HTML.raw("<p>#{Phoenix.HTML.html_escape(description)}</p>")
-      else
-        Phoenix.HTML.raw("<p class=\"text-gray-400\">Section content...</p>")
-      end
-    rescue
-      _ ->
-        Phoenix.HTML.raw("<p class=\"text-gray-400\">Loading content...</p>")
-    end
-  end
 
   # Safe value extraction function
   defp get_simple_value(content, keys) when is_list(keys) do
@@ -1666,5 +2352,291 @@ defmodule FrestylWeb.PortfolioLive.Show do
       </main>
     </div>
     """
+  end
+
+  defp convert_section_to_content_blocks(section, position) do
+    base_block = %{
+      id: section.id,
+      portfolio_id: section.portfolio_id,
+      section_id: section.id,
+      position: position,
+      created_at: section.inserted_at || DateTime.utc_now(),
+      updated_at: section.updated_at || DateTime.utc_now()
+    }
+
+    case section.section_type do
+      "hero" ->
+        [Map.merge(base_block, %{
+          block_type: :hero_card,
+          content_data: %{
+            title: section.title,
+            subtitle: section.content,
+            background_image: get_section_media_url(section, :background),
+            call_to_action: extract_cta_from_section(section)
+          }
+        })]
+
+      "about" ->
+        [Map.merge(base_block, %{
+          block_type: :about_card,
+          content_data: %{
+            title: section.title,
+            content: section.content,
+            profile_image: get_section_media_url(section, :profile),
+            highlights: extract_highlights_from_section(section)
+          }
+        })]
+
+      "skills" ->
+        skills = extract_skills_from_section(section)
+        Enum.with_index(skills, fn skill, idx ->
+          Map.merge(base_block, %{
+            id: "#{section.id}_skill_#{idx}",
+            block_type: :skill_card,
+            position: position + (idx * 0.1),
+            content_data: %{
+              name: skill.name,
+              proficiency: skill.level,
+              category: skill.category,
+              description: skill.description
+            }
+          })
+        end)
+
+      "portfolio" ->
+        projects = extract_projects_from_section(section)
+        Enum.with_index(projects, fn project, idx ->
+          Map.merge(base_block, %{
+            id: "#{section.id}_project_#{idx}",
+            block_type: :project_card,
+            position: position + (idx * 0.1),
+            content_data: %{
+              title: project.title,
+              description: project.description,
+              image_url: project.image_url,
+              project_url: project.url,
+              technologies: project.technologies || []
+            }
+          })
+        end)
+
+      "services" ->
+        services = extract_services_from_section(section)
+        Enum.with_index(services, fn service, idx ->
+          Map.merge(base_block, %{
+            id: "#{section.id}_service_#{idx}",
+            block_type: :service_card,
+            position: position + (idx * 0.1),
+            content_data: %{
+              title: service.title,
+              description: service.description,
+              price: service.price,
+              features: service.features || [],
+              booking_enabled: service.booking_enabled || false
+            }
+          })
+        end)
+
+      "testimonials" ->
+        testimonials = extract_testimonials_from_section(section)
+        Enum.with_index(testimonials, fn testimonial, idx ->
+          Map.merge(base_block, %{
+            id: "#{section.id}_testimonial_#{idx}",
+            block_type: :testimonial_card,
+            position: position + (idx * 0.1),
+            content_data: %{
+              content: testimonial.content,
+              author: testimonial.author,
+              title: testimonial.title,
+              avatar_url: testimonial.avatar_url,
+              rating: testimonial.rating
+            }
+          })
+        end)
+
+      "contact" ->
+        [Map.merge(base_block, %{
+          block_type: :contact_card,
+          content_data: %{
+            title: section.title,
+            content: section.content,
+            contact_methods: extract_contact_methods_from_section(section),
+            show_form: true
+          }
+        })]
+
+      _ ->
+        # Default text block for any other section type
+        [Map.merge(base_block, %{
+          block_type: :text_card,
+          content_data: %{
+            title: section.title,
+            content: section.content
+          }
+        })]
+    end
+  end
+
+  defp organize_content_into_layout_zones(content_blocks, portfolio) do
+    layout_category = determine_portfolio_category(portfolio)
+    base_zones = get_base_zones_for_category(layout_category)
+
+    Enum.reduce(content_blocks, base_zones, fn block, zones ->
+      zone_name = determine_zone_for_block(block.block_type, layout_category)
+      current_blocks = Map.get(zones, zone_name, [])
+      Map.put(zones, zone_name, current_blocks ++ [block])
+    end)
+  end
+
+  defp determine_portfolio_category(portfolio) do
+    customization = portfolio.customization || %{}
+    layout = Map.get(customization, "layout", portfolio.theme)
+
+    case layout do
+      "professional_service_provider" -> :service_provider
+      "creative_portfolio_showcase" -> :creative_showcase
+      "technical_expert_dashboard" -> :technical_expert
+      "content_creator_hub" -> :content_creator
+      "corporate_executive_profile" -> :corporate_executive
+      theme when theme in ["professional_service", "consultant"] -> :service_provider
+      theme when theme in ["creative", "designer", "artist"] -> :creative_showcase
+      theme when theme in ["developer", "engineer", "tech"] -> :technical_expert
+      _ -> :service_provider
+    end
+  end
+
+  defp get_base_zones_for_category(category) do
+    case category do
+      :service_provider ->
+        %{hero: [], about: [], services: [], experience: [], testimonials: [], contact: []}
+      :creative_showcase ->
+        %{hero: [], about: [], portfolio: [], skills: [], experience: [], contact: []}
+      :technical_expert ->
+        %{hero: [], about: [], skills: [], experience: [], projects: [], achievements: [], contact: []}
+      :content_creator ->
+        %{hero: [], about: [], content: [], social: [], monetization: [], contact: []}
+      :corporate_executive ->
+        %{hero: [], about: [], experience: [], achievements: [], leadership: [], contact: []}
+    end
+  end
+
+  defp determine_zone_for_block(block_type, category) do
+    case {block_type, category} do
+      {:hero_card, _} -> :hero
+      {:about_card, _} -> :about
+      {:experience_card, _} -> :experience
+      {:achievement_card, _} -> :achievements
+      {:skill_card, :technical_expert} -> :skills
+      {:skill_card, :creative_showcase} -> :skills
+      {:project_card, :technical_expert} -> :projects
+      {:project_card, :creative_showcase} -> :portfolio
+      {:service_card, _} -> :services
+      {:testimonial_card, _} -> :testimonials
+      {:contact_card, _} -> :contact
+      {_, _} -> :about # fallback
+    end
+  end
+
+  defp get_portfolio_brand_settings(portfolio) do
+    account = get_portfolio_account(portfolio)
+
+    case account do
+      %{id: nil} -> default_brand_settings()
+      account ->
+        case Frestyl.Accounts.BrandSettings.get_by_account(account.id) do
+          nil -> default_brand_settings()
+          brand_settings -> brand_settings
+        end
+    end
+  rescue
+    _ -> default_brand_settings()
+  end
+
+  defp is_portfolio_owner?(portfolio, nil), do: false
+  defp is_portfolio_owner?(portfolio, current_user) do
+    portfolio.user_id == current_user.id
+  end
+
+  # Helper functions for section data extraction
+  defp determine_layout_category(portfolio) do
+    case portfolio.theme do
+      theme when theme in ["professional_service", "consultant", "freelancer"] -> :service_provider
+      theme when theme in ["creative", "designer", "artist", "photographer"] -> :creative_showcase
+      theme when theme in ["developer", "engineer", "tech", "technical"] -> :technical_expert
+      theme when theme in ["creator", "influencer", "content", "media"] -> :content_creator
+      _ -> :corporate_executive
+    end
+  end
+
+  defp filter_blocks_by_type(content_blocks, types) do
+    Enum.filter(content_blocks, fn block ->
+      block.block_type in types
+    end)
+    |> Enum.sort_by(& &1.position)
+  end
+
+  defp get_section_media_url(section, type) do
+    case section.media do
+      media when is_list(media) ->
+        media
+        |> Enum.find(fn m -> m.media_type == to_string(type) end)
+        |> case do
+          nil -> nil
+          media_item -> media_item.url
+        end
+      _ -> nil
+    end
+  end
+
+  defp extract_cta_from_section(section) do
+    case section.content do
+      content when is_binary(content) ->
+        %{text: "Get Started", url: "#contact"}
+      _ -> nil
+    end
+  end
+
+  defp extract_highlights_from_section(_section), do: []
+
+  defp extract_skills_from_section(section) do
+    case section.content do
+      content when is_binary(content) ->
+        [%{name: "Skill", level: "intermediate", category: "general", description: content}]
+      _ -> []
+    end
+  end
+
+  defp extract_projects_from_section(section) do
+    [%{
+      title: section.title || "Project",
+      description: section.content || "",
+      image_url: get_section_media_url(section, :image),
+      url: nil,
+      technologies: []
+    }]
+  end
+
+  defp extract_services_from_section(section) do
+    [%{
+      title: section.title || "Service",
+      description: section.content || "",
+      price: nil,
+      features: [],
+      booking_enabled: false
+    }]
+  end
+
+  defp extract_testimonials_from_section(section) do
+    [%{
+      content: section.content || "",
+      author: "Client",
+      title: "Customer",
+      avatar_url: nil,
+      rating: 5
+    }]
+  end
+
+  defp extract_contact_methods_from_section(_section) do
+    [%{type: "email", value: "contact@example.com", label: "Email"}]
   end
 end

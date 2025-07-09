@@ -206,8 +206,37 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardPortfolioEditor do
   end
 
   defp is_dynamic_card_layout?(portfolio) do
-    portfolio.layout in ["dynamic_card", "professional_cards", "creative_cards"] ||
-    Map.get(portfolio.customization || %{}, "use_dynamic_cards", false)
+    # FIXED: Get layout from customization, not portfolio.layout
+    layout = get_portfolio_layout_safe(portfolio)
+    customization = portfolio.customization || %{}
+
+    # Check if it's a dynamic card layout type
+    layout in ["dynamic_card", "professional_cards", "creative_cards", "dynamic_card_layout"] ||
+    Map.get(customization, "use_dynamic_cards", false) ||
+    # Also check for the new layout types
+    layout in [
+      "professional_service_provider",
+      "creative_portfolio_showcase",
+      "technical_expert_dashboard",
+      "content_creator_hub",
+      "corporate_executive_profile"
+    ]
+  end
+
+  # ADD this helper function to dynamic_card_portfolio_editor.ex:
+  defp get_portfolio_layout_safe(portfolio) do
+    customization = portfolio.customization || %{}
+
+    # The layout is stored in customization["layout"], NOT portfolio.layout
+    case Map.get(customization, "layout") do
+      nil ->
+        # Fallback to theme if layout not set
+        portfolio.theme || "professional_service_provider"
+      layout when is_binary(layout) ->
+        layout
+      _ ->
+        "professional_service_provider"
+    end
   end
 
   defp load_dynamic_layout_zones(portfolio_id) do

@@ -67,6 +67,10 @@ defmodule FrestylWeb.Router do
     plug FrestylWeb.Plugs.API2FACheck
   end
 
+  pipeline :admin do
+    plug :require_admin_user
+  end
+
   pipeline :rate_limited do
     plug RateLimiter, limit: 5, period: 60_000
   end
@@ -130,8 +134,8 @@ defmodule FrestylWeb.Router do
 
     # Public portfolio routes
     # Public portfolio viewing
-    get "/p/:slug", PortfolioController, :show
-    live "/p/:slug", PortfolioLive.View, :show
+
+    live "/p/:slug", PortfolioLive.Show, :public
     live "/portfolio/:slug", PortfolioLive.View, :show  # Alternative URL
 
     # Shared portfolio access via token
@@ -408,14 +412,23 @@ defmodule FrestylWeb.Router do
     get "/broadcasts/:id/join", BroadcastController, :join
   end
 
-  # Admin routes for portfolio management
-  scope "/admin", FrestylWeb.Admin do
-    pipe_through [:browser, :require_authenticated_user, :require_admin]
+
+  scope "/admin", FrestylWeb.AdminLive, as: :admin do
+    pipe_through [:browser, :require_authenticated_user, :admin]
+
+    live "/", Dashboard, :show
+    live "/users", Dashboard, :users
+    live "/channels", Dashboard, :channels
+    live "/analytics", Dashboard, :analytics
+    live "/roles", Dashboard, :roles
 
     live "/portfolios", PortfolioLive.AdminIndex, :index
     live "/portfolios/:id", PortfolioLive.AdminShow, :show
     live "/portfolios/:id/moderate", PortfolioLive.AdminModerate, :moderate
+
   end
+
+
 
   # API: Public
   scope "/api", FrestylWeb.Api do
@@ -572,6 +585,22 @@ defmodule FrestylWeb.Router do
       # 🔧 DISCOVERY DEVELOPMENT TOOLS
       live "/discover/debug", SupremeDiscoveryLive, :debug
       get "/themes/preview", ThemeController, :preview_all
+    end
+  end
+
+  defp require_admin_user(conn, _opts) do
+    case conn.assigns.current_user do
+      %{is_admin: true} ->
+        conn
+
+      %{admin_roles: roles} when is_list(roles) and length(roles) > 0 ->
+        conn
+
+      _ ->
+        conn
+        |> Phoenix.Controller.put_flash(:error, "Admin access required")
+        |> Phoenix.Controller.redirect(to: "/")
+        |> halt()
     end
   end
 end

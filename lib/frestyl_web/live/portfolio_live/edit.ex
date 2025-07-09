@@ -7,6 +7,14 @@ defmodule FrestylWeb.PortfolioLive.Edit do
   alias Frestyl.Portfolios
   alias Frestyl.Portfolios.{PortfolioTemplates, Portfolio}
 
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok, socket
+    |> put_flash(:info, "Redirecting to the new portfolio editor...")
+    |> redirect(to: "/portfolios")}
+  end
+
   @impl true
   def mount(%{"id" => id}, _session, socket) do
     portfolio = Portfolios.get_portfolio!(id)
