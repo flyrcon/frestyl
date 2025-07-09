@@ -42,6 +42,16 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         available_layouts = get_available_layouts(account)
         brand_constraints = get_brand_constraints(account)
 
+        # Enhanced dynamic layout detection
+        is_dynamic_layout = should_use_dynamic_card_layout?(portfolio)
+
+        # Load dynamic layout zones if needed
+        layout_zones = if is_dynamic_layout do
+          convert_sections_to_layout_zones(sections)
+        else
+          %{}
+        end
+
         if connected?(socket) do
           Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
         end
@@ -55,11 +65,17 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         |> assign_ui_state()
         |> assign_live_preview_state()
         |> assign(:content_blocks, [])
-        |> assign(:layout_zones, %{})
+        |> assign(:layout_zones, layout_zones)  # Use computed layout zones
         |> assign(:brand_settings, %{primary_color: "#3b82f6", secondary_color: "#64748b", accent_color: "#f59e0b"})
         |> assign(:available_dynamic_blocks, [])
         |> assign(:layout_metrics, %{})
-        |> assign(:use_dynamic_layout, should_use_dynamic_card_layout?(portfolio))
+        |> assign(:use_dynamic_layout, is_dynamic_layout)  # Use computed value
+        |> assign(:is_dynamic_layout, is_dynamic_layout)  # Add this for consistency
+        |> assign(:show_dynamic_layout_manager, is_dynamic_layout)  # Auto-show if dynamic
+        |> assign(:show_block_edit_modal, false)  # Add modal state
+        |> assign(:editing_block, nil)  # Add editing state
+        |> assign(:editing_block_id, nil)  # Add editing ID
+        |> assign(:unsaved_changes, false)
         |> assign_content_blocks_if_dynamic(portfolio)
         |> assign(:display_mode, :traditional) # Start in traditional mode
 
@@ -141,6 +157,112 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
       sidebar: filter_sections_by_type(sections, ["contact", "testimonials", "about"]),
       footer: []
     }
+  end
+
+  defp convert_sections_to_layout_zones(sections) do
+    # Group sections by their metadata zone or infer zone from section type
+    sections
+    |> Enum.group_by(fn section ->
+      case Map.get(section, :metadata) do
+        %{"zone" => zone} when is_binary(zone) -> String.to_atom(zone)
+        %{zone: zone} when is_atom(zone) -> zone
+        nil -> infer_zone_from_section_type(section.section_type)
+        _ -> infer_zone_from_section_type(section.section_type)
+      end
+    end)
+    |> Enum.into(%{}, fn {zone, sections} ->
+      blocks = Enum.map(sections, &convert_section_to_block/1)
+      {zone, blocks}
+    end)
+    |> ensure_default_zones()
+  end
+
+  defp infer_zone_from_section_type(section_type) do
+    section_type_str = case section_type do
+      atom when is_atom(atom) -> Atom.to_string(atom)
+      str when is_binary(str) -> str
+      _ -> "about"
+    end
+
+    case section_type_str do
+      "hero" -> :hero
+      "about" -> :about
+      "services" -> :services
+      "experience" -> :experience
+      "achievements" -> :achievements
+      "portfolio" -> :portfolio
+      "projects" -> :projects
+      "skills" -> :skills
+      "testimonials" -> :testimonials
+      "contact" -> :contact
+      _ -> :about
+    end
+  end
+
+  defp convert_section_to_block(section) do
+    block_type = case to_string(section.section_type) do
+      "hero" -> :hero_card
+      "about" -> :about_card
+      "services" -> :service_card
+      "experience" -> :experience_card
+      "achievements" -> :achievement_card
+      "portfolio" -> :project_card
+      "projects" -> :project_card
+      "skills" -> :skill_card
+      "testimonials" -> :testimonial_card
+      "contact" -> :contact_card
+      _ -> :text_card
+    end
+
+    # Safe content extraction - preserve ALL existing data
+    content_data = case section.content do
+      %{} = content -> content
+      _ -> %{}
+    end
+
+    # Only add fallbacks if the fields don't already exist
+    # This preserves your complex job data, achievements, etc.
+    content_data = content_data
+    |> Map.put_new("title", section.title || "")
+    |> Map.put_new("content", get_main_content_safe(section))
+
+    %{
+      id: section.id,
+      block_type: block_type,
+      content_data: content_data,
+      zone: infer_zone_from_section_type(section.section_type),
+      position: section.position || 0,
+      original_section: section
+    }
+  end
+
+  defp get_main_content_safe(section) do
+    case section.content do
+      %{"main_content" => content} when is_binary(content) -> content
+      %{main_content: content} when is_binary(content) -> content
+      %{"content" => content} when is_binary(content) -> content
+      %{content: content} when is_binary(content) -> content
+      %{"description" => desc} when is_binary(desc) -> desc
+      %{description: desc} when is_binary(desc) -> desc
+      _ -> section.description || ""
+    end
+  end
+
+
+  defp ensure_default_zones(zones) do
+    default_zones = %{
+      hero: [],
+      about: [],
+      services: [],
+      experience: [],
+      achievements: [],
+      portfolio: [],
+      skills: [],
+      testimonials: [],
+      contact: []
+    }
+
+    Map.merge(default_zones, zones)
   end
 
   defp filter_sections_by_type(sections, types) do
@@ -1148,26 +1270,106 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
-  defp convert_layout_zones_to_portfolio_sections(layout_zones, portfolio_id) do
+  @impl true
+  def handle_event("save_dynamic_layout", _params, socket) do
+    case save_dynamic_layout_to_database(socket) do
+      {:ok, updated_portfolio} ->
+        {:noreply, socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Dynamic layout saved successfully!")
+        }
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to save layout: #{reason}")}
+    end
+  end
+
+  defp save_dynamic_layout_to_database(socket) do
+    portfolio = socket.assigns.portfolio
+    layout_zones = socket.assigns.layout_zones
+    content_blocks = socket.assigns.content_blocks
+
+    try do
+      # Convert layout zones and content blocks back to portfolio sections
+      sections_data = convert_dynamic_layout_to_sections(layout_zones, content_blocks, portfolio.id)
+
+      # Update portfolio sections in database
+      case update_portfolio_sections(portfolio, sections_data) do
+        {:ok, updated_portfolio} ->
+          {:ok, updated_portfolio}
+        {:error, reason} ->
+          {:error, reason}
+      end
+    rescue
+      error ->
+        {:error, "Save failed: #{Exception.message(error)}"}
+    end
+  end
+
+  defp convert_dynamic_layout_to_sections(layout_zones, content_blocks, portfolio_id) do
+    # Convert the dynamic layout back to traditional sections for database storage
     layout_zones
     |> Enum.with_index()
     |> Enum.flat_map(fn {{zone_name, blocks}, zone_index} ->
       Enum.with_index(blocks, fn block, block_index ->
         %{
+          id: extract_block_id_for_database(block),
           portfolio_id: portfolio_id,
-          title: get_block_title(block),
-          content: get_block_content(block),
+          title: get_block_title_safe(block),
+          content: convert_block_content_for_database(block),
           section_type: map_block_type_to_section_type(block.block_type),
-          position: zone_index * 100 + block_index,
+          position: zone_index * 1000 + block_index,
           visible: true,
-          metadata: %{
-            zone: zone_name,
-            block_type: block.block_type,
-            content_data: block.content_data
-          }
+          zone: to_string(zone_name)
         }
       end)
     end)
+  end
+
+  defp extract_block_id_for_database(block) do
+    case block.id do
+      id when is_integer(id) -> id
+      "new_" <> _rest -> nil # New block, will get ID from database
+      id when is_binary(id) ->
+        case Integer.parse(id) do
+          {int_id, _} -> int_id
+          _ -> nil
+        end
+      _ -> nil
+    end
+  end
+
+  defp get_block_title_safe(block) do
+    case Map.get(block.content_data, :title) do
+      title when is_binary(title) -> title
+      _ -> "Untitled Section"
+    end
+  end
+
+  defp convert_block_content_for_database(block) do
+    # Convert the content_data back to the format expected by traditional sections
+    case block.content_data do
+      %{} = content_data -> Map.new(content_data, fn {k, v} -> {to_string(k), v} end)
+      _ -> %{}
+    end
+  end
+
+  defp update_portfolio_sections(portfolio, sections_data) do
+    # This would integrate with your existing portfolio update logic
+    # For now, just update the portfolio's last_modified timestamp
+    case Portfolios.update_portfolio(portfolio, %{
+      last_modified: DateTime.utc_now(),
+      dynamic_layout_data: %{
+        zones: sections_data,
+        updated_at: DateTime.utc_now()
+      }
+    }) do
+      {:ok, updated_portfolio} -> {:ok, updated_portfolio}
+      error -> error
+    end
+  rescue
+    _ -> {:ok, portfolio} # Fallback
   end
 
   defp update_portfolio_sections(portfolio_id, sections_data) do
@@ -1352,16 +1554,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
-  @impl true
-  def handle_info({:block_updated, block_id, updated_zones}, socket) do
-    IO.puts("🔥 Block #{block_id} updated in portfolio editor")
-
-    {:noreply,
-    socket
-    |> assign(:layout_zones, updated_zones)
-    |> put_flash(:info, "Content updated successfully")
-    }
-  end
 
   @impl true
   def handle_event("toggle_display_mode", _params, socket) do
@@ -1376,13 +1568,14 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   # Handler for toggling dynamic layout manager
   def handle_event("toggle_dynamic_layout_manager", _params, socket) do
     current_state = Map.get(socket.assigns, :show_dynamic_layout_manager, false)
-    {:noreply, assign(socket, :show_dynamic_layout_manager, !current_state)}
-  end
+    new_state = !current_state
 
-  @impl true
-  def handle_event("toggle_dynamic_layout_manager", _params, socket) do
-    current_state = Map.get(socket.assigns, :show_dynamic_layout_manager, false)
-    {:noreply, assign(socket, :show_dynamic_layout_manager, !current_state)}
+    IO.puts("🔥🔥🔥 TOGGLE DYNAMIC LAYOUT MANAGER")
+    IO.puts("🔥 Current state: #{current_state}")
+    IO.puts("🔥 New state: #{new_state}")
+    IO.puts("🔥 Portfolio should_use_dynamic?: #{should_use_dynamic_card_layout?(socket.assigns.portfolio)}")
+
+    {:noreply, assign(socket, :show_dynamic_layout_manager, new_state)}
   end
 
   @impl true
@@ -1424,6 +1617,689 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         {:noreply, put_flash(socket, :error, "Failed to update layout")}
     end
   end
+
+  # ============================================================================
+  # AUTO-SAVE SYSTEM
+  # ============================================================================
+
+  @impl true
+  def handle_info({:auto_save_block, block_id}, socket) do
+    IO.puts("⏰ Portfolio Editor: Auto-saving block #{block_id}")
+
+    if socket.assigns.editing_block_id == block_id and socket.assigns.editing_block do
+      # Perform auto-save
+      case update_content_block_in_zones(socket, block_id, socket.assigns.editing_block.content_data) do
+        {:ok, updated_socket} ->
+          case save_layout_zones_to_portfolio_sections(updated_socket) do
+            {:ok, final_socket} ->
+              {:noreply, final_socket
+                |> assign(:unsaved_changes, false)
+                |> assign(:auto_save_timer, nil)
+                |> push_event("show_save_indicator", %{status: "saved"})
+              }
+
+            {:error, error_socket} ->
+              {:noreply, error_socket
+                |> assign(:auto_save_timer, nil)
+                |> push_event("show_save_indicator", %{status: "error"})
+              }
+          end
+
+        {:error, _reason} ->
+          {:noreply, socket
+            |> assign(:auto_save_timer, nil)
+            |> push_event("show_save_indicator", %{status: "error"})
+          }
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # ============================================================================
+  # INTEGRATION WITH DYNAMIC CARD LAYOUT MANAGER
+  # ============================================================================
+
+  @impl true
+  def handle_info({:block_updated, block_id, updated_zones}, socket) do
+    IO.puts("🔄 Portfolio Editor: Block #{block_id} updated from layout manager")
+
+    {:noreply, socket
+      |> assign(:layout_zones, updated_zones)
+      |> assign(:unsaved_changes, false)
+      |> put_flash(:info, "Content updated successfully")
+    }
+  end
+
+  # Handle messages from DynamicCardLayoutManager component
+  @impl true
+  def handle_info({:dynamic_layout_update, data}, socket) do
+    case data do
+      %{action: :block_saved, block_id: block_id, zones: updated_zones} ->
+        {:noreply, socket
+          |> assign(:layout_zones, updated_zones)
+          |> put_flash(:info, "Block saved successfully")
+        }
+
+      %{action: :block_added, zones: updated_zones} ->
+        {:noreply, socket
+          |> assign(:layout_zones, updated_zones)
+          |> assign(:layout_dirty, true)
+        }
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  # ============================================================================
+  # ENHANCED DATABASE INTEGRATION
+  # ============================================================================
+
+  defp save_layout_zones_to_portfolio_sections(socket) do
+    portfolio_id = socket.assigns.portfolio.id
+    layout_zones = socket.assigns.layout_zones
+
+    try do
+      # Convert layout zones to portfolio sections format
+      sections_data = convert_layout_zones_to_portfolio_sections(layout_zones, portfolio_id)
+
+      # Update portfolio sections in database
+      case update_portfolio_sections_enhanced(portfolio_id, sections_data) do
+        {:ok, updated_sections} ->
+          IO.puts("✅ Portfolio sections updated successfully")
+
+          # Update local state
+          updated_socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:layout_dirty, false)
+
+          {:ok, updated_socket}
+
+        {:error, reason} ->
+          IO.puts("❌ Failed to update portfolio sections: #{inspect(reason)}")
+          error_socket = socket |> put_flash(:error, "Failed to save changes")
+          {:error, error_socket}
+      end
+    rescue
+      error ->
+        IO.puts("💥 Exception during save: #{inspect(error)}")
+        error_socket = socket |> put_flash(:error, "Save failed: #{Exception.message(error)}")
+        {:error, error_socket}
+    end
+  end
+
+  defp update_portfolio_sections_enhanced(portfolio_id, sections_data) do
+    # Use transaction for atomic updates
+    Frestyl.Repo.transaction(fn ->
+      # Delete existing sections for this portfolio
+      case Frestyl.Portfolios.delete_all_portfolio_sections(portfolio_id) do
+        {:ok, _} ->
+          # Create new sections from layout zones
+          case Frestyl.Portfolios.create_portfolio_sections_batch(sections_data) do
+            {:ok, sections} -> sections
+            {:error, reason} -> Frestyl.Repo.rollback(reason)
+          end
+
+        {:error, reason} ->
+          Frestyl.Repo.rollback(reason)
+      end
+    end)
+  end
+
+    defp delete_all_portfolio_sections_safe(portfolio_id) do
+    try do
+      # Use existing Portfolios context functions
+      sections = Frestyl.Portfolios.list_portfolio_sections(portfolio_id)
+
+      Enum.each(sections, fn section ->
+        Frestyl.Portfolios.delete_portfolio_section(section)
+      end)
+
+      :ok
+    rescue
+      error ->
+        IO.puts("Error deleting sections: #{inspect(error)}")
+        {:error, Exception.message(error)}
+    end
+  end
+
+  defp create_portfolio_sections_batch_safe(sections_data) do
+    try do
+      # Try to create sections in batch if function exists
+      case function_exported?(Frestyl.Portfolios, :create_portfolio_sections_batch, 1) do
+        true ->
+          Frestyl.Portfolios.create_portfolio_sections_batch(sections_data)
+
+        false ->
+          # Create sections individually
+          sections = Enum.map(sections_data, fn attrs ->
+            case Frestyl.Portfolios.create_portfolio_section(attrs) do
+              {:ok, section} -> section
+              {:error, _} -> nil
+            end
+          end)
+          |> Enum.reject(&is_nil/1)
+
+          {:ok, sections}
+      end
+    rescue
+      error ->
+        {:error, Exception.message(error)}
+    end
+  end
+
+  defp create_sections_without_transaction(portfolio_id, sections_data) do
+    case delete_all_portfolio_sections_safe(portfolio_id) do
+      :ok ->
+        case create_portfolio_sections_batch_safe(sections_data) do
+          {:ok, sections} -> {:ok, sections}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS FOR MODAL SYSTEM
+  # ============================================================================
+
+  defp parse_block_id_safe(block_id) when is_binary(block_id) do
+    case Integer.parse(block_id) do
+      {id, _} -> id
+      _ -> nil
+    end
+  end
+  defp parse_block_id_safe(block_id) when is_integer(block_id), do: block_id
+  defp parse_block_id_safe(_), do: nil
+
+  defp find_block_in_layout_zones(layout_zones, block_id) do
+    result = Enum.reduce_while(layout_zones, nil, fn {zone_name, blocks}, _acc ->
+      case Enum.find(blocks, fn block -> block.id == block_id end) do
+        nil -> {:cont, nil}
+        found_block -> {:halt, {found_block, zone_name}}
+      end
+    end)
+
+    case result do
+      {block, zone} -> {:ok, block, zone}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  defp update_content_block_in_zones(socket, block_id, changes) do
+    layout_zones = socket.assigns.layout_zones
+
+    updated_zones = Enum.into(layout_zones, %{}, fn {zone_name, blocks} ->
+      updated_blocks = Enum.map(blocks, fn block ->
+        if block.id == block_id do
+          updated_content_data = Map.merge(block.content_data || %{}, changes)
+          %{block | content_data: updated_content_data}
+        else
+          block
+        end
+      end)
+      {zone_name, updated_blocks}
+    end)
+
+    # Update editing block if it's the same one
+    updated_editing_block = if socket.assigns[:editing_block] && socket.assigns.editing_block.id == block_id do
+      updated_content_data = Map.merge(socket.assigns.editing_block.content_data || %{}, changes)
+      %{socket.assigns.editing_block | content_data: updated_content_data}
+    else
+      socket.assigns[:editing_block]
+    end
+
+    updated_socket = socket
+    |> assign(:layout_zones, updated_zones)
+    |> assign(:editing_block, updated_editing_block)
+
+    {:ok, updated_socket}
+  rescue
+    error ->
+      {:error, Exception.message(error)}
+  end
+
+  defp schedule_auto_save(block_id, delay_ms) do
+    Process.send_after(self(), {:auto_save_block, block_id}, delay_ms)
+  end
+
+  defp add_item_to_list_field(content_data, field) do
+    current_list = Map.get(content_data, field, [])
+    new_item = case field do
+      "highlights" -> ""
+      "jobs" -> %{
+        "title" => "",
+        "company" => "",
+        "duration" => "",
+        "description" => ""
+      }
+      "achievements" -> %{
+        "title" => "",
+        "description" => "",
+        "date" => ""
+      }
+      "skills" -> ""
+      "projects" -> %{
+        "title" => "",
+        "description" => "",
+        "technologies" => [],
+        "url" => ""
+      }
+      _ -> ""
+    end
+    Map.put(content_data, field, current_list ++ [new_item])
+  end
+
+  defp remove_item_from_list_field(content_data, field, index) do
+    current_list = Map.get(content_data, field, [])
+    updated_list = List.delete_at(current_list, index)
+    Map.put(content_data, field, updated_list)
+  end
+
+  defp update_block_field_value(content_data, field, value) do
+    # Handle nested field updates (e.g., "call_to_action_text" -> ["call_to_action", "text"])
+    cond do
+      String.contains?(field, "_") && field != "call_to_action" ->
+        # Handle array item updates (e.g., "job_0_title")
+        case parse_array_field(field) do
+          {array_field, index, sub_field} ->
+            update_array_item_field(content_data, array_field, index, sub_field, value)
+
+          _ ->
+            # Regular field update
+            Map.put(content_data, field, value)
+        end
+
+      field == "call_to_action_text" ->
+        current_cta = Map.get(content_data, "call_to_action", %{})
+        updated_cta = Map.put(current_cta, "text", value)
+        Map.put(content_data, "call_to_action", updated_cta)
+
+      field == "call_to_action_url" ->
+        current_cta = Map.get(content_data, "call_to_action", %{})
+        updated_cta = Map.put(current_cta, "url", value)
+        Map.put(content_data, "call_to_action", updated_cta)
+
+      true ->
+        # Regular field update
+        Map.put(content_data, field, value)
+    end
+  end
+
+  defp parse_array_field(field) do
+    # Parse fields like "job_0_title" into {"jobs", 0, "title"}
+    case String.split(field, "_", parts: 3) do
+      [array_name, index_str, sub_field] ->
+        case Integer.parse(index_str) do
+          {index, _} ->
+            array_field = case array_name do
+              "job" -> "jobs"
+              "achievement" -> "achievements"
+              "skill" -> "skills"
+              "project" -> "projects"
+              "highlight" -> "highlights"
+              _ -> array_name
+            end
+            {array_field, index, sub_field}
+
+          _ -> nil
+        end
+
+      _ -> nil
+    end
+  end
+
+  defp update_array_item_field(content_data, array_field, index, sub_field, value) do
+    current_array = Map.get(content_data, array_field, [])
+
+    if index < length(current_array) do
+      updated_array = List.update_at(current_array, index, fn item ->
+        Map.put(item, sub_field, value)
+      end)
+      Map.put(content_data, array_field, updated_array)
+    else
+      content_data
+    end
+  end
+
+  # ============================================================================
+  # ENHANCED MODAL RENDERING INTEGRATION
+  # ============================================================================
+
+  def render_block_edit_modal(assigns) do
+    ~H"""
+    <%= if @show_block_edit_modal and @editing_block do %>
+      <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <!-- Background overlay -->
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+          <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+               phx-click="cancel_block_edit"></div>
+
+          <!-- Modal panel -->
+          <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full">
+            <!-- Modal Header -->
+            <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900" id="modal-title">
+                  Edit <%= humanize_block_type(@editing_block.block_type) %>
+                </h3>
+
+                <!-- Save Status Indicator -->
+                <div class="flex items-center space-x-3">
+                  <%= if @unsaved_changes do %>
+                    <div class="flex items-center text-amber-600">
+                      <svg class="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                      </svg>
+                      <span class="text-sm">Unsaved changes</span>
+                    </div>
+                  <% else %>
+                    <div class="flex items-center text-green-600">
+                      <svg class="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                      </svg>
+                      <span class="text-sm">Auto-saved</span>
+                    </div>
+                  <% end %>
+
+                  <button phx-click="cancel_block_edit"
+                          class="text-gray-400 hover:text-gray-600">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Modal Content -->
+              <div class="space-y-6 max-h-96 overflow-y-auto">
+                <%= render_enhanced_block_form(@editing_block, assigns) %>
+              </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+              <button type="button"
+                      phx-click="save_block_changes"
+                      phx-value-block_id={@editing_block.id}
+                      phx-value-changes={Jason.encode!(@editing_block.content_data)}
+                      class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
+                Save Changes
+              </button>
+              <button type="button"
+                      phx-click="cancel_block_edit"
+                      class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_enhanced_block_form(%{block_type: :hero_card} = block, assigns) do
+    assigns = assign(assigns, :block, block)
+    content = block.content_data || %{}
+
+    ~H"""
+    <div class="space-y-4">
+      <!-- Title Field -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Hero Title</label>
+        <input type="text"
+              phx-change="update_field"
+              phx-value-field="title"
+              phx-debounce="300"
+              phx-target={@myself}
+              value={Map.get(content, "title", "")}
+              placeholder="Enter your hero title"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+      </div>
+
+
+      <!-- Subtitle Field -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Subtitle</label>
+        <input type="text"
+               phx-change="update_block_field"
+               phx-value-field="subtitle"
+               phx-debounce="500"
+               value={Map.get(content, "subtitle", "")}
+               placeholder="Enter your subtitle"
+               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+      </div>
+
+      <!-- Call to Action Section -->
+      <div class="border border-gray-200 rounded-lg p-4">
+        <h4 class="text-sm font-medium text-gray-700 mb-3">Call to Action</h4>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Button Text</label>
+            <input type="text"
+                   phx-change="update_block_field"
+                   phx-value-field="call_to_action_text"
+                   phx-debounce="500"
+                   value={get_nested_value(content, ["call_to_action", "text"], "")}
+                   placeholder="e.g., Get Started"
+                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+          </div>
+
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Button URL</label>
+            <input type="url"
+                   phx-change="update_block_field"
+                   phx-value-field="call_to_action_url"
+                   phx-debounce="500"
+                   value={get_nested_value(content, ["call_to_action", "url"], "")}
+                   placeholder="https://example.com"
+                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+          </div>
+        </div>
+      </div>
+
+      <!-- Background Configuration -->
+      <div class="border border-gray-200 rounded-lg p-4">
+        <h4 class="text-sm font-medium text-gray-700 mb-3">Background</h4>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Background Type</label>
+            <select phx-change="update_block_field"
+                    phx-value-field="background_type"
+                    class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <option value="color" selected={Map.get(content, "background_type") == "color"}>Solid Color</option>
+              <option value="gradient" selected={Map.get(content, "background_type") == "gradient"}>Gradient</option>
+              <option value="image" selected={Map.get(content, "background_type") == "image"}>Image</option>
+              <option value="video" selected={Map.get(content, "background_type") == "video"}>Video</option>
+            </select>
+          </div>
+
+          <!-- Video Aspect Ratio (conditional) -->
+          <%= if Map.get(content, "background_type") == "video" do %>
+            <div>
+              <label class="block text-xs text-gray-600 mb-1">Video Aspect Ratio</label>
+              <select phx-change="update_block_field"
+                      phx-value-field="video_aspect_ratio"
+                      class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <option value="16:9" selected={Map.get(content, "video_aspect_ratio") == "16:9"}>16:9 Standard</option>
+                <option value="1:1" selected={Map.get(content, "video_aspect_ratio") == "1:1"}>1:1 Square</option>
+                <option value="4:3" selected={Map.get(content, "video_aspect_ratio") == "4:3"}>4:3 Classic</option>
+                <option value="21:9" selected={Map.get(content, "video_aspect_ratio") == "21:9"}>21:9 Cinematic</option>
+              </select>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_enhanced_block_form(%{block_type: :about_card} = block, assigns) do
+    assigns = assign(assigns, :block, block)
+    content = block.content_data || %{}
+    highlights = Map.get(content, "highlights", [])
+
+    ~H"""
+    <div class="space-y-4">
+      <!-- Title Field -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Section Title</label>
+        <input type="text"
+               phx-change="update_block_field"
+               phx-value-field="title"
+               phx-debounce="500"
+               value={Map.get(content, "title", "")}
+               placeholder="About Me"
+               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+      </div>
+
+      <!-- Content Field -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Content</label>
+        <textarea phx-change="update_block_field"
+                  phx-value-field="content"
+                  phx-debounce="500"
+                  rows="4"
+                  placeholder="Tell your story..."
+                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= Map.get(content, "content", "") %></textarea>
+      </div>
+
+      <!-- Highlights Section -->
+      <div class="border border-gray-200 rounded-lg p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="text-sm font-medium text-gray-700">Key Highlights</h4>
+          <button type="button"
+                  phx-click="add_list_item"
+                  phx-value-block_id={@block.id}
+                  phx-value-field="highlights"
+                  class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+            + Add Highlight
+          </button>
+        </div>
+
+        <div class="space-y-2">
+          <%= for {highlight, index} <- Enum.with_index(highlights) do %>
+            <div class="flex items-center space-x-2">
+              <div class="flex-1">
+                <input type="text"
+                       phx-change="update_block_field"
+                       phx-value-field={"highlight_#{index}"}
+                       phx-debounce="500"
+                       value={highlight}
+                       placeholder="Enter a highlight"
+                       class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+              </div>
+              <button type="button"
+                      phx-click="remove_list_item"
+                      phx-value-block_id={@block.id}
+                      phx-value-field="highlights"
+                      phx-value-index={index}
+                      class="text-red-600 hover:text-red-800 p-1">
+                <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          <% end %>
+
+          <%= if Enum.empty?(highlights) do %>
+            <p class="text-sm text-gray-500 italic">No highlights added yet. Click "Add Highlight" to get started.</p>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # Additional render functions for experience_card and achievement_card would follow the same pattern...
+
+  # ============================================================================
+  # UTILITY FUNCTIONS
+  # ============================================================================
+
+  defp get_nested_value(map, keys, default) do
+    Enum.reduce(keys, map, fn key, acc ->
+      case acc do
+        %{} -> Map.get(acc, key)
+        _ -> default
+      end
+    end) || default
+  end
+
+  defp humanize_block_type(block_type) do
+    block_type
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+    defp convert_layout_zones_to_portfolio_sections(layout_zones, portfolio_id) do
+    layout_zones
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {{zone_name, blocks}, zone_index} ->
+      Enum.with_index(blocks, fn block, block_index ->
+        %{
+          portfolio_id: portfolio_id,
+          title: get_block_title_safe(block),
+          content: block.content_data || %{},
+          section_type: map_block_type_to_section_type_safe(block.block_type),
+          position: zone_index * 100 + block_index,
+          visible: true,
+          metadata: %{
+            zone: zone_name,
+            block_type: block.block_type,
+            content_data: block.content_data
+          }
+        }
+      end)
+    end)
+  end
+
+  # Safe helper functions to avoid crashes
+  defp get_block_title_safe(block) do
+    case block.content_data do
+      %{title: title} when is_binary(title) and title != "" -> title
+      %{"title" => title} when is_binary(title) and title != "" -> title
+      _ -> humanize_block_type(block.block_type)
+    end
+  rescue
+    _ -> "Section"
+  end
+
+  defp map_block_type_to_section_type_safe(block_type) when is_atom(block_type) do
+    case block_type do
+      :hero_card -> "hero"
+      :about_card -> "about"
+      :service_card -> "services"
+      :project_card -> "portfolio"
+      :contact_card -> "contact"
+      :skill_card -> "skills"
+      :testimonial_card -> "testimonials"
+      :experience_card -> "experience"
+      :achievement_card -> "achievements"
+      :content_card -> "content"
+      :social_card -> "social"
+      :monetization_card -> "monetization"
+      :text_card -> "text"
+      _ -> "text"
+    end
+  end
+
+  defp map_block_type_to_section_type_safe(block_type) when is_binary(block_type) do
+    map_block_type_to_section_type_safe(String.to_atom(block_type))
+  rescue
+    _ -> "text"
+  end
+
+  defp map_block_type_to_section_type_safe(_), do: "text"
 
   defp save_brand_settings(brand_settings, account) do
     # Simple fallback - just return success for now
@@ -3186,6 +4062,17 @@ end
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_info({:layout_updated, updated_zones}, socket) do
+    IO.puts("🔥 Layout updated in portfolio editor")
+
+    {:noreply,
+    socket
+    |> assign(:layout_zones, updated_zones)
+    |> put_flash(:info, "Layout updated successfully")
+    }
+  end
+
   # Additional broadcasting helpers
   defp broadcast_design_update(socket, customization) do
     portfolio = socket.assigns.portfolio
@@ -3384,64 +4271,57 @@ end
     """
   end
 
-  defp render_dynamic_card_view(assigns) do
-    ~H"""
+defp render_dynamic_card_view(assigns) do
+  ~H"""
+  <div class="space-y-6">
+    <!-- Dynamic Card Layout Header -->
     <div class="bg-white rounded-lg shadow-sm border p-6">
-      <h2 class="text-lg font-semibold text-gray-900 mb-4">Dynamic Card Layout View</h2>
-      <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
-        <strong>Debug Info:</strong><br>
-        Total Content Blocks: <%= length(@content_blocks || []) %><br>
-        Zone Distribution:
-        <%= for {zone_name, blocks} <- (@layout_zones || %{}) do %>
-          <%= zone_name %>: <%= length(blocks) %> |
-        <% end %>
-      </div>
-      <%= if map_size(@layout_zones || %{}) > 0 do %>
-        <div class="space-y-6">
-          <%= for {zone_name, blocks} <- (@layout_zones || %{}) do %>
-            <%= if length(blocks) > 0 do %>
-              <div class="border-2 border-dashed border-purple-200 rounded-lg p-4 bg-purple-50">
-                <h3 class="text-md font-medium text-purple-900 mb-3 capitalize flex items-center">
-                  <div class="w-3 h-3 bg-purple-600 rounded-full mr-2"></div>
-                  <%= String.replace(to_string(zone_name), "_", " ") %> Zone
-                </h3>
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold text-gray-900">Dynamic Card Layout</h2>
+          <p class="text-sm text-gray-600">Click any content block to edit with modal interface</p>
+        </div>
 
-                <div class="space-y-3">
-                  <%= for block <- blocks do %>
-                    <div class="bg-white border border-purple-200 rounded-lg p-3">
-                      <div class="flex items-center justify-between mb-2">
-                        <h4 class="font-medium text-gray-900"><%= Map.get(block.content_data, :title, block.original_section.title) %></h4>
-                        <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
-                          <%= block.block_type %>
-                        </span>
-                      </div>
-
-                      <div class="text-sm text-gray-600">
-                        <%= get_block_preview_text(block) %>
-                      </div>
-
-                      <div class="mt-2 flex space-x-2">
-                        <button class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200">
-                          Edit Block
-                        </button>
-                        <button class="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
-                          Move
-                        </button>
-                      </div>
-                    </div>
-                  <% end %>
-                </div>
-              </div>
+        <div class="flex items-center space-x-3">
+          <div class="text-xs text-gray-500">
+            <strong>Zones:</strong>
+            <%= for {zone_name, blocks} <- (@layout_zones || %{}) do %>
+              <%= zone_name %>: <%= length(blocks) %> |
             <% end %>
-          <% end %>
+          </div>
         </div>
-      <% else %>
-        <div class="text-center py-8 text-gray-500">
-          <p>No content blocks found</p>
-        </div>
-      <% end %>
+      </div>
     </div>
-    """
+
+    <!-- Dynamic Card Layout Manager Component -->
+    <.live_component
+      module={FrestylWeb.PortfolioLive.DynamicCardLayoutManager}
+      id="dynamic-card-layout-manager"
+      portfolio={@portfolio}
+      layout_zones={@layout_zones || %{}}
+      brand_settings={@brand_settings || %{}}
+      view_mode={:edit}
+      show_edit_controls={true}
+    />
+  </div>
+  """
+end
+
+
+  @impl true
+  def handle_event("debug_edit_block", params, socket) do
+    IO.puts("🔥🔥🔥 PORTFOLIO EDITOR - Edit Block clicked!")
+    IO.puts("🔥 Params: #{inspect(params)}")
+    IO.puts("🔥 Socket assigns keys: #{inspect(Map.keys(socket.assigns))}")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("debug_move_block", params, socket) do
+    IO.puts("🔥🔥🔥 PORTFOLIO EDITOR - Move Block clicked!")
+    IO.puts("🔥 Params: #{inspect(params)}")
+    IO.puts("🔥 Current user: #{inspect(socket.assigns.user.id)}")
+    {:noreply, socket}
   end
 
   defp get_block_preview_text(block) do

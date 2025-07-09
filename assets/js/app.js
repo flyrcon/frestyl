@@ -367,6 +367,100 @@ let Hooks = {
   StoryAutoSave,
   CollaborativeCursors,  
 
+  DragBlock = {
+    mounted() {
+      const element = this.el;
+      const blockId = element.dataset.blockId;
+      
+      element.addEventListener('dragstart', (e) => {
+        console.log('Drag started for block:', blockId);
+        e.dataTransfer.setData('text/plain', blockId);
+        e.dataTransfer.effectAllowed = 'move';
+        
+        // Add visual feedback
+        element.style.opacity = '0.5';
+        element.style.transform = 'rotate(2deg) scale(1.02)';
+        
+        // Notify LiveView
+        this.pushEvent('start_drag', { block_id: blockId });
+      });
+      
+      element.addEventListener('dragend', (e) => {
+        console.log('Drag ended for block:', blockId);
+        
+        // Remove visual feedback
+        element.style.opacity = '1';
+        element.style.transform = 'none';
+        
+        // Notify LiveView
+        this.pushEvent('drag_end', {});
+      });
+    }
+  },  
+
+  Hooks.DropZone = {
+    mounted() {
+      const element = this.el;
+      const zoneName = element.dataset.zone;
+      
+      element.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        
+        // Add visual feedback
+        element.classList.add('border-green-400', 'bg-green-50');
+        element.classList.remove('border-purple-200', 'bg-purple-50');
+        
+        // Notify LiveView
+        this.pushEvent('drag_over', { zone: zoneName });
+      });
+      
+      element.addEventListener('dragleave', (e) => {
+        // Only trigger if we're actually leaving the zone (not just moving between child elements)
+        if (!element.contains(e.relatedTarget)) {
+          // Remove visual feedback
+          element.classList.remove('border-green-400', 'bg-green-50');
+          element.classList.add('border-purple-200', 'bg-purple-50');
+          
+          // Notify LiveView
+          this.pushEvent('drag_leave', {});
+        }
+      });
+      
+      element.addEventListener('drop', (e) => {
+        e.preventDefault();
+        
+        const blockId = e.dataTransfer.getData('text/plain');
+        
+        // Calculate drop position based on where in the zone we dropped
+        const blocks = element.querySelectorAll('[data-block-id]');
+        let position = blocks.length; // Default to end
+        
+        const mouseY = e.clientY;
+        for (let i = 0; i < blocks.length; i++) {
+          const blockRect = blocks[i].getBoundingClientRect();
+          if (mouseY < blockRect.top + blockRect.height / 2) {
+            position = i;
+            break;
+          }
+        }
+        
+        console.log('Dropped block', blockId, 'in zone', zoneName, 'at position', position);
+        
+        // Remove visual feedback
+        element.classList.remove('border-green-400', 'bg-green-50');
+        element.classList.add('border-purple-200', 'bg-purple-50');
+        
+        // Notify LiveView
+        this.pushEvent('drop', { 
+          zone: zoneName, 
+          position: position.toString(),
+          block_id: blockId 
+        });
+      });
+    }
+  },
+
   PdfDownload: {
     mounted() {
       console.log('🎯 PdfDownload hook mounted successfully on element:', this.el.id)

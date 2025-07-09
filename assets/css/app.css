@@ -1082,3 +1082,30 @@ input:disabled {
   transform: scale(1.05);
 }
 
+.drag-handle {
+  cursor: move;
+  user-select: none;
+}
+
+.drag-handle:hover {
+  color: #6b7280;
+}
+
+[draggable="true"] {
+  transition: all 0.2s ease;
+}
+
+[draggable="true"]:hover {
+  cursor: move;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.layout-zone {
+  transition: all 0.2s ease;
+}
+
+.layout-zone[data-drag-over="true"] {
+  border-color: #10b981;
+  background-color: #ecfdf5;
+}

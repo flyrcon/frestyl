@@ -194,6 +194,51 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardPortfolioEditor do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("start_editing_block", params, socket) do
+    IO.puts("🔥 Parent received start_editing_block: #{inspect(params)}")
+    # Forward to component or handle here
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("cancel_editing_block", params, socket) do
+    IO.puts("🔥 Parent received cancel_editing_block: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("update_block_content", params, socket) do
+    IO.puts("🔥 Parent received update_block_content: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("save_block_changes", params, socket) do
+    IO.puts("🔥 Parent received save_block_changes: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("test_event", params, socket) do
+    IO.puts("🔥🔥🔥 Parent received TEST EVENT: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("toggle_inline_edit", params, socket) do
+    IO.puts("🔥 Parent received toggle_inline_edit: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
+  # Handle any unmatched events from the component
+  @impl true
+  def handle_event(event_name, params, socket) do
+    IO.puts("🔥 UNHANDLED EVENT in DynamicCardPortfolioEditor: #{event_name}")
+    IO.puts("🔥 Params: #{inspect(params)}")
+    {:noreply, socket}
+  end
+
   # ============================================================================
   # DYNAMIC CARD HELPER FUNCTIONS
   # ============================================================================
