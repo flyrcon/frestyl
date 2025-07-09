@@ -78,6 +78,20 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         |> assign(:unsaved_changes, false)
         |> assign_content_blocks_if_dynamic(portfolio)
         |> assign(:display_mode, :traditional) # Start in traditional mode
+        |> assign(:account, account)
+
+        socket = if socket.assigns.use_dynamic_layout do
+        # Convert existing sections to clean layout zones
+        clean_layout_zones = convert_sections_to_clean_layout_zones(socket.assigns.sections)
+
+        socket
+          |> assign(:layout_zones, clean_layout_zones)
+          |> assign(:show_dynamic_layout_manager, true)
+        else
+          socket
+          |> assign(:layout_zones, %{})
+          |> assign(:show_dynamic_layout_manager, false)
+        end
 
         socket = if collaboration_mode and can_collaborate?(account, portfolio) do
           setup_collaboration_session(socket, portfolio, account)
@@ -101,6 +115,213 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         {:ok, socket |> put_flash(:error, "Access denied") |> redirect(to: "/hub")}
     end
   end
+
+  defp convert_sections_to_clean_layout_zones(sections) do
+    sections
+    |> Enum.group_by(fn section ->
+      infer_zone_from_section_type(section.section_type)
+    end)
+    |> Enum.into(%{}, fn {zone, sections} ->
+      blocks = Enum.map(sections, &convert_section_to_clean_block/1)
+      {zone, blocks}
+    end)
+    |> ensure_default_zones()
+  end
+
+  defp convert_section_to_clean_block(section) do
+    # Determine block type
+    block_type = case to_string(section.section_type) do
+      "hero" -> :hero_card
+      "intro" -> :about_card
+      "media_showcase" -> :media_showcase_card
+      "experience" -> :experience_card
+      "achievements" -> :achievements_card
+      "skills" -> :skills_card
+      "projects" -> :projects_card
+      "contact" -> :contact_card
+      _ -> :about_card
+    end
+
+    # Clean and structure the content data
+    clean_content = clean_section_content(section.content, block_type)
+
+    %{
+      id: section.id,
+      block_type: block_type,
+      content_data: clean_content,
+      zone: infer_zone_from_section_type(section.section_type),
+      position: section.position || 0,
+      original_section: section
+    }
+  end
+
+  defp clean_section_content(content, block_type) when is_map(content) do
+    case block_type do
+      :hero_card ->
+        %{
+          "title" => Map.get(content, "title", ""),
+          "subtitle" => Map.get(content, "subtitle", Map.get(content, "description", "")),
+          "video_url" => Map.get(content, "video_url", ""),
+          "video_aspect_ratio" => Map.get(content, "video_aspect_ratio", "16:9"),
+          "call_to_action" => %{
+            "text" => get_nested_content(content, ["call_to_action", "text"], ""),
+            "url" => get_nested_content(content, ["call_to_action", "url"], "")
+          },
+          "background_type" => Map.get(content, "background_type", "color"),
+          "social_links" => Map.get(content, "social_links", %{}),
+          "media_files" => [],
+          "custom_fields" => Map.get(content, "custom_fields", %{})
+        }
+
+      :about_card ->
+        %{
+          "title" => Map.get(content, "title", "About"),
+          "content" => Map.get(content, "summary", Map.get(content, "main_content", "")),
+          "highlights" => ensure_list(Map.get(content, "highlights", [])),
+          "location" => Map.get(content, "location", ""),
+          "availability" => Map.get(content, "availability", ""),
+          "media_files" => [],
+          "custom_fields" => Map.get(content, "custom_fields", %{})
+        }
+
+      :experience_card ->
+        jobs = Map.get(content, "jobs", [])
+        clean_jobs = case jobs do
+          list when is_list(list) ->
+            Enum.map(list, &clean_job_entry/1)
+          _ ->
+            [%{
+              "title" => "",
+              "company" => "",
+              "location" => "",
+              "employment_type" => "",
+              "start_date" => "",
+              "end_date" => "",
+              "current" => false,
+              "description" => "",
+              "achievements" => [],
+              "skills" => [],
+              "media_files" => [],
+              "custom_fields" => %{}
+            }]
+        end
+
+        %{
+          "title" => Map.get(content, "title", "Experience"),
+          "jobs" => clean_jobs
+        }
+
+      :achievements_card ->
+        achievements = Map.get(content, "achievements", [])
+        clean_achievements = case achievements do
+          list when is_list(list) ->
+            Enum.map(list, &clean_achievement_entry/1)
+          _ ->
+            [%{
+              "title" => "",
+              "description" => "",
+              "date" => "",
+              "organization" => "",
+              "verification_url" => "",
+              "category" => "",
+              "media_files" => [],
+              "custom_fields" => %{}
+            }]
+        end
+
+        %{
+          "title" => Map.get(content, "title", "Achievements"),
+          "achievements" => clean_achievements
+        }
+
+      _ ->
+        # Default clean structure
+        %{
+          "title" => Map.get(content, "title", ""),
+          "content" => Map.get(content, "content", Map.get(content, "main_content", "")),
+          "media_files" => [],
+          "custom_fields" => Map.get(content, "custom_fields", %{})
+        }
+    end
+  end
+
+  defp clean_section_content(_, _), do: %{}
+
+  defp clean_job_entry(job) when is_map(job) do
+    %{
+      "title" => Map.get(job, "title", ""),
+      "company" => Map.get(job, "company", ""),
+      "location" => Map.get(job, "location", ""),
+      "employment_type" => Map.get(job, "employment_type", ""),
+      "start_date" => Map.get(job, "start_date", ""),
+      "end_date" => Map.get(job, "end_date", ""),
+      "current" => Map.get(job, "current", false),
+      "description" => Map.get(job, "description", ""),
+      "achievements" => ensure_list(Map.get(job, "achievements", [])),
+      "skills" => ensure_list(Map.get(job, "skills", [])),
+      "media_files" => [],
+      "custom_fields" => Map.get(job, "custom_fields", %{})
+    }
+  end
+
+  defp clean_achievement_entry(achievement) when is_map(achievement) do
+    %{
+      "title" => Map.get(achievement, "title", ""),
+      "description" => Map.get(achievement, "description", ""),
+      "date" => Map.get(achievement, "date", ""),
+      "organization" => Map.get(achievement, "organization", ""),
+      "verification_url" => Map.get(achievement, "verification_url", ""),
+      "category" => Map.get(achievement, "category", ""),
+      "media_files" => [],
+      "custom_fields" => Map.get(achievement, "custom_fields", %{})
+    }
+  end
+
+  defp get_nested_content(map, keys, default) do
+    Enum.reduce(keys, map, fn key, acc ->
+      case acc do
+        %{} -> Map.get(acc, key)
+        _ -> default
+      end
+    end) || default
+  end
+
+  defp ensure_list(value) when is_list(value), do: value
+  defp ensure_list(_), do: []
+
+  defp infer_zone_from_section_type(section_type) do
+    case to_string(section_type) do
+      "hero" -> :hero
+      "intro" -> :about
+      "media_showcase" -> :hero
+      "about" -> :about
+      "experience" -> :experience
+      "achievements" -> :achievements
+      "skills" -> :skills
+      "projects" -> :projects
+      "portfolio" -> :projects
+      "testimonials" -> :testimonials
+      "contact" -> :contact
+      _ -> :about
+    end
+  end
+
+  defp ensure_default_zones(zones) do
+    default_zones = %{
+      hero: [],
+      about: [],
+      services: [],
+      experience: [],
+      achievements: [],
+      projects: [],
+      skills: [],
+      testimonials: [],
+      contact: []
+    }
+
+    Map.merge(default_zones, zones)
+  end
+
 
   defp enhance_with_dynamic_card_layout(socket) do
     portfolio = socket.assigns.portfolio
@@ -4271,42 +4492,28 @@ end
     """
   end
 
-defp render_dynamic_card_view(assigns) do
-  ~H"""
-  <div class="space-y-6">
-    <!-- Dynamic Card Layout Header -->
-    <div class="bg-white rounded-lg shadow-sm border p-6">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-xl font-semibold text-gray-900">Dynamic Card Layout</h2>
-          <p class="text-sm text-gray-600">Click any content block to edit with modal interface</p>
-        </div>
+  defp render_dynamic_card_view(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Dynamic Card Layout Component -->
+      <.live_component
+        module={FrestylWeb.PortfolioLive.DynamicCardLayoutManager}
+        id="dynamic-card-layout-manager"
+        portfolio={@portfolio}
+        account={@account}
+        layout_zones={@layout_zones || %{}}
+        brand_settings={@brand_settings || %{}}
+        view_mode={:edit}
+        show_edit_controls={true}
+      />
 
-        <div class="flex items-center space-x-3">
-          <div class="text-xs text-gray-500">
-            <strong>Zones:</strong>
-            <%= for {zone_name, blocks} <- (@layout_zones || %{}) do %>
-              <%= zone_name %>: <%= length(blocks) %> |
-            <% end %>
-          </div>
-        </div>
-      </div>
+      <!-- Block Edit Modal Integration -->
+      <%= if assigns[:show_block_edit_modal] and assigns[:editing_block] do %>
+        <%= render_block_edit_modal(assigns) %>
+      <% end %>
     </div>
-
-    <!-- Dynamic Card Layout Manager Component -->
-    <.live_component
-      module={FrestylWeb.PortfolioLive.DynamicCardLayoutManager}
-      id="dynamic-card-layout-manager"
-      portfolio={@portfolio}
-      layout_zones={@layout_zones || %{}}
-      brand_settings={@brand_settings || %{}}
-      view_mode={:edit}
-      show_edit_controls={true}
-    />
-  </div>
-  """
-end
-
+    """
+  end
 
   @impl true
   def handle_event("debug_edit_block", params, socket) do
