@@ -42,16 +42,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         available_layouts = get_available_layouts(account)
         brand_constraints = get_brand_constraints(account)
 
-        # Enhanced dynamic layout detection
-        is_dynamic_layout = should_use_dynamic_card_layout?(portfolio)
-
-        # Load dynamic layout zones if needed
-        layout_zones = if is_dynamic_layout do
-          convert_sections_to_layout_zones(sections)
-        else
-          %{}
-        end
-
         if connected?(socket) do
           Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
         end
@@ -65,33 +55,14 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         |> assign_ui_state()
         |> assign_live_preview_state()
         |> assign(:content_blocks, [])
-        |> assign(:layout_zones, layout_zones)  # Use computed layout zones
+        |> assign(:layout_zones, %{})
         |> assign(:brand_settings, %{primary_color: "#3b82f6", secondary_color: "#64748b", accent_color: "#f59e0b"})
         |> assign(:available_dynamic_blocks, [])
         |> assign(:layout_metrics, %{})
-        |> assign(:use_dynamic_layout, is_dynamic_layout)  # Use computed value
-        |> assign(:is_dynamic_layout, is_dynamic_layout)  # Add this for consistency
-        |> assign(:show_dynamic_layout_manager, is_dynamic_layout)  # Auto-show if dynamic
-        |> assign(:show_block_edit_modal, false)  # Add modal state
-        |> assign(:editing_block, nil)  # Add editing state
-        |> assign(:editing_block_id, nil)  # Add editing ID
-        |> assign(:unsaved_changes, false)
+        # PHASE 4: Always use dynamic layout, remove use_dynamic_layout check
+        |> assign(:use_dynamic_layout, true)
         |> assign_content_blocks_if_dynamic(portfolio)
-        |> assign(:display_mode, :traditional) # Start in traditional mode
-        |> assign(:account, account)
-
-        socket = if socket.assigns.use_dynamic_layout do
-        # Convert existing sections to clean layout zones
-        clean_layout_zones = convert_sections_to_clean_layout_zones(socket.assigns.sections)
-
-        socket
-          |> assign(:layout_zones, clean_layout_zones)
-          |> assign(:show_dynamic_layout_manager, true)
-        else
-          socket
-          |> assign(:layout_zones, %{})
-          |> assign(:show_dynamic_layout_manager, false)
-        end
+        # PHASE 4: Remove display_mode - always dynamic
 
         socket = if collaboration_mode and can_collaborate?(account, portfolio) do
           setup_collaboration_session(socket, portfolio, account)
@@ -114,6 +85,153 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
       {:error, :unauthorized} ->
         {:ok, socket |> put_flash(:error, "Access denied") |> redirect(to: "/hub")}
     end
+  end
+
+  defp setup_display_mode_compatibility(socket) do
+    portfolio = socket.assigns.portfolio
+    sections = safe_get_sections(portfolio.id)
+
+    # Default to dynamic mode but allow traditional fallback
+    display_mode = determine_best_display_mode(portfolio, sections)
+
+    socket = case display_mode do
+      :dynamic ->
+        content_blocks = convert_sections_to_content_blocks(sections)
+        layout_zones = organize_content_into_layout_zones(content_blocks, portfolio)
+
+        socket
+        |> assign(:display_mode, :dynamic)
+        |> assign(:content_blocks, content_blocks)
+        |> assign(:layout_zones, layout_zones)
+        |> assign(:show_dynamic_layout, true)
+
+      :traditional ->
+        socket
+        |> assign(:display_mode, :traditional)
+        |> assign(:show_dynamic_layout, false)
+    end
+
+    socket
+    |> assign(:sections, sections)
+    |> assign(:available_display_modes, [:traditional, :dynamic])
+  end
+
+  defp determine_best_display_mode(portfolio, sections) do
+    # Check if portfolio has dynamic-specific features
+    customization = portfolio.customization || %{}
+    layout = Map.get(customization, "layout", portfolio.theme)
+
+    # Use dynamic mode for modern layouts or if it has video blocks
+    has_video_blocks = Enum.any?(sections, fn section ->
+      section_type = Map.get(section, :section_type)
+      section_type in [:video_hero, "video_hero"]
+    end)
+
+    is_modern_layout = layout in [
+      "dynamic_card_layout",
+      "professional_service_provider",
+      "creative_portfolio_showcase"
+    ]
+
+    if has_video_blocks or is_modern_layout do
+      :dynamic
+    else
+      :traditional
+    end
+  end
+
+  defp setup_video_support(socket) do
+    portfolio = socket.assigns.portfolio
+
+    # Get video usage stats
+    video_stats = Portfolios.get_video_usage_stats(portfolio.id)
+
+    # Check video permissions
+    can_add_videos = Portfolios.can_create_video_blocks?(socket.assigns.current_user)
+
+    # Get subscription tier for video limits
+    user = socket.assigns.current_user
+    subscription_tier = Map.get(user, :subscription_tier, :personal)
+
+    # Calculate video limits based on tier
+    video_limits = %{
+      max_videos: get_max_videos_for_tier(subscription_tier),
+      max_duration: get_max_duration_for_tier(subscription_tier),
+      max_file_size: get_max_file_size_for_tier(subscription_tier)
+    }
+
+    # Check if user is approaching limits
+    video_warnings = get_video_usage_warnings(video_stats, video_limits)
+
+    socket
+    |> assign(:video_stats, video_stats)
+    |> assign(:can_add_videos, can_add_videos)
+    |> assign(:video_limits, video_limits)
+    |> assign(:video_warnings, video_warnings)
+    |> assign(:show_video_upload_modal, false)
+    |> assign(:video_upload_section_id, nil)
+    |> assign(:playing_video_id, nil)
+    |> assign(:video_processing_status, %{})
+  end
+
+  # Helper functions for video limits
+  defp get_max_videos_for_tier(tier) do
+    case tier do
+      :creator -> 5
+      :professional -> 20
+      :enterprise -> 100
+      _ -> 0  # personal tier
+    end
+  end
+
+  defp get_max_duration_for_tier(tier) do
+    case tier do
+      :creator -> 600        # 10 minutes
+      :professional -> 3600  # 1 hour
+      :enterprise -> 18000   # 5 hours
+      _ -> 0  # personal tier
+    end
+  end
+
+  defp get_max_file_size_for_tier(tier) do
+    case tier do
+      :creator -> 50_000_000      # 50MB
+      :professional -> 100_000_000 # 100MB
+      :enterprise -> 500_000_000   # 500MB
+      _ -> 0  # personal tier
+    end
+  end
+
+  defp get_video_usage_warnings(video_stats, video_limits) do
+    warnings = []
+
+    # Check video count
+    video_usage_percent = if video_limits.max_videos > 0 do
+      (video_stats.video_count / video_limits.max_videos) * 100
+    else
+      0
+    end
+
+    # Check duration usage
+    duration_usage_percent = if video_limits.max_duration > 0 do
+      (video_stats.total_duration_seconds / video_limits.max_duration) * 100
+    else
+      0
+    end
+
+    warnings = if video_usage_percent >= 80 do
+      [%{type: :video_count, message: "You're approaching your video limit", percentage: video_usage_percent} | warnings]
+    else
+      warnings
+    end
+
+    warnings = if duration_usage_percent >= 80 do
+      [%{type: :duration, message: "You're approaching your video duration limit", percentage: duration_usage_percent} | warnings]
+    else
+      warnings
+    end
+
+    warnings
   end
 
   defp convert_sections_to_clean_layout_zones(sections) do
@@ -153,6 +271,30 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
       position: section.position || 0,
       original_section: section
     }
+  end
+
+  defp ensure_section_compatibility(section) when is_map(section) do
+    %{
+      id: Map.get(section, :id) || Map.get(section, "id"),
+      portfolio_id: Map.get(section, :portfolio_id) || Map.get(section, "portfolio_id"),
+      title: Map.get(section, :title) || Map.get(section, "title", "Untitled"),
+      section_type: Map.get(section, :section_type) || Map.get(section, "section_type", :custom),
+      content: Map.get(section, :content) || Map.get(section, "content", %{}),
+      position: Map.get(section, :position) || Map.get(section, "position", 0),
+      visible: Map.get(section, :visible, true),
+      inserted_at: Map.get(section, :inserted_at) || Map.get(section, :created_at) || DateTime.utc_now(),
+      updated_at: Map.get(section, :updated_at) || DateTime.utc_now()
+    }
+  end
+
+  defp safe_get_sections(portfolio_id) do
+    try do
+      portfolio_id
+      |> Portfolios.list_portfolio_sections()
+      |> Enum.map(&ensure_section_compatibility/1)
+    rescue
+      _ -> []
+    end
   end
 
   defp clean_section_content(content, block_type) when is_map(content) do
@@ -355,22 +497,21 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:is_dynamic_layout, true) # Always true now
   end
 
-  defp should_use_dynamic_card_layout?(portfolio) do
-    customization = portfolio.customization || %{}
-    layout = Map.get(customization, "layout", portfolio.theme)
-
-    # Check if this portfolio should use Dynamic Card Layout
-    layout in [
-      "dynamic_card_layout",
-      "professional_service_provider",
-      "creative_portfolio_showcase",
-      "technical_expert_dashboard",
-      "content_creator_hub",
-      "corporate_executive_profile"
-    ]
+  defp should_use_dynamic_card_layout?(_portfolio) do
+    # Always use dynamic card layout now
+    true
   end
 
   # Helper function to convert sections to zones
+  defp filter_sections_by_type(sections, types) do
+    sections
+    |> Enum.filter(fn section ->
+      section_type = to_string(Map.get(section, :section_type, ""))
+      section_type in types
+    end)
+    |> Enum.map(&convert_section_to_dynamic_block_safe/1)
+  end
+
   defp convert_sections_to_zones_simple(sections) do
     %{
       hero: filter_sections_by_type(sections, ["intro", "hero"]),
@@ -457,6 +598,54 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     }
   end
 
+  defp convert_section_to_dynamic_block_safe(section) do
+    %{
+      id: Map.get(section, :id),
+      block_type: determine_dynamic_block_type_safe(Map.get(section, :section_type)),
+      content_data: Map.get(section, :content, %{}),
+      position: Map.get(section, :position, 0),
+      title: Map.get(section, :title, "Untitled"),
+      visible: Map.get(section, :visible, true),
+      section_type: Map.get(section, :section_type)
+    }
+  end
+
+  defp convert_section_to_dynamic_block_safe(section, index) do
+    %{
+      id: Map.get(section, :id),
+      portfolio_id: Map.get(section, :portfolio_id),
+      block_type: map_section_type_to_block_type_safe(Map.get(section, :section_type)),
+      position: index,
+      content_data: extract_content_from_section_safe(section),
+      original_section: section,
+      title: Map.get(section, :title, "Untitled"),
+      visible: Map.get(section, :visible, true),
+      section_type: Map.get(section, :section_type)
+    }
+  end
+
+  defp convert_section_to_dynamic_block(section) do
+    convert_section_to_dynamic_block_safe(section)  # Delegate to safe version
+  end
+
+  defp determine_dynamic_block_type_safe(section_type) do
+    case to_string(section_type) do
+      "intro" -> :intro_card
+      "hero" -> :hero_card
+      "experience" -> :experience_card
+      "skills" -> :skills_card
+      "education" -> :education_card
+      "projects" -> :projects_card
+      "contact" -> :contact_card
+      "video_hero" -> :video_hero
+      "achievements" -> :achievements_card
+      "testimonial" -> :testimonial_card
+      "media_showcase" -> :media_card
+      "about" -> :about_card
+      _ -> :content_card
+    end
+  end
+
   defp get_main_content_safe(section) do
     case section.content do
       %{"main_content" => content} when is_binary(content) -> content
@@ -486,26 +675,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     Map.merge(default_zones, zones)
   end
 
-  defp filter_sections_by_type(sections, types) do
-    sections
-    |> Enum.filter(fn section ->
-      section_type = to_string(section.section_type)
-      section_type in types
-    end)
-    |> Enum.map(&convert_section_to_dynamic_block/1)
-  end
-
-  defp convert_section_to_dynamic_block(section) do
-    %{
-      id: section.id,
-      block_type: determine_dynamic_block_type(section.section_type),
-      content_data: section.content || %{},
-      position: section.position || 0,
-      title: section.title,
-      visible: Map.get(section, :visible, true)
-    }
-  end
-
   defp convert_sections_to_content_blocks(sections) do
     sections
     |> Enum.with_index()
@@ -516,9 +685,52 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         block_type: map_section_type_to_block_type(section.section_type),
         position: index,
         content_data: extract_content_from_section(section),
-        original_section: section # Keep reference to original
+        visible: Map.get(section, :visible, true),
+        original_section: section # Keep reference for migration
       }
     end)
+  end
+
+  defp determine_dynamic_block_type(section_type) do
+    determine_dynamic_block_type_safe(section_type)
+  end
+
+  defp map_section_type_to_block_type_safe(section_type) do
+    case section_type do
+      :intro -> :hero_card
+      "intro" -> :hero_card
+      :experience -> :experience_card
+      "experience" -> :experience_card
+      :skills -> :skills_card
+      "skills" -> :skills_card
+      :education -> :education_card
+      "education" -> :education_card
+      :projects -> :projects_card
+      "projects" -> :projects_card
+      :contact -> :contact_card
+      "contact" -> :contact_card
+      :video_hero -> :video_hero
+      "video_hero" -> :video_hero
+      :achievements -> :achievements_card
+      "achievements" -> :achievements_card
+      :testimonial -> :testimonial_card
+      "testimonial" -> :testimonial_card
+      :media_showcase -> :media_card
+      "media_showcase" -> :media_card
+      :about -> :about_card
+      "about" -> :about_card
+      _ -> :content_card
+    end
+  end
+
+  defp determine_zone_for_block_type_safe(block_type) do
+    case block_type do
+      type when type in [:hero_card, :video_hero, :intro_card] -> :hero
+      type when type in [:experience_card, :projects_card, :skills_card, :education_card, :achievements_card] -> :main_content
+      type when type in [:contact_card, :testimonial_card] -> :sidebar
+      type when type in [:media_card] -> :showcase
+      _ -> :main_content
+    end
   end
 
   defp determine_portfolio_category(portfolio) do
@@ -571,96 +783,17 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
-  # UPDATE the assign_content_blocks_if_dynamic function:
   defp assign_content_blocks_if_dynamic(socket, portfolio) do
-    if socket.assigns.use_dynamic_layout do
-      content_blocks = convert_sections_to_content_blocks(socket.assigns.sections)
-      layout_zones = organize_content_into_layout_zones(content_blocks, portfolio)
-      portfolio_category = determine_portfolio_category(portfolio)
+    # Always assign content blocks since we always use dynamic layout
+    content_blocks = convert_sections_to_content_blocks(socket.assigns.sections)
+    layout_zones = organize_content_into_layout_zones(content_blocks, portfolio)
+    portfolio_category = determine_portfolio_category(portfolio)
 
-      socket
-      |> assign(:content_blocks, content_blocks)
-      |> assign(:layout_zones, layout_zones)
-      |> assign(:portfolio_category, portfolio_category)
-    else
-      socket
-      |> assign(:content_blocks, [])
-      |> assign(:layout_zones, %{})
-      |> assign(:portfolio_category, :traditional)
-    end
+    socket
+    |> assign(:content_blocks, content_blocks)
+    |> assign(:layout_zones, layout_zones)
+    |> assign(:portfolio_category, portfolio_category)
   end
-
-  defp map_section_type_to_block_type(section_type) do
-    case to_string(section_type) do
-      "intro" -> :about_card
-      "media_showcase" -> :hero_card
-      "experience" -> :experience_card
-      "achievements" -> :achievement_card  # ADD THIS LINE
-      "skills" -> :skill_card
-      "portfolio" -> :project_card
-      "projects" -> :project_card
-      "services" -> :service_card
-      "testimonials" -> :testimonial_card
-      "contact" -> :contact_card
-      _ ->
-        IO.puts("🔥 UNKNOWN SECTION TYPE: #{inspect(section_type)}")
-        :text_card
-    end
-  end
-
-  defp extract_content_from_section(section) do
-    content = section.content || %{}
-
-    # ADD DEBUGGING
-    IO.puts("🔥 EXTRACTING CONTENT FROM: #{section.title}")
-    IO.puts("🔥 SECTION TYPE: #{inspect(section.section_type)}")
-    IO.puts("🔥 CONTENT KEYS: #{inspect(Map.keys(content))}")
-
-    case section.section_type do
-      :intro ->
-        %{
-          title: section.title,
-          subtitle: Map.get(content, "headline", ""),
-          content: Map.get(content, "main_content") || Map.get(content, "summary") || "",
-          call_to_action: %{text: "Learn More", url: "#about"}
-        }
-
-      :media_showcase ->
-        %{
-          title: section.title,
-          subtitle: Map.get(content, "description", ""),
-          content: Map.get(content, "main_content", ""),
-          video_url: Map.get(content, "video_url"),
-          background_type: "video"
-        }
-
-      :experience ->
-        %{
-          title: section.title,
-          jobs: Map.get(content, "jobs", []),
-          content: Map.get(content, "main_content", ""),
-          description: Map.get(content, "description", "")
-        }
-
-      :achievements ->  # ADD THIS CASE
-        %{
-          title: section.title,
-          achievements: Map.get(content, "achievements", []),
-          content: Map.get(content, "main_content", ""),
-          description: Map.get(content, "description", ""),
-          awards: Map.get(content, "awards", [])
-        }
-
-      _ ->
-        %{
-          title: section.title,
-          content: Map.get(content, "main_content") || Map.get(content, "summary") || Map.get(content, "description") || "No content available",
-          description: Map.get(content, "description", ""),
-          section_type: section.section_type
-        }
-    end
-  end
-
 
   defp convert_section_to_content_blocks(section, position) do
     base_block = %{
@@ -837,6 +970,97 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
+  defp extract_content_from_section_safe(section) do
+    content = Map.get(section, :content, %{}) || %{}
+    section_type = Map.get(section, :section_type)
+    title = Map.get(section, :title, "")
+
+    case to_string(section_type) do
+      "intro" ->
+        %{
+          title: title,
+          subtitle: Map.get(content, "headline", ""),
+          content: Map.get(content, "main_content") || Map.get(content, "summary") || "",
+          call_to_action: Map.get(content, "call_to_action", %{text: "Learn More", url: "#about"})
+        }
+
+      "experience" ->
+        %{
+          title: title,
+          jobs: Map.get(content, "jobs", []),
+          content: Map.get(content, "main_content", ""),
+          description: Map.get(content, "description", "")
+        }
+
+      "skills" ->
+        %{
+          title: title,
+          skills: Map.get(content, "skills", []),
+          skill_categories: Map.get(content, "skill_categories", %{}),
+          content: Map.get(content, "main_content", "")
+        }
+
+      "video_hero" ->
+        %{
+          title: title,
+          subtitle: Map.get(content, "subtitle", ""),
+          video_url: Map.get(content, "video_url"),
+          video_type: Map.get(content, "video_type", "upload"),
+          poster_image: Map.get(content, "poster_image"),
+          call_to_action: Map.get(content, "call_to_action", %{})
+        }
+
+      _ ->
+        %{
+          title: title,
+          content: Map.get(content, "main_content") || Map.get(content, "summary") || Map.get(content, "description") || "",
+          description: Map.get(content, "description", ""),
+          section_type: section_type
+        }
+    end
+  end
+
+  defp convert_section_to_dynamic_block(section) do
+    convert_section_to_dynamic_block_safe(section)
+  end
+
+  defp determine_dynamic_block_type(section_type) do
+    determine_dynamic_block_type_safe(section_type)
+  end
+
+  defp map_section_type_to_block_type(section_type) do
+    case to_string(section_type) do
+      "intro" -> :about_card
+      "media_showcase" -> :hero_card
+      "experience" -> :experience_card
+      "achievements" -> :achievement_card
+      "skills" -> :skill_card
+      "portfolio" -> :project_card
+      "projects" -> :project_card
+      "services" -> :service_card
+      "testimonials" -> :testimonial_card
+      "contact" -> :contact_card
+      _ ->
+        IO.puts("🔥 UNKNOWN SECTION TYPE: #{inspect(section_type)}")
+        :text_card
+    end
+  end
+
+  defp extract_content_from_section(section) do
+    content = section.content || %{}
+
+    # Extract common fields that work across block types
+    %{
+      "title" => section.title || Map.get(content, "title"),
+      "description" => Map.get(content, "description"),
+      "content" => Map.get(content, "main_content") || Map.get(content, "content"),
+      "subtitle" => Map.get(content, "subtitle"),
+      # Preserve all original content for specific block type handling
+      "original_content" => content
+    }
+  end
+
+
   defp determine_layout_category(portfolio) do
     case portfolio.theme do
       theme when theme in ["professional_service", "consultant", "freelancer"] -> :service_provider
@@ -1006,19 +1230,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   defp extract_contact_methods_from_section(section) do
     [%{type: "email", value: "contact@example.com", label: "Email"}]
-  end
-
-  defp determine_dynamic_block_type(section_type) do
-    case to_string(section_type) do
-      "intro" -> :intro_card
-      "experience" -> :experience_card
-      "skills" -> :skills_card
-      "projects" -> :projects_card
-      "contact" -> :contact_card
-      "testimonials" -> :testimonial_card
-      "about" -> :about_card
-      _ -> :generic_card
-    end
   end
 
   defp get_dynamic_layout_config(portfolio) do
@@ -1775,30 +1986,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
-
-  @impl true
-  def handle_event("toggle_display_mode", _params, socket) do
-    new_mode = case socket.assigns.display_mode do
-      :traditional -> :dynamic_cards
-      :dynamic_cards -> :traditional
-    end
-
-    {:noreply, assign(socket, :display_mode, new_mode)}
-  end
-
-  # Handler for toggling dynamic layout manager
-  def handle_event("toggle_dynamic_layout_manager", _params, socket) do
-    current_state = Map.get(socket.assigns, :show_dynamic_layout_manager, false)
-    new_state = !current_state
-
-    IO.puts("🔥🔥🔥 TOGGLE DYNAMIC LAYOUT MANAGER")
-    IO.puts("🔥 Current state: #{current_state}")
-    IO.puts("🔥 New state: #{new_state}")
-    IO.puts("🔥 Portfolio should_use_dynamic?: #{should_use_dynamic_card_layout?(socket.assigns.portfolio)}")
-
-    {:noreply, assign(socket, :show_dynamic_layout_manager, new_state)}
-  end
-
   @impl true
   def handle_event("select_layout_category", %{"category" => category}, socket) do
     category_atom = String.to_atom(category)
@@ -1911,6 +2098,38 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
       _ ->
         {:noreply, socket}
     end
+  end
+
+    @impl true
+  def handle_info({:open_block_editor, block_id}, socket) do
+    # Handle opening block editor modal
+    block_id_int = if is_binary(block_id), do: String.to_integer(block_id), else: block_id
+
+    case Portfolios.get_section(block_id_int) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Section not found")}
+
+      section ->
+        {:noreply,
+          socket
+          |> assign(:editing_section, section)
+          |> assign(:show_section_modal, true)
+          |> assign(:section_edit_tab, "content")
+        }
+    end
+  end
+
+  @impl true
+  def handle_info({:open_media_attachment, block_id}, socket) do
+    # Handle opening media attachment modal
+    block_id_int = if is_binary(block_id), do: String.to_integer(block_id), else: block_id
+
+    {:noreply,
+      socket
+      |> assign(:show_media_library, true)
+      |> assign(:media_modal_section_id, block_id_int)
+      |> load_media_for_section(block_id_int)
+    }
   end
 
   # ============================================================================
@@ -2999,6 +3218,123 @@ end
     end
   end
 
+    @impl true
+  def handle_event("add_video_block", %{"zone" => zone}, socket) do
+    portfolio = socket.assigns.portfolio
+
+    # Check if user can create video blocks
+    if Portfolios.can_create_video_blocks?(socket.assigns.current_user) do
+      case Portfolios.create_video_hero_section(portfolio.id, %{title: "Video Hero"}) do
+        {:ok, new_section} ->
+          # Update layout zones
+          updated_zones = add_section_to_zone(socket.assigns.layout_zones, zone, new_section)
+
+          {:noreply,
+            socket
+            |> assign(:layout_zones, updated_zones)
+            |> put_flash(:info, "Video block added successfully")
+            |> push_event("scroll_to_block", %{block_id: new_section.id})
+          }
+
+        {:error, changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to create video block")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Video blocks require a Creator subscription or higher")}
+    end
+  end
+
+  @impl true
+  def handle_event("upload_video_to_section", %{"section_id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+
+    {:noreply,
+      socket
+      |> assign(:show_video_upload_modal, true)
+      |> assign(:video_upload_section_id, section_id_int)
+    }
+  end
+
+  @impl true
+  def handle_event("add_external_video", params, socket) do
+    %{
+      "section_id" => section_id,
+      "video_url" => video_url,
+      "video_title" => video_title
+    } = params
+
+    section_id_int = String.to_integer(section_id)
+
+    case process_external_video_url(video_url) do
+      {:ok, video_data} ->
+        case Portfolios.create_external_video_media(
+          socket.assigns.portfolio.id,
+          section_id_int,
+          Map.merge(video_data, %{alt_text: video_title})
+        ) do
+          {:ok, _media} ->
+            # Update the section content
+            case Portfolios.get_section(section_id_int) do
+              nil -> {:noreply, put_flash(socket, :error, "Section not found")}
+              section ->
+                updated_content = Map.merge(section.content || %{}, %{
+                  "video_type" => video_data.external_video_platform,
+                  "video_url" => video_url
+                })
+
+                case Portfolios.update_section(section, %{content: updated_content}) do
+                  {:ok, _updated_section} ->
+                    # Refresh layout zones
+                    layout_zones = reload_layout_zones(socket.assigns.portfolio.id)
+
+                    {:noreply,
+                      socket
+                      |> assign(:layout_zones, layout_zones)
+                      |> assign(:show_video_upload_modal, false)
+                      |> put_flash(:info, "External video added successfully")
+                    }
+
+                  {:error, _changeset} ->
+                    {:noreply, put_flash(socket, :error, "Failed to update section")}
+                end
+            end
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to add external video")}
+        end
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Invalid video URL: #{reason}")}
+    end
+  end
+
+    @impl true
+  def handle_event("remove_video_from_section", %{"section_id" => section_id, "media_id" => media_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    media_id_int = String.to_integer(media_id)
+
+    case Portfolios.get_portfolio_media(media_id_int) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Media not found")}
+
+      media ->
+        case Portfolios.delete_portfolio_media(media) do
+          {:ok, _deleted_media} ->
+            # Refresh layout zones
+            layout_zones = reload_layout_zones(socket.assigns.portfolio.id)
+
+            {:noreply,
+              socket
+              |> assign(:layout_zones, layout_zones)
+              |> put_flash(:info, "Video removed successfully")
+            }
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to remove video")}
+        end
+    end
+  end
+
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
@@ -3149,6 +3485,255 @@ end
     }
   end
 
+  defp get_theme_templates do
+    [
+      {"modern", %{
+        name: "Modern",
+        description: "Clean lines and bold typography",
+        primary_color: "#1e40af",
+        secondary_color: "#64748b",
+        accent_color: "#3b82f6"
+      }},
+      {"classic", %{
+        name: "Classic",
+        description: "Timeless and professional",
+        primary_color: "#374151",
+        secondary_color: "#6b7280",
+        accent_color: "#059669"
+      }},
+      {"bold", %{
+        name: "Bold",
+        description: "High contrast and vibrant",
+        primary_color: "#dc2626",
+        secondary_color: "#ea580c",
+        accent_color: "#f59e0b"
+      }},
+      {"clean", %{
+        name: "Clean",
+        description: "Minimal and focused",
+        primary_color: "#0891b2",
+        secondary_color: "#0284c7",
+        accent_color: "#6366f1"
+      }},
+      {"vibrant", %{
+        name: "Vibrant",
+        description: "Creative and energetic",
+        primary_color: "#7c3aed",
+        secondary_color: "#ec4899",
+        accent_color: "#f59e0b"
+      }}
+    ]
+  end
+
+  defp get_public_layout_types do
+    [
+      {"minimal", %{
+        name: "Minimal",
+        description: "Clean, single-column layout"
+      }},
+      {"list", %{
+        name: "Timeline",
+        description: "Chronological list view"
+      }},
+      {"gallery", %{
+        name: "Gallery",
+        description: "Visual portfolio showcase"
+      }},
+      {"dashboard", %{
+        name: "Dashboard",
+        description: "Multi-card business layout"
+      }}
+    ]
+  end
+
+  defp get_color_schemes do
+    [
+      {"professional", %{
+        name: "Professional",
+        primary: "#1e40af",
+        secondary: "#64748b",
+        accent: "#3b82f6"
+      }},
+      {"creative", %{
+        name: "Creative",
+        primary: "#7c3aed",
+        secondary: "#ec4899",
+        accent: "#f59e0b"
+      }},
+      {"warm", %{
+        name: "Warm",
+        primary: "#dc2626",
+        secondary: "#ea580c",
+        accent: "#f59e0b"
+      }},
+      {"cool", %{
+        name: "Cool",
+        primary: "#0891b2",
+        secondary: "#0284c7",
+        accent: "#6366f1"
+      }},
+      {"minimal", %{
+        name: "Minimal",
+        primary: "#374151",
+        secondary: "#6b7280",
+        accent: "#059669"
+      }}
+    ]
+  end
+
+  defp get_font_options do
+    [
+      {"inter", "Inter"},
+      {"roboto", "Roboto"},
+      {"open_sans", "Open Sans"},
+      {"montserrat", "Montserrat"},
+      {"poppins", "Poppins"}
+    ]
+  end
+
+  defp render_layout_preview(layout_key) do
+    case layout_key do
+      "minimal" ->
+        Phoenix.HTML.raw("""
+        <div class="h-16 bg-gray-100 rounded-md p-2">
+          <div class="space-y-1">
+            <div class="h-2 bg-gray-300 rounded w-full"></div>
+            <div class="h-2 bg-gray-300 rounded w-3/4"></div>
+            <div class="h-2 bg-gray-300 rounded w-1/2"></div>
+          </div>
+        </div>
+        """)
+
+      "list" ->
+        Phoenix.HTML.raw("""
+        <div class="h-16 bg-gray-100 rounded-md p-2">
+          <div class="flex space-x-2">
+            <div class="w-1 bg-blue-400 rounded"></div>
+            <div class="flex-1 space-y-1">
+              <div class="h-1.5 bg-gray-300 rounded w-full"></div>
+              <div class="h-1.5 bg-gray-300 rounded w-2/3"></div>
+              <div class="h-1.5 bg-gray-300 rounded w-1/2"></div>
+            </div>
+          </div>
+        </div>
+        """)
+
+      "gallery" ->
+        Phoenix.HTML.raw("""
+        <div class="h-16 bg-gray-100 rounded-md p-2">
+          <div class="grid grid-cols-3 gap-1 h-full">
+            <div class="bg-gray-300 rounded"></div>
+            <div class="bg-gray-300 rounded"></div>
+            <div class="bg-gray-300 rounded"></div>
+          </div>
+        </div>
+        """)
+
+      "dashboard" ->
+        Phoenix.HTML.raw("""
+        <div class="h-16 bg-gray-100 rounded-md p-2">
+          <div class="grid grid-cols-2 gap-1 h-full">
+            <div class="space-y-1">
+              <div class="h-4 bg-gray-300 rounded"></div>
+              <div class="h-3 bg-gray-300 rounded"></div>
+            </div>
+            <div class="grid grid-rows-2 gap-1">
+              <div class="bg-gray-300 rounded"></div>
+              <div class="bg-gray-300 rounded"></div>
+            </div>
+          </div>
+        </div>
+        """)
+
+      _ ->
+        Phoenix.HTML.raw("""
+        <div class="h-16 bg-gray-100 rounded-md p-2 flex items-center justify-center">
+          <div class="text-gray-500 text-xs">Preview</div>
+        </div>
+        """)
+    end
+  end
+
+  defp get_current_theme(portfolio) do
+    design_system = get_design_system(portfolio)
+    Map.get(design_system, "theme_template", "modern")
+  end
+
+  defp get_current_public_layout(portfolio) do
+    design_system = get_design_system(portfolio)
+    Map.get(design_system, "public_layout_type", "dashboard")
+  end
+
+  defp get_current_color_scheme(portfolio) do
+    design_system = get_design_system(portfolio)
+    Map.get(design_system, "color_scheme", "professional")
+  end
+
+  defp get_design_setting(portfolio, setting_key) do
+    design_system = get_design_system(portfolio)
+
+    # Get from new design system first, fallback to legacy fields
+    case setting_key do
+      "primary_color" ->
+        Map.get(design_system, "primary_color") ||
+        get_legacy_setting(portfolio, "primary_color") ||
+        "#1e40af"
+      "secondary_color" ->
+        Map.get(design_system, "secondary_color") ||
+        get_legacy_setting(portfolio, "secondary_color") ||
+        "#64748b"
+      "accent_color" ->
+        Map.get(design_system, "accent_color") ||
+        get_legacy_setting(portfolio, "accent_color") ||
+        "#3b82f6"
+      "font_family" ->
+        Map.get(design_system, "font_family") ||
+        get_legacy_setting(portfolio, "font_style") ||
+        "inter"
+      "font_scale" ->
+        Map.get(design_system, "font_scale", "medium")
+      "section_spacing" ->
+        Map.get(design_system, "section_spacing") ||
+        get_legacy_setting(portfolio, "section_spacing") ||
+        "normal"
+      "border_radius" ->
+        Map.get(design_system, "border_radius", "rounded")
+      "card_shadow" ->
+        Map.get(design_system, "card_shadow", "subtle")
+      "background_color" ->
+        Map.get(design_system, "background_color", "#ffffff")
+      "gradient_enabled" ->
+        Map.get(design_system, "gradient_enabled", false)
+      "enable_sticky_nav" ->
+        Map.get(design_system, "enable_sticky_nav") ||
+        get_legacy_setting(portfolio, "fixed_navigation") ||
+        true
+      "enable_animations" ->
+        Map.get(design_system, "enable_animations", true)
+      "video_autoplay" ->
+        Map.get(design_system, "video_autoplay", "muted")
+      _ ->
+        Map.get(design_system, setting_key)
+    end
+  end
+
+  defp get_design_system(portfolio) do
+    customization = portfolio.customization || %{}
+    Map.get(customization, "design_system", %{})
+  end
+
+  defp get_legacy_setting(portfolio, key) do
+    customization = portfolio.customization || %{}
+    Map.get(customization, key)
+  end
+
+  defp has_premium_access?(user) do
+    case user do
+      %{account: %{subscription_tier: tier}} when tier in ["creator", "creator_plus", "professional"] -> true
+      _ -> false
+    end
+  end
+
   defp get_available_layouts(_account) do
     ["professional_service", "creative_showcase", "corporate_executive"]
   end
@@ -3274,6 +3859,73 @@ end
         section
       end
     end)
+  end
+
+    defp process_external_video_url(url) do
+    case Portfolios.detect_video_platform(url) do
+      nil ->
+        {:error, "Unsupported video platform"}
+
+      platform ->
+        case Portfolios.extract_video_id(url, platform) do
+          nil ->
+            {:error, "Could not extract video ID"}
+
+          video_id ->
+            {:ok, %{
+              external_video_platform: platform,
+              external_video_id: video_id,
+              video_thumbnail_url: get_external_thumbnail_url(platform, video_id)
+            }}
+        end
+    end
+  end
+
+  defp get_external_thumbnail_url("youtube", video_id) do
+    "https://img.youtube.com/vi/#{video_id}/maxresdefault.jpg"
+  end
+  defp get_external_thumbnail_url("vimeo", _video_id) do
+    # Vimeo thumbnails require API call - would implement separately
+    nil
+  end
+  defp get_external_thumbnail_url(_, _), do: nil
+
+  defp add_section_to_zone(layout_zones, zone, section) do
+    zone_atom = String.to_atom(zone)
+    current_blocks = Map.get(layout_zones, zone_atom, [])
+    new_block = section_to_block_format(section)
+
+    Map.put(layout_zones, zone_atom, current_blocks ++ [new_block])
+  end
+
+  defp section_to_block_format(section) do
+    %{
+      id: section.id,
+      block_type: section.section_type,
+      section_type: section.section_type,
+      title: section.title,
+      content: section.content || %{},
+      position: section.position || 0,
+      visible: section.visible,
+      created_at: section.inserted_at,
+      updated_at: section.updated_at
+    }
+  end
+
+  defp reload_layout_zones(portfolio_id) do
+    portfolio_id
+    |> Portfolios.list_portfolio_sections()
+    |> Portfolios.sections_to_layout_zones()
+  end
+
+  defp load_media_for_section(socket, section_id) do
+    section_media = Portfolios.list_section_media(section_id)
+    portfolio_media = Portfolios.list_portfolio_media(socket.assigns.portfolio.id)
+
+    socket
+    |> assign(:section_media, section_media)
+    |> assign(:portfolio_media, portfolio_media)
+    |> assign(:selected_media_ids, [])
   end
 
   defp humanize_section_type(section_type) do
@@ -3513,12 +4165,126 @@ end
       <!-- Header -->
       <div>
         <h3 class="text-xl font-semibold text-gray-900 mb-2">Design Settings</h3>
-        <p class="text-sm text-gray-600">Universal design controls that apply to all portfolio types</p>
+        <p class="text-sm text-gray-600">Control your portfolio's visual design and layout</p>
       </div>
 
-      <!-- Color Management - Single Row Layout -->
+      <!-- Theme Templates -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Theme Templates</h4>
+        <p class="text-sm text-gray-600 mb-6">Choose a starting point theme, then customize to your needs</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <%= for {theme_key, theme_data} <- get_theme_templates() do %>
+            <div class={[
+              "relative p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md",
+              if(get_current_theme(@portfolio) == theme_key,
+                do: "border-blue-500 bg-blue-50",
+                else: "border-gray-200 hover:border-gray-300")
+            ]}
+                phx-click="select_theme_template"
+                phx-value-theme={theme_key}>
+
+              <!-- Theme Preview -->
+              <div class="mb-3">
+                <div class="h-20 rounded-md overflow-hidden" style={"background: linear-gradient(135deg, #{theme_data.primary_color}, #{theme_data.accent_color})"}>
+                  <div class="h-full flex items-center justify-center">
+                    <div class="text-white text-xs font-medium"><%= theme_data.name %></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Theme Info -->
+              <div class="text-center">
+                <h5 class="font-medium text-gray-900 mb-1"><%= theme_data.name %></h5>
+                <p class="text-xs text-gray-600"><%= theme_data.description %></p>
+              </div>
+
+              <!-- Selected Indicator -->
+              <%= if get_current_theme(@portfolio) == theme_key do %>
+                <div class="absolute top-2 right-2">
+                  <div class="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Public Layout Type -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Public Layout Style</h4>
+        <p class="text-sm text-gray-600 mb-6">How your portfolio appears to visitors</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <%= for {layout_key, layout_data} <- get_public_layout_types() do %>
+            <div class={[
+              "relative p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md",
+              if(get_current_public_layout(@portfolio) == layout_key,
+                do: "border-purple-500 bg-purple-50",
+                else: "border-gray-200 hover:border-gray-300")
+            ]}
+                phx-click="select_public_layout"
+                phx-value-layout={layout_key}>
+
+              <!-- Layout Preview -->
+              <div class="mb-3">
+                <%= render_layout_preview(layout_key) %>
+              </div>
+
+              <!-- Layout Info -->
+              <div class="text-center">
+                <h5 class="font-medium text-gray-900 mb-1"><%= layout_data.name %></h5>
+                <p class="text-xs text-gray-600"><%= layout_data.description %></p>
+              </div>
+
+              <!-- Selected Indicator -->
+              <%= if get_current_public_layout(@portfolio) == layout_key do %>
+                <div class="absolute top-2 right-2">
+                  <div class="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Color Management - Enhanced -->
       <div class="bg-white p-6 rounded-lg border border-gray-200">
         <h4 class="text-lg font-semibold text-gray-900 mb-4">Brand Colors</h4>
+
+        <!-- Quick Color Schemes -->
+        <div class="mb-6">
+          <h5 class="text-sm font-semibold text-gray-900 mb-3">Quick Color Schemes</h5>
+          <div class="flex flex-wrap gap-3">
+            <%= for {scheme_key, scheme_data} <- get_color_schemes() do %>
+              <button class={[
+                "flex items-center space-x-2 px-3 py-2 rounded-lg border-2 transition-all duration-200",
+                if(get_current_color_scheme(@portfolio) == scheme_key,
+                  do: "border-blue-500 bg-blue-50",
+                  else: "border-gray-200 hover:border-gray-300")
+              ]}
+                      phx-click="apply_color_scheme"
+                      phx-value-scheme={scheme_key}>
+                <div class="flex space-x-1">
+                  <div class="w-3 h-3 rounded-full" style={"background-color: #{scheme_data.primary}"}></div>
+                  <div class="w-3 h-3 rounded-full" style={"background-color: #{scheme_data.secondary}"}></div>
+                  <div class="w-3 h-3 rounded-full" style={"background-color: #{scheme_data.accent}"}></div>
+                </div>
+                <span class="text-sm font-medium"><%= scheme_data.name %></span>
+              </button>
+            <% end %>
+          </div>
+        </div>
+
+        <!-- Individual Color Controls -->
         <div class="grid grid-cols-1 gap-6">
           <%= for {color_key, color_label, description} <- [
             {"primary_color", "Primary Color", "Main brand color used for headers and key elements"},
@@ -3532,79 +4298,230 @@ end
               </div>
               <div class="flex items-center space-x-3">
                 <input type="color"
-                      value={Map.get(@customization || @portfolio.customization || %{}, color_key, get_default_color(color_key))}
+                      value={get_design_setting(@portfolio, color_key)}
                       phx-change="update_design_color"
                       phx-value-color={color_key}
                       class="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer">
                 <input type="text"
-                      value={Map.get(@customization || @portfolio.customization || %{}, color_key, get_default_color(color_key))}
+                      value={get_design_setting(@portfolio, color_key)}
                       phx-change="update_design_color"
                       phx-value-color={color_key}
-                      class="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono">
+                      class="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono"
+                      placeholder="#000000">
               </div>
             </div>
           <% end %>
         </div>
+
+        <!-- Premium Background Options -->
+        <%= if has_premium_access?(@current_user) do %>
+          <div class="mt-6 pt-6 border-t border-gray-200">
+            <h5 class="text-sm font-semibold text-gray-900 mb-3">Background Options</h5>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Solid Background -->
+              <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <label class="text-sm font-medium text-gray-900">Background Color</label>
+                  <p class="text-xs text-gray-600">Solid background color</p>
+                </div>
+                <input type="color"
+                      value={get_design_setting(@portfolio, "background_color")}
+                      phx-change="update_design_color"
+                      phx-value-color="background_color"
+                      class="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer">
+              </div>
+
+              <!-- Gradient Toggle -->
+              <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <label class="text-sm font-medium text-gray-900">Gradient Background</label>
+                  <p class="text-xs text-gray-600">Enable gradient backgrounds</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox"
+                        checked={get_design_setting(@portfolio, "gradient_enabled")}
+                        phx-change="toggle_gradient_background"
+                        class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+        <% else %>
+          <div class="mt-6 pt-6 border-t border-gray-200">
+            <div class="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+              <div>
+                <h5 class="text-sm font-semibold text-gray-900">Premium Background Options</h5>
+                <p class="text-xs text-gray-600">Unlock gradient backgrounds and more customization</p>
+              </div>
+              <button class="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+                      phx-click="show_upgrade_modal">
+                Upgrade
+              </button>
+            </div>
+          </div>
+        <% end %>
       </div>
 
-      <!-- Typography Settings -->
+      <!-- Typography Settings - Enhanced -->
       <div class="bg-white p-6 rounded-lg border border-gray-200">
         <h4 class="text-lg font-semibold text-gray-900 mb-4">Typography</h4>
-        <div class="grid grid-cols-1 gap-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="text-sm font-medium text-gray-900">Font Family</label>
+        <div class="grid grid-cols-1 gap-6">
+          <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div class="flex-1">
+              <label class="text-sm font-medium text-gray-900 mb-1">Font Family</label>
               <p class="text-xs text-gray-600">Primary font used throughout the portfolio</p>
             </div>
-            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
-              <option>Inter (Default)</option>
-              <option>Roboto</option>
-              <option>Open Sans</option>
-              <option>Montserrat</option>
+            <select value={get_design_setting(@portfolio, "font_family")}
+                    phx-change="update_typography"
+                    phx-value-setting="font_family"
+                    class="px-3 py-2 border border-gray-300 rounded-md text-sm min-w-[140px]">
+              <%= for {font_key, font_name} <- get_font_options() do %>
+                <option value={font_key}><%= font_name %></option>
+              <% end %>
             </select>
           </div>
 
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="text-sm font-medium text-gray-900">Font Size Scale</label>
+          <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div class="flex-1">
+              <label class="text-sm font-medium text-gray-900 mb-1">Font Size Scale</label>
               <p class="text-xs text-gray-600">Overall text size throughout the portfolio</p>
             </div>
-            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
-              <option>Small</option>
-              <option>Medium (Default)</option>
-              <option>Large</option>
+            <select value={get_design_setting(@portfolio, "font_scale")}
+                    phx-change="update_typography"
+                    phx-value-setting="font_scale"
+                    class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
             </select>
           </div>
         </div>
       </div>
 
-      <!-- Spacing & Layout -->
+      <!-- Layout & Spacing - Enhanced -->
       <div class="bg-white p-6 rounded-lg border border-gray-200">
-        <h4 class="text-lg font-semibold text-gray-900 mb-4">Spacing & Layout</h4>
-        <div class="grid grid-cols-1 gap-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="text-sm font-medium text-gray-900">Section Spacing</label>
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Layout & Spacing</h4>
+        <div class="grid grid-cols-1 gap-6">
+          <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div class="flex-1">
+              <label class="text-sm font-medium text-gray-900 mb-1">Section Spacing</label>
               <p class="text-xs text-gray-600">Space between portfolio sections</p>
             </div>
-            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
-              <option>Compact</option>
-              <option>Normal (Default)</option>
-              <option>Spacious</option>
+            <select value={get_design_setting(@portfolio, "section_spacing")}
+                    phx-change="update_layout_setting"
+                    phx-value-setting="section_spacing"
+                    class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option value="compact">Compact</option>
+              <option value="normal">Normal</option>
+              <option value="spacious">Spacious</option>
             </select>
           </div>
 
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="text-sm font-medium text-gray-900">Border Radius</label>
+          <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div class="flex-1">
+              <label class="text-sm font-medium text-gray-900 mb-1">Border Radius</label>
               <p class="text-xs text-gray-600">Roundness of cards and buttons</p>
             </div>
-            <select class="px-3 py-2 border border-gray-300 rounded-md text-sm">
-              <option>Sharp</option>
-              <option>Rounded (Default)</option>
-              <option>Very Rounded</option>
+            <select value={get_design_setting(@portfolio, "border_radius")}
+                    phx-change="update_layout_setting"
+                    phx-value-setting="border_radius"
+                    class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option value="sharp">Sharp</option>
+              <option value="rounded">Rounded</option>
+              <option value="very_rounded">Very Rounded</option>
             </select>
           </div>
+
+          <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div class="flex-1">
+              <label class="text-sm font-medium text-gray-900 mb-1">Card Shadow</label>
+              <p class="text-xs text-gray-600">Shadow depth for cards and elements</p>
+            </div>
+            <select value={get_design_setting(@portfolio, "card_shadow")}
+                    phx-change="update_layout_setting"
+                    phx-value-setting="card_shadow"
+                    class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+              <option value="none">No Shadow</option>
+              <option value="subtle">Subtle</option>
+              <option value="medium">Medium</option>
+              <option value="strong">Strong</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced Options (Premium) -->
+      <%= if has_premium_access?(@current_user) do %>
+        <div class="bg-white p-6 rounded-lg border border-gray-200">
+          <h4 class="text-lg font-semibold text-gray-900 mb-4">Advanced Options</h4>
+          <div class="grid grid-cols-1 gap-6">
+            <!-- Sticky Navigation -->
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div class="flex-1">
+                <label class="text-sm font-medium text-gray-900 mb-1">Sticky Navigation</label>
+                <p class="text-xs text-gray-600">Show navigation bar when scrolling</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox"
+                      checked={get_design_setting(@portfolio, "enable_sticky_nav")}
+                      phx-change="toggle_advanced_setting"
+                      phx-value-setting="enable_sticky_nav"
+                      class="sr-only peer">
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            <!-- Animations -->
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div class="flex-1">
+                <label class="text-sm font-medium text-gray-900 mb-1">Enable Animations</label>
+                <p class="text-xs text-gray-600">Smooth transitions and hover effects</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox"
+                      checked={get_design_setting(@portfolio, "enable_animations")}
+                      phx-change="toggle_advanced_setting"
+                      phx-value-setting="enable_animations"
+                      class="sr-only peer">
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            <!-- Video Autoplay -->
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div class="flex-1">
+                <label class="text-sm font-medium text-gray-900 mb-1">Video Autoplay</label>
+                <p class="text-xs text-gray-600">How videos should play in public view</p>
+              </div>
+              <select value={get_design_setting(@portfolio, "video_autoplay")}
+                      phx-change="update_advanced_setting"
+                      phx-value-setting="video_autoplay"
+                      class="px-3 py-2 border border-gray-300 rounded-md text-sm">
+                <option value="none">No Autoplay</option>
+                <option value="muted">Muted Autoplay</option>
+                <option value="hover">Play on Hover</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Design Preview -->
+      <div class="bg-white p-6 rounded-lg border border-gray-200">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4">Live Preview</h4>
+        <p class="text-sm text-gray-600 mb-4">See how your design changes look</p>
+
+        <div class="flex items-center space-x-4">
+          <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  phx-click="preview_design_changes">
+            Preview Changes
+          </button>
+
+          <button class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  phx-click="reset_to_template">
+            Reset to Template
+          </button>
         </div>
       </div>
     </div>
@@ -4349,24 +5266,13 @@ end
           </div>
 
           <div class="flex items-center space-x-3">
-            <%= if @use_dynamic_layout do %>
-              <button phx-click="toggle_display_mode"
-                      class={[
-                        "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                        if(@display_mode == :dynamic_cards,
-                          do: "bg-purple-600 text-white",
-                          else: "bg-gray-100 text-gray-700 hover:bg-gray-200")
-                      ]}>
-                <%= if @display_mode == :dynamic_cards, do: "Traditional View", else: "Dynamic Cards View" %>
-              </button>
-            <% end %>
+            <!-- PHASE 4: Remove toggle button completely -->
 
             <.link navigate={~p"/portfolio/#{@portfolio.slug}"} target="_blank"
                   class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
               View Live
             </.link>
           </div>
-
         </div>
       </div>
 
@@ -4376,11 +5282,8 @@ end
 
           <!-- Content Column -->
           <div class="lg:col-span-2 space-y-6">
-            <%= if @display_mode == :dynamic_cards and @use_dynamic_layout do %>
-              <%= render_dynamic_card_view(assigns) %>
-            <% else %>
-              <%= render_traditional_view(assigns) %>
-            <% end %>
+            <!-- PHASE 4: Always show dynamic card view -->
+            <%= render_dynamic_card_view(assigns) %>
           </div>
 
           <!-- Sidebar -->
@@ -4392,23 +5295,22 @@ end
                 <div>
                   <label class="text-gray-600">Title:</label>
                   <p class="font-medium"><%= @portfolio.title %></p>
-                  <%= if @use_dynamic_layout do %>
-                    <div>
-                      <label class="text-gray-600">Portfolio Category:</label>
-                      <p class="font-medium capitalize"><%= String.replace(to_string(@portfolio_category), "_", " ") %></p>
+                  <!-- PHASE 4: Always show dynamic layout info -->
+                  <div>
+                    <label class="text-gray-600">Portfolio Category:</label>
+                    <p class="font-medium capitalize"><%= String.replace(to_string(@portfolio_category || :professional), "_", " ") %></p>
+                  </div>
+                  <div>
+                    <label class="text-gray-600">Layout Zones:</label>
+                    <div class="text-sm space-y-1">
+                      <%= for {zone_name, blocks} <- (@layout_zones || %{}) do %>
+                        <div class="flex justify-between">
+                          <span class="text-gray-500 capitalize"><%= String.replace(to_string(zone_name), "_", " ") %>:</span>
+                          <span class="font-medium"><%= length(blocks) %></span>
+                        </div>
+                      <% end %>
                     </div>
-                    <div>
-                      <label class="text-gray-600">Layout Zones:</label>
-                      <div class="text-sm space-y-1">
-                        <%= for {zone_name, blocks} <- (@layout_zones || %{}) do %>
-                          <div class="flex justify-between">
-                            <span class="text-gray-500 capitalize"><%= String.replace(to_string(zone_name), "_", " ") %>:</span>
-                            <span class="font-medium"><%= length(blocks) %></span>
-                          </div>
-                        <% end %>
-                      </div>
-                    </div>
-                  <% end %>
+                  </div>
                 </div>
                 <div>
                   <label class="text-gray-600">Theme:</label>
@@ -4418,12 +5320,10 @@ end
                   <label class="text-gray-600">Content Blocks:</label>
                   <p class="font-medium"><%= length(@content_blocks || []) %></p>
                 </div>
-                <%= if @use_dynamic_layout do %>
-                  <div>
-                    <label class="text-gray-600">Layout Type:</label>
-                    <p class="font-medium text-purple-600">Dynamic Card Layout</p>
-                  </div>
-                <% end %>
+                <div>
+                  <label class="text-gray-600">Layout Type:</label>
+                  <p class="font-medium text-purple-600">Dynamic Card Layout</p>
+                </div>
               </div>
             </div>
 
@@ -4440,77 +5340,37 @@ end
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </div>
     """
   end
 
-  defp render_traditional_view(assigns) do
-    ~H"""
-    <div class="bg-white rounded-lg shadow-sm border p-6">
-      <h2 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Sections (Traditional View)</h2>
-
-      <%= if length(@sections || []) > 0 do %>
-        <div class="space-y-4">
-          <%= for section <- (@sections || []) do %>
-            <%= if Map.get(section, :visible, true) do %>
-              <div class="border border-gray-200 rounded-lg p-4">
-                <div class="flex items-center justify-between mb-2">
-                  <h3 class="font-medium text-gray-900"><%= section.title %></h3>
-                  <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                    <%= section.section_type %>
-                  </span>
-                </div>
-
-                <div class="text-sm text-gray-600">
-                  <%= render_section_content_preview(section) %>
-                </div>
-
-                <div class="mt-3 flex space-x-2">
-                  <button class="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
-                    Edit
-                  </button>
-                  <button class="text-xs px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
-                    Settings
-                  </button>
-                </div>
-              </div>
-            <% end %>
-          <% end %>
-        </div>
-      <% else %>
-        <div class="text-center py-8 text-gray-500">
-          <p>No sections found</p>
-          <button class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-            Add Section
-          </button>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
-
   defp render_dynamic_card_view(assigns) do
     ~H"""
-    <div class="space-y-6">
-      <!-- Dynamic Card Layout Component -->
+    <div class="bg-white rounded-lg shadow-sm border p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900">Dynamic Card Layout</h2>
+          <p class="text-sm text-gray-600">Drag and drop content blocks to create your portfolio</p>
+        </div>
+        <div class="text-sm text-purple-600 font-medium">
+          Modern Layout System
+        </div>
+      </div>
+
+      <!-- Fixed: Add the missing account assign -->
       <.live_component
         module={FrestylWeb.PortfolioLive.DynamicCardLayoutManager}
-        id="dynamic-card-layout-manager"
+        id="dynamic-layout-manager"
         portfolio={@portfolio}
-        account={@account}
-        layout_zones={@layout_zones || %{}}
-        brand_settings={@brand_settings || %{}}
+        layout_zones={@layout_zones}
+        available_blocks={@available_dynamic_blocks}
+        brand_settings={@brand_settings}
+        account={@account || %{subscription_tier: "personal"}}
         view_mode={:edit}
         show_edit_controls={true}
       />
-
-      <!-- Block Edit Modal Integration -->
-      <%= if assigns[:show_block_edit_modal] and assigns[:editing_block] do %>
-        <%= render_block_edit_modal(assigns) %>
-      <% end %>
     </div>
     """
   end
@@ -4679,156 +5539,6 @@ end
     """
   end
 
-  # ============================================================================
-  # DYNAMIC LAYOUT TAB - Layout structure and content blocks only
-  # ============================================================================
-
-  defp render_dynamic_layout_tab(assigns) do
-    ~H"""
-    <div class="space-y-8">
-      <!-- Header -->
-      <div>
-        <h3 class="text-xl font-semibold text-gray-900 mb-2">Dynamic Card Layout</h3>
-        <p class="text-sm text-gray-600">Configure your professional layout structure and content arrangement</p>
-      </div>
-
-      <!-- Layout Category Selection - Single Column -->
-      <div class="bg-white p-6 rounded-lg border border-gray-200">
-        <h4 class="text-lg font-semibold text-gray-900 mb-4">Professional Layout Category</h4>
-        <p class="text-sm text-gray-600 mb-6">Choose the layout that best fits your professional focus</p>
-
-        <div class="space-y-3">
-          <%= for block_category <- @available_dynamic_blocks do %>
-            <button phx-click="select_layout_category"
-                    phx-value-category={block_category.category}
-                    class={[
-                      "w-full p-4 border-2 rounded-lg transition-all text-left hover:shadow-md",
-                      if(@active_layout_category == block_category.category,
-                        do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
-                        else: "border-gray-200 hover:border-gray-300")
-                    ]}>
-
-              <div class="flex items-center justify-between">
-                <div class="flex-1">
-                  <div class="flex items-center space-x-3 mb-2">
-                    <h5 class="font-semibold text-gray-900"><%= block_category.name %></h5>
-                    <%= if @active_layout_category == block_category.category do %>
-                      <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">Current</span>
-                    <% end %>
-                  </div>
-                  <p class="text-sm text-gray-600 mb-3"><%= get_category_description(block_category.category) %></p>
-
-                  <!-- Available Blocks in Single Row -->
-                  <div class="flex flex-wrap gap-2">
-                    <%= for block_type <- block_category.blocks do %>
-                      <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded border">
-                        <%= humanize_block_type(block_type) %>
-                      </span>
-                    <% end %>
-                  </div>
-                </div>
-
-                <%= if @active_layout_category == block_category.category do %>
-                  <svg class="w-6 h-6 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                  </svg>
-                <% end %>
-              </div>
-            </button>
-          <% end %>
-        </div>
-      </div>
-
-      <!-- Functional Zone Manager -->
-      <div class="bg-white p-6 rounded-lg border border-gray-200">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h4 class="text-lg font-semibold text-gray-900">Layout Zones</h4>
-            <p class="text-sm text-gray-600">Arrange content blocks within your layout zones</p>
-          </div>
-          <button phx-click="toggle_dynamic_layout_manager"
-                  class={[
-                    "px-4 py-2 rounded-lg font-medium transition-colors",
-                    if(@show_dynamic_layout_manager,
-                      do: "bg-blue-600 text-white",
-                      else: "bg-gray-100 text-gray-700 hover:bg-gray-200")
-                  ]}>
-            <%= if @show_dynamic_layout_manager, do: "Hide Manager", else: "Open Manager" %>
-          </button>
-        </div>
-
-        <!-- Zone Configuration -->
-        <div class="space-y-4">
-          <%= for {zone_name, blocks} <- @layout_zones do %>
-            <div class="border border-gray-200 rounded-lg p-4">
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <h5 class="font-medium text-gray-900 capitalize"><%= zone_name %> Zone</h5>
-                  <p class="text-sm text-gray-600"><%= get_zone_description(zone_name) %></p>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <span class="text-xs text-gray-500"><%= length(blocks) %> blocks</span>
-                  <button phx-click="add_block_to_zone"
-                          phx-value-zone={zone_name}
-                          class="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors">
-                    Add Block
-                  </button>
-                </div>
-              </div>
-
-              <!-- Zone Content -->
-              <div class="min-h-16 border-2 border-dashed border-gray-200 rounded-lg p-4 bg-gray-50">
-                <%= if length(blocks) > 0 do %>
-                  <div class="flex flex-wrap gap-2">
-                    <%= for {block, index} <- Enum.with_index(blocks) do %>
-                      <div class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-200 rounded">
-                        <span class="text-sm text-gray-700"><%= humanize_block_type(block.type || "content") %></span>
-                        <button phx-click="remove_block_from_zone"
-                                phx-value-zone={zone_name}
-                                phx-value-index={index}
-                                class="text-gray-400 hover:text-red-600">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                          </svg>
-                        </button>
-                      </div>
-                    <% end %>
-                  </div>
-                <% else %>
-                  <div class="text-center text-gray-400">
-                    <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-                    </svg>
-                    <p class="text-sm">Drop content blocks here</p>
-                  </div>
-                <% end %>
-              </div>
-            </div>
-          <% end %>
-        </div>
-
-        <!-- Available Blocks Library -->
-        <%= if @show_dynamic_layout_manager do %>
-          <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h5 class="font-medium text-blue-900 mb-3">Available Content Blocks</h5>
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              <%= for block_category <- @available_dynamic_blocks do %>
-                <%= for block_type <- block_category.blocks do %>
-                  <button phx-click="add_content_block"
-                          phx-value-block_type={block_type}
-                          class="p-3 bg-white border border-blue-200 rounded text-left hover:bg-blue-50 transition-colors">
-                    <div class="text-sm font-medium text-blue-900"><%= humanize_block_type(block_type) %></div>
-                    <div class="text-xs text-blue-600 mt-1">Click to add</div>
-                  </button>
-                <% end %>
-              <% end %>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    </div>
-    """
-  end
 
   # ============================================================================
   # HELPER FUNCTIONS
@@ -5033,20 +5743,14 @@ end
     end
   end
 
-  # Helper function for available tabs based on portfolio type
   defp get_available_tabs(assigns) do
-    base_tabs = [content: "Content", design: "Design", analytics: "Analytics"]
-
-    IO.puts("🔥 DEBUG TABS: is_dynamic_layout = #{assigns[:is_dynamic_layout]}")
-
-    if Map.get(assigns, :is_dynamic_layout, false) do
-      tabs = [content: "Content", dynamic_layout: "Dynamic Layout", design: "Design", analytics: "Analytics"]
-      IO.puts("🔥 DEBUG: Returning dynamic tabs: #{inspect(tabs)}")
-      tabs
-    else
-      IO.puts("🔥 DEBUG: Returning base tabs: #{inspect(base_tabs)}")
-      base_tabs
-    end
+    # PHASE 4: Always include dynamic_layout tab, remove conditional logic
+    [
+      content: "Content",
+      dynamic_layout: "Dynamic Layout",
+      design: "Design",
+      analytics: "Analytics"
+    ]
   end
 
   defp force_dynamic_layout_for_testing(socket, portfolio, account) do

@@ -626,6 +626,294 @@ defmodule Frestyl.Portfolios do
     end
   end
 
+    # ============================================================================
+  # VIDEO BLOCK SUPPORT FUNCTIONS
+  # ============================================================================
+
+  @doc """
+  Creates a new video hero section
+  """
+  def create_video_hero_section(portfolio_id, attrs \\ %{}) do
+    default_attrs = %{
+      portfolio_id: portfolio_id,
+      section_type: :video_hero,
+      title: "Video Hero",
+      content: PortfolioSection.default_content_for_type(:video_hero),
+      position: get_next_section_position(portfolio_id),
+      visible: true
+    }
+
+    attrs = Map.merge(default_attrs, attrs)
+
+    %PortfolioSection{}
+    |> PortfolioSection.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Creates external video media record
+  """
+  def create_external_video_media(portfolio_id, section_id, attrs) do
+    %PortfolioMedia{}
+    |> PortfolioMedia.external_video_changeset(Map.merge(attrs, %{
+      portfolio_id: portfolio_id,
+      section_id: section_id
+    }))
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates video metadata for a media record
+  """
+  def update_video_metadata(media_id, metadata) do
+    case get_portfolio_media(media_id) do
+      nil -> {:error, :not_found}
+      media ->
+        media
+        |> PortfolioMedia.changeset(%{video_metadata: metadata})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Gets all video media for a section
+  """
+  def list_section_video_media(section_id) do
+    PortfolioMedia
+    |> where([m], m.section_id == ^section_id)
+    |> where([m], like(m.file_type, "video%") or m.is_external_video == true)
+    |> order_by([m], m.sort_order)
+    |> Repo.all()
+  end
+
+  @doc """
+  Extracts video ID from YouTube or Vimeo URL
+  """
+  def extract_video_id(url, platform) do
+    case {platform, url} do
+      {"youtube", url} ->
+        cond do
+          String.contains?(url, "youtube.com/watch?v=") ->
+            url |> String.split("v=") |> Enum.at(1) |> String.split("&") |> Enum.at(0)
+          String.contains?(url, "youtu.be/") ->
+            url |> String.split("youtu.be/") |> Enum.at(1) |> String.split("?") |> Enum.at(0)
+          true -> nil
+        end
+
+      {"vimeo", url} ->
+        case Regex.run(~r/vimeo\.com\/(\d+)/, url) do
+          [_, video_id] -> video_id
+          _ -> nil
+        end
+
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Detects video platform from URL
+  """
+  def detect_video_platform(url) do
+    cond do
+      String.contains?(url, "youtube.com") or String.contains?(url, "youtu.be") -> "youtube"
+      String.contains?(url, "vimeo.com") -> "vimeo"
+      true -> nil
+    end
+  end
+
+  # ============================================================================
+  # ENHANCED SECTION MANAGEMENT
+  # ============================================================================
+
+  @doc """
+  Gets a single section with error handling
+  """
+  def get_section(id) do
+    Repo.get(PortfolioSection, id)
+  end
+
+  @doc """
+  Safely deletes a section and its associated media
+  """
+  def delete_section(%PortfolioSection{} = section) do
+    Multi.new()
+    |> Multi.delete_all(:delete_media, fn _ ->
+      from(m in PortfolioMedia, where: m.section_id == ^section.id)
+    end)
+    |> Multi.delete(:delete_section, section)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{delete_section: section}} -> {:ok, section}
+      {:error, _failed_operation, failed_value, _changes_so_far} -> {:error, failed_value}
+    end
+  end
+
+  @doc """
+  Gets next position for a new section
+  """
+  def get_next_section_position(portfolio_id) do
+    PortfolioSection
+    |> where([s], s.portfolio_id == ^portfolio_id)
+    |> select([s], max(s.position))
+    |> Repo.one()
+    |> case do
+      nil -> 0
+      max_pos -> max_pos + 1
+    end
+  end
+
+  @doc """
+  Lists sections organized by layout zones
+  """
+  def list_sections_by_zones(portfolio_id) do
+    sections = list_portfolio_sections(portfolio_id)
+
+    %{
+      hero: filter_sections_by_types(sections, [:intro, :video_hero]),
+      main_content: filter_sections_by_types(sections, [:experience, :projects, :skills, :achievements]),
+      sidebar: filter_sections_by_types(sections, [:contact, :testimonial, :media_showcase]),
+      footer: []
+    }
+  end
+
+  defp filter_sections_by_types(sections, types) do
+    Enum.filter(sections, fn section ->
+      section.section_type in types
+    end)
+  end
+
+  # ============================================================================
+  # MEDIA MANAGEMENT ENHANCEMENTS
+  # ============================================================================
+
+  @doc """
+  Gets portfolio media with optional filtering
+  """
+  def get_portfolio_media(id) do
+    Repo.get(PortfolioMedia, id)
+  end
+
+  @doc """
+  Lists media for a specific section
+  """
+  def list_section_media(section_id) do
+    PortfolioMedia
+    |> where([m], m.section_id == ^section_id)
+    |> order_by([m], [m.sort_order, m.inserted_at])
+    |> Repo.all()
+  end
+
+  @doc """
+  Updates media sort order
+  """
+  def update_media_sort_order(media_id, new_order) do
+    case get_portfolio_media(media_id) do
+      nil -> {:error, :not_found}
+      media ->
+        media
+        |> PortfolioMedia.changeset(%{sort_order: new_order})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Attaches existing media to a section
+  """
+  def attach_media_to_section(media_id, section_id) do
+    case get_portfolio_media(media_id) do
+      nil -> {:error, :not_found}
+      media ->
+        media
+        |> PortfolioMedia.changeset(%{section_id: section_id})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Detaches media from a section
+  """
+  def detach_media_from_section(media_id) do
+    case get_portfolio_media(media_id) do
+      nil -> {:error, :not_found}
+      media ->
+        media
+        |> PortfolioMedia.changeset(%{section_id: nil})
+        |> Repo.update()
+    end
+  end
+
+  # ============================================================================
+  # UTILITY FUNCTIONS
+  # ============================================================================
+
+  @doc """
+  Converts sections to dynamic layout zones format
+  """
+  def sections_to_layout_zones(sections) do
+    sections
+    |> Enum.group_by(&determine_zone_for_section/1)
+    |> Enum.into(%{}, fn {zone, zone_sections} ->
+      {zone, Enum.map(zone_sections, &section_to_block_format/1)}
+    end)
+  end
+
+  defp determine_zone_for_section(section) do
+    case section.section_type do
+      type when type in [:intro, :video_hero] -> :hero
+      type when type in [:experience, :projects, :skills, :achievements, :case_study] -> :main_content
+      type when type in [:contact, :testimonial, :media_showcase] -> :sidebar
+      _ -> :main_content
+    end
+  end
+
+  defp section_to_block_format(section) do
+    %{
+      id: section.id,
+      block_type: section.section_type,
+      section_type: section.section_type,
+      title: section.title,
+      content: section.content || %{},
+      position: section.position || 0,
+      visible: section.visible,
+      created_at: section.inserted_at,
+      updated_at: section.updated_at
+    }
+  end
+
+  @doc """
+  Validates if a user can create video blocks based on subscription
+  """
+  def can_create_video_blocks?(user) do
+    # This would check subscription tier - for now return true
+    # In real implementation, check user.subscription_tier
+    case Map.get(user, :subscription_tier, :personal) do
+      tier when tier in [:creator, :professional, :enterprise] -> true
+      _ -> false
+    end
+  end
+
+  @doc """
+  Gets video usage stats for a portfolio
+  """
+  def get_video_usage_stats(portfolio_id) do
+    video_count = PortfolioMedia
+    |> where([m], m.portfolio_id == ^portfolio_id)
+    |> where([m], like(m.file_type, "video%") or m.is_external_video == true)
+    |> select([m], count(m.id))
+    |> Repo.one()
+
+    total_duration = PortfolioMedia
+    |> where([m], m.portfolio_id == ^portfolio_id)
+    |> where([m], not is_nil(m.video_duration))
+    |> select([m], sum(m.video_duration))
+    |> Repo.one()
+
+    %{
+      video_count: video_count || 0,
+      total_duration_seconds: total_duration || 0
+    }
+  end
+
   defp count_social_integrations(portfolio_id) do
     SocialIntegration
     |> where([s], s.portfolio_id == ^portfolio_id and s.sync_status == :active)

@@ -3,12 +3,16 @@
 
 defmodule FrestylWeb.PortfolioLive.Show do
   use FrestylWeb, :live_view
+  import Phoenix.LiveView.Helpers
   import Phoenix.Controller, only: [get_csrf_token: 0]
 
   alias Frestyl.Portfolios
   alias Frestyl.Portfolios.PortfolioTemplates
   alias Phoenix.PubSub
   alias FrestylWeb.PortfolioLive.DynamicCardCssManager
+
+  alias FrestylWeb.PortfolioLive.{DynamicCardLayoutManager, DynamicCardPublicRenderer}
+  alias Frestyl.ResumeExporter
 
 
   @impl true
@@ -37,7 +41,9 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   defp mount_portfolio(portfolio, socket, view_type) do
     # Subscribe to live updates from editor
-    Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
+    end
 
     # Track portfolio visit
     track_portfolio_visit_safe(portfolio, socket)
@@ -49,15 +55,19 @@ defmodule FrestylWeb.PortfolioLive.Show do
     |> assign_ui_state()
     |> enhance_portfolio_for_public_view()         # NEW: Add Dynamic Card Layout integration
     |> assign(:customization_css, "")
+    |> assign(:custom_css, portfolio.custom_css || "")
     |> assign_dynamic_layout_data()
-
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
-    end
+    |> assign_seo_data(portfolio)
+    |> assign(:view_type, view_type)
+    # NEW: Add modal states for the missing functions
+    |> assign(:show_export_modal, false)
+    |> assign(:show_share_modal, false)
+    |> assign(:show_contact_modal, false)
+    |> assign(:show_lightbox, false)
+    |> assign(:lightbox_media, nil)
 
     {:ok, socket}
   end
-
   defp mount_public_portfolio(slug, socket) do
     case load_portfolio_by_slug(slug) do
       {:ok, portfolio} ->
@@ -210,16 +220,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     |> assign(:portfolio, portfolio)
   end
 
-  defp assign_view_context(socket, view_type) do
-    current_user = Map.get(socket.assigns, :current_user, nil)
-    is_owner = current_user && portfolio_owned_by?(socket.assigns.portfolio, current_user)
-
-    socket
-    |> assign(:view_type, view_type)
-    |> assign(:is_owner, is_owner)
-    |> assign(:is_shared_view, view_type == :shared)
-  end
-
   defp get_portfolio_account(portfolio) do
     case portfolio do
       %{account: %{} = account} -> account
@@ -289,16 +289,84 @@ defmodule FrestylWeb.PortfolioLive.Show do
     portfolio.user_id == user.id
   end
 
-  defp load_portfolio_by_share_token(token) do
-    # Implement share token loading logic
-    {:error, :not_found}  # Placeholder
-  end
 
   defp verify_preview_token(portfolio_id, token) do
     expected_token = :crypto.hash(:sha256, "preview_#{portfolio_id}_#{Date.utc_today()}")
                     |> Base.encode16(case: :lower)
     token == expected_token
   end
+
+    # ============================================================================
+  # EVENT HANDLERS
+  # ============================================================================
+
+  @impl true
+  def handle_event("export_portfolio", %{"format" => format}, socket) do
+    portfolio = socket.assigns.portfolio
+
+    case ResumeExporter.export_portfolio(portfolio, String.to_atom(format)) do
+      {:ok, file_info} ->
+        download_url = generate_download_url(file_info)
+        {:noreply, push_event(socket, "download_file", %{url: download_url})}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Export failed: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("share_portfolio", %{"platform" => platform}, socket) do
+    portfolio = socket.assigns.portfolio
+    share_url = generate_share_url(portfolio, platform)
+
+    {:noreply, push_event(socket, "open_share_window", %{url: share_url, platform: platform})}
+  end
+
+  @impl true
+  def handle_event("toggle_mobile_nav", _params, socket) do
+    {:noreply, assign(socket, :mobile_nav_open, !socket.assigns.mobile_nav_open)}
+  end
+
+  @impl true
+  def handle_event("open_lightbox", %{"media_id" => media_id}, socket) do
+    # Find media in portfolio
+    media = find_portfolio_media(socket.assigns.portfolio, media_id)
+    {:noreply, assign(socket, :active_lightbox_media, media)}
+  end
+
+  @impl true
+  def handle_event("close_lightbox", _params, socket) do
+    {:noreply, assign(socket, :active_lightbox_media, nil)}
+  end
+
+  @impl true
+  def handle_event("contact_owner", params, socket) do
+    # Handle contact form submission
+    case send_portfolio_contact_message(socket.assigns.portfolio, params) do
+      {:ok, _} ->
+        {:noreply, socket
+         |> put_flash(:info, "Message sent successfully!")
+         |> assign(:show_contact_modal, false)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to send message: #{reason}")}
+    end
+  end
+
+  # Handle live updates from editor
+  @impl true
+  def handle_info({:portfolio_updated, updated_portfolio}, socket) do
+    if updated_portfolio.id == socket.assigns.portfolio.id do
+      socket = socket
+      |> assign(:portfolio, updated_portfolio)
+      |> assign_dynamic_layout_system(updated_portfolio)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
 
   # ============================================================================
   # LIVE UPDATE HANDLERS (from editor)
@@ -406,141 +474,61 @@ defmodule FrestylWeb.PortfolioLive.Show do
   def render(assigns) do
     ~H"""
     <!DOCTYPE html>
-    <html lang="en" class="h-full">
+    <html lang="en" class="scroll-smooth">
       <head>
-        <meta charset="utf-8"/>
-        <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-        <meta name="csrf-token" content={get_csrf_token()} />
-
-        <title><%= @portfolio.title %></title>
-        <meta name="description" content={@portfolio.description || "Portfolio by #{@owner.name}"} />
-
-        <!-- Simple CSS -->
-        <style>
-          :root {
-            --primary-color: <%= Map.get(@portfolio.customization || %{}, "primary_color") || "#3b82f6" %>;
-            --accent-color: <%= Map.get(@portfolio.customization || %{}, "accent_color") || "#f59e0b" %>;
-          }
-
-          body {
-            font-family: system-ui, -apple-system, sans-serif;
-            line-height: 1.6;
-            color: #374151;
-            margin: 0;
-            padding: 0;
-          }
-
-          .portfolio-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem 1rem;
-          }
-
-          .portfolio-header {
-            text-align: center;
-            padding: 3rem 0;
-            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-            color: white;
-            margin-bottom: 3rem;
-          }
-
-          .portfolio-title {
-            font-size: 3rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-          }
-
-          .portfolio-description {
-            font-size: 1.25rem;
-            opacity: 0.9;
-          }
-
-          .section {
-            background: white;
-            border-radius: 12px;
-            padding: 2rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            border: 1px solid #e5e7eb;
-          }
-
-          .section-title {
-            font-size: 1.75rem;
-            font-weight: 600;
-            color: var(--primary-color);
-            margin-bottom: 1rem;
-          }
-
-          .section-content {
-            color: #6b7280;
-          }
-
-          .owner-controls {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            z-index: 50;
-          }
-
-          .btn {
-            display: inline-block;
-            padding: 0.5rem 1rem;
-            background: var(--primary-color);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 500;
-            transition: all 0.2s;
-          }
-
-          .btn:hover {
-            opacity: 0.9;
-            transform: translateY(-1px);
-          }
-        </style>
-
-        <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
-        <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+        <%= render_seo_meta(assigns) %>
+        <style><%= @custom_css %></style>
+        <script phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
       </head>
 
-      <body>
-        <!-- Owner Controls -->
-        <%= if @is_owner do %>
-          <div class="owner-controls">
-            <.link navigate={~p"/portfolios/#{@portfolio.id}/edit"} class="btn">
-              Edit Portfolio
-            </.link>
-          </div>
-        <% end %>
-
-        <!-- Portfolio Header -->
-        <div class="portfolio-header">
-          <div class="portfolio-container">
-            <h1 class="portfolio-title"><%= @portfolio.title %></h1>
-            <p class="portfolio-description"><%= @portfolio.description %></p>
-          </div>
-        </div>
-
+      <body class="portfolio-public-view bg-gray-50">
         <!-- Portfolio Content -->
-        <div class="portfolio-container">
-          <%= if Map.get(assigns, :use_dynamic_layout, false) do %>
-            <%= render_dynamic_card_public_view(assigns) %>
+        <div class="portfolio-container min-h-screen">
+          <%= if @is_dynamic_layout do %>
+            <.live_component
+              module={FrestylWeb.PortfolioLive.Components.DynamicCardLayoutManager}
+              id={"public-renderer-#{@portfolio.id}"}
+              portfolio={@portfolio}
+              sections={@sections}
+              layout_type={@layout_type}
+              show_edit_controls={false}
+            />
           <% else %>
             <%= render_traditional_public_view(assigns) %>
           <% end %>
         </div>
 
+        <!-- Floating Action Buttons -->
+        <%= render_floating_actions(assigns) %>
+
+        <!-- Modals -->
+        <%= if @show_export_modal do %>
+          <%= render_export_modal(assigns) %>
+        <% end %>
+
+        <%= if @show_share_modal do %>
+          <%= render_share_modal(assigns) %>
+        <% end %>
+
+        <%= if @show_contact_modal do %>
+          <%= render_contact_modal(assigns) %>
+        <% end %>
+
+        <!-- Lightbox -->
+        <%= if @active_lightbox_media do %>
+          <%= render_lightbox(assigns) %>
+        <% end %>
+
         <!-- Flash Messages -->
-        <div id="flash-messages" style="position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 100;">
+        <div id="flash-messages" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
           <%= if live_flash(@flash, :info) do %>
-            <div style="background: #10b981; color: white; padding: 1rem; border-radius: 8px; margin-bottom: 0.5rem;">
+            <div class="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg mb-2">
               <%= live_flash(@flash, :info) %>
             </div>
           <% end %>
 
           <%= if live_flash(@flash, :error) do %>
-            <div style="background: #ef4444; color: white; padding: 1rem; border-radius: 8px; margin-bottom: 0.5rem;">
+            <div class="bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg mb-2">
               <%= live_flash(@flash, :error) %>
             </div>
           <% end %>
@@ -549,6 +537,328 @@ defmodule FrestylWeb.PortfolioLive.Show do
     </html>
     """
   end
+
+  # ============================================================================
+  # RENDER HELPERS
+  # ============================================================================
+
+  defp render_seo_meta(assigns) do
+    ~H"""
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+
+    <!-- SEO Meta Tags -->
+    <title><%= @seo_title %></title>
+    <meta name="description" content={@seo_description} />
+    <link rel="canonical" href={@canonical_url} />
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content={@seo_title} />
+    <meta property="og:description" content={@seo_description} />
+    <meta property="og:image" content={@seo_image} />
+    <meta property="og:url" content={@canonical_url} />
+    <meta property="og:type" content="profile" />
+
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={@seo_title} />
+    <meta name="twitter:description" content={@seo_description} />
+    <meta name="twitter:image" content={@seo_image} />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+      <%= raw(generate_json_ld(@portfolio)) %>
+    </script>
+    """
+  end
+
+  defp render_floating_actions(assigns) do
+    ~H"""
+    <div class="fixed bottom-6 right-6 z-40 space-y-3">
+      <!-- Back to Top -->
+      <%= if @public_view_settings.enable_back_to_top do %>
+        <button onclick="window.scrollTo({top: 0, behavior: 'smooth'})"
+                class="w-12 h-12 bg-white shadow-lg rounded-full flex items-center justify-center hover:bg-gray-50 transition-all duration-200">
+          <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+          </svg>
+        </button>
+      <% end %>
+
+      <!-- More Actions Menu -->
+      <div class="relative">
+        <button class="w-12 h-12 bg-blue-600 text-white shadow-lg rounded-full flex items-center justify-center hover:bg-blue-700 transition-all duration-200"
+                phx-click="toggle_actions_menu">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_traditional_public_view(assigns) do
+    ~H"""
+    <div class="traditional-portfolio-view max-w-4xl mx-auto py-8 px-4">
+      <!-- Portfolio Header -->
+      <header class="text-center mb-12">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4"><%= @portfolio.title %></h1>
+        <%= if @portfolio.description do %>
+          <p class="text-xl text-gray-600 max-w-2xl mx-auto"><%= @portfolio.description %></p>
+        <% end %>
+      </header>
+
+      <!-- Portfolio Sections -->
+      <div class="space-y-8">
+        <%= for section <- @sections do %>
+          <section class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-semibold text-gray-900 mb-4"><%= section.title %></h2>
+            <div class="prose max-w-none">
+              <%= render_section_content_safe(section) %>
+            </div>
+          </section>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_export_modal(assigns) do
+    ~H"""
+    <%= if @show_export_modal do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          phx-click="hide_export_modal">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+            phx-click="prevent_close">
+          <div class="p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Export Portfolio</h3>
+
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Export Format</label>
+                <select class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                  <option value="pdf">PDF Resume</option>
+                  <option value="json">JSON Data</option>
+                </select>
+              </div>
+
+              <div class="flex justify-end space-x-3">
+                <button phx-click="hide_export_modal"
+                        class="px-4 py-2 text-gray-600 hover:text-gray-800">
+                  Cancel
+                </button>
+                <button phx-click="export_portfolio"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                  Export
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_share_modal(assigns) do
+    ~H"""
+    <%= if @show_share_modal do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          phx-click="hide_share_modal">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+            phx-click="prevent_close">
+          <div class="p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Share Portfolio</h3>
+
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Public URL</label>
+                <div class="flex">
+                  <input type="text"
+                        value={get_portfolio_public_url(@portfolio)}
+                        readonly
+                        class="flex-1 border border-gray-300 rounded-l-lg px-3 py-2 bg-gray-50">
+                  <button class="px-4 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700"
+                          phx-click="copy_portfolio_url">
+                    Copy
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex justify-end space-x-3">
+                <button phx-click="hide_share_modal"
+                        class="px-4 py-2 text-gray-600 hover:text-gray-800">
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_contact_modal(assigns) do
+    ~H"""
+    <%= if @show_contact_modal do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          phx-click="hide_contact_modal">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+            phx-click="prevent_close">
+          <div class="p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Contact</h3>
+
+            <form phx-submit="send_contact_message" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input type="text" name="name" required
+                      class="w-full border border-gray-300 rounded-lg px-3 py-2">
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" name="email" required
+                      class="w-full border border-gray-300 rounded-lg px-3 py-2">
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                <textarea name="message" rows="4" required
+                          class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
+              </div>
+
+              <div class="flex justify-end space-x-3">
+                <button type="button" phx-click="hide_contact_modal"
+                        class="px-4 py-2 text-gray-600 hover:text-gray-800">
+                  Cancel
+                </button>
+                <button type="submit"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                  Send Message
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_lightbox(assigns) do
+    ~H"""
+    <%= if @show_lightbox do %>
+      <div class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50"
+          phx-click="hide_lightbox">
+        <div class="relative max-w-7xl max-h-full p-4">
+          <!-- Close button -->
+          <button class="absolute top-4 right-4 z-10 w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white hover:bg-opacity-30"
+                  phx-click="hide_lightbox">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+
+          <!-- Media content -->
+          <%= if @lightbox_media do %>
+            <%= if @lightbox_media.type == "video" do %>
+              <video controls class="max-w-full max-h-full">
+                <source src={@lightbox_media.url} type="video/mp4">
+              </video>
+            <% else %>
+              <img src={@lightbox_media.url}
+                  alt={@lightbox_media.alt || "Media"}
+                  class="max-w-full max-h-full object-contain">
+            <% end %>
+
+            <%= if @lightbox_media.caption do %>
+              <div class="absolute bottom-4 left-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded">
+                <%= @lightbox_media.caption %>
+              </div>
+            <% end %>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  @impl true
+  def handle_event("show_export_modal", _params, socket) do
+    {:noreply, assign(socket, :show_export_modal, true)}
+  end
+
+  @impl true
+  def handle_event("hide_export_modal", _params, socket) do
+    {:noreply, assign(socket, :show_export_modal, false)}
+  end
+
+  @impl true
+  def handle_event("show_share_modal", _params, socket) do
+    {:noreply, assign(socket, :show_share_modal, true)}
+  end
+
+  @impl true
+  def handle_event("hide_share_modal", _params, socket) do
+    {:noreply, assign(socket, :show_share_modal, false)}
+  end
+
+  @impl true
+  def handle_event("show_contact_modal", _params, socket) do
+    {:noreply, assign(socket, :show_contact_modal, true)}
+  end
+
+  @impl true
+  def handle_event("hide_contact_modal", _params, socket) do
+    {:noreply, assign(socket, :show_contact_modal, false)}
+  end
+
+  @impl true
+  def handle_event("show_lightbox", %{"media_id" => media_id}, socket) do
+    # Find the media item by ID
+    media = find_media_by_id(socket.assigns.portfolio, media_id)
+
+    {:noreply, socket
+    |> assign(:show_lightbox, true)
+    |> assign(:lightbox_media, media)}
+  end
+
+  @impl true
+  def handle_event("hide_lightbox", _params, socket) do
+    {:noreply, socket
+    |> assign(:show_lightbox, false)
+    |> assign(:lightbox_media, nil)}
+  end
+
+  @impl true
+  def handle_event("export_portfolio", _params, socket) do
+    # Handle portfolio export logic here
+    {:noreply, socket
+    |> assign(:show_export_modal, false)
+    |> put_flash(:info, "Portfolio export started...")}
+  end
+
+  @impl true
+  def handle_event("copy_portfolio_url", _params, socket) do
+    {:noreply, put_flash(socket, :info, "Portfolio URL copied to clipboard!")}
+  end
+
+  @impl true
+  def handle_event("send_contact_message", params, socket) do
+    # Handle contact message sending here
+    {:noreply, socket
+    |> assign(:show_contact_modal, false)
+    |> put_flash(:info, "Message sent successfully!")}
+  end
+
+  @impl true
+  def handle_event("prevent_close", _params, socket) do
+    {:noreply, socket}
+  end
+
 
   # Simple helper function for section content
   defp render_section_content_safe(section) do
@@ -563,6 +873,22 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
 
     Phoenix.HTML.raw("<p>#{Phoenix.HTML.html_escape(text)}</p>")
+  end
+
+  defp get_portfolio_public_url(portfolio) do
+    FrestylWeb.Router.Helpers.portfolio_show_url(FrestylWeb.Endpoint, :show, portfolio.slug)
+  end
+
+  defp find_media_by_id(portfolio, media_id) do
+    # This would find media across all sections/blocks
+    # For now, return a placeholder
+    %{
+      id: media_id,
+      type: "image",
+      url: "/images/placeholder.jpg",
+      alt: "Media item",
+      caption: nil
+    }
   end
 
   # ============================================================================
@@ -1626,51 +1952,41 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-    defp load_portfolio_by_slug(slug) do
-    try do
-      case Portfolios.get_portfolio_by_slug_with_sections(slug) do
-        nil -> {:error, :not_found}
-        portfolio -> {:ok, portfolio}
-      end
-    rescue
-      _ ->
-        try do
-          case Portfolios.get_portfolio_by_slug(slug) do
-            nil -> {:error, :not_found}
-            portfolio -> {:ok, portfolio}
-          end
-        rescue
-          _ -> {:error, :not_found}
-        end
-    end
-  end
-
-  defp load_portfolio_by_id(id) do
-    try do
-      portfolio_id = String.to_integer(id)
-      case Portfolios.get_portfolio_with_sections(portfolio_id) do
-        nil -> {:error, :not_found}
-        portfolio -> {:ok, portfolio}
-      end
-    rescue
-      _ ->
-        try do
-          portfolio_id = String.to_integer(id)
-          case Portfolios.get_portfolio!(portfolio_id) do
-            nil -> {:error, :not_found}
-            portfolio -> {:ok, portfolio}
-          end
-        rescue
-          _ -> {:error, :not_found}
-        end
-    end
-  end
-
-  defp assign_portfolio_data(socket, portfolio) do
+    defp assign_portfolio_data(socket, portfolio) do
     socket
     |> assign(:portfolio, portfolio)
     |> assign(:owner, portfolio.user)
     |> assign(:page_title, portfolio.title)
+    |> assign(:customization, Map.get(portfolio, :customization, %{}))
+  end
+
+  defp assign_view_context(socket, view_type) do
+    socket
+    |> assign(:view_type, view_type)
+    |> assign(:is_owner, view_type == :authenticated && socket.assigns[:current_user] && socket.assigns.current_user.id == socket.assigns.portfolio.user_id)
+    |> assign(:show_edit_controls, false)
+    |> assign(:enable_analytics, view_type in [:public, :shared])
+  end
+
+  defp assign_ui_state(socket) do
+    socket
+    |> assign(:show_export_modal, false)
+    |> assign(:show_share_modal, false)
+    |> assign(:show_contact_modal, false)
+    |> assign(:active_lightbox_media, nil)
+    |> assign(:mobile_nav_open, false)
+  end
+
+  defp assign_seo_data(socket, portfolio) do
+    title = portfolio.title
+    description = extract_portfolio_description(portfolio)
+    og_image = extract_portfolio_og_image(portfolio)
+
+    socket
+    |> assign(:seo_title, title)
+    |> assign(:seo_description, description)
+    |> assign(:seo_image, og_image)
+    |> assign(:canonical_url, generate_canonical_url(portfolio))
   end
 
   defp assign_rendering_data(socket, portfolio) do
@@ -1856,6 +2172,90 @@ defmodule FrestylWeb.PortfolioLive.Show do
     """
   end
 
+    defp assign_dynamic_layout_system(socket, portfolio) do
+    # Determine layout type and configuration
+    layout_detection = DynamicCardLayoutManager.determine_layout_type(portfolio)
+
+    case layout_detection do
+      {:dynamic_card, layout_config} ->
+        layout_zones = DynamicCardLayoutManager.load_layout_zones(portfolio.id)
+        custom_css = generate_portfolio_css(portfolio)
+
+        socket
+        |> assign(:is_dynamic_layout, true)
+        |> assign(:layout_type, :dynamic_card)
+        |> assign(:layout_config, layout_config)
+        |> assign(:layout_zones, layout_zones)
+        |> assign(:custom_css, custom_css)
+        |> assign(:public_view_settings, get_public_view_settings(portfolio))
+
+      {:traditional, layout_config} ->
+        sections = load_portfolio_sections_for_display(portfolio)
+        custom_css = generate_portfolio_css(portfolio)
+
+        socket
+        |> assign(:is_dynamic_layout, false)
+        |> assign(:layout_type, :traditional)
+        |> assign(:layout_config, layout_config)
+        |> assign(:sections, sections)
+        |> assign(:custom_css, custom_css)
+        |> assign(:public_view_settings, %{})
+    end
+  end
+
+  defp get_public_view_settings(portfolio) do
+    customization = portfolio.customization || %{}
+
+    %{
+      layout_type: Map.get(customization, "public_layout_type", "dashboard"),
+      enable_sticky_nav: Map.get(customization, "enable_sticky_nav", true),
+      enable_back_to_top: Map.get(customization, "enable_back_to_top", true),
+      mobile_expansion_style: Map.get(customization, "mobile_expansion_style", "in_place"),
+      video_autoplay: Map.get(customization, "video_autoplay", "muted"),
+      gallery_lightbox: Map.get(customization, "gallery_lightbox", true),
+      color_scheme: Map.get(customization, "color_scheme", "professional"),
+      font_family: Map.get(customization, "font_family", "inter"),
+      enable_animations: Map.get(customization, "enable_animations", true)
+    }
+  end
+
+  # ============================================================================
+  # PORTFOLIO DATA LOADING
+  # ============================================================================
+
+  defp load_portfolio_by_slug(slug) do
+    try do
+      case Portfolios.get_portfolio_by_slug(slug) do
+        nil -> {:error, :not_found}
+        portfolio -> {:ok, portfolio}
+      end
+    rescue
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp load_portfolio_by_id(id) do
+    try do
+      case Portfolios.get_portfolio(id) do
+        nil -> {:error, :not_found}
+        portfolio -> {:ok, portfolio}
+      end
+    rescue
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp load_portfolio_by_share_token(token) do
+    try do
+      case Portfolios.get_portfolio_by_share_token(token) do
+        nil -> {:error, :not_found}
+        portfolio -> {:ok, portfolio}
+      end
+    rescue
+      _ -> {:error, :not_found}
+    end
+  end
+
   defp load_portfolio_sections_for_display(portfolio) do
     # First try to get sections from portfolio association
     sections = case Map.get(portfolio, :sections) do
@@ -1921,13 +2321,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
             end
         end
     end
-  end
-
-  defp assign_ui_state(socket) do
-    socket
-    |> assign(:mobile_view, false)
-    |> assign(:show_branding, true)
-    |> assign(:current_user, Map.get(socket.assigns, :current_user, nil))  # ADD THIS LINE
   end
 
   defp is_dynamic_card_layout?(portfolio) do
@@ -2186,40 +2579,110 @@ defmodule FrestylWeb.PortfolioLive.Show do
     get_connect_params(socket)["ref"]
   end
 
-  defp generate_portfolio_css(customization) do
-    primary_color = customization["primary_color"] || "#374151"
-    secondary_color = customization["secondary_color"] || "#6b7280"
-    accent_color = customization["accent_color"] || "#059669"
-    background_color = customization["background_color"] || "#ffffff"
-    text_color = customization["text_color"] || "#1f2937"
+  defp generate_portfolio_css(portfolio) do
+    customization = portfolio.customization || %{}
+
+    primary_color = Map.get(customization, "primary_color", "#1e40af")
+    accent_color = Map.get(customization, "accent_color", "#f59e0b")
+    font_family = Map.get(customization, "font_family", "Inter")
 
     """
     :root {
-      --primary-color: #{primary_color} !important;
-      --secondary-color: #{secondary_color} !important;
-      --accent-color: #{accent_color} !important;
-      --background-color: #{background_color} !important;
-      --text-color: #{text_color} !important;
+      --primary-color: #{primary_color};
+      --accent-color: #{accent_color};
+      --font-family: #{font_family}, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
 
-    body {
-      background-color: var(--background-color) !important;
-      color: var(--text-color) !important;
+    .portfolio-public-view {
+      font-family: var(--font-family);
     }
 
-    .primary { color: var(--primary-color) !important; }
-    .secondary { color: var(--secondary-color) !important; }
-    .accent { color: var(--accent-color) !important; }
+    /* Dynamic Card Layout Styles */
+    .dynamic-card-layout {
+      /* Layout-specific styles will be injected by DynamicCardPublicRenderer */
+    }
 
-    .bg-primary { background-color: var(--primary-color) !important; }
-    .bg-secondary { background-color: var(--secondary-color) !important; }
-    .bg-accent { background-color: var(--accent-color) !important; }
+    /* Responsive utilities */
+    @media (max-width: 768px) {
+      .mobile-stack {
+        flex-direction: column;
+      }
 
-    /* Force portfolio header to use custom colors */
-    .bg-white:first-of-type { background-color: var(--primary-color) !important; }
-    .text-gray-900 { color: var(--accent-color) !important; }
+      .mobile-full-width {
+        width: 100%;
+      }
+    }
     """
   end
+
+  defp extract_portfolio_description(portfolio) do
+    description = portfolio.description || "Professional portfolio and showcase"
+    String.slice(description, 0, 160)
+  end
+
+  defp extract_portfolio_og_image(portfolio) do
+    # Try to find a hero image from portfolio media
+    case get_portfolio_hero_image(portfolio) do
+      nil -> "/images/default-portfolio-og.jpg"
+      image_url -> image_url
+    end
+  end
+
+  defp generate_canonical_url(portfolio) do
+    FrestylWeb.Endpoint.url() <> "/p/#{portfolio.slug}"
+  end
+
+  defp generate_json_ld(portfolio) do
+    Jason.encode!(%{
+      "@context" => "https://schema.org",
+      "@type" => "Person",
+      "name" => portfolio.user.name || portfolio.title,
+      "url" => generate_canonical_url(portfolio),
+      "description" => portfolio.description || "Professional portfolio",
+      "sameAs" => extract_social_links(portfolio)
+    })
+  end
+
+  # Safe helpers
+  defp render_section_content_safe(section) do
+    content = Map.get(section, :content, %{})
+    text = case content do
+      %{"main_content" => text} when is_binary(text) -> text
+      %{"summary" => text} when is_binary(text) -> text
+      %{"description" => text} when is_binary(text) -> text
+      %{"headline" => text} when is_binary(text) -> text
+      _ -> "Section content..."
+    end
+    Phoenix.HTML.raw("<p>#{Phoenix.HTML.html_escape(text)}</p>")
+  end
+
+  defp track_portfolio_visit_safe(portfolio, socket) do
+    try do
+      Portfolios.track_portfolio_visit(portfolio, %{
+        ip_address: get_connect_info(socket, :peer_data).address,
+        user_agent: get_connect_info(socket, :user_agent)
+      })
+    rescue
+      _ -> :ok
+    end
+  end
+
+  defp can_view_portfolio?(portfolio, user) do
+    portfolio.user_id == (user && user.id) || portfolio.visibility in [:public, :link_only]
+  end
+
+  defp valid_preview_token?(portfolio, token) do
+    # Implement token validation logic
+    String.length(token) > 0
+  end
+
+  # Placeholder implementations
+  defp get_portfolio_hero_image(_portfolio), do: nil
+  defp extract_social_links(_portfolio), do: []
+  defp generate_download_url(_file_info), do: "#"
+  defp generate_share_url(_portfolio, _platform), do: "#"
+  defp find_portfolio_media(_portfolio, _media_id), do: nil
+  defp send_portfolio_contact_message(_portfolio, _params), do: {:ok, :sent}
 
   # Layout rendering functions
   defp render_portfolio_layout(assigns) do

@@ -14,6 +14,9 @@
 @import "./portfolio_enhanced.css";
 @import "/portfolio_sections.css";
 
+@import "./public_portfolio.css";
+@import "./design_settings.css";
+
 /* Font family utilities - IMPORTANT: Use !important to override */
 .font-inter { font-family: 'Inter', system-ui, sans-serif !important; }
 .font-merriweather { font-family: 'Merriweather', Georgia, serif !important; }
@@ -1108,4 +1111,415 @@ input:disabled {
 .layout-zone[data-drag-over="true"] {
   border-color: #10b981;
   background-color: #ecfdf5;
+}
+
+/* assets/css/video_player.css */
+/* Add this to your main CSS file or create a new one */
+
+/* ============================================================================
+   VIDEO PLAYER STYLES
+   ============================================================================ */
+
+.video-hero-block {
+  position: relative;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  min-height: 300px;
+}
+
+.video-hero-public {
+  min-height: 500px;
+}
+
+.video-thumbnail {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.video-thumbnail:hover {
+  transform: scale(1.02);
+}
+
+.video-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Play button styling */
+.video-play-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 50%;
+  padding: 1rem;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px);
+}
+
+.video-play-button:hover {
+  background: rgba(0, 0, 0, 0.8);
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+.video-play-button svg {
+  width: 3rem;
+  height: 3rem;
+  color: white;
+  margin-left: 0.2rem; /* Optical alignment for play icon */
+}
+
+/* Video player container */
+.video-player-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.video-player-container video,
+.video-player-container iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Close button for video player */
+.video-close-button {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.video-close-button:hover {
+  background: rgba(0, 0, 0, 1);
+}
+
+/* ============================================================================
+   MOBILE-FIRST BLOCK CONTROLS
+   ============================================================================ */
+
+.dynamic-card-block {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.block-controls {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.dynamic-card-block:hover .block-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Mobile touch-friendly controls */
+@media (max-width: 768px) {
+  .block-controls {
+    opacity: 1;
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.9);
+    border-radius: 0.5rem;
+    padding: 0.25rem;
+  }
+  
+  .block-controls button {
+    padding: 0.75rem !important;
+    margin: 0.125rem;
+  }
+  
+  .block-controls svg {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+  }
+}
+
+/* Control button styling */
+.block-controls button {
+  background: transparent;
+  border: none;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.block-controls button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.1);
+}
+
+.block-controls button:active {
+  transform: scale(0.95);
+}
+
+/* Icon colors */
+.block-controls button:hover .text-blue-300 {
+  color: #93c5fd;
+}
+
+.block-controls button:hover .text-yellow-300 {
+  color: #fde047;
+}
+
+.block-controls button:hover .text-green-300 {
+  color: #86efac;
+}
+
+.block-controls button:hover .text-red-300 {
+  color: #fca5a5;
+}
+
+/* Hidden block styling */
+.dynamic-card-block.opacity-50 {
+  opacity: 0.5;
+  filter: grayscale(0.3);
+  position: relative;
+}
+
+.dynamic-card-block.opacity-50::after {
+  content: "Hidden";
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: rgba(255, 165, 0, 0.9);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  z-index: 5;
+}
+
+/* ============================================================================
+   LAYOUT ZONES STYLING
+   ============================================================================ */
+
+.layout-zone {
+  position: relative;
+  transition: border-color 0.2s ease;
+}
+
+.layout-zone:hover {
+  border-color: #8b5cf6;
+}
+
+.layout-zone h3 {
+  user-select: none;
+}
+
+.empty-zone-placeholder {
+  transition: all 0.2s ease;
+}
+
+.empty-zone-placeholder:hover {
+  border-color: #6366f1;
+  background-color: #f0f9ff;
+}
+
+/* ============================================================================
+   RESPONSIVE VIDEO STYLES
+   ============================================================================ */
+
+/* Ensure videos are responsive */
+.video-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  height: 0;
+  overflow: hidden;
+}
+
+.video-container iframe,
+.video-container video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Full-height video heroes */
+.video-hero-block .video-container,
+.video-hero-public .video-container {
+  padding-bottom: 0;
+  height: 100%;
+}
+
+/* Text overlay responsive styling */
+.video-text-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+}
+
+@media (max-width: 768px) {
+  .video-text-overlay {
+    padding: 1rem;
+  }
+  
+  .video-text-overlay h1 {
+    font-size: 2rem !important;
+    margin-bottom: 1rem !important;
+  }
+  
+  .video-text-overlay p {
+    font-size: 1rem !important;
+    margin-bottom: 1.5rem !important;
+  }
+  
+  .video-play-button {
+    padding: 0.75rem;
+  }
+  
+  .video-play-button svg {
+    width: 2rem;
+    height: 2rem;
+  }
+}
+
+/* ============================================================================
+   LOADING AND ERROR STATES
+   ============================================================================ */
+
+.video-loading {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.video-error {
+  position: absolute;
+  inset: 0;
+  background: rgba(220, 38, 38, 0.1);
+  border: 2px dashed #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ef4444;
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Loading spinner */
+.video-spinner {
+  width: 3rem;
+  height: 3rem;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top: 3px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   ACCESSIBILITY IMPROVEMENTS
+   ============================================================================ */
+
+/* Focus states for keyboard navigation */
+.block-controls button:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.video-thumbnail:focus {
+  outline: 3px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .block-controls {
+    background: black !important;
+  }
+  
+  .video-play-button {
+    background: black !important;
+    border: 2px solid white;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .video-thumbnail,
+  .block-controls button,
+  .video-play-button {
+    transition: none !important;
+  }
+  
+  .video-thumbnail:hover {
+    transform: none !important;
+  }
+  
+  .video-spinner {
+    animation: none !important;
+  }
+}
+
+/* ============================================================================
+   THEME VARIATIONS
+   ============================================================================ */
+
+/* Dark theme */
+.dark .dynamic-card-block {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+.dark .standard-block {
+  background: #1f2937 !important;
+  color: white;
+}
+
+.dark .layout-zone {
+  background: rgba(55, 65, 81, 0.3) !important;
+  border-color: #4b5563;
+}
+
+/* Professional theme */
+.theme-professional .video-hero-block {
+  background: linear-gradient(135deg, #1e3a8a 0%, #3730a3 100%);
+}
+
+/* Creative theme */
+.theme-creative .video-hero-block {
+  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+}
+
+/* Corporate theme */
+.theme-corporate .video-hero-block {
+  background: linear-gradient(135deg, #374151 0%, #111827 100%);
 }

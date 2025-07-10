@@ -5,6 +5,10 @@ import { Socket } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
+import { PublicPortfolioRenderer } from "./hooks/public_portfolio_renderer"
+import { DesignSettings } from "./hooks/design_settings"
+
+
 // Import Video Capture Hook
 import VideoCapture from "./hooks/video_capture"
 import FileUpload from "./hooks/file_upload"
@@ -330,9 +334,13 @@ let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("
 // FIXED: Clean hooks object with no conflicts
 let Hooks = {
   // Video Recording
+  VideoPlayer,
   VideoCapture,
   ...PortfolioEditorHooks,
   FileUpload,
+
+  PublicPortfolioRenderer,
+  DesignSettings,
 
   // Portfolio Collaboration
   PortfolioCollaboration,

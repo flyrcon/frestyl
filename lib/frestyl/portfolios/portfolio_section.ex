@@ -22,7 +22,8 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       :story,
       :timeline,
       :narrative,
-      :journey
+      :journey,
+      :video_hero  # NEW: Video-specific hero block
     ]
     field :content, :map
     field :position, :integer
@@ -46,6 +47,30 @@ defmodule Frestyl.Portfolios.PortfolioSection do
   @doc """
   Returns the default content structure for each section type with enhanced support for multiple entries
   """
+  def default_content_for_type(:video_hero) do
+    %{
+      "headline" => "Welcome to My Portfolio",
+      "subtitle" => "Discover my work through video",
+      "video_url" => "",
+      "video_type" => "upload", # "upload", "youtube", "vimeo"
+      "poster_image" => "",
+      "autoplay" => false,
+      "show_controls" => true,
+      "call_to_action" => %{
+        "text" => "Learn More",
+        "url" => "#about",
+        "style" => "primary"
+      },
+      "overlay_text" => true,
+      "video_settings" => %{
+        "muted" => true,
+        "loop" => false,
+        "playsinline" => true
+      }
+    }
+  end
+
+  # Keep existing default_content_for_type functions...
   def default_content_for_type(:intro) do
     %{
       "headline" => "Hello, I'm [Your Name]",
@@ -75,24 +100,10 @@ defmodule Frestyl.Portfolios.PortfolioSection do
           "end_date" => "",
           "current" => true,
           "description" => "Brief description of your role and key responsibilities.",
-          "responsibilities" => [
-            "Led cross-functional teams to deliver key projects",
-            "Developed and implemented strategic initiatives"
-          ],
-          "achievements" => [
-            "Increased team productivity by 25%",
-            "Successfully launched 3 major product features"
-          ],
-          "skills" => ["Leadership", "Project Management", "Strategic Planning"],
-          "company_logo" => "",
-          "company_url" => ""
+          "achievements" => [],
+          "skills_used" => []
         }
-      ],
-      "summary_stats" => %{
-        "total_years" => 0,
-        "companies_count" => 0,
-        "current_role" => ""
-      }
+      ]
     }
   end
 
@@ -486,4 +497,57 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       end
     end)
   end
+
+    defp validate_content_structure(changeset) do
+    case get_field(changeset, :section_type) do
+      :video_hero ->
+        validate_video_hero_content(changeset)
+      _ ->
+        changeset
+    end
+  end
+
+  defp validate_video_hero_content(changeset) do
+    content = get_field(changeset, :content) || %{}
+
+    cond do
+      is_external_video?(content) ->
+        validate_external_video_content(changeset, content)
+      is_upload_video?(content) ->
+        validate_upload_video_content(changeset, content)
+      true ->
+        add_error(changeset, :content, "Video hero must have valid video source")
+    end
+  end
+
+  defp is_external_video?(content) do
+    video_type = Map.get(content, "video_type", "")
+    video_type in ["youtube", "vimeo"] and Map.has_key?(content, "video_url")
+  end
+
+  defp is_upload_video?(content) do
+    video_type = Map.get(content, "video_type", "")
+    video_type == "upload"
+  end
+
+  defp validate_external_video_content(changeset, content) do
+    video_url = Map.get(content, "video_url", "")
+
+    cond do
+      String.contains?(video_url, "youtube.com") or String.contains?(video_url, "youtu.be") ->
+        changeset
+      String.contains?(video_url, "vimeo.com") ->
+        changeset
+      video_url == "" ->
+        changeset  # Allow empty for drafts
+      true ->
+        add_error(changeset, :content, "Invalid external video URL")
+    end
+  end
+
+  defp validate_upload_video_content(changeset, _content) do
+    # Upload validation will be handled in the media upload process
+    changeset
+  end
+
 end
