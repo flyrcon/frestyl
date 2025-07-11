@@ -124,6 +124,8 @@
             <%= render_content_tab(assigns) %>
           <% :dynamic_layout -> %>
             <%= render_dynamic_layout_tab(assigns) %>
+          <% :settings -> %>
+            <%= render_settings_tab(assigns) %>
           <% :design -> %>
             <%= render_design_tab(assigns) %>
           <% :analytics -> %>
@@ -135,15 +137,15 @@
     <!-- Center: Main Editor -->
     <div class="flex-1 flex flex-col">
       <!-- Editor Content -->
-      <div class="flex-1 overflow-y-auto p-6">
+      <div class="flex-1 overflow-y-auto">
         <%= cond do %>
           <% @editing_section -> %>
-            <!-- Section Editor Modal -->
-            <!-- Keep your existing modal code here -->
+            <!-- FIXED: Section Editor Interface -->
+            <%= FrestylWeb.PortfolioLive.Components.ContentTab.render_section_editor(assigns) %>
             
           <% @active_tab == :content -> %>
             <!-- Content Overview -->
-            <div class="max-w-4xl mx-auto">
+            <div class="max-w-4xl mx-auto p-6">
               <div class="mb-6">
                 <h2 class="text-2xl font-bold text-gray-900">Portfolio Content</h2>
                 <p class="text-gray-600 mt-1">Manage your portfolio sections and content</p>
@@ -235,6 +237,15 @@
       </div>
     <% end %>
   </div>
+  <!-- Video Modal Wrapper -->
+  <%= if Map.get(assigns, :show_video_modal, false) do %>
+    <.live_component
+      module={FrestylWeb.PortfolioLive.Components.VideoModalWrapper}
+      id="video-modal-wrapper"
+      portfolio={@portfolio}
+      current_user={@current_user}
+      show={@show_video_modal} />
+  <% end %>
 </div>
 
 <style>

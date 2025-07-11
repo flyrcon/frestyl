@@ -152,44 +152,56 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardLayoutManager do
     end
   end
 
-  @impl true
-  def handle_event("save_block_changes", %{"block_id" => block_id, "changes" => changes_json}, socket) do
-    block_id_int = parse_block_id(block_id)
+  defp save_block_edits(block_id, block_changes, socket) do
+    layout_zones = socket.assigns.layout_zones
+    block_id_str = to_string(block_id)
 
-    changes = case Jason.decode(changes_json) do
-      {:ok, decoded} -> decoded
-      {:error, _} -> %{}
-    end
-
-    socket = assign(socket, :save_status, :saving)
-
-    case find_block_in_zones(socket.assigns.layout_zones, block_id_int) do
-      {:ok, current_block} ->
-        updated_block = update_block_content(current_block, changes)
-        updated_zones = update_block_in_zones(socket.assigns.layout_zones, block_id_int, updated_block)
-
-        case save_layout_zones_to_database(updated_zones, socket.assigns.portfolio.id) do
-          {:ok, _sections} ->
-            send(self(), {:block_updated, block_id_int, updated_zones})
-
-            {:noreply, socket
-              |> assign(:layout_zones, updated_zones)
-              |> assign(:editing_block, updated_block)
-              |> assign(:save_status, :saved)
-              |> schedule_save_status_reset()
-            }
-
-          {:error, reason} ->
-            {:noreply, socket
-              |> assign(:save_status, :error)
-              |> put_flash(:error, "Failed to save: #{inspect(reason)}")
-            }
-        end
-
-      {:error, :not_found} ->
-        {:noreply, socket |> put_flash(:error, "Block not found")}
+    # Find and update the block across all zones
+    case find_and_update_block_in_zones(layout_zones, block_id_str, fn block ->
+      # Apply all pending changes to the block
+      updated_block = apply_block_changes(block, block_changes)
+      {updated_block, :updated}
+    end) do
+      {updated_zones, :updated} ->
+        {:ok, updated_zones}
+      nil ->
+        {:error, "Block not found"}
     end
   end
+
+  defp apply_block_changes(block, block_changes) do
+    # Extract block-specific changes from the changes map
+    block_id_str = to_string(block.id)
+
+    # Filter changes that belong to this block
+    relevant_changes = block_changes
+    |> Enum.filter(fn {key, _value} ->
+      String.starts_with?(key, "#{block_id_str}_")
+    end)
+    |> Enum.map(fn {key, value} ->
+      field = key |> String.replace_prefix("#{block_id_str}_", "")
+      {field, value}
+    end)
+    |> Enum.into(%{})
+
+    if map_size(relevant_changes) > 0 do
+      # Apply changes to block content
+      current_content = get_block_content_data(block)
+      updated_content = Map.merge(current_content, relevant_changes)
+
+      # Update the block with new content
+      case block do
+        %{content_data: _} = block ->
+          %{block | content_data: updated_content}
+        block ->
+          Map.put(block, :content_data, updated_content)
+      end
+    else
+      # No changes for this block
+      block
+    end
+  end
+
 
   @impl true
   def handle_event("cancel_block_edit", _params, socket) do
@@ -238,73 +250,115 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardLayoutManager do
   end
 
   @impl true
-  def handle_event("toggle_block_visibility", %{"block_id" => block_id}, socket) do
-    block_id_int = String.to_integer(block_id)
+  def handle_event("toggle_block_visibility", %{"block-id" => block_id}, socket) do
+    IO.puts("🔥 TOGGLE BLOCK VISIBILITY: #{block_id}")
 
-    case Portfolios.get_section(block_id_int) do
-      nil ->
-        {:noreply, put_flash(socket, :error, "Section not found")}
+    case toggle_block_visibility_in_zones(socket.assigns.layout_zones, block_id) do
+      {:ok, updated_zones, new_visibility} ->
+        visibility_text = if new_visibility, do: "visible", else: "hidden"
 
-      section ->
-        case Portfolios.update_section(section, %{visible: !section.visible}) do
-          {:ok, updated_section} ->
-            # Update the layout zones with new visibility
-            updated_zones = update_block_visibility_in_zones(
-              socket.assigns.layout_zones,
-              block_id_int,
-              updated_section.visible
-            )
+        {:noreply, socket
+        |> assign(:layout_zones, updated_zones)
+        |> put_flash(:info, "Block is now #{visibility_text}")
+        |> push_event("block-visibility-changed", %{block_id: block_id, visible: new_visibility})}
 
-            {:noreply,
-              socket
-              |> assign(:layout_zones, updated_zones)
-              |> put_flash(:info, if(updated_section.visible, do: "Block shown", else: "Block hidden"))
-            }
-
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to update visibility")}
-        end
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to toggle visibility: #{reason}")}
     end
   end
 
   @impl true
-  def handle_event("delete_block", %{"block_id" => block_id}, socket) do
-    block_id_int = String.to_integer(block_id)
+  def handle_event("delete_block", %{"block-id" => block_id}, socket) do
+    IO.puts("🔥 DELETE BLOCK: #{block_id}")
 
-    case Portfolios.get_section(block_id_int) do
-      nil ->
-        {:noreply, put_flash(socket, :error, "Section not found")}
+    case remove_block_from_zones(socket.assigns.layout_zones, block_id) do
+      {:ok, updated_zones} ->
+        {:noreply, socket
+        |> assign(:layout_zones, updated_zones)
+        |> assign(:editing_block_id, nil) # Clear editing state if deleting current block
+        |> put_flash(:info, "Block deleted successfully")
+        |> push_event("block-deleted", %{block_id: block_id})}
 
-      section ->
-        case Portfolios.delete_section(section) do
-          {:ok, _deleted_section} ->
-            # Remove from layout zones
-            updated_zones = remove_block_from_zones(socket.assigns.layout_zones, block_id_int)
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete block: #{reason}")}
+    end
+  end
 
-            {:noreply,
-              socket
-              |> assign(:layout_zones, updated_zones)
-              |> put_flash(:info, "Block deleted successfully")
-            }
+  @impl true
+  def handle_event("edit_block", %{"block-id" => block_id}, socket) do
+    IO.puts("🔥 EDIT BLOCK: #{block_id}")
 
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to delete block")}
-        end
+    block = find_block_in_zones(socket.assigns.layout_zones, block_id)
+
+    if block do
+      # Check if it's a video block - will trigger video modal in Phase 3
+      case get_block_type_safe(block) do
+        :video_hero ->
+          send(self(), {:open_video_modal, block_id, block})
+          {:noreply, socket}
+
+        type when type in [:hero_card, :intro_card] ->
+          # Check if this hero/intro block should have video capability
+          content = get_block_content_data(block)
+          if Map.get(content, "supports_video", false) or Map.get(content, "video_url") do
+            send(self(), {:open_video_modal, block_id, block})
+            {:noreply, socket}
+          else
+            # Regular inline editing for non-video blocks
+            {:noreply, socket
+            |> assign(:editing_block_id, block_id)
+            |> assign(:block_changes, %{})}
+          end
+
+        _ ->
+          # For non-video blocks, start inline editing
+          {:noreply, socket
+          |> assign(:editing_block_id, block_id)
+          |> assign(:block_changes, %{})}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Block not found")}
     end
   end
 
   @impl true
   def handle_event("edit_block", %{"block_id" => block_id}, socket) do
-    # Send event to parent to open modal editor
-    send(self(), {:open_block_editor, block_id})
+    handle_event("edit_block", %{"block-id" => block_id}, socket)
+  end
+
+  @impl true
+  def handle_event(event_name, params, socket) when is_binary(event_name) do
+    IO.puts("🔥 UNHANDLED EVENT in DynamicCardLayoutManager: #{event_name}")
+    IO.puts("🔥 Params: #{inspect(params)}")
+
+    # Try to match some common patterns
+    cond do
+      String.contains?(event_name, "block") ->
+        IO.puts("🔥 This looks like a block-related event. Check the event name and parameters.")
+
+      String.contains?(event_name, "update") ->
+        IO.puts("🔥 This looks like an update event. Check the update handlers.")
+
+      true ->
+        IO.puts("🔥 Unknown event type.")
+    end
+
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("attach_media", %{"block_id" => block_id}, socket) do
-    # Send event to parent to open media attachment modal
-    send(self(), {:open_media_attachment, block_id})
-    {:noreply, socket}
+  def handle_event("attach_media_to_block", %{"block-id" => block_id}, socket) do
+    IO.puts("🔥 ATTACH MEDIA TO BLOCK: #{block_id}")
+
+    block = find_block_in_zones(socket.assigns.layout_zones, block_id)
+
+    if block do
+      # Send event to parent to open media library/uploader
+      send(self(), {:open_media_library, block_id, block})
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Block not found")}
+    end
   end
 
   @impl true
@@ -631,93 +685,404 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardLayoutManager do
   end
 
   defp render_editable_content_block(block, zone_name, assigns) do
-    # DEBUG: Print block structure to find the KeyError source
-    IO.puts("🔍 DEBUG BLOCK STRUCTURE:")
-    IO.puts("🔍 Block ID: #{Map.get(block, :id)}")
-    IO.puts("🔍 Block keys: #{inspect(Map.keys(block))}")
-    IO.puts("🔍 Has :content? #{Map.has_key?(block, :content)}")
-    IO.puts("🔍 Has :content_data? #{Map.has_key?(block, :content_data)}")
-    IO.puts("🔍 Zone: #{zone_name}")
-
-    # Safely determine if this block is hidden
-    is_hidden = !get_block_visibility(block)
-    block_classes = if is_hidden, do: "opacity-50", else: ""
+    is_editing = assigns.editing_block_id == to_string(block.id)
+    is_visible = get_block_visibility(block)
+    component_id = assigns.myself
 
     assigns = assigns
     |> assign(:block, block)
+    |> assign(:is_editing, is_editing)
     |> assign(:zone_name, zone_name)
-    |> assign(:is_hidden, is_hidden)
-    |> assign(:block_classes, block_classes)
+    |> assign(:is_visible, is_visible)
+    |> assign(:component_id, component_id)
 
     ~H"""
-    <div class={"dynamic-card-block relative group #{@block_classes}"}
-        data-block-id={get_block_id(@block)}>
+    <div class={[
+      "dynamic-card-block relative group transition-all duration-200",
+      "bg-white border rounded-lg p-4",
+      if(@is_visible, do: "border-purple-200", else: "border-gray-300 opacity-60"),
+      if(@is_editing, do: "ring-2 ring-blue-500 shadow-lg", else: "hover:shadow-md")
+    ]} data-block-id={@block.id}>
 
       <!-- Mobile-First Block Controls Overlay -->
-      <div class="block-controls absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-        <div class="flex items-center space-x-1 bg-black bg-opacity-75 rounded-lg p-1">
+      <%= if Map.get(assigns, :show_edit_controls, false) do %>
+        <div class={[
+          "block-controls absolute top-2 right-2 z-10 transition-all duration-200",
+          "flex items-center space-x-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200",
+          "opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100",
+          "touch-manipulation" # Mobile-first: easier touch targets
+        ]}>
 
           <!-- Edit Button -->
-          <button phx-click="edit_block"
-                  phx-value-block_id={get_block_id(@block)}
-                  phx-target={@myself}
-                  class="p-2 text-white hover:text-blue-300 transition-colors"
-                  title="Edit block">
+          <button
+            phx-click="edit_block"
+            phx-value-block-id={@block.id}
+            phx-target={@component_id}
+            class="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
+            title="Edit block">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
             </svg>
           </button>
 
           <!-- Visibility Toggle -->
-          <button phx-click="toggle_block_visibility"
-                  phx-value-block_id={get_block_id(@block)}
-                  phx-target={@myself}
-                  class="p-2 text-white hover:text-yellow-300 transition-colors"
-                  title={if @is_hidden, do: "Show block", else: "Hide block"}>
-            <%= if @is_hidden do %>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
-              </svg>
-            <% else %>
+          <button
+            phx-click="toggle_block_visibility"
+            phx-value-block-id={@block.id}
+            phx-target={@component_id}
+            class={[
+              "p-2 rounded-md transition-colors",
+              if(@is_visible,
+                do: "text-green-600 hover:text-green-700 hover:bg-green-50",
+                else: "text-gray-400 hover:text-gray-600 hover:bg-gray-50")
+            ]}
+            title={if(@is_visible, do: "Hide from public view", else: "Show in public view")}>
+            <%= if @is_visible do %>
+              <!-- Eye Open (Visible) -->
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7C7.523 19 3.732 16.057 2.458 12z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+            <% else %>
+              <!-- Eye Slash (Hidden) -->
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L12 12m0 0l3.122 3.122m0 0L21 21"/>
               </svg>
             <% end %>
           </button>
 
           <!-- Media/Attach Button -->
-          <button phx-click="attach_media"
-                  phx-value-block_id={get_block_id(@block)}
-                  phx-target={@myself}
-                  class="p-2 text-white hover:text-green-300 transition-colors"
-                  title="Attach media">
+          <button
+            phx-click="attach_media_to_block"
+            phx-value-block-id={@block.id}
+            phx-target={@component_id}
+            class="p-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-md transition-colors"
+            title="Add media">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
             </svg>
           </button>
 
           <!-- Delete Button -->
-          <button phx-click="delete_block"
-                  phx-value-block_id={get_block_id(@block)}
-                  phx-target={@myself}
-                  onclick="return confirm('Are you sure you want to delete this block?')"
-                  class="p-2 text-white hover:text-red-300 transition-colors"
-                  title="Delete block">
+          <button
+            phx-click="delete_block"
+            phx-value-block-id={@block.id}
+            phx-target={@component_id}
+            data-confirm="Are you sure you want to delete this block?"
+            class="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+            title="Delete block">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
             </svg>
           </button>
+        </div>
+      <% end %>
 
+      <!-- Block Content -->
+      <%= if @is_editing do %>
+        <%= render_block_edit_form(@block, assigns) %>
+      <% else %>
+        <%= render_block_display_content(@block, assigns) %>
+      <% end %>
+
+      <!-- Hidden Block Indicator -->
+      <%= if not @is_visible do %>
+        <div class="absolute top-2 left-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-md flex items-center space-x-1">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L12 12m0 0l3.122 3.122m0 0L21 21"/>
+          </svg>
+          <span>Hidden</span>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp render_block_edit_form(block, assigns) do
+    assigns = assign(assigns, :block, block)
+    block_type = get_block_type_safe(block)
+
+    ~H"""
+    <div class="block-edit-form bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div class="flex items-center justify-between mb-4">
+        <h4 class="font-semibold text-blue-900">
+          Editing: <%= humanize_block_type(block_type) %>
+        </h4>
+
+        <div class="flex items-center space-x-2">
+          <button
+            phx-click="save_block_changes"
+            phx-value-block-id={@block.id}
+            phx-target={assigns.component_id}
+            class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors">
+            Save
+          </button>
+
+          <button
+            phx-click="cancel_editing_block"
+            phx-target={assigns.component_id}
+            class="px-3 py-1 bg-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-400 transition-colors">
+            Cancel
+          </button>
         </div>
       </div>
 
-      <!-- Block Content with Safe Rendering -->
-      <div class="block-content">
-        <%= render_block_content_safe(@block, assigns) %>
+      <%= case block_type do %>
+        <% :hero_card -> %>
+          <%= render_hero_edit_form(@block, assigns) %>
+        <% :about_card -> %>
+          <%= render_about_edit_form(@block, assigns) %>
+        <% :service_card -> %>
+          <%= render_service_edit_form(@block, assigns) %>
+        <% :project_card -> %>
+          <%= render_project_edit_form(@block, assigns) %>
+        <% :video_hero -> %>
+          <%= render_video_edit_form(@block, assigns) %>
+        <% _ -> %>
+          <%= render_generic_edit_form(@block, assigns) %>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp render_hero_edit_form(block, assigns) do
+    content = get_block_content_data(block)
+    title = Map.get(content, "title", "")
+    subtitle = Map.get(content, "subtitle", "")
+
+    assigns = assign(assigns, :title, title) |> assign(:subtitle, subtitle)
+
+    ~H"""
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Title</label>
+        <input
+          type="text"
+          value={@title}
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="title"
+          phx-target={assigns.component_id}
+          placeholder="Enter hero title..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Subtitle</label>
+        <textarea
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="subtitle"
+          phx-target={assigns.component_id}
+          rows="3"
+          placeholder="Enter hero subtitle..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @subtitle %></textarea>
       </div>
     </div>
     """
+  end
+
+  defp render_about_edit_form(block, assigns) do
+    content = get_block_content_data(block)
+    description = Map.get(content, "description", "")
+
+    assigns = assign(assigns, :description, description)
+
+    ~H"""
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">About Content</label>
+        <textarea
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="description"
+          phx-target={assigns.component_id}
+          rows="6"
+          placeholder="Tell your story..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @description %></textarea>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_service_edit_form(block, assigns) do
+    content = get_block_content_data(block)
+    title = Map.get(content, "title", "")
+    description = Map.get(content, "description", "")
+    price = Map.get(content, "price", "")
+
+    assigns = assign(assigns, :title, title) |> assign(:description, description) |> assign(:price, price)
+
+    ~H"""
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Service Name</label>
+        <input
+          type="text"
+          value={@title}
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="title"
+          phx-target={assigns.component_id}
+          placeholder="Enter service name..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+        <textarea
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="description"
+          phx-target={assigns.component_id}
+          rows="4"
+          placeholder="Describe your service..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @description %></textarea>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Price (Optional)</label>
+        <input
+          type="text"
+          value={@price}
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="price"
+          phx-target={assigns.component_id}
+          placeholder="e.g., $99/hour"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+    </div>
+    """
+  end
+
+  defp render_project_edit_form(block, assigns) do
+    content = get_block_content_data(block)
+    title = Map.get(content, "title", "")
+    description = Map.get(content, "description", "")
+    url = Map.get(content, "url", "")
+
+    assigns = assign(assigns, :title, title) |> assign(:description, description) |> assign(:url, url)
+
+    ~H"""
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Project Name</label>
+        <input
+          type="text"
+          value={@title}
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="title"
+          phx-target={assigns.component_id}
+          placeholder="Enter project name..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+        <textarea
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="description"
+          phx-target={assigns.component_id}
+          rows="4"
+          placeholder="Describe your project..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @description %></textarea>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Project URL (Optional)</label>
+        <input
+          type="url"
+          value={@url}
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="url"
+          phx-target={assigns.component_id}
+          placeholder="https://..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+    </div>
+    """
+  end
+
+  defp render_video_edit_form(block, assigns) do
+    content = get_block_content_data(block)
+    video_url = Map.get(content, "video_url", "")
+
+    assigns = assign(assigns, :video_url, video_url)
+
+    ~H"""
+    <div class="space-y-4">
+      <div class="text-center p-6 bg-gray-50 rounded-lg">
+        <svg class="w-12 h-12 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+        <h4 class="font-medium text-gray-900 mb-2">Video Block</h4>
+        <p class="text-sm text-gray-600 mb-4">
+          <%= if @video_url != "" do %>
+            Video configured. Use the video modal for advanced editing.
+          <% else %>
+            No video configured. Use the video modal to add content.
+          <% end %>
+        </p>
+
+        <button
+          phx-click="open_video_modal_from_edit"
+          phx-value-block-id={@block.id}
+          phx-target={assigns.component_id}
+          class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+          <%= if @video_url != "" do %>
+            Edit Video
+          <% else %>
+            Add Video
+          <% end %>
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_generic_edit_form(block, assigns) do
+    content = get_block_content_data(block)
+    text_content = Map.get(content, "content", Map.get(content, "description", ""))
+
+    assigns = assign(assigns, :text_content, text_content)
+
+    ~H"""
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Content</label>
+        <textarea
+          phx-blur="update_block_content"
+          phx-value-block-id={@block.id}
+          phx-value-field="content"
+          phx-target={assigns.component_id}
+          rows="6"
+          placeholder="Enter content..."
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @text_content %></textarea>
+      </div>
+    </div>
+    """
+  end
+
+  @impl true
+  def handle_event("open_video_modal_from_edit", %{"block-id" => block_id}, socket) do
+    IO.puts("🔥 OPENING VIDEO MODAL FROM EDIT: #{block_id}")
+
+    block = find_block_in_zones(socket.assigns.layout_zones, block_id)
+
+    if block do
+      # Cancel current editing and open video modal
+      send(self(), {:open_video_modal, block_id, block})
+
+      {:noreply, socket
+      |> assign(:editing_block_id, nil)
+      |> assign(:block_changes, %{})}
+    else
+      {:noreply, put_flash(socket, :error, "Block not found")}
+    end
   end
 
   defp render_block_content_safe(block, assigns) do
@@ -753,8 +1118,152 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardLayoutManager do
   end
 
   defp get_block_visibility(block) do
-    Map.get(block, :visible, true) || Map.get(block, "visible", true)
+    case block do
+      %{visible: visible} when is_boolean(visible) -> visible
+      %{content_data: %{visible: visible}} when is_boolean(visible) -> visible
+      %{"visible" => visible} when is_boolean(visible) -> visible
+      _ -> true # Default to visible
+    end
   end
+
+  defp get_block_content_data(block) do
+    case block do
+      %{content_data: content_data} when is_map(content_data) -> content_data
+      %{"content_data" => content_data} when is_map(content_data) -> content_data
+      %{content: content} when is_map(content) -> content
+      %{"content" => content} when is_map(content) -> content
+      _ -> %{}
+    end
+  end
+
+  defp find_block_in_zones(layout_zones, block_id) do
+    block_id_str = to_string(block_id)
+
+    Enum.find_value(layout_zones, fn {_zone_name, blocks} ->
+      Enum.find(blocks, fn block ->
+        to_string(block.id) == block_id_str
+      end)
+    end)
+  end
+
+  defp toggle_block_visibility_in_zones(layout_zones, block_id) do
+    block_id_str = to_string(block_id)
+
+    case find_and_update_block_in_zones(layout_zones, block_id_str, fn block ->
+      current_visibility = get_block_visibility(block)
+      new_visibility = !current_visibility
+
+      updated_block = case block do
+        %{content_data: content_data} = block ->
+          %{block | content_data: Map.put(content_data, :visible, new_visibility)}
+        block ->
+          Map.put(block, :visible, new_visibility)
+      end
+
+      {updated_block, new_visibility}
+    end) do
+      {updated_zones, new_visibility} -> {:ok, updated_zones, new_visibility}
+      nil -> {:error, "Block not found"}
+    end
+  end
+
+  defp remove_block_from_zones(layout_zones, block_id) do
+    block_id_str = to_string(block_id)
+
+    updated_zones = Enum.reduce(layout_zones, %{}, fn {zone_name, blocks}, acc ->
+      updated_blocks = Enum.reject(blocks, fn block ->
+        to_string(block.id) == block_id_str
+      end)
+      Map.put(acc, zone_name, updated_blocks)
+    end)
+
+    {:ok, updated_zones}
+  end
+
+  defp find_and_update_block_in_zones(layout_zones, block_id_str, update_fn) do
+    Enum.find_value(layout_zones, fn {zone_name, blocks} ->
+      case Enum.find_index(blocks, fn block -> to_string(block.id) == block_id_str end) do
+        nil -> nil
+        index ->
+          block = Enum.at(blocks, index)
+          {updated_block, result} = update_fn.(block)
+          updated_blocks = List.replace_at(blocks, index, updated_block)
+          updated_zones = Map.put(layout_zones, zone_name, updated_blocks)
+          {updated_zones, result}
+      end
+    end)
+  end
+
+  defp render_block_display_content(block, assigns) do
+    assigns = assign(assigns, :block, block)
+    block_type = get_block_type_safe(block)
+
+    ~H"""
+    <div class="block-content">
+      <%= case block_type do %>
+        <% :hero_card -> %>
+          <div class="hero-block-preview">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">
+              <%= get_block_title_safe(@block) %>
+            </h3>
+            <p class="text-gray-600 text-sm">
+              <%= get_block_content_preview(@block) %>
+            </p>
+          </div>
+
+        <% :about_card -> %>
+          <div class="about-block-preview">
+            <h4 class="text-md font-medium text-gray-900 mb-2">About</h4>
+            <p class="text-gray-600 text-sm">
+              <%= get_block_content_preview(@block) %>
+            </p>
+          </div>
+
+        <% :service_card -> %>
+          <div class="service-block-preview">
+            <h4 class="text-md font-medium text-gray-900 mb-2">
+              Service: <%= get_block_title_safe(@block) %>
+            </h4>
+            <p class="text-gray-600 text-sm">
+              <%= get_block_description_safe(@block) %>
+            </p>
+          </div>
+
+        <% :project_card -> %>
+          <div class="project-block-preview">
+            <h4 class="text-md font-medium text-gray-900 mb-2">
+              Project: <%= get_block_title_safe(@block) %>
+            </h4>
+            <p class="text-gray-600 text-sm">
+              <%= get_block_description_safe(@block) %>
+            </p>
+          </div>
+
+        <% :video_hero -> %>
+          <div class="video-block-preview bg-gray-100 rounded-lg p-4 flex items-center space-x-3">
+            <div class="flex-shrink-0">
+              <svg class="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m2-10a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <div>
+              <h4 class="text-md font-medium text-gray-900">Video Hero Block</h4>
+              <p class="text-sm text-gray-600">Click Edit to configure video</p>
+            </div>
+          </div>
+
+        <% _ -> %>
+          <div class="generic-block-preview">
+            <h4 class="text-md font-medium text-gray-900 mb-2 capitalize">
+              <%= humanize_block_type(block_type) %>
+            </h4>
+            <p class="text-gray-600 text-sm">Content block</p>
+          </div>
+      <% end %>
+    </div>
+    """
+  end
+
 
   defp get_block_type_safe(block) do
     Map.get(block, :section_type) ||
@@ -765,9 +1274,32 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardLayoutManager do
   end
 
   defp get_block_title_safe(block) do
-    Map.get(block, :title) ||
-    Map.get(block, "title") ||
-    "Untitled Block"
+    case block do
+      %{content_data: %{title: title}} when is_binary(title) -> title
+      %{content_data: %{"title" => title}} when is_binary(title) -> title
+      %{title: title} when is_binary(title) -> title
+      %{"title" => title} when is_binary(title) -> title
+      _ -> "Untitled Block"
+    end
+  end
+
+  defp get_block_content_preview(block) do
+    content = case block do
+      %{content_data: %{content: content}} when is_binary(content) -> content
+      %{content_data: %{"content" => content}} when is_binary(content) -> content
+      %{content_data: %{description: desc}} when is_binary(desc) -> desc
+      %{content_data: %{"description" => desc}} when is_binary(desc) -> desc
+      %{content: content} when is_binary(content) -> content
+      %{"content" => content} when is_binary(content) -> content
+      _ -> "No content"
+    end
+
+    # Truncate for preview
+    if String.length(content) > 100 do
+      String.slice(content, 0, 100) <> "..."
+    else
+      content
+    end
   end
 
   defp get_block_content_safe(block) do
@@ -1120,15 +1652,6 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardLayoutManager do
     end)
   end
 
-  defp remove_block_from_zones(layout_zones, block_id) do
-    Enum.reduce(layout_zones, %{}, fn {zone_name, blocks}, acc ->
-      updated_blocks = Enum.reject(blocks, fn block ->
-        get_block_id(block) == block_id
-      end)
-      Map.put(acc, zone_name, updated_blocks)
-    end)
-  end
-
   defp render_block_content_public(block, assigns) do
     assigns = assign(assigns, :block, block)
 
@@ -1337,23 +1860,102 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardLayoutManager do
     end)
   end
 
-  defp find_block_in_zones(layout_zones, block_id) do
-    Enum.find_value(layout_zones, fn {_zone_name, blocks} ->
-      Enum.find(blocks, fn block -> block.id == block_id end)
-    end)
-    |> case do
-      nil -> {:error, :not_found}
-      block -> {:ok, block}
-    end
-  end
-
   defp parse_block_id(block_id) do
     if is_binary(block_id), do: String.to_integer(block_id), else: block_id
   end
 
-  defp update_block_content(block, changes) do
-    # Merge changes into existing content_data
-    %{block | content_data: Map.merge(block.content_data, changes)}
+  defp update_block_field_in_zones(layout_zones, block_id, field, value) do
+    block_id_str = to_string(block_id)
+
+    case find_and_update_block_in_zones(layout_zones, block_id_str, fn block ->
+      current_content = get_block_content_data(block)
+      updated_content = Map.put(current_content, field, value)
+
+      updated_block = case block do
+        %{content_data: _} = block ->
+          %{block | content_data: updated_content}
+        block ->
+          Map.put(block, :content_data, updated_content)
+      end
+
+      {updated_block, :updated}
+    end) do
+      {updated_zones, :updated} -> {:ok, updated_zones}
+      nil -> {:error, "Block not found"}
+    end
+  end
+
+  @impl true
+  def handle_event("update_block_content", %{"block-id" => block_id, "field" => field, "value" => value}, socket) do
+    IO.puts("🔥 UPDATE BLOCK CONTENT: #{block_id} - #{field} = #{value}")
+
+    # Store the change in block_changes for batch saving
+    current_changes = socket.assigns.block_changes
+    change_key = "#{block_id}_#{field}"
+    updated_changes = Map.put(current_changes, change_key, value)
+
+    {:noreply, assign(socket, :block_changes, updated_changes)}
+  end
+
+  # Also handle the alternative parameter format:
+  @impl true
+  def handle_event("update_block_content", %{"block_id" => block_id, "field" => field} = params, socket) do
+    value = Map.get(params, "value", "")
+    handle_event("update_block_content", %{"block-id" => block_id, "field" => field, "value" => value}, socket)
+  end
+
+  # Handle the phx-blur event format (common from forms):
+  @impl true
+  def handle_event("update_block_content", params, socket) when is_map(params) do
+    # Extract parameters from different possible formats
+    block_id = params["block-id"] || params["block_id"] ||
+              get_in(params, ["_target"]) |> List.first() |> case do
+                "block_" <> id -> id
+                _ -> nil
+              end
+
+    field = params["field"]
+    value = params["value"] || ""
+
+    if block_id && field do
+      handle_event("update_block_content", %{"block-id" => block_id, "field" => field, "value" => value}, socket)
+    else
+      IO.puts("🔥 Could not extract block update parameters: #{inspect(params)}")
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("save_block_changes", %{"block-id" => block_id}, socket) do
+    IO.puts("🔥 SAVE BLOCK CHANGES: #{block_id}")
+    IO.puts("🔥 Changes: #{inspect(socket.assigns.block_changes)}")
+
+    case save_block_edits(block_id, socket.assigns.block_changes, socket) do
+      {:ok, updated_zones} ->
+        {:noreply, socket
+        |> assign(:layout_zones, updated_zones)
+        |> assign(:editing_block_id, nil)
+        |> assign(:block_changes, %{})
+        |> put_flash(:info, "Block saved successfully")}
+
+      {:error, reason} ->
+        IO.puts("🔥 SAVE ERROR: #{reason}")
+        {:noreply, put_flash(socket, :error, "Failed to save block: #{reason}")}
+    end
+  end
+
+  # Handle alternative parameter format:
+  @impl true
+  def handle_event("save_block_changes", %{"block_id" => block_id}, socket) do
+    handle_event("save_block_changes", %{"block-id" => block_id}, socket)
+  end
+
+  @impl true
+  def handle_event("cancel_editing_block", _params, socket) do
+    IO.puts("🔥 CANCEL EDITING BLOCK")
+    {:noreply, socket
+    |> assign(:editing_block_id, nil)
+    |> assign(:block_changes, %{})}
   end
 
   defp save_layout_zones_to_database(layout_zones, portfolio_id) do
@@ -1467,6 +2069,15 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardLayoutManager do
     end
   end
 
+  defp get_block_description_safe(block) do
+    case block do
+      %{content_data: %{description: desc}} when is_binary(desc) -> desc
+      %{content_data: %{"description" => desc}} when is_binary(desc) -> desc
+      %{description: desc} when is_binary(desc) -> desc
+      %{"description" => desc} when is_binary(desc) -> desc
+      _ -> get_block_content_preview(block)
+    end
+  end
 
   defp get_all_block_types do
     [
@@ -1518,11 +2129,13 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardLayoutManager do
     |> Enum.take(3) # Show only top 3 restricted blocks
   end
 
-  defp humanize_block_type(block_type) when is_atom(block_type) do
+  defp humanize_block_type(block_type) do
     block_type
     |> to_string()
     |> String.replace("_", " ")
-    |> String.capitalize()
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
   end
 
   # This function needs to be implemented to render the actual edit modal for a block

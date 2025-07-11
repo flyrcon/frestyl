@@ -1857,3 +1857,62 @@ input:disabled {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* Mobile-first block controls */
+.dynamic-card-block {
+  min-height: 80px; /* Ensure enough space for touch targets */
+}
+
+.block-controls button {
+  min-width: 36px; /* Minimum touch target size */
+  min-height: 36px;
+}
+
+/* Better touch experience on mobile */
+@media (max-width: 768px) {
+  .block-controls {
+    opacity: 1 !important; /* Always visible on mobile */
+    position: static;
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    margin-top: 8px;
+    justify-content: center;
+  }
+  
+  .block-controls button {
+    min-width: 44px; /* iOS recommended touch target */
+    min-height: 44px;
+    margin: 0 4px;
+  }
+}
+
+/* Hover states for desktop */
+@media (min-width: 769px) {
+  .group:hover .block-controls {
+    opacity: 1;
+  }
+}
+
+/* Hidden block styling */
+.dynamic-card-block.opacity-60 {
+  position: relative;
+}
+
+.dynamic-card-block.opacity-60::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    rgba(0, 0, 0, 0.05) 10px,
+    rgba(0, 0, 0, 0.05) 20px
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}

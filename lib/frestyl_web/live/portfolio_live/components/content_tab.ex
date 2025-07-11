@@ -406,24 +406,216 @@ defmodule FrestylWeb.PortfolioLive.Components.ContentTab do
   end
 
   defp render_section_type_fields(assigns) do
-    section_type = @editing_section.section_type
-    content = @editing_section.content || %{}
+    section_type = assigns.editing_section.section_type
+    content = assigns.editing_section.content || %{}
 
-    assigns = assign(assigns, content: content)
+    assigns = assign(assigns, :content, content)
 
-    case section_type do
-      "intro" -> render_intro_editor(assigns)
-      "experience" -> render_experience_editor(assigns)
-      "education" -> render_education_editor(assigns)
-      "skills" -> render_skills_editor(assigns)
-      "projects" -> render_projects_editor(assigns)
-      "featured_project" -> render_featured_project_editor(assigns)
-      "achievements" -> render_achievements_editor(assigns)
-      "testimonial" -> render_testimonial_editor(assigns)
-      "contact" -> render_contact_editor(assigns)
-      _ -> render_generic_editor(assigns)
-    end
+    ~H"""
+    <div class="section-type-fields space-y-6">
+      <%= case section_type do %>
+        <% :intro -> %>
+          <%= render_intro_fields(assigns) %>
+        <% :experience -> %>
+          <%= render_experience_fields(assigns) %>
+        <% :skills -> %>
+          <%= render_skills_fields(assigns) %>
+        <% :projects -> %>
+          <%= render_projects_fields(assigns) %>
+        <% :contact -> %>
+          <%= render_contact_fields(assigns) %>
+        <% _ -> %>
+          <%= render_generic_content_field(assigns) %>
+      <% end %>
+    </div>
+    """
   end
+
+  defp render_generic_content_field(assigns) do
+    main_content = Map.get(assigns.content, "main_content", "")
+    assigns = assign(assigns, :main_content, main_content)
+
+    ~H"""
+    <div>
+      <label class="block text-sm font-semibold text-gray-800 mb-3">Content</label>
+      <textarea
+        phx-blur="update_section_content"
+        phx-value-field="main_content"
+        phx-value-section-id={@editing_section.id}
+        rows="12"
+        placeholder="Add content for this section..."
+        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @main_content %></textarea>
+      <p class="text-xs text-gray-500 mt-2">
+        Content will be automatically formatted for display.
+      </p>
+    </div>
+    """
+  end
+
+  defp render_intro_fields(assigns) do
+    headline = Map.get(assigns.content, "headline", "")
+    summary = Map.get(assigns.content, "summary", "")
+    assigns = assign(assigns, :headline, headline) |> assign(:summary, summary)
+
+    ~H"""
+    <div class="space-y-6">
+      <!-- Headline -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Headline</label>
+        <input type="text"
+              value={@headline}
+              phx-blur="update_section_content"
+              phx-value-field="headline"
+              phx-value-section-id={@editing_section.id}
+              placeholder="e.g., Hello, I'm [Your Name]"
+              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+
+      <!-- Summary -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Summary</label>
+        <textarea
+          phx-blur="update_section_content"
+          phx-value-field="summary"
+          phx-value-section-id={@editing_section.id}
+          rows="6"
+          placeholder="Brief introduction about yourself and your professional journey..."
+          class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @summary %></textarea>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_experience_fields(assigns) do
+    description = Map.get(assigns.content, "description", "")
+    assigns = assign(assigns, :description, description)
+
+    ~H"""
+    <div class="space-y-6">
+      <!-- Experience Description -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Experience Overview</label>
+        <textarea
+          phx-blur="update_section_content"
+          phx-value-field="description"
+          phx-value-section-id={@editing_section.id}
+          rows="6"
+          placeholder="Overview of your professional experience..."
+          class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @description %></textarea>
+      </div>
+
+      <!-- Jobs Management -->
+      <div class="border rounded-xl p-4 bg-gray-50">
+        <h4 class="font-semibold text-gray-900 mb-3">Job Positions</h4>
+        <p class="text-sm text-gray-600 mb-4">
+          Individual job entries will be managed in a future update.
+        </p>
+        <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          Add Job Position
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_skills_fields(assigns) do
+    description = Map.get(assigns.content, "description", "")
+    assigns = assign(assigns, :description, description)
+
+    ~H"""
+    <div class="space-y-6">
+      <!-- Skills Description -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Skills Overview</label>
+        <textarea
+          phx-blur="update_section_content"
+          phx-value-field="description"
+          phx-value-section-id={@editing_section.id}
+          rows="4"
+          placeholder="Brief overview of your skills and expertise..."
+          class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @description %></textarea>
+      </div>
+
+      <!-- Skills Management -->
+      <div class="border rounded-xl p-4 bg-gray-50">
+        <h4 class="font-semibold text-gray-900 mb-3">Skills List</h4>
+        <p class="text-sm text-gray-600 mb-4">
+          Individual skills management will be added in a future update.
+        </p>
+        <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          Add Skill
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_projects_fields(assigns) do
+    description = Map.get(assigns.content, "description", "")
+    assigns = assign(assigns, :description, description)
+
+    ~H"""
+    <div class="space-y-6">
+      <!-- Projects Description -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Projects Overview</label>
+        <textarea
+          phx-blur="update_section_content"
+          phx-value-field="description"
+          phx-value-section-id={@editing_section.id}
+          rows="4"
+          placeholder="Brief overview of your projects and portfolio work..."
+          class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @description %></textarea>
+      </div>
+
+      <!-- Projects Management -->
+      <div class="border rounded-xl p-4 bg-gray-50">
+        <h4 class="font-semibold text-gray-900 mb-3">Project List</h4>
+        <p class="text-sm text-gray-600 mb-4">
+          Individual project management will be added in a future update.
+        </p>
+        <button class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+          Add Project
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_contact_fields(assigns) do
+    description = Map.get(assigns.content, "description", "")
+    email = Map.get(assigns.content, "email", "")
+    assigns = assign(assigns, :description, description) |> assign(:email, email)
+
+    ~H"""
+    <div class="space-y-6">
+      <!-- Contact Description -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Contact Message</label>
+        <textarea
+          phx-blur="update_section_content"
+          phx-value-field="description"
+          phx-value-section-id={@editing_section.id}
+          rows="4"
+          placeholder="Message for visitors who want to get in touch..."
+          class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"><%= @description %></textarea>
+      </div>
+
+      <!-- Contact Email -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Contact Email</label>
+        <input type="email"
+              value={@email}
+              phx-blur="update_section_content"
+              phx-value-field="email"
+              phx-value-section-id={@editing_section.id}
+              placeholder="your.email@example.com"
+              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+    </div>
+    """
+  end
+
 
   # ============================================================================
   # HELPER FUNCTIONS
@@ -520,6 +712,7 @@ defmodule FrestylWeb.PortfolioLive.Components.ContentTab do
 
   defp format_section_type(section_type) do
     section_type
+    |> to_string()
     |> String.replace("_", " ")
     |> String.split()
     |> Enum.map(&String.capitalize/1)
