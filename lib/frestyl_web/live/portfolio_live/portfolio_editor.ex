@@ -663,6 +663,71 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
+  defp section_icon(section_type) do
+    case section_type do
+      "hero" ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+        </svg>
+        """)
+      "about" ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+        </svg>
+        """)
+      "experience" ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0H8m8 0v2a2 2 0 002 2h2a2 2 0 002-2V6zM8 6V4H6a2 2 0 00-2 2v2h2a2 2 0 002-2z"/>
+        </svg>
+        """)
+      "education" ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
+        </svg>
+        """)
+      "skills" ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+        </svg>
+        """)
+      "projects" ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+        </svg>
+        """)
+      "contact" ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        """)
+      "testimonials" ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+        </svg>
+        """)
+      "achievements" ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+        </svg>
+        """)
+      _ ->
+        Phoenix.HTML.raw("""
+        <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        """)
+    end
+  end
 
   defp ensure_default_zones(zones) do
     default_zones = %{
@@ -1120,6 +1185,119 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
+  defp get_available_block_types(assigns) do
+    account = Map.get(assigns, :account, %{subscription_tier: "personal"})
+    tier = TierManager.get_account_tier(account)
+
+    base_blocks = ["hero", "about", "experience", "skills", "projects", "contact"]
+
+    case TierManager.normalize_tier(tier) do
+      "enterprise" -> base_blocks ++ ["testimonials", "achievements", "services", "pricing", "team"]
+      "professional" -> base_blocks ++ ["testimonials", "achievements", "services"]
+      "creator" -> base_blocks ++ ["testimonials", "achievements"]
+      _ -> base_blocks
+    end
+  end
+
+  defp humanize_block_type(block_type) do
+    case block_type do
+      "hero" -> "Hero Section"
+      "about" -> "About Me"
+      "experience" -> "Experience"
+      "skills" -> "Skills"
+      "projects" -> "Projects"
+      "contact" -> "Contact"
+      "testimonials" -> "Testimonials"
+      "achievements" -> "Achievements"
+      "services" -> "Services"
+      "pricing" -> "Pricing"
+      "team" -> "Team"
+      _ -> String.capitalize(String.replace(to_string(block_type), "_", " "))
+    end
+  end
+
+  defp render_block_icon(block_type) do
+    Phoenix.HTML.raw(case block_type do
+      "hero" -> """
+      <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+      </svg>
+      """
+      "about" -> """
+      <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+      </svg>
+      """
+      "experience" -> """
+      <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0H8m8 0v2a2 2 0 002 2h2a2 2 0 002-2V6zM8 6V4H6a2 2 0 00-2 2v2h2a2 2 0 002-2z"/>
+      </svg>
+      """
+      "skills" -> """
+      <svg class="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+      </svg>
+      """
+      "projects" -> """
+      <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+      </svg>
+      """
+      "contact" -> """
+      <svg class="w-4 h-4 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+      </svg>
+      """
+      "testimonials" -> """
+      <svg class="w-4 h-4 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+      </svg>
+      """
+      "achievements" -> """
+      <svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+      </svg>
+      """
+      "services" -> """
+      <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0H8m8 0v2a2 2 0 002 2h2a2 2 0 002-2V6zM8 6V4H6a2 2 0 00-2 2v2h2a2 2 0 002-2z"/>
+      </svg>
+      """
+      _ -> """
+      <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      """
+    end)
+  end
+
+  defp render_section_icon(section_type) do
+    render_block_icon(section_type)
+  end
+
+  defp is_tier_restricted?(block_type, assigns) do
+    account = Map.get(assigns, :account, %{subscription_tier: "personal"})
+    tier = TierManager.get_account_tier(account)
+
+    restricted_blocks = case TierManager.normalize_tier(tier) do
+      "personal" -> ["testimonials", "achievements", "services", "pricing", "team"]
+      "creator" -> ["services", "pricing", "team"]
+      "professional" -> ["team"]
+      _ -> []
+    end
+
+    block_type in restricted_blocks
+  end
+
+  defp get_tier_requirement(block_type) do
+    case block_type do
+      block when block in ["testimonials", "achievements"] -> "Creator"
+      block when block in ["services", "pricing"] -> "Professional"
+      "team" -> "Enterprise"
+      _ -> "Personal"
+    end
+  end
+
   defp calculate_layout_performance_metrics(portfolio_id) do
     %{
       total_views: get_portfolio_views(portfolio_id),
@@ -1497,6 +1675,13 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:unsaved_changes, false)
     |> assign(:auto_save_enabled, true)
     |> assign(:current_user, Map.get(socket.assigns, :current_user, nil))
+    # NEW ASSIGNS FOR UI VISIBILITY
+    |> assign(:editing_title, false)
+    |> assign(:show_add_section_dropdown, false)
+    |> assign(:show_resume_import_modal, false)
+    |> assign(:resume_parsing_state, :idle)
+    |> assign(:parsed_resume_data, nil)
+    |> assign(:resume_parsing_error, nil)
   end
 
   defp assign_live_preview_state(socket) do
@@ -1731,26 +1916,62 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   @impl true
   def handle_event("add_section", %{"type" => section_type}, socket) do
-    portfolio_id = socket.assigns.portfolio.id
+    IO.puts("🔥🔥🔥 BULLETPROOF: add_section event received with type: #{section_type}")
 
-    case create_new_section(portfolio_id, section_type) do
-      {:ok, new_section} ->
-        sections = socket.assigns.sections ++ [new_section]
+    try do
+      portfolio_id = socket.assigns.portfolio.id
+      IO.puts("🔥🔥🔥 Portfolio ID: #{portfolio_id}")
 
-        socket = socket
-        |> assign(:sections, sections)
-        |> assign(:editing_section, new_section)
-        |> assign(:editing_mode, :content)
-        |> assign(:unsaved_changes, true)
+      # Simple attrs without helper functions to avoid errors
+      attrs = %{
+        portfolio_id: portfolio_id,
+        section_type: section_type,
+        title: "New #{String.capitalize(section_type)} Section",
+        content: %{"main_content" => "This is a new #{section_type} section."},
+        position: 1,
+        visible: true
+      }
 
-        broadcast_content_update(socket, new_section)
+      IO.puts("🔥🔥🔥 Creating section with simple attrs: #{inspect(attrs)}")
 
-        {:noreply, socket}
+      # Try to create the section
+      case Portfolios.create_portfolio_section(attrs) do
+        {:ok, new_section} ->
+          IO.puts("🔥🔥🔥 SUCCESS: Section created: #{inspect(new_section.id)}")
 
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to add section")}
+          # Update sections in socket
+          updated_sections = (socket.assigns.sections || []) ++ [new_section]
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:show_add_section_dropdown, false)
+          |> put_flash(:info, "✅ #{section_type} section added successfully!")
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          IO.puts("🔥🔥🔥 ERROR: Failed to create section")
+          IO.puts("🔥🔥🔥 Changeset errors: #{inspect(changeset.errors)}")
+          {:noreply, put_flash(socket, :error, "❌ Failed to create section: #{inspect(changeset.errors)}")}
+      end
+
+    rescue
+      error ->
+        IO.puts("🔥🔥🔥 EXCEPTION in add_section: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "❌ Exception: #{inspect(error)}")}
     end
   end
+
+  # ============================================================================
+  # ADD THIS CATCH-ALL FOR ANY PARAMETER MISMATCHES
+  # ============================================================================
+
+  @impl true
+  def handle_event("add_section", params, socket) do
+    IO.puts("🚨🚨🚨 add_section called with unexpected params: #{inspect(params)}")
+    {:noreply, put_flash(socket, :error, "❌ Wrong parameters: #{inspect(params)}")}
+  end
+
 
   @impl true
   def handle_event("delete_section", %{"section_id" => section_id}, socket) do
@@ -2463,160 +2684,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     )
   end
 
-  # Resume Import Modal Component
-  defp resume_import_modal(assigns) do
-    ~H"""
-    <%= if @show_resume_import_modal do %>
-      <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-          <!-- Background overlay -->
-          <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" phx-click="hide_resume_import"></div>
-
-          <!-- Modal panel -->
-          <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
-            <div class="sm:flex sm:items-start">
-              <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100 sm:mx-0 sm:h-10 sm:w-10">
-                <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
-                </svg>
-              </div>
-              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left flex-1">
-                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-                  Import from Resume
-                </h3>
-                <div class="mt-2">
-                  <p class="text-sm text-gray-500">
-                    Upload your resume to automatically populate your portfolio sections. We support PDF, DOCX, DOC, and TXT formats.
-                  </p>
-                </div>
-
-                <%= case @resume_parsing_state do %>
-                  <% :idle -> %>
-                    <!-- File Upload Area -->
-                    <div class="mt-4">
-                      <div class="max-w-lg flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-gray-400 transition-colors"
-                          phx-drop-target={@uploads.resume.ref}>
-                        <div class="space-y-1 text-center">
-                          <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                          </svg>
-                          <div class="flex text-sm text-gray-600">
-                            <label for="resume_upload" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
-                              <span>Upload a resume</span>
-                              <input
-                                id="resume_upload"
-                                name="resume"
-                                type="file"
-                                class="sr-only"
-                                phx-change="upload_resume"
-                                {Phoenix.LiveView.Helpers.live_file_input_attrs(@uploads.resume)} />
-                            </label>
-                            <p class="pl-1">or drag and drop</p>
-                          </div>
-                          <p class="text-xs text-gray-500">PDF, DOCX, DOC, TXT up to 10MB</p>
-                        </div>
-                      </div>
-                    </div>
-
-                  <% :parsing -> %>
-                    <!-- Parsing State -->
-                    <div class="mt-4 text-center">
-                      <div class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100">
-                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24">
-                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Parsing your resume...
-                      </div>
-                    </div>
-
-                  <% :completed -> %>
-                    <!-- Section Selection -->
-                    <%= if @parsed_resume_data do %>
-                      <div class="mt-4">
-                        <h4 class="text-sm font-medium text-gray-900 mb-3">Select sections to import:</h4>
-
-                        <form phx-submit="import_resume_sections">
-                          <div class="space-y-3 max-h-64 overflow-y-auto">
-                            <%= for {section_key, section_data} <- get_available_sections(@parsed_resume_data) do %>
-                              <label class="flex items-start">
-                                <input
-                                  type="checkbox"
-                                  name={"sections[#{section_key}]"}
-                                  value="true"
-                                  checked={has_section_content?(section_data)}
-                                  class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
-                                <div class="ml-3 flex-1">
-                                  <div class="text-sm font-medium text-gray-900">
-                                    <%= humanize_section_name(section_key) %>
-                                  </div>
-                                  <div class="text-xs text-gray-500">
-                                    <%= get_section_preview(section_data) %>
-                                  </div>
-                                </div>
-                              </label>
-                            <% end %>
-                          </div>
-
-                          <div class="mt-4 sm:flex sm:flex-row-reverse">
-                            <button type="submit"
-                                    class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
-                              Import Selected Sections
-                            </button>
-                            <button type="button"
-                                    phx-click="hide_resume_import"
-                                    class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:w-auto sm:text-sm">
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      </div>
-                    <% end %>
-
-                  <% :error -> %>
-                    <!-- Error State -->
-                    <div class="mt-4">
-                      <div class="rounded-md bg-red-50 p-4">
-                        <div class="flex">
-                          <div class="flex-shrink-0">
-                            <svg class="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
-                            </svg>
-                          </div>
-                          <div class="ml-3">
-                            <h3 class="text-sm font-medium text-red-800">
-                              Parsing Error
-                            </h3>
-                            <div class="mt-2 text-sm text-red-700">
-                              <%= @resume_parsing_error || "Failed to parse the resume file. Please try a different format or check the file." %>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="mt-4 sm:flex sm:flex-row-reverse">
-                        <button type="button"
-                                phx-click="show_resume_import"
-                                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
-                          Try Again
-                        </button>
-                        <button type="button"
-                                phx-click="hide_resume_import"
-                                class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:w-auto sm:text-sm">
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                <% end %>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    <% end %>
-    """
-  end
-
   # Helper functions for resume data
   defp get_available_sections(parsed_data) do
     [
@@ -2882,6 +2949,16 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
+  defp create_portfolio_section(attrs) do
+    try do
+      Portfolios.create_portfolio_section(attrs)
+    rescue
+      _ ->
+        # Fallback if function doesn't exist
+        {:error, "Function not available"}
+    end
+  end
+
   # ============================================================================
   # HELPER FUNCTIONS FOR MODAL SYSTEM
   # ============================================================================
@@ -3043,258 +3120,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     else
       content_data
     end
-  end
-
-  # ============================================================================
-  # ENHANCED MODAL RENDERING INTEGRATION
-  # ============================================================================
-
-  def render_block_edit_modal(assigns) do
-    ~H"""
-    <%= if @show_block_edit_modal and @editing_block do %>
-      <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-        <!-- Background overlay -->
-        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-          <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-               phx-click="cancel_block_edit"></div>
-
-          <!-- Modal panel -->
-          <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full">
-            <!-- Modal Header -->
-            <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-medium text-gray-900" id="modal-title">
-                  Edit <%= humanize_block_type(@editing_block.block_type) %>
-                </h3>
-
-                <!-- Save Status Indicator -->
-                <div class="flex items-center space-x-3">
-                  <%= if @unsaved_changes do %>
-                    <div class="flex items-center text-amber-600">
-                      <svg class="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-                      </svg>
-                      <span class="text-sm">Unsaved changes</span>
-                    </div>
-                  <% else %>
-                    <div class="flex items-center text-green-600">
-                      <svg class="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-                      </svg>
-                      <span class="text-sm">Auto-saved</span>
-                    </div>
-                  <% end %>
-
-                  <button phx-click="cancel_block_edit"
-                          class="text-gray-400 hover:text-gray-600">
-                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Modal Content -->
-              <div class="space-y-6 max-h-96 overflow-y-auto">
-                <%= render_enhanced_block_form(@editing_block, assigns) %>
-              </div>
-            </div>
-
-            <!-- Modal Footer -->
-            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-              <button type="button"
-                      phx-click="save_block_changes"
-                      phx-value-block_id={@editing_block.id}
-                      phx-value-changes={Jason.encode!(@editing_block.content_data)}
-                      class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
-                Save Changes
-              </button>
-              <button type="button"
-                      phx-click="cancel_block_edit"
-                      class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    <% end %>
-    """
-  end
-
-  defp render_enhanced_block_form(%{block_type: :hero_card} = block, assigns) do
-    assigns = assign(assigns, :block, block)
-    content = block.content_data || %{}
-
-    ~H"""
-    <div class="space-y-4">
-      <!-- Title Field -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Hero Title</label>
-        <input type="text"
-              phx-change="update_field"
-              phx-value-field="title"
-              phx-debounce="300"
-              phx-target={@myself}
-              value={Map.get(content, "title", "")}
-              placeholder="Enter your hero title"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-      </div>
-
-
-      <!-- Subtitle Field -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Subtitle</label>
-        <input type="text"
-               phx-change="update_block_field"
-               phx-value-field="subtitle"
-               phx-debounce="500"
-               value={Map.get(content, "subtitle", "")}
-               placeholder="Enter your subtitle"
-               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-      </div>
-
-      <!-- Call to Action Section -->
-      <div class="border border-gray-200 rounded-lg p-4">
-        <h4 class="text-sm font-medium text-gray-700 mb-3">Call to Action</h4>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs text-gray-600 mb-1">Button Text</label>
-            <input type="text"
-                   phx-change="update_block_field"
-                   phx-value-field="call_to_action_text"
-                   phx-debounce="500"
-                   value={get_nested_value(content, ["call_to_action", "text"], "")}
-                   placeholder="e.g., Get Started"
-                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-          </div>
-
-          <div>
-            <label class="block text-xs text-gray-600 mb-1">Button URL</label>
-            <input type="url"
-                   phx-change="update_block_field"
-                   phx-value-field="call_to_action_url"
-                   phx-debounce="500"
-                   value={get_nested_value(content, ["call_to_action", "url"], "")}
-                   placeholder="https://example.com"
-                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-          </div>
-        </div>
-      </div>
-
-      <!-- Background Configuration -->
-      <div class="border border-gray-200 rounded-lg p-4">
-        <h4 class="text-sm font-medium text-gray-700 mb-3">Background</h4>
-
-        <div class="space-y-3">
-          <div>
-            <label class="block text-xs text-gray-600 mb-1">Background Type</label>
-            <select phx-change="update_block_field"
-                    phx-value-field="background_type"
-                    class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-              <option value="color" selected={Map.get(content, "background_type") == "color"}>Solid Color</option>
-              <option value="gradient" selected={Map.get(content, "background_type") == "gradient"}>Gradient</option>
-              <option value="image" selected={Map.get(content, "background_type") == "image"}>Image</option>
-              <option value="video" selected={Map.get(content, "background_type") == "video"}>Video</option>
-            </select>
-          </div>
-
-          <!-- Video Aspect Ratio (conditional) -->
-          <%= if Map.get(content, "background_type") == "video" do %>
-            <div>
-              <label class="block text-xs text-gray-600 mb-1">Video Aspect Ratio</label>
-              <select phx-change="update_block_field"
-                      phx-value-field="video_aspect_ratio"
-                      class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-                <option value="16:9" selected={Map.get(content, "video_aspect_ratio") == "16:9"}>16:9 Standard</option>
-                <option value="1:1" selected={Map.get(content, "video_aspect_ratio") == "1:1"}>1:1 Square</option>
-                <option value="4:3" selected={Map.get(content, "video_aspect_ratio") == "4:3"}>4:3 Classic</option>
-                <option value="21:9" selected={Map.get(content, "video_aspect_ratio") == "21:9"}>21:9 Cinematic</option>
-              </select>
-            </div>
-          <% end %>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_enhanced_block_form(%{block_type: :about_card} = block, assigns) do
-    assigns = assign(assigns, :block, block)
-    content = block.content_data || %{}
-    highlights = Map.get(content, "highlights", [])
-
-    ~H"""
-    <div class="space-y-4">
-      <!-- Title Field -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Section Title</label>
-        <input type="text"
-               phx-change="update_block_field"
-               phx-value-field="title"
-               phx-debounce="500"
-               value={Map.get(content, "title", "")}
-               placeholder="About Me"
-               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-      </div>
-
-      <!-- Content Field -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Content</label>
-        <textarea phx-change="update_block_field"
-                  phx-value-field="content"
-                  phx-debounce="500"
-                  rows="4"
-                  placeholder="Tell your story..."
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= Map.get(content, "content", "") %></textarea>
-      </div>
-
-      <!-- Highlights Section -->
-      <div class="border border-gray-200 rounded-lg p-4">
-        <div class="flex items-center justify-between mb-3">
-          <h4 class="text-sm font-medium text-gray-700">Key Highlights</h4>
-          <button type="button"
-                  phx-click="add_list_item"
-                  phx-value-block_id={@block.id}
-                  phx-value-field="highlights"
-                  class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-            + Add Highlight
-          </button>
-        </div>
-
-        <div class="space-y-2">
-          <%= for {highlight, index} <- Enum.with_index(highlights) do %>
-            <div class="flex items-center space-x-2">
-              <div class="flex-1">
-                <input type="text"
-                       phx-change="update_block_field"
-                       phx-value-field={"highlight_#{index}"}
-                       phx-debounce="500"
-                       value={highlight}
-                       placeholder="Enter a highlight"
-                       class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
-              </div>
-              <button type="button"
-                      phx-click="remove_list_item"
-                      phx-value-block_id={@block.id}
-                      phx-value-field="highlights"
-                      phx-value-index={index}
-                      class="text-red-600 hover:text-red-800 p-1">
-                <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                </svg>
-              </button>
-            </div>
-          <% end %>
-
-          <%= if Enum.empty?(highlights) do %>
-            <p class="text-sm text-gray-500 italic">No highlights added yet. Click "Add Highlight" to get started.</p>
-          <% end %>
-        </div>
-      </div>
-    </div>
-    """
   end
 
   # Additional render functions for experience_card and achievement_card would follow the same pattern...
@@ -3516,40 +3341,6 @@ end
     end
   end
 
-  # Also fix this function if it exists:
-  @impl true
-  def handle_event("update_brand_color", %{"field" => field, "value" => color}, socket) do
-    brand_settings = socket.assigns.brand_settings
-    updated_brand_settings = Map.put(brand_settings, String.to_atom(field), color)
-
-    # Regenerate CSS with new colors
-    portfolio = socket.assigns.portfolio
-    customization = portfolio.customization || %{}  # <- FIXED: Get from portfolio, not socket
-
-    updated_css = try do
-      FrestylWeb.PortfolioLive.DynamicCardCssManager.generate_portfolio_css(
-        portfolio,
-        updated_brand_settings,
-        customization
-      )
-    rescue
-      _ -> ""
-    end
-
-    # Save brand settings
-    case save_brand_settings(updated_brand_settings, socket.assigns.account) do
-      {:ok, saved_brand_settings} ->
-        {:noreply,
-        socket
-        |> assign(:brand_settings, saved_brand_settings)
-        |> assign(:customization_css, updated_css)
-        |> assign(:dynamic_card_css, updated_css)
-        }
-
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to update brand settings")}
-    end
-  end
 
   @impl true
   def handle_event("update_color_live", %{"field" => field, "value" => value}, socket) do
@@ -3619,6 +3410,39 @@ end
       error ->
         IO.puts("❌ Color update error: #{inspect(error)}")
         {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("apply_color_scheme", %{"scheme" => scheme}, socket) do
+    scheme_config = case Enum.find(get_color_schemes(), fn {key, _} -> key == scheme end) do
+      {_, config} -> config
+      nil -> %{}
+    end
+
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+
+    updated_customization = current_customization
+    |> Map.put("color_scheme", scheme)
+    |> Map.put("primary_color", scheme_config[:primary] || "#3b82f6")
+    |> Map.put("secondary_color", scheme_config[:secondary] || "#64748b")
+    |> Map.put("accent_color", scheme_config[:accent] || "#f59e0b")
+
+    IO.puts("🔥 Applying color scheme: #{scheme}")
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Color scheme applied!")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("🔥 Failed to apply color scheme: #{inspect(changeset)}")
+        {:noreply, put_flash(socket, :error, "Failed to apply color scheme")}
     end
   end
 
@@ -4288,6 +4112,110 @@ end
      |> put_flash(:info, "Switched to #{new_mode} collaboration mode")}
   end
 
+  @impl true
+  def handle_event("add_dynamic_block", %{"block_type" => block_type, "zone" => _zone}, socket) do
+    IO.puts("🔥 add_dynamic_block event received with type: #{block_type}")
+
+    portfolio_id = socket.assigns.portfolio.id
+
+    # Create new section
+    attrs = %{
+      portfolio_id: portfolio_id,
+      section_type: block_type,
+      title: humanize_section_type(block_type),
+      content: get_default_content_for_block_type(block_type),  # Use the correct function name
+      position: get_next_position(socket.assigns.sections),
+      visible: true
+    }
+
+    IO.puts("🔥 Creating dynamic block with attrs: #{inspect(attrs)}")
+
+    case Portfolios.create_portfolio_section(attrs) do
+      {:ok, new_section} ->
+        IO.puts("🔥 Dynamic block created successfully: #{inspect(new_section)}")
+        updated_sections = (socket.assigns.sections || []) ++ [new_section]
+
+        socket = socket
+        |> assign(:sections, updated_sections)
+        |> assign(:unsaved_changes, true)
+        |> put_flash(:info, "#{humanize_section_type(block_type)} block added!")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("🔥 Failed to create dynamic block: #{inspect(changeset)}")
+        {:noreply, put_flash(socket, :error, "Failed to add block: #{inspect(changeset.errors)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("remove_dynamic_block", %{"block_id" => block_id}, socket) do
+    block_id_int = String.to_integer(block_id)
+
+    case delete_portfolio_section(block_id_int) do
+      {:ok, _deleted_section} ->
+        updated_sections = Enum.reject(socket.assigns.sections, &(&1.id == block_id_int))
+
+        socket = socket
+        |> assign(:sections, updated_sections)
+        |> assign(:unsaved_changes, true)
+        |> put_flash(:info, "Block removed")
+
+        # Broadcast to live preview
+        broadcast_preview_update(socket)
+
+        {:noreply, socket}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to remove block")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_layout_category", %{"category" => category}, socket) do
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, "layout", category)
+
+    IO.puts("🔥 Updating layout to: #{category}")
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Layout updated to #{category}!")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("🔥 Failed to update layout: #{inspect(changeset)}")
+        {:noreply, put_flash(socket, :error, "Failed to update layout")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_brand_color", %{"field" => field, "value" => color}, socket) do
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, field, color)
+
+    IO.puts("🔥 Updating #{field} to: #{color}")
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("🔥 Failed to update color: #{inspect(changeset)}")
+        {:noreply, put_flash(socket, :error, "Failed to update color")}
+    end
+  end
+
   # ============================================================================
   # COLLABORATION ANALYTICS INTEGRATION
   # ============================================================================
@@ -4488,6 +4416,30 @@ end
     end
   end
 
+  defp create_portfolio_section_safe(attrs) do
+    try do
+      # Try the main function first
+      Portfolios.create_portfolio_section(attrs)
+    rescue
+      UndefinedFunctionError ->
+        # Try alternative function names
+        try do
+          Portfolios.create_section(attrs)
+        rescue
+          UndefinedFunctionError ->
+            # Try using Ecto directly
+            try do
+              %Frestyl.Portfolios.PortfolioSection{}
+              |> Frestyl.Portfolios.PortfolioSection.changeset(attrs)
+              |> Frestyl.Repo.insert()
+            rescue
+              _ ->
+                {:error, "No section creation function available"}
+            end
+        end
+    end
+  end
+
   defp get_user_account(user) do
     try do
       case Accounts.list_user_accounts(user.id) do
@@ -4630,6 +4582,7 @@ end
     ]
   end
 
+
   defp get_public_layout_types do
     [
       {"minimal", %{
@@ -4759,9 +4712,10 @@ end
     end
   end
 
-  defp get_current_theme(portfolio) do
-    design_system = get_design_system(portfolio)
-    Map.get(design_system, "theme_template", "modern")
+  defp get_current_theme(assigns) do
+    portfolio = Map.get(assigns, :portfolio, %{})
+    customization = Map.get(portfolio, :customization, %{})
+    Map.get(customization, "theme", "modern")
   end
 
   defp get_current_public_layout(portfolio) do
@@ -4917,8 +4871,9 @@ end
 
   @impl true
   def handle_event("toggle_add_section_dropdown", _params, socket) do
-    current_state = Map.get(socket.assigns, :show_add_section_dropdown, false)
-    {:noreply, assign(socket, :show_add_section_dropdown, !current_state)}
+    show_dropdown = !Map.get(socket.assigns, :show_add_section_dropdown, false)
+    IO.puts("🔥 Toggling add section dropdown: #{show_dropdown}")
+    {:noreply, assign(socket, :show_add_section_dropdown, show_dropdown)}
   end
 
   @impl true
@@ -4943,6 +4898,25 @@ end
     case Portfolios.get_portfolio_section(section_id) do
       nil -> {:error, :not_found}
       section -> Portfolios.delete_portfolio_section(section)
+    end
+  end
+
+  defp delete_portfolio_section(section_id) do
+    try do
+      case Portfolios.get_portfolio_section(section_id) do
+        nil -> {:error, :not_found}
+        section -> Portfolios.delete_portfolio_section(section)
+      end
+    rescue
+      _ -> {:error, "Function not available"}
+    end
+  end
+
+  defp update_portfolio_customization(portfolio, customization) do
+    try do
+      Portfolios.update_portfolio(portfolio, %{customization: customization})
+    rescue
+      _ -> {:error, "Function not available"}
     end
   end
 
@@ -5021,11 +4995,18 @@ end
   end
 
   defp humanize_section_type(section_type) do
-    section_type
-    |> String.replace("_", " ")
-    |> String.split()
-    |> Enum.map(&String.capitalize/1)
-    |> Enum.join(" ")
+    case section_type do
+      "hero" -> "Hero Section"
+      "about" -> "About Me"
+      "experience" -> "Experience"
+      "education" -> "Education"
+      "skills" -> "Skills"
+      "projects" -> "Projects"
+      "contact" -> "Contact"
+      "testimonials" -> "Testimonials"
+      "achievements" -> "Achievements"
+      _ -> String.capitalize(String.replace(to_string(section_type), "_", " "))
+    end
   end
 
   defp humanize_category(category) do
@@ -5048,29 +5029,25 @@ end
     |> Enum.join(" ")
   end
 
-  defp get_next_position(portfolio_id) do
-    # Get the highest position and add 1
-    case Portfolios.get_max_section_position(portfolio_id) do
-      nil -> 1
-      max_pos -> max_pos + 1
+  defp get_next_position(sections) do
+    case Enum.max_by(sections || [], & &1.position, fn -> %{position: 0} end) do
+      %{position: max_pos} -> max_pos + 1
+      _ -> 1
     end
   end
 
   defp broadcast_preview_update(socket) do
     portfolio = socket.assigns.portfolio
-    customization = socket.assigns.portfolio.customization || %{} || portfolio.customization || %{}
 
-    # Generate CSS from current customization
-    css = generate_portfolio_css(customization)
-
-    # Broadcast via PubSub to both live_preview and show.ex
     Phoenix.PubSub.broadcast(
       Frestyl.PubSub,
       "portfolio_preview:#{portfolio.id}",
-      {:preview_update, %{css: css, customization: customization}}
+      {:preview_update, %{
+        sections: socket.assigns.sections,
+        customization: portfolio.customization || %{},
+        timestamp: DateTime.utc_now()
+      }}
     )
-
-    socket
   end
 
   defp generate_portfolio_css(customization) do
@@ -5184,353 +5161,6 @@ end
       "#{base_url}?#{query_string}"
     end
   end
-
-  defp render_content_tab(assigns) do
-    ~H"""
-    <div class="content-tab">
-      <div class="mb-6">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Portfolio Sections</h3>
-
-        <!-- Add Section Button -->
-        <div class="mb-4">
-          <div class="relative">
-            <select
-              phx-change="add_section"
-              class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 text-sm">
-              <option value="">Add a section...</option>
-              <option value="intro">Introduction</option>
-              <option value="experience">Experience</option>
-              <option value="skills">Skills</option>
-              <option value="projects">Projects</option>
-              <option value="contact">Contact</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Sections List -->
-        <div class="space-y-2">
-          <%= for section <- @sections do %>
-            <div class={[
-              "p-3 border rounded-lg cursor-pointer transition-colors",
-              if(@editing_section && @editing_section.id == section.id,
-                do: "border-purple-500 bg-purple-50",
-                else: "border-gray-200 hover:border-gray-300 bg-white")
-            ]}>
-              <div class="flex items-center justify-between">
-                <div class="flex-1" phx-click="edit_section" phx-value-section_id={section.id}>
-                  <h4 class="font-medium text-gray-900"><%= section.title %></h4>
-                  <p class="text-sm text-gray-500 capitalize"><%= section.section_type %></p>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <button
-                    type="button"
-                    phx-click="edit_section"
-                    phx-value-section_id={section.id}
-                    class="text-gray-400 hover:text-purple-600 cursor-pointer">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    phx-click="delete_section"
-                    phx-value-section_id={section.id}
-                    class="text-gray-400 hover:text-red-600 cursor-pointer"
-                    data-confirm="Are you sure you want to delete this section?">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-          <% end %>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_design_tab(assigns) do
-    ~H"""
-    <div class="space-y-8 p-6">
-      <!-- Design Header -->
-      <div>
-        <h3 class="text-xl font-semibold text-gray-900 mb-2">Design Customization</h3>
-        <p class="text-sm text-gray-600">Customize colors, fonts, and visual elements</p>
-      </div>
-
-      <!-- Color Customization -->
-      <div class="bg-white p-6 rounded-lg border border-gray-200">
-        <h4 class="text-lg font-semibold text-gray-900 mb-4">Colors</h4>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
-            <div class="flex items-center space-x-2">
-              <input type="color" value="#3B82F6" class="w-12 h-10 border border-gray-300 rounded-md">
-              <input type="text" value="#3B82F6" class="flex-1 px-3 py-2 border border-gray-300 rounded-md">
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
-            <div class="flex items-center space-x-2">
-              <input type="color" value="#64748B" class="w-12 h-10 border border-gray-300 rounded-md">
-              <input type="text" value="#64748B" class="flex-1 px-3 py-2 border border-gray-300 rounded-md">
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
-            <div class="flex items-center space-x-2">
-              <input type="color" value="#F59E0B" class="w-12 h-10 border border-gray-300 rounded-md">
-              <input type="text" value="#F59E0B" class="flex-1 px-3 py-2 border border-gray-300 rounded-md">
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Typography -->
-      <div class="bg-white p-6 rounded-lg border border-gray-200">
-        <h4 class="text-lg font-semibold text-gray-900 mb-4">Typography</h4>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Font Family</label>
-            <select class="w-full px-3 py-2 border border-gray-300 rounded-md">
-              <option>Inter (Default)</option>
-              <option>Roboto</option>
-              <option>Open Sans</option>
-              <option>Poppins</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Font Size</label>
-            <select class="w-full px-3 py-2 border border-gray-300 rounded-md">
-              <option>Small</option>
-              <option>Medium (Default)</option>
-              <option>Large</option>
-            </select>
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-
-  defp render_dynamic_layout_tab(assigns) do
-    ~H"""
-    <div class="space-y-8">
-      <!-- Header -->
-      <div>
-        <h3 class="text-xl font-semibold text-gray-900 mb-2">Dynamic Card Layout</h3>
-        <p class="text-sm text-gray-600">Configure your professional layout structure and content arrangement</p>
-      </div>
-
-      <!-- Layout Category Selection - Single Column -->
-      <div class="bg-white p-6 rounded-lg border border-gray-200">
-        <h4 class="text-lg font-semibold text-gray-900 mb-4">Professional Layout Category</h4>
-        <p class="text-sm text-gray-600 mb-6">Choose the layout that best fits your professional focus</p>
-
-        <div class="space-y-3">
-          <%= for block_category <- @available_dynamic_blocks do %>
-            <button phx-click="select_layout_category"
-                    phx-value-category={block_category.category}
-                    class={[
-                      "w-full p-4 border-2 rounded-lg transition-all text-left hover:shadow-md",
-                      if(@active_layout_category == block_category.category,
-                        do: "border-blue-500 bg-blue-50 ring-2 ring-blue-200",
-                        else: "border-gray-200 hover:border-gray-300")
-                    ]}>
-
-              <div class="flex items-center justify-between">
-                <div class="flex-1">
-                  <div class="flex items-center space-x-3 mb-2">
-                    <h5 class="font-semibold text-gray-900"><%= block_category.name %></h5>
-                    <%= if @active_layout_category == block_category.category do %>
-                      <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">Current</span>
-                    <% end %>
-                  </div>
-                  <p class="text-sm text-gray-600 mb-3"><%= get_category_description(block_category.category) %></p>
-
-                  <!-- Available Blocks in Single Row -->
-                  <div class="flex flex-wrap gap-2">
-                    <%= for block_type <- block_category.blocks do %>
-                      <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded border">
-                        <%= humanize_block_type(block_type) %>
-                      </span>
-                    <% end %>
-                  </div>
-                </div>
-
-                <%= if @active_layout_category == block_category.category do %>
-                  <svg class="w-6 h-6 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                  </svg>
-                <% end %>
-              </div>
-            </button>
-          <% end %>
-        </div>
-      </div>
-
-      <!-- Functional Zone Manager -->
-      <div class="bg-white p-6 rounded-lg border border-gray-200">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h4 class="text-lg font-semibold text-gray-900">Layout Zones</h4>
-            <p class="text-sm text-gray-600">Arrange content blocks within your layout zones</p>
-          </div>
-          <button phx-click="toggle_dynamic_layout_manager"
-                  class={[
-                    "px-4 py-2 rounded-lg font-medium transition-colors",
-                    if(@show_dynamic_layout_manager,
-                      do: "bg-blue-600 text-white",
-                      else: "bg-gray-100 text-gray-700 hover:bg-gray-200")
-                  ]}>
-            <%= if @show_dynamic_layout_manager, do: "Hide Manager", else: "Open Manager" %>
-          </button>
-        </div>
-
-        <!-- Zone Configuration -->
-        <div class="space-y-4">
-          <%= for {zone_name, blocks} <- @layout_zones do %>
-            <div class="border border-gray-200 rounded-lg p-4">
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <h5 class="font-medium text-gray-900 capitalize"><%= zone_name %> Zone</h5>
-                  <p class="text-sm text-gray-600"><%= get_zone_description(zone_name) %></p>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <span class="text-xs text-gray-500"><%= length(blocks) %> blocks</span>
-                  <button phx-click="add_block_to_zone"
-                          phx-value-zone={zone_name}
-                          class="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors">
-                    Add Block
-                  </button>
-                </div>
-              </div>
-
-              <!-- Zone Content -->
-              <div class="min-h-16 border-2 border-dashed border-gray-200 rounded-lg p-4 bg-gray-50">
-                <%= if length(blocks) > 0 do %>
-                  <div class="flex flex-wrap gap-2">
-                    <%= for {block, index} <- Enum.with_index(blocks) do %>
-                      <div class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-200 rounded">
-                        <span class="text-sm text-gray-700"><%= humanize_block_type(block.type || "content") %></span>
-                        <button phx-click="remove_block_from_zone"
-                                phx-value-zone={zone_name}
-                                phx-value-index={index}
-                                class="text-gray-400 hover:text-red-600">
-                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                          </svg>
-                        </button>
-                      </div>
-                    <% end %>
-                  </div>
-                <% else %>
-                  <div class="text-center text-gray-400">
-                    <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-                    </svg>
-                    <p class="text-sm">Drop content blocks here</p>
-                  </div>
-                <% end %>
-              </div>
-            </div>
-          <% end %>
-        </div>
-
-        <!-- Available Blocks Library -->
-        <%= if @show_dynamic_layout_manager do %>
-          <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h5 class="font-medium text-blue-900 mb-3">Available Content Blocks</h5>
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              <%= for block_category <- @available_dynamic_blocks do %>
-                <%= for block_type <- block_category.blocks do %>
-                  <button phx-click="add_content_block"
-                          phx-value-block_type={block_type}
-                          class="p-3 bg-white border border-blue-200 rounded text-left hover:bg-blue-50 transition-colors">
-                    <div class="text-sm font-medium text-blue-900"><%= humanize_block_type(block_type) %></div>
-                    <div class="text-xs text-blue-600 mt-1">Click to add</div>
-                  </button>
-                <% end %>
-              <% end %>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_analytics_tab(assigns) do
-    ~H"""
-    <div class="space-y-8 p-6">
-      <!-- Analytics Header -->
-      <div>
-        <h3 class="text-xl font-semibold text-gray-900 mb-2">Portfolio Analytics</h3>
-        <p class="text-sm text-gray-600">Track performance and visitor insights</p>
-      </div>
-
-      <!-- Quick Stats -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-white p-6 rounded-lg border border-gray-200">
-          <div class="flex items-center">
-            <div class="flex-shrink-0">
-              <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-              </svg>
-            </div>
-            <div class="ml-4">
-              <h4 class="text-2xl font-bold text-gray-900">1,234</h4>
-              <p class="text-sm text-gray-600">Total Views</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-white p-6 rounded-lg border border-gray-200">
-          <div class="flex items-center">
-            <div class="flex-shrink-0">
-              <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-              </svg>
-            </div>
-            <div class="ml-4">
-              <h4 class="text-2xl font-bold text-gray-900">89</h4>
-              <p class="text-sm text-gray-600">Unique Visitors</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-white p-6 rounded-lg border border-gray-200">
-          <div class="flex items-center">
-            <div class="flex-shrink-0">
-              <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-            </div>
-            <div class="ml-4">
-              <h4 class="text-2xl font-bold text-gray-900">2:34</h4>
-              <p class="text-sm text-gray-600">Avg. Time</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Chart Placeholder -->
-      <div class="bg-white p-6 rounded-lg border border-gray-200">
-        <h4 class="text-lg font-semibold text-gray-900 mb-4">Views Over Time</h4>
-        <div class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
-          <p class="text-gray-500">Analytics chart will be displayed here</p>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
 
   @impl true
   def handle_info({:preview_update, data}, socket) when is_map(data) do
@@ -5709,6 +5339,22 @@ end
     end
   end
 
+  defp get_default_content_for_block_type(block_type) do
+    case block_type do
+      "hero" -> %{"main_content" => "Welcome to my portfolio", "cta_text" => "Get Started", "cta_link" => "#contact"}
+      "about" -> %{"main_content" => "Tell your story here...", "subtitle" => "Professional tagline"}
+      "experience" -> %{"main_content" => "Share your work experience..."}
+      "education" -> %{"main_content" => "Share your educational background..."}
+      "skills" -> %{"main_content" => "List your key skills..."}
+      "projects" -> %{"main_content" => "Showcase your projects..."}
+      "contact" -> %{"main_content" => "Get in touch...", "email" => "", "phone" => ""}
+      "testimonials" -> %{"main_content" => "Client testimonials..."}
+      "achievements" -> %{"main_content" => "Your accomplishments..."}
+      "services" -> %{"main_content" => "Services you offer..."}
+      _ -> %{"main_content" => "Add your content here..."}
+    end
+  end
+
     @impl true
   def handle_event("resolve_edit_conflict", %{"resolution" => resolution, "section_id" => section_id}, socket) do
     case resolution do
@@ -5747,6 +5393,162 @@ end
         {:noreply, put_flash(socket, :error, "Could not resolve conflict: #{reason}")}
     end
   end
+
+  defp get_layout_categories do
+    ["minimal", "list", "gallery", "dashboard"]
+  end
+
+  defp get_current_layout_category(assigns) do
+    portfolio = Map.get(assigns, :portfolio, %{})
+    customization = Map.get(portfolio, :customization, %{})
+    Map.get(customization, "layout", "minimal")
+  end
+
+  defp get_category_description(category) do
+    case category do
+      "minimal" -> "Clean, single-column layout"
+      "list" -> "Chronological list view"
+      "gallery" -> "Visual portfolio showcase"
+      "dashboard" -> "Multi-card business layout"
+      _ -> "Professional layout"
+    end
+  end
+
+  @impl true
+  def handle_event("debug_sections", _params, socket) do
+    sections = socket.assigns.sections || []
+    IO.puts("🔥 DEBUG: Current sections in assigns:")
+    IO.puts("🔥 Total sections: #{length(sections)}")
+
+    if length(sections) > 0 do
+      Enum.each(sections, fn section ->
+        IO.puts("🔥 - #{section.title} (#{section.section_type}) [ID: #{section.id}]")
+      end)
+    else
+      IO.puts("🔥 - No sections found in assigns")
+    end
+
+    # Also check database directly
+    try do
+      db_sections = Portfolios.list_portfolio_sections(socket.assigns.portfolio.id)
+      IO.puts("🔥 DEBUG: Sections in database: #{length(db_sections)}")
+      Enum.each(db_sections, fn section ->
+        IO.puts("🔥 DB - #{section.title} (#{section.section_type}) [ID: #{section.id}]")
+      end)
+    rescue
+      error ->
+        IO.puts("🔥 ERROR loading sections from DB: #{inspect(error)}")
+    end
+
+    zones = get_layout_zones(socket.assigns)
+    IO.puts("🔥 DEBUG: Layout zones:")
+    Enum.each(zones, fn {zone_name, zone_sections} ->
+      IO.puts("🔥 - #{zone_name}: #{length(zone_sections)} sections")
+    end)
+
+    {:noreply, socket}
+  end
+
+  defp get_layout_zones(assigns) do
+    sections = Map.get(assigns, :sections, [])
+
+    # Debug logging
+    IO.puts("🔥 get_layout_zones called with #{length(sections)} sections")
+
+    if length(sections) > 0 do
+      Enum.each(sections, fn section ->
+        IO.puts("🔥 Section: #{section.title} (#{section.section_type})")
+      end)
+    end
+
+    # Group sections into zones - more permissive matching
+    zones = %{
+      "hero" => Enum.filter(sections, fn s ->
+        s.section_type in ["hero", "intro", "header"]
+      end),
+      "about" => Enum.filter(sections, fn s ->
+        s.section_type in ["about", "bio", "introduction"]
+      end),
+      "main" => Enum.filter(sections, fn s ->
+        s.section_type in ["experience", "work", "education", "skills", "expertise"]
+      end),
+      "showcase" => Enum.filter(sections, fn s ->
+        s.section_type in ["projects", "portfolio", "work", "achievements", "accomplishments"]
+      end),
+      "social_proof" => Enum.filter(sections, fn s ->
+        s.section_type in ["testimonials", "reviews", "recommendations"]
+      end),
+      "contact" => Enum.filter(sections, fn s ->
+        s.section_type in ["contact", "get_in_touch", "reach_out"]
+      end),
+      "other" => Enum.filter(sections, fn s ->
+        s.section_type not in ["hero", "intro", "header", "about", "bio", "introduction",
+                              "experience", "work", "education", "skills", "expertise",
+                              "projects", "portfolio", "achievements", "accomplishments",
+                              "testimonials", "reviews", "recommendations",
+                              "contact", "get_in_touch", "reach_out"]
+      end)
+    }
+
+    # Debug each zone
+    Enum.each(zones, fn {zone_name, zone_sections} ->
+      IO.puts("🔥 Zone #{zone_name}: #{length(zone_sections)} sections")
+    end)
+
+    # Filter out empty zones for cleaner display
+    zones
+    |> Enum.filter(fn {_zone_name, zone_sections} -> length(zone_sections) > 0 end)
+    |> Map.new()
+  end
+
+  defp get_zone_name(section) do
+    case section.section_type do
+      "hero" -> "hero"
+      "about" -> "about"
+      "experience" -> "experience"
+      "skills" -> "skills"
+      "projects" -> "showcase"
+      "achievements" -> "showcase"
+      "testimonials" -> "social_proof"
+      "contact" -> "contact"
+      "services" -> "services"
+      _ -> "main"
+    end
+  end
+
+  # ============================================================================
+  # BRAND AND CUSTOMIZATION HELPERS
+  # ============================================================================
+
+  defp get_brand_color(assigns, color_key) do
+    portfolio = Map.get(assigns, :portfolio, %{})
+    customization = Map.get(portfolio, :customization, %{})
+
+    case color_key do
+      :primary_color -> Map.get(customization, "primary_color", "#3b82f6")
+      :accent_color -> Map.get(customization, "accent_color", "#f59e0b")
+      :secondary_color -> Map.get(customization, "secondary_color", "#64748b")
+      _ -> "#3b82f6"
+    end
+  end
+
+
+  # ============================================================================
+  # CONTENT HELPERS
+  # ============================================================================
+
+  defp get_section_content(section, field) do
+    case Map.get(section, :content) do
+      nil -> ""
+      content when is_map(content) -> Map.get(content, field, "")
+      _ -> ""
+    end
+  end
+
+  defp build_preview_url(portfolio) do
+    "/p/#{portfolio.slug}?preview=true"
+  end
+
 
   defp resolve_conflict_accept_local(socket, section_id) do
     # Force save local changes
@@ -5997,21 +5799,62 @@ end
      |> put_flash(:info, "Collaborative editing enabled for this section")}
   end
 
-  # Additional event handlers for design and layout updates
+  @impl true
+  def handle_event("update_design_token", %{"token" => "theme", "value" => theme}, socket) when theme != "" do
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+
+    # Get theme colors
+    theme_config = case Enum.find(get_theme_templates(), fn {key, _} -> key == theme end) do
+      {_, config} -> config
+      nil -> %{}
+    end
+
+    updated_customization = current_customization
+    |> Map.put("theme", theme)
+    |> Map.put("primary_color", theme_config[:primary_color] || "#3b82f6")
+    |> Map.put("secondary_color", theme_config[:secondary_color] || "#64748b")
+    |> Map.put("accent_color", theme_config[:accent_color] || "#f59e0b")
+
+    IO.puts("🔥 Updating theme to: #{theme}")
+    IO.puts("🔥 New customization: #{inspect(updated_customization)}")
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Theme updated to #{theme_config[:name] || theme}!")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("🔥 Failed to update theme: #{inspect(changeset)}")
+        {:noreply, put_flash(socket, :error, "Failed to update theme")}
+    end
+  end
+
   @impl true
   def handle_event("update_design_token", %{"token" => token, "value" => value}, socket) do
-    customization = Map.put(socket.assigns.portfolio.customization || %{}, token, value)
-    design_tokens = Map.put(socket.assigns.design_tokens, String.to_atom(token), value)
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, token, value)
 
-    socket = socket
-    |> assign(:customization, customization)
-    |> assign(:design_tokens, design_tokens)
-    |> assign(:unsaved_changes, true)
+    IO.puts("🔥 Updating #{token} to: #{value}")
 
-    # Broadcast design update to preview
-    broadcast_design_update(socket, customization)
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Design updated!")
 
-    {:noreply, socket}
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("🔥 Failed to update design: #{inspect(changeset)}")
+        {:noreply, put_flash(socket, :error, "Failed to update design")}
+    end
   end
 
   @impl true
@@ -6082,133 +5925,156 @@ end
     end
   end
 
-
-  # CONSOLIDATED FIX: Replace both render_design_tab and render_dynamic_layout_tab in portfolio_editor.ex
-
-  # ============================================================================
-  # DESIGN TAB - Universal design settings for ALL portfolio types
-  # ============================================================================
-
   @impl true
-  def render(assigns) do
-    ~H"""
-    <div class="portfolio-editor min-h-screen bg-gray-50">
-      <!-- Simple Header -->
-      <div class="bg-white border-b border-gray-200 px-6 py-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-xl font-bold text-gray-900"><%= @portfolio.title %></h1>
-            <p class="text-sm text-gray-600">Portfolio Editor</p>
-          </div>
-
-          <div class="flex items-center space-x-3">
-            <!-- PHASE 4: Remove toggle button completely -->
-
-            <.link navigate={~p"/portfolio/#{@portfolio.slug}"} target="_blank"
-                  class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-              View Live
-            </.link>
-          </div>
-        </div>
-      </div>
-
-      <!-- Main Content -->
-      <div class="max-w-7xl mx-auto px-6 py-8">
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-          <!-- Content Column -->
-          <div class="lg:col-span-2 space-y-6">
-            <!-- PHASE 4: Always show dynamic card view -->
-            <%= render_dynamic_card_view(assigns) %>
-          </div>
-
-          <!-- Sidebar -->
-          <div class="space-y-6">
-            <!-- Portfolio Info -->
-            <div class="bg-white rounded-lg shadow-sm border p-6">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">Portfolio Info</h3>
-              <div class="space-y-3 text-sm">
-                <div>
-                  <label class="text-gray-600">Title:</label>
-                  <p class="font-medium"><%= @portfolio.title %></p>
-                  <!-- PHASE 4: Always show dynamic layout info -->
-                  <div>
-                    <label class="text-gray-600">Portfolio Category:</label>
-                    <p class="font-medium capitalize"><%= String.replace(to_string(@portfolio_category || :professional), "_", " ") %></p>
-                  </div>
-                  <div>
-                    <label class="text-gray-600">Layout Zones:</label>
-                    <div class="text-sm space-y-1">
-                      <%= for {zone_name, blocks} <- (@layout_zones || %{}) do %>
-                        <div class="flex justify-between">
-                          <span class="text-gray-500 capitalize"><%= String.replace(to_string(zone_name), "_", " ") %>:</span>
-                          <span class="font-medium"><%= length(blocks) %></span>
-                        </div>
-                      <% end %>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <label class="text-gray-600">Theme:</label>
-                  <p class="font-medium"><%= @portfolio.theme %></p>
-                </div>
-                <div>
-                  <label class="text-gray-600">Content Blocks:</label>
-                  <p class="font-medium"><%= length(@content_blocks || []) %></p>
-                </div>
-                <div>
-                  <label class="text-gray-600">Layout Type:</label>
-                  <p class="font-medium text-purple-600">Dynamic Card Layout</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Quick Actions -->
-            <div class="bg-white rounded-lg shadow-sm border p-6">
-              <h3 class="text-lg font-semibold text-gray-900 mb-4">Actions</h3>
-              <div class="space-y-2">
-                <button class="w-full px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700">
-                  Save Changes
-                </button>
-                <button class="w-full px-3 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">
-                  Preview
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    """
+  def handle_event("edit_portfolio_title", _params, socket) do
+    {:noreply, assign(socket, :editing_title, true)}
   end
 
-  defp render_dynamic_card_view(assigns) do
-    ~H"""
-    <div class="bg-white rounded-lg shadow-sm border p-6">
-      <div class="flex items-center justify-between mb-6">
-        <div>
-          <h2 class="text-lg font-semibold text-gray-900">Dynamic Card Layout</h2>
-          <p class="text-sm text-gray-600">Drag and drop content blocks to create your portfolio</p>
-        </div>
-        <div class="text-sm text-purple-600 font-medium">
-          Modern Layout System
-        </div>
-      </div>
+  @impl true
+  def handle_event("cancel_edit_title", _params, socket) do
+    {:noreply, assign(socket, :editing_title, false)}
+  end
 
-      <!-- Fixed: Add the missing account assign -->
-      <.live_component
-        module={FrestylWeb.PortfolioLive.DynamicCardLayoutManager}
-        id="dynamic-layout-manager"
-        portfolio={@portfolio}
-        layout_zones={@layout_zones}
-        available_blocks={@available_dynamic_blocks}
-        brand_settings={@brand_settings}
-        account={@account || %{subscription_tier: "personal"}}
-        view_mode={:edit}
-        show_edit_controls={true}
-      />
-    </div>
-    """
+  @impl true
+  def handle_event("save_portfolio_title", %{"title" => title}, socket) do
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{title: title}) do
+      {:ok, updated_portfolio} ->
+        {:noreply, socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:editing_title, false)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Portfolio title updated!")}
+
+      {:error, _changeset} ->
+        {:noreply, socket
+        |> assign(:editing_title, false)
+        |> put_flash(:error, "Failed to update title")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_add_section_dropdown", _params, socket) do
+    show_dropdown = !socket.assigns.show_add_section_dropdown
+    {:noreply, assign(socket, :show_add_section_dropdown, show_dropdown)}
+  end
+
+  @impl true
+  def handle_event("show_resume_import_modal", _params, socket) do
+    {:noreply, assign(socket, :show_resume_import_modal, true)}
+  end
+
+  @impl true
+  def handle_event("hide_resume_import_modal", _params, socket) do
+    {:noreply, socket
+    |> assign(:show_resume_import_modal, false)
+    |> assign(:resume_parsing_state, :idle)
+    |> assign(:parsed_resume_data, nil)
+    |> assign(:resume_parsing_error, nil)}
+  end
+
+  @impl true
+  def handle_event("update_portfolio_field", %{"field" => field, "value" => value}, socket) do
+    field_atom = String.to_atom(field)
+    attrs = %{field_atom => value}
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, attrs) do
+      {:ok, updated_portfolio} ->
+        {:noreply, socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Portfolio updated!")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update portfolio")}
+    end
+  end
+
+  @impl true
+  def handle_event("copy_portfolio_link", _params, socket) do
+    portfolio_url = "#{FrestylWeb.Endpoint.url()}/p/#{socket.assigns.portfolio.slug}"
+
+    {:noreply, socket
+    |> push_event("copy-to-clipboard", %{text: portfolio_url})
+    |> put_flash(:info, "Portfolio link copied to clipboard!")}
+  end
+
+  @impl true
+  def handle_event("upload_resume", params, socket) do
+    # Handle resume upload - integrate with existing ResumeImporter
+    {:noreply, socket
+    |> assign(:resume_parsing_state, :processing)
+    |> assign(:resume_parsing_error, nil)}
+    # Add actual file processing logic here
+  end
+
+  @impl true
+  def handle_event("reset_resume_import", _params, socket) do
+    {:noreply, assign(socket, :resume_parsing_state, :idle)}
+  end
+
+  @impl true
+  def handle_event("toggle_section_visibility", %{"section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+
+    case Enum.find(socket.assigns.sections, &(&1.id == section_id_int)) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Section not found")}
+
+      section ->
+        new_visibility = !section.visible
+        case Portfolios.update_section(section, %{visible: new_visibility}) do
+          {:ok, updated_section} ->
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id_int, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, if(socket.assigns.editing_section && socket.assigns.editing_section.id == section_id_int, do: updated_section, else: socket.assigns.editing_section))
+            |> put_flash(:info, "Section visibility updated")}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section visibility")}
+        end
+    end
+  end
+
+  @impl true
+  def handle_event("update_section_field", %{"field" => field, "value" => value, "section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    editing_section = socket.assigns.editing_section
+
+    if editing_section && editing_section.id == section_id_int do
+      field_atom = String.to_atom(field)
+      attrs = %{field_atom => value}
+
+      case Portfolios.update_section(editing_section, attrs) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == section_id_int, do: updated_section, else: s
+          end)
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:editing_section, updated_section)
+          |> assign(:unsaved_changes, false)
+
+          # Update live preview
+          socket = if socket.assigns.show_live_preview do
+            broadcast_preview_update(socket)
+            socket
+          else
+            socket
+          end
+
+          {:noreply, socket}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update section")}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   defp get_block_preview_text(block) do
@@ -6758,56 +6624,18 @@ end
     end
   end
 
-  defp get_default_content_for_block_type(block_type) do
-    base_content = %{
-      "created_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
-      "block_type" => block_type
-    }
-
-    case block_type do
-      "hero_card" ->
-        Map.merge(base_content, %{
-          "subtitle" => "Professional [Your Title]",
-          "description" => "Brief introduction about yourself and what you do.",
-          "cta_text" => "Get Started",
-          "background_style" => "gradient"
-        })
-      "about_card" ->
-        Map.merge(base_content, %{
-          "description" => "Tell your story here. What drives you? What's your background?",
-          "image_url" => "",
-          "highlights" => []
-        })
-      "experience_card" ->
-        Map.merge(base_content, %{
-          "experiences" => [
-            %{
-              "title" => "Your Job Title",
-              "company" => "Company Name",
-              "duration" => "2020 - Present",
-              "description" => "Brief description of your role and achievements."
-            }
-          ]
-        })
-      "skills_card" ->
-        Map.merge(base_content, %{
-          "skills" => [
-            %{"name" => "Skill 1", "level" => "Expert"},
-            %{"name" => "Skill 2", "level" => "Advanced"},
-            %{"name" => "Skill 3", "level" => "Intermediate"}
-          ]
-        })
-      "contact_card" ->
-        Map.merge(base_content, %{
-          "email" => "your.email@example.com",
-          "phone" => "",
-          "location" => "Your City, Country",
-          "social_links" => []
-        })
-      _ ->
-        Map.merge(base_content, %{
-          "description" => "Add your content here."
-        })
+  defp get_default_content_for_section_type(section_type) do
+    case section_type do
+      "hero" -> %{"main_content" => "Welcome to my portfolio", "cta_text" => "Get Started", "cta_link" => "#contact"}
+      "about" -> %{"main_content" => "Tell your story here...", "subtitle" => "Professional tagline"}
+      "experience" -> %{"main_content" => "Share your work experience..."}
+      "education" -> %{"main_content" => "Share your educational background..."}
+      "skills" -> %{"main_content" => "List your key skills..."}
+      "projects" -> %{"main_content" => "Showcase your projects..."}
+      "contact" -> %{"main_content" => "Get in touch...", "email" => "", "phone" => ""}
+      "testimonials" -> %{"main_content" => "Client testimonials..."}
+      "achievements" -> %{"main_content" => "Your accomplishments..."}
+      _ -> %{"main_content" => "Add your content here..."}
     end
   end
 
@@ -6998,28 +6826,24 @@ end
     end
   end
 
-# FIX PHASE 4: MAKE SETTINGS, DESIGN, AND ANALYTICS TABS VISIBLE
-# The tabs exist in HTML but are not properly initialized or showing
 
-# ============================================================================
-# PATCH 1: Fix get_available_tabs function in portfolio_editor.ex
-# ============================================================================
+  defp get_available_tabs(assigns) do
+    base_tabs = [
+      content: "Content",
+      design: "Design",
+      analytics: "Analytics"
+    ]
 
-# FIND this function in portfolio_editor.ex:
-defp get_available_tabs(assigns) do
-  base_tabs = [content: "Content", design: "Design", analytics: "Analytics"]
+    # Always include settings tab
+    all_tabs = base_tabs ++ [settings: "Settings"]
 
-  IO.puts("🔥 DEBUG TABS: is_dynamic_layout = #{assigns[:is_dynamic_layout]}")
-
-  if Map.get(assigns, :is_dynamic_layout, false) do
-    tabs = [content: "Content", dynamic_layout: "Dynamic Layout", design: "Design", analytics: "Analytics"]
-    IO.puts("🔥 DEBUG: Returning dynamic tabs: #{inspect(tabs)}")
-    tabs
-  else
-    IO.puts("🔥 DEBUG: Returning base tabs: #{inspect(base_tabs)}")
-    base_tabs
+    # Add dynamic layout tab if applicable
+    if Map.get(assigns, :is_dynamic_layout, false) do
+      [content: "Content", dynamic_layout: "Dynamic Layout"] ++ Keyword.delete(all_tabs, :content)
+    else
+      all_tabs
+    end
   end
-end
 
   defp get_available_tabs(assigns) do
     # ALWAYS include Settings tab as requested in Phase 1
@@ -7432,5 +7256,45 @@ end
 
   defp can_force_edit_section?(permissions) do
     Map.get(permissions, :can_force_edit, false) or Map.get(permissions, :role) == :owner
+  end
+
+  defp theme_description(theme) do
+    case theme do
+      "professional" -> "Clean and business-focused"
+      "creative" -> "Bold and artistic expression"
+      "minimal" -> "Simple and elegant design"
+      "modern" -> "Contemporary and trendy"
+      _ -> "Custom theme"
+    end
+  end
+
+  defp humanize_section_key(key) do
+    key
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp preview_section_data(data) when is_map(data) do
+    case data do
+      %{"content" => content} when is_binary(content) and content != "" ->
+        String.slice(content, 0, 80) <> if String.length(content) > 80, do: "...", else: ""
+      %{"items" => items} when is_list(items) ->
+        "#{length(items)} item(s)"
+      _ ->
+        "Ready to import"
+    end
+  end
+
+  defp preview_section_data(data) when is_list(data) do
+    "#{length(data)} item(s)"
+  end
+
+  defp preview_section_data(_), do: "Ready to import"
+
+  defp build_preview_url(portfolio, preview_token) do
+    "/portfolios/#{portfolio.id}/preview?token=#{preview_token}&editor=true"
   end
 end
