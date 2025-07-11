@@ -37,92 +37,6 @@ const CollaborativeCursors = window.CollaborativeCursors || {};
 
 const PortfolioEditorHooks = {
   // ============================================================================
-  // SORTABLE SECTIONS - DRAG & DROP FUNCTIONALITY
-  // ============================================================================
-  SortableSections: {
-    mounted() {
-      console.log("📝 SortableSections hook mounted");
-      this.initializeDragAndDrop();
-    },
-
-    updated() {
-      // Reinitialize when sections are added/removed
-      this.initializeDragAndDrop();
-    },
-
-    initializeDragAndDrop() {
-      const sections = this.el.querySelectorAll('.border.border-gray-200.rounded-lg');
-      
-      sections.forEach((section, index) => {
-        const dragHandle = section.querySelector('.drag-handle');
-        if (dragHandle) {
-          section.draggable = true;
-          section.dataset.index = index;
-          
-          section.addEventListener('dragstart', this.handleDragStart.bind(this));
-          section.addEventListener('dragover', this.handleDragOver.bind(this));
-          section.addEventListener('drop', this.handleDrop.bind(this));
-          section.addEventListener('dragend', this.handleDragEnd.bind(this));
-        }
-      });
-    },
-
-    handleDragStart(e) {
-      this.draggedElement = e.target.closest('.border.border-gray-200.rounded-lg');
-      this.draggedIndex = parseInt(this.draggedElement.dataset.index);
-      this.draggedElement.style.opacity = '0.5';
-      e.dataTransfer.effectAllowed = 'move';
-    },
-
-    handleDragOver(e) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      
-      const dropTarget = e.target.closest('.border.border-gray-200.rounded-lg');
-      if (dropTarget && dropTarget !== this.draggedElement) {
-        dropTarget.style.borderColor = '#3b82f6';
-        dropTarget.style.backgroundColor = '#eff6ff';
-      }
-    },
-
-    handleDrop(e) {
-      e.preventDefault();
-      const dropTarget = e.target.closest('.border.border-gray-200.rounded-lg');
-      
-      if (dropTarget && dropTarget !== this.draggedElement) {
-        const dropIndex = parseInt(dropTarget.dataset.index);
-        
-        if (this.draggedIndex !== dropIndex) {
-          this.pushEvent("reorder_sections", {
-            old_index: this.draggedIndex,
-            new_index: dropIndex
-          });
-        }
-      }
-      
-      // Reset styles
-      const sections = this.el.querySelectorAll('.border.border-gray-200.rounded-lg');
-      sections.forEach(section => {
-        section.style.borderColor = '';
-        section.style.backgroundColor = '';
-      });
-    },
-
-    handleDragEnd(e) {
-      if (this.draggedElement) {
-        this.draggedElement.style.opacity = '';
-      }
-      
-      // Reset all section styles
-      const sections = this.el.querySelectorAll('.border.border-gray-200.rounded-lg');
-      sections.forEach(section => {
-        section.style.borderColor = '';
-        section.style.backgroundColor = '';
-      });
-    }
-  },
-
-  // ============================================================================
   // COPY TO CLIPBOARD FUNCTIONALITY
   // ============================================================================
   CopyToClipboard: {
@@ -346,11 +260,323 @@ let Hooks = {
   PortfolioCollaboration,
 
   // Drag & Drop Hooks - FIXED: No duplicates
-  SortableSections: SortableHooks.SectionSortable,
   SortableMedia: SortableHooks.MediaSortable,
   SortableSkills: SortableHooks.SkillsSortable,
   SortableExperience: SortableHooks.ExperienceSortable,
   SortableEducation: SortableHooks.EducationSortable,
+    // FIXED: Enhanced Sortable Sections Hook
+  SortableSections: {
+    mounted() {
+      console.log("📝 Enhanced SortableSections hook mounted");
+      this.initializeSortable();
+      this.setupEventListeners();
+    },
+
+    updated() {
+      console.log("📝 SortableSections updated - reinitializing");
+      // Reinitialize when sections are added/removed
+      setTimeout(() => this.initializeSortable(), 100);
+    },
+
+    initializeSortable() {
+      // Destroy existing sortable instance
+      if (this.sortable) {
+        this.sortable.destroy();
+        this.sortable = null;
+      }
+
+      // Find sortable container
+      const container = this.el.querySelector('[data-sortable="sections"]') || this.el;
+      if (!container) {
+        console.warn("⚠️ No sortable container found");
+        return;
+      }
+
+      // Check if Sortable library is available
+      if (typeof Sortable === 'undefined') {
+        console.warn("⚠️ Sortable.js library not loaded - using fallback");
+        this.initializeFallbackSortable(container);
+        return;
+      }
+
+      // Initialize SortableJS
+      this.sortable = Sortable.create(container, {
+        handle: '.drag-handle, .section-drag-handle',
+        animation: 200,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        dragClass: 'sortable-drag',
+        direction: 'vertical',
+        
+        onStart: (evt) => {
+          console.log("🎯 Drag started:", evt.oldIndex);
+          document.body.classList.add('sorting-active');
+          container.classList.add('drag-in-progress');
+        },
+        
+        onEnd: (evt) => {
+          console.log("🎯 Drag ended:", evt.oldIndex, "->", evt.newIndex);
+          document.body.classList.remove('sorting-active');
+          container.classList.remove('drag-in-progress');
+          
+          if (evt.oldIndex !== evt.newIndex) {
+            this.handleSectionReorder(evt);
+          }
+        }
+      });
+
+      console.log("✅ SortableJS initialized successfully");
+    },
+
+    initializeFallbackSortable(container) {
+      console.log("🔄 Initializing fallback drag and drop");
+      
+      let draggedElement = null;
+      let placeholder = null;
+
+      // Make sections draggable
+      const sections = container.querySelectorAll('[data-section-id]');
+      sections.forEach(section => {
+        section.draggable = true;
+        
+        section.addEventListener('dragstart', (e) => {
+          draggedElement = section;
+          section.classList.add('dragging');
+          
+          // Create placeholder
+          placeholder = section.cloneNode(true);
+          placeholder.classList.add('drag-placeholder');
+          placeholder.style.opacity = '0.5';
+          placeholder.style.pointerEvents = 'none';
+          
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/html', section.outerHTML);
+        });
+
+        section.addEventListener('dragend', (e) => {
+          section.classList.remove('dragging');
+          if (placeholder && placeholder.parentNode) {
+            placeholder.remove();
+          }
+          draggedElement = null;
+        });
+
+        section.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          
+          if (draggedElement && draggedElement !== section) {
+            const rect = section.getBoundingClientRect();
+            const midpoint = rect.top + rect.height / 2;
+            
+            if (e.clientY < midpoint) {
+              section.parentNode.insertBefore(placeholder, section);
+            } else {
+              section.parentNode.insertBefore(placeholder, section.nextSibling);
+            }
+          }
+        });
+
+        section.addEventListener('drop', (e) => {
+          e.preventDefault();
+          
+          if (draggedElement && placeholder && placeholder.parentNode) {
+            placeholder.parentNode.insertBefore(draggedElement, placeholder);
+            placeholder.remove();
+            
+            // Calculate new order
+            this.handleFallbackReorder(container);
+          }
+        });
+      });
+    },
+
+    handleSectionReorder(evt) {
+      // Get section IDs in new order
+      const sectionElements = this.el.querySelectorAll('[data-section-id]');
+      const newOrder = Array.from(sectionElements).map(el => el.dataset.sectionId);
+      
+      console.log("📋 New section order:", newOrder);
+      
+      // Send to server
+      this.pushEvent("reorder_sections", {
+        section_ids: newOrder,
+        old_index: evt.oldIndex,
+        new_index: evt.newIndex
+      });
+      
+      // Visual feedback
+      this.showReorderFeedback();
+    },
+
+    handleFallbackReorder(container) {
+      const sectionElements = container.querySelectorAll('[data-section-id]');
+      const newOrder = Array.from(sectionElements).map(el => el.dataset.sectionId);
+      
+      console.log("📋 Fallback reorder - new order:", newOrder);
+      
+      this.pushEvent("reorder_sections", {
+        section_ids: newOrder
+      });
+      
+      this.showReorderFeedback();
+    },
+
+    setupEventListeners() {
+      // Listen for server responses
+      this.handleEvent("sections_reordered", (data) => {
+        console.log("✅ Sections reordered successfully:", data);
+        this.showFeedback("Sections reordered successfully!", 'success');
+      });
+
+      this.handleEvent("reorder_failed", (data) => {
+        console.log("❌ Reorder failed:", data);
+        this.showFeedback("Failed to reorder sections", 'error');
+        // Refresh to restore original order
+        location.reload();
+      });
+    },
+
+    showReorderFeedback() {
+      // Animate sections to show reorder
+      const sections = this.el.querySelectorAll('[data-section-id]');
+      sections.forEach((section, index) => {
+        setTimeout(() => {
+          section.style.transform = 'scale(1.02)';
+          section.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+          
+          setTimeout(() => {
+            section.style.transform = '';
+            section.style.boxShadow = '';
+          }, 200);
+        }, index * 50);
+      });
+    },
+
+    showFeedback(message, type = 'success') {
+      const colors = {
+        success: 'bg-green-500 text-white',
+        error: 'bg-red-500 text-white',
+        info: 'bg-blue-500 text-white'
+      };
+
+      const feedback = document.createElement('div');
+      feedback.className = `fixed top-4 right-4 px-4 py-2 rounded-lg shadow-lg z-50 ${colors[type]}`;
+      feedback.textContent = message;
+      document.body.appendChild(feedback);
+
+      setTimeout(() => {
+        feedback.style.opacity = '0';
+        setTimeout(() => feedback.remove(), 300);
+      }, 3000);
+    },
+
+    destroyed() {
+      if (this.sortable) {
+        this.sortable.destroy();
+      }
+      document.body.classList.remove('sorting-active');
+    }
+  },
+
+  // Block-level sortable for dynamic card layouts
+  SortableBlocks: {
+    mounted() {
+      console.log("🎯 SortableBlocks hook mounted");
+      this.initializeSortable();
+    },
+
+    initializeSortable() {
+      if (typeof Sortable !== 'undefined') {
+        this.sortable = Sortable.create(this.el, {
+          group: 'blocks',
+          handle: '.block-drag-handle',
+          animation: 150,
+          onEnd: (evt) => {
+            this.pushEvent("reorder_blocks", {
+              zone: this.el.dataset.zone,
+              old_index: evt.oldIndex,
+              new_index: evt.newIndex
+            });
+          }
+        });
+      }
+    },
+
+    destroyed() {
+      if (this.sortable) {
+        this.sortable.destroy();
+      }
+    }
+  },
+
+  // Other existing hooks...
+  PreviewFrame: {
+    mounted() {
+      console.log("📱 PreviewFrame hook mounted");
+      
+      this.handleEvent("refresh_preview", () => {
+        const iframe = this.el.querySelector('iframe');
+        if (iframe) {
+          iframe.src = iframe.src;
+        }
+      });
+    }
+  }
+};
+
+// Add sortable CSS if not already present
+if (!document.getElementById('sortable-styles')) {
+  const style = document.createElement('style');
+  style.id = 'sortable-styles';
+  style.textContent = `
+    .sortable-ghost {
+      opacity: 0.4;
+      transform: scale(0.95);
+      background: #f3f4f6;
+    }
+    
+    .sortable-chosen {
+      transform: scale(1.02);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+    }
+    
+    .sortable-drag {
+      transform: rotate(2deg);
+      opacity: 0.8;
+    }
+    
+    .sorting-active .section-card:not(.sortable-chosen) {
+      opacity: 0.7;
+    }
+    
+    .drag-in-progress {
+      cursor: grabbing !important;
+    }
+    
+    .drag-handle, .section-drag-handle, .block-drag-handle {
+      cursor: grab;
+      transition: all 0.2s ease;
+    }
+    
+    .drag-handle:hover, .section-drag-handle:hover, .block-drag-handle:hover {
+      color: #4f46e5;
+      transform: scale(1.1);
+    }
+    
+    .drag-handle:active, .section-drag-handle:active, .block-drag-handle:active {
+      cursor: grabbing;
+    }
+    
+    .drag-placeholder {
+      border: 2px dashed #cbd5e1;
+      background: #f8fafc;
+    }
+  `;
+  document.head.appendChild(style);
+};
+
 
   // Portfolio Hub Hook
   PortfolioHub: PortfolioHub,

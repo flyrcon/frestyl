@@ -14,7 +14,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   alias FrestylWeb.PortfolioLive.{PortfolioPerformance, DynamicCardCssManager}
   alias Frestyl.Features.TierManager
 
-  alias FrestylWeb.PortfolioLive.Components.{ContentRenderer, SectionEditor, MediaLibrary, VideoRecorder}
+  alias FrestylWeb.PortfolioLive.Components.{ContentRenderer, ContentTab, SectionEditor, MediaLibrary, VideoRecorder}
   alias Frestyl.Studio.PortfolioCollaborationManager
   alias Phoenix.PubSub
 
@@ -1545,13 +1545,81 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   # ============================================================================
 
   @impl true
+  def handle_event("switch_design_tab", %{"tab" => tab}, socket) do
+    IO.puts("🎨 SWITCH DESIGN TAB: #{tab}")
+    {:noreply, assign(socket, :active_design_tab, tab)}
+  end
+
+  @impl true
+  def handle_event("select_template", %{"template" => template_key}, socket) do
+    IO.puts("🎨 SELECT TEMPLATE: #{template_key}")
+
+    try do
+      portfolio = socket.assigns.portfolio
+
+      # Update portfolio theme
+      case Portfolios.update_portfolio(portfolio, %{theme: template_key}) do
+        {:ok, updated_portfolio} ->
+          # Get template configuration
+          template_config = get_template_config_safe(template_key)
+
+          # Update customization with template defaults (but preserve user colors)
+          current_customization = updated_portfolio.customization || %{}
+
+          # Only apply template values that user hasn't customized
+          updated_customization = merge_template_preserving_user_colors(
+            template_config,
+            current_customization
+          )
+
+          # Update portfolio with new customization
+          case Portfolios.update_portfolio(updated_portfolio, %{customization: updated_customization}) do
+            {:ok, final_portfolio} ->
+              # Generate new CSS
+              updated_css = generate_portfolio_css_safe(updated_customization, template_key)
+
+              socket = socket
+              |> assign(:portfolio, final_portfolio)
+              |> assign(:current_template, template_key)
+              |> assign(:customization, updated_customization)
+              |> assign(:preview_css, updated_css)
+              |> assign(:unsaved_changes, false)
+              |> put_flash(:info, "Template applied successfully!")
+              |> push_event("template_applied", %{
+                template: template_key,
+                css: updated_css
+              })
+
+              # Broadcast to live preview
+              broadcast_design_update(socket, updated_customization)
+
+              {:noreply, socket}
+
+            {:error, _changeset} ->
+              {:noreply, put_flash(socket, :error, "Failed to apply template customization")}
+          end
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update template")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Template selection error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "An error occurred while applying the template")}
+    end
+  end
+
   def handle_event("toggle_live_preview", _params, socket) do
-    show_preview = !socket.assigns.show_live_preview
+    new_state = !socket.assigns.show_live_preview
+    IO.puts("🎨 TOGGLE LIVE PREVIEW: #{new_state}")
 
-    socket = assign(socket, :show_live_preview, show_preview)
+    socket = socket
+    |> assign(:show_live_preview, new_state)
+    |> push_event("live_preview_toggled", %{enabled: new_state})
 
-    if show_preview do
-      broadcast_preview_update(socket)
+    if new_state do
+      # Broadcast current state to preview
+      broadcast_design_update(socket, socket.assigns.customization)
     end
 
     {:noreply, socket}
@@ -1590,6 +1658,53 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
+  @impl true
+  def handle_event("close_block_editor", _params, socket) do
+    IO.puts("🔚 CLOSE BLOCK EDITOR")
+
+    {:noreply, socket
+    |> assign(:editing_section, nil)
+    |> assign(:editing_mode, nil)
+    |> assign(:editing_block_id, nil)
+    |> assign(:section_edit_mode, false)
+    |> assign(:section_edit_tab, nil)
+    |> assign(:unsaved_changes, false)
+    |> push_event("block_edit_closed", %{})}
+  end
+
+  @impl true
+  def handle_event("save_block", %{"block_id" => block_id}, socket) do
+    IO.puts("💾 SAVE BLOCK: #{block_id}")
+
+    editing_section = socket.assigns.editing_section
+
+    if editing_section do
+      case Portfolios.update_section(editing_section, %{}) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == updated_section.id, do: updated_section, else: s
+          end)
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:editing_section, updated_section)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Block saved successfully")
+          |> push_event("block_saved", %{block_id: block_id})
+
+          # Broadcast to live preview
+          broadcast_content_update(socket, updated_section)
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          IO.puts("❌ Save failed: #{inspect(changeset.errors)}")
+          {:noreply, put_flash(socket, :error, "Failed to save block")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "No block being edited")}
+    end
+  end
 
   # FIXED: Close section editor that properly resets state
   @impl true
@@ -1771,6 +1886,152 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
       _ -> nil
     end
   end
+
+  defp get_template_config_safe(template_key) do
+    try do
+      case Frestyl.Portfolios.PortfolioTemplates.get_template_config(template_key) do
+        config when is_map(config) -> config
+        _ -> get_default_template_config()
+      end
+    rescue
+      _ -> get_default_template_config()
+    end
+  end
+
+  defp get_default_template_config do
+    %{
+      "primary_color" => "#3b82f6",
+      "secondary_color" => "#64748b",
+      "accent_color" => "#f59e0b",
+      "background_color" => "#ffffff",
+      "text_color" => "#1f2937",
+      "layout" => "dashboard"
+    }
+  end
+
+  defp merge_template_preserving_user_colors(template_config, user_customization) do
+    # Only use template values for keys that user hasn't customized
+    color_keys = ["primary_color", "secondary_color", "accent_color", "background_color", "text_color"]
+
+    Enum.reduce(template_config, user_customization, fn {key, template_value}, acc ->
+      case {key in color_keys, Map.get(user_customization, key)} do
+        {true, nil} -> Map.put(acc, key, template_value)     # Color key, no user value
+        {true, ""} -> Map.put(acc, key, template_value)      # Color key, empty user value
+        {true, _user_value} -> acc                           # Color key, keep user value
+        {false, _} -> Map.put(acc, key, template_value)      # Non-color key, use template
+      end
+    end)
+  end
+
+  defp sanitize_color_value(color_value) when is_binary(color_value) do
+    color_value = String.trim(color_value)
+
+    cond do
+      # Valid hex color
+      Regex.match?(~r/^#[0-9A-Fa-f]{6}$/, color_value) -> color_value
+      Regex.match?(~r/^#[0-9A-Fa-f]{3}$/, color_value) -> color_value
+
+      # Add # if missing
+      Regex.match?(~r/^[0-9A-Fa-f]{6}$/, color_value) -> "##{color_value}"
+      Regex.match?(~r/^[0-9A-Fa-f]{3}$/, color_value) -> "##{color_value}"
+
+      # RGB/RGBA values
+      String.starts_with?(color_value, "rgb") -> color_value
+
+      # Named colors
+      color_value in ["red", "blue", "green", "black", "white", "gray", "purple", "orange", "yellow"] -> color_value
+
+      # Default fallback
+      true -> "#3b82f6"
+    end
+  end
+
+  defp sanitize_color_value(_), do: "#3b82f6"
+
+  defp generate_portfolio_css_safe(customization, theme) do
+    try do
+      # Use existing CSS generator or create fallback
+      if Code.ensure_loaded?(FrestylWeb.PortfolioLive.CssGenerator) do
+        FrestylWeb.PortfolioLive.CssGenerator.generate_portfolio_css(%{
+          customization: customization,
+          theme: theme
+        })
+      else
+        generate_fallback_css(customization)
+      end
+    rescue
+      _ -> generate_fallback_css(customization)
+    end
+  end
+
+  defp generate_fallback_css(customization) do
+    primary = Map.get(customization, "primary_color", "#3b82f6")
+    secondary = Map.get(customization, "secondary_color", "#64748b")
+    accent = Map.get(customization, "accent_color", "#f59e0b")
+    background = Map.get(customization, "background_color", "#ffffff")
+    text = Map.get(customization, "text_color", "#1f2937")
+    font_family = Map.get(customization, "font_family", "Inter, system-ui, sans-serif")
+    font_size = Map.get(customization, "font_size", "16px")
+
+    """
+    <style id="portfolio-custom-css">
+    :root {
+      --primary-color: #{primary};
+      --secondary-color: #{secondary};
+      --accent-color: #{accent};
+      --background-color: #{background};
+      --text-color: #{text};
+      --font-family: #{font_family};
+      --font-size: #{font_size};
+    }
+
+    .portfolio-container {
+      background-color: var(--background-color);
+      color: var(--text-color);
+      font-family: var(--font-family);
+      font-size: var(--font-size);
+      line-height: 1.6;
+    }
+
+    .text-primary { color: var(--primary-color) !important; }
+    .bg-primary { background-color: var(--primary-color) !important; }
+    .border-primary { border-color: var(--primary-color) !important; }
+
+    .text-secondary { color: var(--secondary-color) !important; }
+    .bg-secondary { background-color: var(--secondary-color) !important; }
+
+    .text-accent { color: var(--accent-color) !important; }
+    .bg-accent { background-color: var(--accent-color) !important; }
+
+    .btn-primary {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: color-mix(in srgb, var(--primary-color) 85%, black);
+      border-color: color-mix(in srgb, var(--primary-color) 85%, black);
+    }
+    </style>
+    """
+  end
+
+  defp broadcast_design_update(socket, customization) do
+    portfolio = socket.assigns.portfolio
+    css = generate_portfolio_css_safe(customization, portfolio.theme)
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio.id}",
+      {:design_update, %{
+        customization: customization,
+        css: css,
+        timestamp: DateTime.utc_now()
+      }}
+    )
+  end
+
 
   defp get_block_title_safe(block) do
     case Map.get(block.content_data, :title) do
@@ -2025,6 +2286,377 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         {:noreply, put_flash(socket, :error, "Failed to update layout")}
     end
   end
+
+  @impl true
+  def handle_event("show_resume_import", _params, socket) do
+    IO.puts("📄 SHOW RESUME IMPORT MODAL")
+    {:noreply, assign(socket, :show_resume_import_modal, true)}
+  end
+
+  @impl true
+  def handle_event("hide_resume_import", _params, socket) do
+    IO.puts("📄 HIDE RESUME IMPORT MODAL")
+    {:noreply, socket
+    |> assign(:show_resume_import_modal, false)
+    |> assign(:parsed_resume_data, nil)
+    |> assign(:resume_parsing_state, :idle)}
+  end
+
+  @impl true
+  def handle_event("upload_resume", _params, socket) do
+    IO.puts("📄 UPLOAD RESUME EVENT")
+
+    uploaded_files = consume_uploaded_entries(socket, :resume, fn %{path: path}, entry ->
+      IO.puts("📄 Processing file: #{entry.client_name}")
+
+      case FrestylWeb.PortfolioLive.Edit.ResumeImporter.process_uploaded_file(path, entry.client_name) do
+        {:ok, parsed_data} ->
+          IO.puts("📄 Resume parsed successfully")
+          {:ok, parsed_data}
+        {:error, reason} ->
+          IO.puts("📄 Resume parsing failed: #{reason}")
+          {:error, reason}
+      end
+    end)
+
+    case uploaded_files do
+      [{:ok, parsed_data}] ->
+        IO.puts("📄 Resume processing complete")
+        {:noreply, socket
+        |> assign(:parsed_resume_data, parsed_data)
+        |> assign(:resume_parsing_state, :completed)
+        |> assign(:resume_parsing_error, nil)
+        |> put_flash(:info, "Resume parsed successfully! Select sections to import below.")}
+
+      [{:error, reason}] ->
+        IO.puts("📄 Resume processing failed: #{reason}")
+        {:noreply, socket
+        |> assign(:resume_parsing_state, :error)
+        |> assign(:resume_parsing_error, reason)
+        |> put_flash(:error, "Failed to parse resume: #{reason}")}
+
+      [] ->
+        IO.puts("📄 No files uploaded, setting parsing state")
+        {:noreply, assign(socket, :resume_parsing_state, :parsing)}
+    end
+  end
+
+  @impl true
+  def handle_event("import_resume_sections", params, socket) do
+    IO.puts("📄 IMPORT RESUME SECTIONS")
+    IO.puts("📄 Params: #{inspect(params)}")
+
+    case socket.assigns.parsed_resume_data do
+      nil ->
+        {:noreply, put_flash(socket, :error, "No resume data available to import")}
+
+      parsed_data ->
+        portfolio = socket.assigns.portfolio
+
+        # Get section selections from params
+        section_selections = FrestylWeb.PortfolioLive.Edit.ResumeImporter.get_section_mappings_from_params(params)
+        IO.puts("📄 Section selections: #{inspect(section_selections)}")
+
+        case FrestylWeb.PortfolioLive.Edit.ResumeImporter.import_sections_to_portfolio(
+          portfolio,
+          parsed_data,
+          section_selections
+        ) do
+          {:ok, result} ->
+            IO.puts("📄 Import successful!")
+
+            # Update socket with new sections
+            updated_sections = result.sections
+
+            # Update layout zones with new sections
+            updated_layout_zones = integrate_imported_sections_to_zones(
+              socket.assigns.layout_zones,
+              updated_sections
+            )
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> assign(:layout_zones, updated_layout_zones)
+            |> assign(:show_resume_import_modal, false)
+            |> assign(:parsed_resume_data, nil)
+            |> assign(:resume_parsing_state, :idle)
+            |> put_flash(:info, result.flash_message)
+            |> push_event("resume_imported", %{
+              section_count: length(updated_sections),
+              imported_sections: Enum.map(updated_sections, & &1.title)
+            })
+
+            # Broadcast to live preview
+            broadcast_sections_update(socket)
+
+            {:noreply, socket}
+
+          {:error, result} ->
+            IO.puts("📄 Import failed: #{inspect(result)}")
+            {:noreply, socket
+            |> assign(:resume_parsing_state, :error)
+            |> assign(:resume_parsing_error, result.resume_error_message)
+            |> put_flash(:error, result.flash_message)}
+        end
+    end
+  end
+
+  # Helper function to integrate imported sections into layout zones
+  defp integrate_imported_sections_to_zones(layout_zones, sections) do
+    # Convert new sections to blocks and add to appropriate zones
+    new_blocks = Enum.map(sections, fn section ->
+      zone = determine_section_zone_from_type(section.section_type)
+
+      %{
+        id: section.id,
+        block_type: map_section_type_to_block_type(section.section_type),
+        content_data: section.content || %{},
+        original_section: section,
+        position: section.position,
+        visible: section.visible,
+        zone: zone
+      }
+    end)
+
+    # Group by zone and merge with existing zones
+    new_blocks_by_zone = Enum.group_by(new_blocks, & &1.zone)
+
+    Enum.reduce(new_blocks_by_zone, layout_zones, fn {zone, blocks}, acc_zones ->
+      existing_blocks = Map.get(acc_zones, zone, [])
+      Map.put(acc_zones, zone, existing_blocks ++ blocks)
+    end)
+  end
+
+  defp determine_section_zone_from_type(section_type) do
+    case section_type do
+      "hero" -> :hero
+      "about" -> :main_content
+      "experience" -> :main_content
+      "education" -> :main_content
+      "skills" -> :sidebar
+      "portfolio" -> :main_content
+      "projects" -> :main_content
+      "contact" -> :footer
+      "services" -> :main_content
+      "testimonials" -> :sidebar
+      "certifications" -> :sidebar
+      "achievements" -> :sidebar
+      _ -> :main_content
+    end
+  end
+
+  # Add the upload configuration to mount
+  defp assign_file_uploads(socket) do
+    socket
+    |> allow_upload(:resume,
+      accept: ~w(.pdf .docx .doc .txt),
+      max_entries: 1,
+      max_file_size: 10_000_000  # 10MB
+    )
+  end
+
+  # Resume Import Modal Component
+  defp resume_import_modal(assigns) do
+    ~H"""
+    <%= if @show_resume_import_modal do %>
+      <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+          <!-- Background overlay -->
+          <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" phx-click="hide_resume_import"></div>
+
+          <!-- Modal panel -->
+          <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
+            <div class="sm:flex sm:items-start">
+              <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100 sm:mx-0 sm:h-10 sm:w-10">
+                <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+                </svg>
+              </div>
+              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left flex-1">
+                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                  Import from Resume
+                </h3>
+                <div class="mt-2">
+                  <p class="text-sm text-gray-500">
+                    Upload your resume to automatically populate your portfolio sections. We support PDF, DOCX, DOC, and TXT formats.
+                  </p>
+                </div>
+
+                <%= case @resume_parsing_state do %>
+                  <% :idle -> %>
+                    <!-- File Upload Area -->
+                    <div class="mt-4">
+                      <div class="max-w-lg flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-gray-400 transition-colors"
+                          phx-drop-target={@uploads.resume.ref}>
+                        <div class="space-y-1 text-center">
+                          <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                          </svg>
+                          <div class="flex text-sm text-gray-600">
+                            <label for="resume_upload" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                              <span>Upload a resume</span>
+                              <input
+                                id="resume_upload"
+                                name="resume"
+                                type="file"
+                                class="sr-only"
+                                phx-change="upload_resume"
+                                {Phoenix.LiveView.Helpers.live_file_input_attrs(@uploads.resume)} />
+                            </label>
+                            <p class="pl-1">or drag and drop</p>
+                          </div>
+                          <p class="text-xs text-gray-500">PDF, DOCX, DOC, TXT up to 10MB</p>
+                        </div>
+                      </div>
+                    </div>
+
+                  <% :parsing -> %>
+                    <!-- Parsing State -->
+                    <div class="mt-4 text-center">
+                      <div class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100">
+                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Parsing your resume...
+                      </div>
+                    </div>
+
+                  <% :completed -> %>
+                    <!-- Section Selection -->
+                    <%= if @parsed_resume_data do %>
+                      <div class="mt-4">
+                        <h4 class="text-sm font-medium text-gray-900 mb-3">Select sections to import:</h4>
+
+                        <form phx-submit="import_resume_sections">
+                          <div class="space-y-3 max-h-64 overflow-y-auto">
+                            <%= for {section_key, section_data} <- get_available_sections(@parsed_resume_data) do %>
+                              <label class="flex items-start">
+                                <input
+                                  type="checkbox"
+                                  name={"sections[#{section_key}]"}
+                                  value="true"
+                                  checked={has_section_content?(section_data)}
+                                  class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+                                <div class="ml-3 flex-1">
+                                  <div class="text-sm font-medium text-gray-900">
+                                    <%= humanize_section_name(section_key) %>
+                                  </div>
+                                  <div class="text-xs text-gray-500">
+                                    <%= get_section_preview(section_data) %>
+                                  </div>
+                                </div>
+                              </label>
+                            <% end %>
+                          </div>
+
+                          <div class="mt-4 sm:flex sm:flex-row-reverse">
+                            <button type="submit"
+                                    class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
+                              Import Selected Sections
+                            </button>
+                            <button type="button"
+                                    phx-click="hide_resume_import"
+                                    class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:w-auto sm:text-sm">
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    <% end %>
+
+                  <% :error -> %>
+                    <!-- Error State -->
+                    <div class="mt-4">
+                      <div class="rounded-md bg-red-50 p-4">
+                        <div class="flex">
+                          <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                            </svg>
+                          </div>
+                          <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">
+                              Parsing Error
+                            </h3>
+                            <div class="mt-2 text-sm text-red-700">
+                              <%= @resume_parsing_error || "Failed to parse the resume file. Please try a different format or check the file." %>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="mt-4 sm:flex sm:flex-row-reverse">
+                        <button type="button"
+                                phx-click="show_resume_import"
+                                class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
+                          Try Again
+                        </button>
+                        <button type="button"
+                                phx-click="hide_resume_import"
+                                class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:w-auto sm:text-sm">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  # Helper functions for resume data
+  defp get_available_sections(parsed_data) do
+    [
+      {"personal_info", Map.get(parsed_data, :personal_info, %{})},
+      {"experience", Map.get(parsed_data, :experience, [])},
+      {"education", Map.get(parsed_data, :education, [])},
+      {"skills", Map.get(parsed_data, :skills, [])},
+      {"projects", Map.get(parsed_data, :projects, [])},
+      {"certifications", Map.get(parsed_data, :certifications, [])},
+      {"achievements", Map.get(parsed_data, :achievements, [])}
+    ]
+    |> Enum.filter(fn {_key, data} -> has_section_content?(data) end)
+  end
+
+  defp has_section_content?(data) when is_list(data), do: length(data) > 0
+  defp has_section_content?(data) when is_map(data), do: map_size(data) > 0
+  defp has_section_content?(data) when is_binary(data), do: String.trim(data) != ""
+  defp has_section_content?(_), do: false
+
+  defp humanize_section_name(section_key) do
+    case section_key do
+      "personal_info" -> "Personal Information"
+      "experience" -> "Work Experience"
+      "education" -> "Education"
+      "skills" -> "Skills"
+      "projects" -> "Projects"
+      "certifications" -> "Certifications"
+      "achievements" -> "Achievements"
+      _ -> String.replace(section_key, "_", " ") |> String.capitalize()
+    end
+  end
+
+  defp get_section_preview(data) when is_list(data) do
+    case length(data) do
+      0 -> "No items"
+      1 -> "1 item"
+      count -> "#{count} items"
+    end
+  end
+
+  defp get_section_preview(data) when is_map(data) do
+    case map_size(data) do
+      0 -> "No information"
+      _ -> "Personal details available"
+    end
+  end
+
+  defp get_section_preview(_), do: "Content available"
 
   # ============================================================================
   # AUTO-SAVE SYSTEM
@@ -2938,24 +3570,489 @@ end
   end
 
   @impl true
-  def handle_event("update_color", %{"field" => field, "value" => value}, socket) do
-    # Same as update_color_live but without immediate broadcast
-    portfolio = socket.assigns.portfolio
-    current_customization = portfolio.customization || %{}
-    updated_customization = Map.put(current_customization, field, value)
+  def handle_event("update_color", %{"color" => color_key, "value" => color_value}, socket) do
+    IO.puts("🎨 UPDATE COLOR: #{color_key} = #{color_value}")
 
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        socket = socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(String.to_atom(field), value)
-        |> assign(:unsaved_changes, false)
+    try do
+      portfolio = socket.assigns.portfolio
+      current_customization = portfolio.customization || %{}
 
+      # Validate color format
+      color_value = sanitize_color_value(color_value)
+
+      # Update customization
+      updated_customization = Map.put(current_customization, color_key, color_value)
+
+      case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+        {:ok, updated_portfolio} ->
+          # Generate new CSS
+          updated_css = generate_portfolio_css_safe(updated_customization, portfolio.theme)
+
+          socket = socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:customization, updated_customization)
+          |> assign(:preview_css, updated_css)
+          |> assign(:unsaved_changes, false)
+          |> push_event("color_updated", %{
+            color_key: color_key,
+            color_value: color_value,
+            css: updated_css
+          })
+
+          # Broadcast to live preview
+          broadcast_design_update(socket, updated_customization)
+
+          {:noreply, socket}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update color")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Color update error: #{inspect(error)}")
         {:noreply, socket}
+    end
+  end
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to save design changes")}
+  @impl true
+  def handle_event("apply_color_preset", %{"preset" => preset_json}, socket) do
+    IO.puts("🎨 APPLY COLOR PRESET")
+
+    try do
+      preset_colors = Jason.decode!(preset_json)
+      portfolio = socket.assigns.portfolio
+      current_customization = portfolio.customization || %{}
+
+      # Merge preset colors with existing customization
+      updated_customization = Map.merge(current_customization, preset_colors)
+
+      case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+        {:ok, updated_portfolio} ->
+          # Generate new CSS
+          updated_css = generate_portfolio_css_safe(updated_customization, portfolio.theme)
+
+          socket = socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:customization, updated_customization)
+          |> assign(:preview_css, updated_css)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Color preset applied!")
+          |> push_event("preset_applied", %{
+            colors: preset_colors,
+            css: updated_css
+          })
+
+          # Broadcast to live preview
+          broadcast_design_update(socket, updated_customization)
+
+          {:noreply, socket}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to apply color preset")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Color preset error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "Invalid color preset")}
+    end
+  end
+
+  @impl true
+  def handle_event("reset_colors", _params, socket) do
+    IO.puts("🎨 RESET COLORS TO TEMPLATE DEFAULTS")
+
+    try do
+      portfolio = socket.assigns.portfolio
+      template_config = get_template_config_safe(portfolio.theme || "minimal")
+
+      # Get only color-related template defaults
+      color_defaults = Map.take(template_config, [
+        "primary_color", "secondary_color", "accent_color",
+        "background_color", "text_color", "card_background"
+      ])
+
+      # Keep non-color customizations
+      current_customization = portfolio.customization || %{}
+      non_color_customization = Map.drop(current_customization, Map.keys(color_defaults))
+
+      # Merge with template color defaults
+      updated_customization = Map.merge(non_color_customization, color_defaults)
+
+      case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+        {:ok, updated_portfolio} ->
+          # Generate new CSS
+          updated_css = generate_portfolio_css_safe(updated_customization, portfolio.theme)
+
+          socket = socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:customization, updated_customization)
+          |> assign(:preview_css, updated_css)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Colors reset to template defaults")
+          |> push_event("colors_reset", %{
+            css: updated_css
+          })
+
+          # Broadcast to live preview
+          broadcast_design_update(socket, updated_customization)
+
+          {:noreply, socket}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to reset colors")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Color reset error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "An error occurred while resetting colors")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_typography", %{"property" => property, "value" => value}, socket) do
+    IO.puts("🎨 UPDATE TYPOGRAPHY: #{property} = #{value}")
+
+    try do
+      portfolio = socket.assigns.portfolio
+      current_customization = portfolio.customization || %{}
+
+      # Update typography property
+      updated_customization = Map.put(current_customization, property, value)
+
+      case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+        {:ok, updated_portfolio} ->
+          # Generate new CSS
+          updated_css = generate_portfolio_css_safe(updated_customization, portfolio.theme)
+
+          socket = socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:customization, updated_customization)
+          |> assign(:preview_css, updated_css)
+          |> assign(:unsaved_changes, false)
+          |> push_event("typography_updated", %{
+            property: property,
+            value: value,
+            css: updated_css
+          })
+
+          # Broadcast to live preview
+          broadcast_design_update(socket, updated_customization)
+
+          {:noreply, socket}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update typography")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Typography update error: #{inspect(error)}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("add_experience_item", %{"block_id" => block_id}, socket) do
+    IO.puts("➕ ADD EXPERIENCE ITEM to block #{block_id}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+      editing_section = socket.assigns.editing_section
+
+      if editing_section && editing_section.id == block_id_int do
+        current_content = editing_section.content || %{}
+        current_experiences = Map.get(current_content, "experiences", [])
+
+        new_experience = %{
+          "title" => "",
+          "company" => "",
+          "duration" => "",
+          "description" => ""
+        }
+
+        updated_experiences = current_experiences ++ [new_experience]
+        updated_content = Map.put(current_content, "experiences", updated_experiences)
+
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == block_id_int, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> push_event("experience_added", %{block_id: block_id})}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to add experience")}
+        end
+      else
+        {:noreply, socket}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Add experience error: #{inspect(error)}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("remove_experience_item", %{"block_id" => block_id, "index" => index}, socket) do
+    IO.puts("➖ REMOVE EXPERIENCE ITEM #{index} from block #{block_id}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+      index_int = String.to_integer(index)
+      editing_section = socket.assigns.editing_section
+
+      if editing_section && editing_section.id == block_id_int do
+        current_content = editing_section.content || %{}
+        current_experiences = Map.get(current_content, "experiences", [])
+
+        updated_experiences = List.delete_at(current_experiences, index_int)
+        updated_content = Map.put(current_content, "experiences", updated_experiences)
+
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == block_id_int, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> push_event("experience_removed", %{block_id: block_id, index: index})}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to remove experience")}
+        end
+      else
+        {:noreply, socket}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Remove experience error: #{inspect(error)}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("update_experience_item", %{"block_id" => block_id, "index" => index, "field" => field, "value" => value}, socket) do
+    IO.puts("📝 UPDATE EXPERIENCE ITEM #{index}.#{field} = #{value}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+      index_int = String.to_integer(index)
+      editing_section = socket.assigns.editing_section
+
+      if editing_section && editing_section.id == block_id_int do
+        current_content = editing_section.content || %{}
+        current_experiences = Map.get(current_content, "experiences", [])
+
+        if index_int < length(current_experiences) do
+          updated_experiences = List.update_at(current_experiences, index_int, fn experience ->
+            Map.put(experience, field, value)
+          end)
+
+          updated_content = Map.put(current_content, "experiences", updated_experiences)
+
+          case Portfolios.update_section(editing_section, %{content: updated_content}) do
+            {:ok, updated_section} ->
+              updated_sections = Enum.map(socket.assigns.sections, fn s ->
+                if s.id == block_id_int, do: updated_section, else: s
+              end)
+
+              {:noreply, socket
+              |> assign(:sections, updated_sections)
+              |> assign(:editing_section, updated_section)}
+
+            {:error, _changeset} ->
+              {:noreply, put_flash(socket, :error, "Failed to update experience")}
+          end
+        else
+          {:noreply, socket}
+        end
+      else
+        {:noreply, socket}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Update experience error: #{inspect(error)}")
+        {:noreply, socket}
+    end
+  end
+
+  # Skills item management
+  @impl true
+  def handle_event("add_skill_item", %{"block_id" => block_id}, socket) do
+    IO.puts("➕ ADD SKILL ITEM to block #{block_id}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+      editing_section = socket.assigns.editing_section
+
+      if editing_section && editing_section.id == block_id_int do
+        current_content = editing_section.content || %{}
+        current_skills = Map.get(current_content, "skills", [])
+
+        new_skill = %{
+          "name" => "",
+          "level" => "Intermediate"
+        }
+
+        updated_skills = current_skills ++ [new_skill]
+        updated_content = Map.put(current_content, "skills", updated_skills)
+
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == block_id_int, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> push_event("skill_added", %{block_id: block_id})}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to add skill")}
+        end
+      else
+        {:noreply, socket}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Add skill error: #{inspect(error)}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("remove_skill_item", %{"block_id" => block_id, "index" => index}, socket) do
+    IO.puts("➖ REMOVE SKILL ITEM #{index} from block #{block_id}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+      index_int = String.to_integer(index)
+      editing_section = socket.assigns.editing_section
+
+      if editing_section && editing_section.id == block_id_int do
+        current_content = editing_section.content || %{}
+        current_skills = Map.get(current_content, "skills", [])
+
+        updated_skills = List.delete_at(current_skills, index_int)
+        updated_content = Map.put(current_content, "skills", updated_skills)
+
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == block_id_int, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> push_event("skill_removed", %{block_id: block_id, index: index})}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to remove skill")}
+        end
+      else
+        {:noreply, socket}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Remove skill error: #{inspect(error)}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("update_skill_item", %{"block_id" => block_id, "index" => index, "field" => field, "value" => value}, socket) do
+    IO.puts("📝 UPDATE SKILL ITEM #{index}.#{field} = #{value}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+      index_int = String.to_integer(index)
+      editing_section = socket.assigns.editing_section
+
+      if editing_section && editing_section.id == block_id_int do
+        current_content = editing_section.content || %{}
+        current_skills = Map.get(current_content, "skills", [])
+
+        if index_int < length(current_skills) do
+          updated_skills = List.update_at(current_skills, index_int, fn skill ->
+            Map.put(skill, field, value)
+          end)
+
+          updated_content = Map.put(current_content, "skills", updated_skills)
+
+          case Portfolios.update_section(editing_section, %{content: updated_content}) do
+            {:ok, updated_section} ->
+              updated_sections = Enum.map(socket.assigns.sections, fn s ->
+                if s.id == block_id_int, do: updated_section, else: s
+              end)
+
+              {:noreply, socket
+              |> assign(:sections, updated_sections)
+              |> assign(:editing_section, updated_section)}
+
+            {:error, _changeset} ->
+              {:noreply, put_flash(socket, :error, "Failed to update skill")}
+          end
+        else
+          {:noreply, socket}
+        end
+      else
+        {:noreply, socket}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Update skill error: #{inspect(error)}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("select_layout", %{"layout" => layout_key}, socket) do
+    IO.puts("🎨 SELECT LAYOUT: #{layout_key}")
+
+    try do
+      portfolio = socket.assigns.portfolio
+      current_customization = portfolio.customization || %{}
+
+      # Update layout in customization
+      updated_customization = Map.put(current_customization, "layout", layout_key)
+
+      case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+        {:ok, updated_portfolio} ->
+          # Generate new CSS
+          updated_css = generate_portfolio_css_safe(updated_customization, portfolio.theme)
+
+          socket = socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:current_layout, layout_key)
+          |> assign(:customization, updated_customization)
+          |> assign(:preview_css, updated_css)
+          |> assign(:unsaved_changes, false)
+          |> put_flash(:info, "Layout updated successfully!")
+          |> push_event("layout_updated", %{
+            layout: layout_key,
+            css: updated_css
+          })
+
+          # Broadcast to live preview
+          broadcast_design_update(socket, updated_customization)
+
+          {:noreply, socket}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update layout")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Layout selection error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "An error occurred while updating the layout")}
     end
   end
 
@@ -3889,14 +4986,6 @@ end
     nil
   end
   defp get_external_thumbnail_url(_, _), do: nil
-
-  defp add_section_to_zone(layout_zones, zone, section) do
-    zone_atom = String.to_atom(zone)
-    current_blocks = Map.get(layout_zones, zone_atom, [])
-    new_block = section_to_block_format(section)
-
-    Map.put(layout_zones, zone_atom, current_blocks ++ [new_block])
-  end
 
   defp section_to_block_format(section) do
     %{
@@ -5375,22 +6464,6 @@ end
     """
   end
 
-  @impl true
-  def handle_event("debug_edit_block", params, socket) do
-    IO.puts("🔥🔥🔥 PORTFOLIO EDITOR - Edit Block clicked!")
-    IO.puts("🔥 Params: #{inspect(params)}")
-    IO.puts("🔥 Socket assigns keys: #{inspect(Map.keys(socket.assigns))}")
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("debug_move_block", params, socket) do
-    IO.puts("🔥🔥🔥 PORTFOLIO EDITOR - Move Block clicked!")
-    IO.puts("🔥 Params: #{inspect(params)}")
-    IO.puts("🔥 Current user: #{inspect(socket.assigns.user.id)}")
-    {:noreply, socket}
-  end
-
   defp get_block_preview_text(block) do
     content = block.content_data
 
@@ -5632,24 +6705,556 @@ end
   end
 
   @impl true
-  def handle_event("add_content_block", %{"block_type" => block_type}, socket) do
-    # For now, add to the first available zone
-    current_zones = socket.assigns.layout_zones
-    first_zone_name = current_zones |> Map.keys() |> List.first()
+  def handle_event("select_zone", %{"zone" => zone}, socket) do
+    IO.puts("🎯 ZONE SELECTED: #{zone}")
+    # Store selected zone in socket assigns for future block additions
+    {:noreply, assign(socket, :selected_zone, zone)}
+  end
 
-    if first_zone_name do
-      current_blocks = Map.get(current_zones, first_zone_name, [])
-      new_block = %{type: block_type, id: System.unique_integer([:positive])}
-      updated_blocks = current_blocks ++ [new_block]
-      updated_zones = Map.put(current_zones, first_zone_name, updated_blocks)
+  @impl true
+  def handle_event("add_content_block", %{"block_type" => block_type} = params, socket) do
+    zone = Map.get(params, "zone", "main_content")  # Default to main_content if no zone specified
+    IO.puts("➕ ADD CONTENT BLOCK: #{block_type} to zone #{zone}")
 
-      {:noreply, socket
-      |> assign(:layout_zones, updated_zones)
-      |> put_flash(:info, "#{humanize_block_type(block_type)} added to #{first_zone_name} zone")
+    try do
+      portfolio_id = socket.assigns.portfolio.id
+
+      # Create new section with zone information
+      section_attrs = %{
+        portfolio_id: portfolio_id,
+        section_type: map_block_type_to_section_type(block_type),
+        title: get_default_title_for_block_type(block_type),
+        content: get_default_content_for_block_type(block_type),
+        position: get_next_position_for_zone(portfolio_id, zone),
+        visible: true,
+        metadata: %{
+          zone: zone,
+          block_type: block_type,
+          created_at: DateTime.utc_now()
+        }
       }
-    else
-      {:noreply, socket}
+
+      case Portfolios.create_portfolio_section(section_attrs) do
+        {:ok, new_section} ->
+          updated_sections = socket.assigns.sections ++ [new_section]
+
+          # Update layout zones
+          updated_layout_zones = add_section_to_zone(socket.assigns.layout_zones, zone, new_section)
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:layout_zones, updated_layout_zones)
+          |> assign(:editing_section, new_section)
+          |> assign(:editing_mode, :block_editor)
+          |> assign(:section_edit_mode, true)
+          |> assign(:section_edit_tab, "content")  # Start on content tab
+          |> put_flash(:info, "#{get_block_display_name(block_type)} added to #{format_zone_name(zone)}")
+          |> push_event("block_added", %{
+            block_id: new_section.id,
+            block_type: block_type,
+            zone: zone,
+            title: new_section.title
+          })
+
+          # Broadcast to live preview
+          broadcast_content_update(socket, new_section)
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          IO.puts("❌ Failed to create section: #{inspect(changeset.errors)}")
+          {:noreply, put_flash(socket, :error, "Failed to add content block")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Add content block error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "An error occurred while adding the content block")}
     end
+  end
+
+  @impl true
+  def handle_event("delete_block", %{"block_id" => block_id}, socket) do
+    IO.puts("🗑️ DELETE BLOCK: #{block_id}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+
+      # Find the section that corresponds to this block
+      case Portfolios.get_portfolio_section(block_id_int) do
+        nil ->
+          {:noreply, put_flash(socket, :error, "Block not found")}
+
+        section ->
+          # Delete the section (which acts as a block in the dynamic card system)
+          case Portfolios.delete_section(section) do
+            {:ok, _deleted_section} ->
+              # Remove from sections list
+              updated_sections = Enum.reject(socket.assigns.sections, &(&1.id == block_id_int))
+
+              # Update layout zones by removing the deleted block
+              updated_layout_zones = remove_block_from_zones(socket.assigns.layout_zones, block_id_int)
+
+              socket = socket
+              |> assign(:sections, updated_sections)
+              |> assign(:layout_zones, updated_layout_zones)
+              |> put_flash(:info, "Block deleted successfully")
+              |> push_event("block_deleted", %{block_id: block_id})
+
+              # Broadcast update to live preview
+              broadcast_sections_update(socket)
+
+              {:noreply, socket}
+
+            {:error, reason} ->
+              IO.puts("❌ Delete failed: #{inspect(reason)}")
+              {:noreply, put_flash(socket, :error, "Failed to delete block")}
+          end
+      end
+    rescue
+      error ->
+        IO.puts("❌ Delete block error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "An error occurred while deleting the block")}
+    end
+  end
+
+  @impl true
+  def handle_event("edit_block", %{"block_id" => block_id}, socket) do
+    IO.puts("✏️ EDIT BLOCK HANDLER: #{block_id}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+
+      # Find the section that corresponds to this block
+      section = Enum.find(socket.assigns.sections, &(&1.id == block_id_int))
+
+      if section do
+        IO.puts("✏️ Found section: #{section.title}")
+
+        # Set editing state to show the block editor
+        socket = socket
+        |> assign(:editing_section, section)
+        |> assign(:editing_mode, :block_editor)  # NEW: specific mode for block editing
+        |> assign(:editing_block_id, block_id_int)
+        |> assign(:section_edit_mode, true)
+        |> assign(:section_edit_tab, "content")  # Start on content tab
+        |> assign(:unsaved_changes, false)
+        |> push_event("block_edit_started", %{
+          block_id: block_id,
+          section_type: section.section_type,
+          title: section.title
+        })
+
+        IO.puts("✅ Block editing mode activated")
+        {:noreply, socket}
+      else
+        IO.puts("❌ Block/Section not found: #{block_id}")
+        {:noreply, put_flash(socket, :error, "Block not found")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Edit block error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "An error occurred while opening the block editor")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_block_content", %{"field" => field, "value" => value, "block_id" => block_id}, socket) do
+    IO.puts("📝 UPDATE BLOCK CONTENT: #{field} = #{value}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+      editing_section = socket.assigns.editing_section
+
+      if editing_section && editing_section.id == block_id_int do
+        # Update the section content
+        current_content = editing_section.content || %{}
+        updated_content = Map.put(current_content, field, value)
+
+        # Save to database
+        case Portfolios.update_section(editing_section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            # Update sections list
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == block_id_int, do: updated_section, else: s
+            end)
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> assign(:editing_section, updated_section)
+            |> assign(:unsaved_changes, false)
+            |> push_event("content_updated", %{field: field, value: value})
+
+            # Broadcast to live preview
+            broadcast_content_update(socket, updated_section)
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            IO.puts("❌ Failed to save content: #{inspect(changeset.errors)}")
+            {:noreply, put_flash(socket, :error, "Failed to save changes")}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Block not being edited")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Update content error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "Failed to update content")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_block_visibility", %{"block_id" => block_id}, socket) do
+    IO.puts("👁️ TOGGLE BLOCK VISIBILITY: #{block_id}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+      section = Enum.find(socket.assigns.sections, &(&1.id == block_id_int))
+
+      if section do
+        case Portfolios.update_section(section, %{visible: !section.visible}) do
+          {:ok, updated_section} ->
+            # Update sections list
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == block_id_int, do: updated_section, else: s
+            end)
+
+            # Update layout zones
+            updated_layout_zones = update_block_visibility_in_zones(
+              socket.assigns.layout_zones,
+              block_id_int,
+              updated_section.visible
+            )
+
+            message = if updated_section.visible do
+              "Block is now visible"
+            else
+              "Block is now hidden"
+            end
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> assign(:layout_zones, updated_layout_zones)
+            |> put_flash(:info, message)
+            |> push_event("block_visibility_toggled", %{
+              block_id: block_id,
+              visible: updated_section.visible
+            })
+
+            # Broadcast to live preview
+            broadcast_content_update(socket, updated_section)
+
+            {:noreply, socket}
+
+          {:error, reason} ->
+            IO.puts("❌ Visibility toggle failed: #{inspect(reason)}")
+            {:noreply, put_flash(socket, :error, "Failed to update visibility")}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Block not found")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Toggle visibility error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "An error occurred while updating visibility")}
+    end
+  end
+
+  @impl true
+  def handle_event("attach_media_to_block", %{"block_id" => block_id, "media_data" => media_data}, socket) do
+    IO.puts("📎 ATTACH MEDIA TO BLOCK: #{block_id}")
+
+    try do
+      block_id_int = String.to_integer(block_id)
+      section = Enum.find(socket.assigns.sections, &(&1.id == block_id_int))
+
+      if section do
+        # Get current content and add media
+        current_content = section.content || %{}
+        media_items = Map.get(current_content, "media_items", [])
+
+        # Add new media item
+        new_media_item = %{
+          "id" => System.unique_integer(),
+          "type" => Map.get(media_data, "type", "image"),
+          "url" => Map.get(media_data, "url", ""),
+          "alt" => Map.get(media_data, "alt", ""),
+          "caption" => Map.get(media_data, "caption", "")
+        }
+
+        updated_media_items = media_items ++ [new_media_item]
+        updated_content = Map.put(current_content, "media_items", updated_media_items)
+
+        case Portfolios.update_section(section, %{content: updated_content}) do
+          {:ok, updated_section} ->
+            # Update sections list
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == block_id_int, do: updated_section, else: s
+            end)
+
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> put_flash(:info, "Media attached successfully")
+            |> push_event("media_attached", %{block_id: block_id, media: new_media_item})
+
+            # Broadcast to live preview
+            broadcast_content_update(socket, updated_section)
+
+            {:noreply, socket}
+
+          {:error, reason} ->
+            IO.puts("❌ Media attachment failed: #{inspect(reason)}")
+            {:noreply, put_flash(socket, :error, "Failed to attach media")}
+        end
+      else
+        {:noreply, put_flash(socket, :error, "Block not found")}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Attach media error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "An error occurred while attaching media")}
+    end
+  end
+
+  @impl true
+  def handle_event("reorder_sections", %{"section_ids" => section_ids}, socket) do
+    IO.puts("🔄 REORDER SECTIONS: #{inspect(section_ids)}")
+
+    try do
+      portfolio_id = socket.assigns.portfolio.id
+
+      # Convert string IDs to integers
+      section_id_integers = Enum.map(section_ids, fn id ->
+        case Integer.parse(to_string(id)) do
+          {int_id, ""} -> int_id
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+      IO.puts("🔄 Parsed section IDs: #{inspect(section_id_integers)}")
+
+      # Update section positions in database
+      case update_section_positions(portfolio_id, section_id_integers) do
+        {:ok, updated_sections} ->
+          # Update socket assigns with new order
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> put_flash(:info, "Sections reordered successfully")
+          |> push_event("sections_reordered", %{
+            section_count: length(updated_sections),
+            new_order: section_id_integers
+          })
+
+          # Broadcast to live preview
+          broadcast_sections_update(socket)
+
+          {:noreply, socket}
+
+        {:error, reason} ->
+          IO.puts("❌ Reorder failed: #{inspect(reason)}")
+          {:noreply, socket
+          |> put_flash(:error, "Failed to reorder sections")
+          |> push_event("reorder_failed", %{reason: inspect(reason)})}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Reorder error: #{inspect(error)}")
+        {:noreply, socket
+        |> put_flash(:error, "An error occurred while reordering sections")
+        |> push_event("reorder_failed", %{reason: "unexpected_error"})}
+    end
+  end
+
+  # Alternative handler for different parameter format
+  @impl true
+  def handle_event("reorder_sections", %{"sections" => section_ids}, socket) do
+    handle_event("reorder_sections", %{"section_ids" => section_ids}, socket)
+  end
+
+  # Fallback handler for old format
+  @impl true
+  def handle_event("reorder_sections", %{"old_index" => old_index, "new_index" => new_index, "section_ids" => section_ids}, socket) do
+    IO.puts("🔄 REORDER with indices - old: #{old_index}, new: #{new_index}")
+    handle_event("reorder_sections", %{"section_ids" => section_ids}, socket)
+  end
+
+  defp map_block_type_to_section_type(block_type) do
+    case block_type do
+      "hero_card" -> "hero"
+      "about_card" -> "about"
+      "experience_card" -> "experience"
+      "skills_card" -> "skills"
+      "project_card" -> "portfolio"
+      "contact_card" -> "contact"
+      "testimonial_card" -> "testimonials"
+      "service_card" -> "services"
+      "gallery_card" -> "gallery"
+      "video_card" -> "video"
+      "social_card" -> "social"
+      "text_card" -> "text"
+      _ -> "text"
+    end
+  end
+
+  defp get_default_title_for_block_type(block_type) do
+    case block_type do
+      "hero_card" -> "Welcome"
+      "about_card" -> "About Me"
+      "experience_card" -> "Work Experience"
+      "skills_card" -> "Skills & Expertise"
+      "project_card" -> "Featured Projects"
+      "contact_card" -> "Get In Touch"
+      "testimonial_card" -> "What People Say"
+      "service_card" -> "Services"
+      "gallery_card" -> "Gallery"
+      "video_card" -> "Video"
+      "social_card" -> "Connect With Me"
+      "text_card" -> "Custom Content"
+      _ -> "New Section"
+    end
+  end
+
+  defp get_default_content_for_block_type(block_type) do
+    base_content = %{
+      "created_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
+      "block_type" => block_type
+    }
+
+    case block_type do
+      "hero_card" ->
+        Map.merge(base_content, %{
+          "subtitle" => "Professional [Your Title]",
+          "description" => "Brief introduction about yourself and what you do.",
+          "cta_text" => "Get Started",
+          "background_style" => "gradient"
+        })
+      "about_card" ->
+        Map.merge(base_content, %{
+          "description" => "Tell your story here. What drives you? What's your background?",
+          "image_url" => "",
+          "highlights" => []
+        })
+      "experience_card" ->
+        Map.merge(base_content, %{
+          "experiences" => [
+            %{
+              "title" => "Your Job Title",
+              "company" => "Company Name",
+              "duration" => "2020 - Present",
+              "description" => "Brief description of your role and achievements."
+            }
+          ]
+        })
+      "skills_card" ->
+        Map.merge(base_content, %{
+          "skills" => [
+            %{"name" => "Skill 1", "level" => "Expert"},
+            %{"name" => "Skill 2", "level" => "Advanced"},
+            %{"name" => "Skill 3", "level" => "Intermediate"}
+          ]
+        })
+      "contact_card" ->
+        Map.merge(base_content, %{
+          "email" => "your.email@example.com",
+          "phone" => "",
+          "location" => "Your City, Country",
+          "social_links" => []
+        })
+      _ ->
+        Map.merge(base_content, %{
+          "description" => "Add your content here."
+        })
+    end
+  end
+
+  defp get_next_position_for_zone(portfolio_id, zone) do
+    # Get current sections in this zone
+    case Portfolios.list_portfolio_sections(portfolio_id) do
+      sections when is_list(sections) ->
+        zone_sections = Enum.filter(sections, fn section ->
+          get_in(section, [:metadata, "zone"]) == zone
+        end)
+        length(zone_sections) + 1
+      _ -> 1
+    end
+  rescue
+    _ -> 1
+  end
+
+  defp add_section_to_zone(layout_zones, zone, section) do
+    zone_atom = String.to_atom(zone)
+    current_blocks = Map.get(layout_zones, zone_atom, [])
+
+    new_block = %{
+      id: section.id,
+      block_type: String.to_atom(get_in(section, [:metadata, "block_type"]) || "text_card"),
+      content_data: section.content || %{},
+      original_section: section,
+      position: section.position,
+      visible: section.visible,
+      zone: zone_atom
+    }
+
+    Map.put(layout_zones, zone_atom, current_blocks ++ [new_block])
+  end
+
+  defp get_block_display_name(block_type) do
+    case block_type do
+      "hero_card" -> "Hero Banner"
+      "about_card" -> "About Section"
+      "experience_card" -> "Work Experience"
+      "skills_card" -> "Skills"
+      "project_card" -> "Projects"
+      "contact_card" -> "Contact Info"
+      "testimonial_card" -> "Testimonials"
+      "service_card" -> "Services"
+      "gallery_card" -> "Image Gallery"
+      "video_card" -> "Video"
+      "social_card" -> "Social Links"
+      "text_card" -> "Text Block"
+      _ -> "Content Block"
+    end
+  end
+
+  defp format_zone_name(zone) do
+    case zone do
+      "hero" -> "Hero Section"
+      "main_content" -> "Main Content"
+      "sidebar" -> "Sidebar"
+      "footer" -> "Footer"
+      _ -> String.replace(zone, "_", " ") |> String.capitalize()
+    end
+  end
+
+  # Helper functions for layout zone management
+  defp remove_block_from_zones(layout_zones, block_id) do
+    layout_zones
+    |> Enum.map(fn {zone_name, blocks} ->
+      filtered_blocks = Enum.reject(blocks, fn block ->
+        Map.get(block, :id) == block_id ||
+        get_in(block, [:original_section, :id]) == block_id
+      end)
+      {zone_name, filtered_blocks}
+    end)
+    |> Enum.into(%{})
+  end
+
+  defp update_block_visibility_in_zones(layout_zones, block_id, visible) do
+    layout_zones
+    |> Enum.map(fn {zone_name, blocks} ->
+      updated_blocks = Enum.map(blocks, fn block ->
+        if Map.get(block, :id) == block_id || get_in(block, [:original_section, :id]) == block_id do
+          block
+          |> put_in([:visible], visible)
+          |> put_in([:original_section, :visible], visible)
+        else
+          block
+        end
+      end)
+      {zone_name, updated_blocks}
+    end)
+    |> Enum.into(%{})
   end
 
   defp is_dynamic_card_layout?(portfolio) do
@@ -5805,7 +7410,7 @@ end
     end
   end
 
-    defp process_voice_input_for_collaboration(voice_content, section_id, socket) do
+  defp process_voice_input_for_collaboration(voice_content, section_id, socket) do
     # Integration point for voice-to-text service
     # This would integrate with existing voice processing
     case VoiceProcessor.convert_to_text(voice_content) do
@@ -5995,6 +7600,101 @@ end
         section
       end
     end)
+  end
+
+  defp update_section_positions(portfolio_id, ordered_section_ids) do
+    try do
+      # Use Ecto.Multi for transactional updates
+      alias Ecto.Multi
+
+      multi = Multi.new()
+
+      # Update each section's position based on its index in the ordered list
+      multi = Enum.with_index(ordered_section_ids, 1)
+      |> Enum.reduce(multi, fn {section_id, new_position}, multi_acc ->
+        Multi.update(multi_acc, "section_#{section_id}", fn _repo, _changes ->
+          case Portfolios.get_portfolio_section(section_id) do
+            nil ->
+              {:error, "Section #{section_id} not found"}
+            section ->
+              Portfolios.update_section(section, %{position: new_position})
+          end
+        end)
+      end)
+
+      # Execute the transaction
+      case Repo.transaction(multi) do
+        {:ok, results} ->
+          # Load updated sections in correct order
+          updated_sections = load_portfolio_sections_ordered(portfolio_id)
+          {:ok, updated_sections}
+
+        {:error, failed_operation, changeset, _changes} ->
+          IO.puts("❌ Transaction failed at #{failed_operation}: #{inspect(changeset)}")
+          {:error, "Failed to update section positions"}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Position update error: #{inspect(error)}")
+        {:error, "Unexpected error during reordering"}
+    end
+  end
+
+  defp load_portfolio_sections_ordered(portfolio_id) do
+    try do
+      # Load sections in position order
+      import Ecto.Query
+
+      query = from s in "portfolio_sections",
+        where: s.portfolio_id == ^portfolio_id,
+        order_by: [asc: s.position],
+        select: %{
+          id: s.id,
+          portfolio_id: s.portfolio_id,
+          title: s.title,
+          section_type: s.section_type,
+          content: s.content,
+          position: s.position,
+          visible: s.visible,
+          inserted_at: s.inserted_at,
+          updated_at: s.updated_at
+        }
+
+      sections = Repo.all(query)
+
+      # Convert to structs if needed
+      Enum.map(sections, fn section_map ->
+        struct(Portfolios.PortfolioSection, section_map)
+      end)
+    rescue
+      error ->
+        IO.puts("❌ Failed to load ordered sections: #{inspect(error)}")
+        # Fallback to existing sections
+        []
+    end
+  end
+
+  # Enhanced broadcast function
+  defp broadcast_sections_update(socket) do
+    portfolio = socket.assigns.portfolio
+    sections = socket.assigns.sections
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio.id}",
+      {:sections_update, sections}
+    )
+
+    # Also broadcast reorder event specifically
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio.id}",
+      {:sections_reordered, %{
+        portfolio_id: portfolio.id,
+        section_count: length(sections),
+        timestamp: DateTime.utc_now()
+      }}
+    )
   end
 
   defp apply_operation_to_sections(sections, operation) do

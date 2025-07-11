@@ -746,4 +746,355 @@ defmodule FrestylWeb.PortfolioLive.Components.ContentTab do
     </div>
     """
   end
+
+  defp enhanced_add_section_dropdown(assigns) do
+    ~H"""
+    <div class="relative" x-data="{ open: false }">
+      <!-- Add Block Button -->
+      <button
+        @click="open = !open"
+        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+        </svg>
+        Add Content Block
+      </button>
+
+      <!-- Dropdown Panel -->
+      <div
+        x-show="open"
+        @click.away="open = false"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0 scale-95"
+        x-transition:enter-end="opacity-100 scale-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100 scale-100"
+        x-transition:leave-end="opacity-0 scale-95"
+        class="absolute right-0 z-50 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-200">
+
+        <div class="p-6">
+          <!-- Zone Selection -->
+          <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-3">Choose Layout Zone</label>
+            <div class="grid grid-cols-2 gap-2" id="zone-selector">
+              <%= for {zone_key, zone_config} <- [
+                {"hero", %{name: "Hero Section", icon: "⭐", description: "Top banner area"}},
+                {"main_content", %{name: "Main Content", icon: "📝", description: "Primary content area"}},
+                {"sidebar", %{name: "Sidebar", icon: "📋", description: "Side information"}},
+                {"footer", %{name: "Footer", icon: "🔗", description: "Contact & links"}}
+              ] do %>
+                <button
+                  phx-click="select_zone"
+                  phx-value-zone={zone_key}
+                  class="p-3 border border-gray-200 hover:border-gray-300 rounded-lg text-left transition-colors zone-selector"
+                  data-zone={zone_key}>
+                  <div class="flex items-center mb-1">
+                    <span class="text-lg mr-2"><%= zone_config.icon %></span>
+                    <span class="font-medium text-sm"><%= zone_config.name %></span>
+                  </div>
+                  <p class="text-xs text-gray-500"><%= zone_config.description %></p>
+                </button>
+              <% end %>
+            </div>
+          </div>
+
+          <!-- Block Type Categories -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-3">Content Block Type</label>
+
+            <!-- Essential Blocks -->
+            <div class="mb-4">
+              <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Essential</h4>
+              <div class="grid grid-cols-2 gap-2">
+                <%= for {block_type, block_config} <- [
+                  {"hero_card", %{name: "Hero Banner", icon: "🌟", description: "Main introduction"}},
+                  {"about_card", %{name: "About Me", icon: "👤", description: "Personal story"}},
+                  {"contact_card", %{name: "Contact Info", icon: "📞", description: "How to reach you"}},
+                  {"text_card", %{name: "Text Block", icon: "📄", description: "Custom content"}}
+                ] do %>
+                  <button
+                    phx-click="add_content_block"
+                    phx-value-block_type={block_type}
+                    phx-value-zone="main_content"
+                    class="p-3 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 text-left transition-colors group add-block-btn"
+                    data-block-type={block_type}>
+                    <div class="flex items-center mb-1">
+                      <span class="text-lg mr-2"><%= block_config.icon %></span>
+                      <span class="font-medium text-sm text-gray-900 group-hover:text-blue-700"><%= block_config.name %></span>
+                    </div>
+                    <p class="text-xs text-gray-500"><%= block_config.description %></p>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+
+            <!-- Professional Blocks -->
+            <div class="mb-4">
+              <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Professional</h4>
+              <div class="grid grid-cols-2 gap-2">
+                <%= for {block_type, block_config} <- [
+                  {"experience_card", %{name: "Work Experience", icon: "💼", description: "Career history"}},
+                  {"skills_card", %{name: "Skills", icon: "🎯", description: "Abilities & expertise"}},
+                  {"project_card", %{name: "Projects", icon: "🚀", description: "Portfolio showcase"}},
+                  {"testimonial_card", %{name: "Testimonials", icon: "💬", description: "Client feedback"}}
+                ] do %>
+                  <button
+                    phx-click="add_content_block"
+                    phx-value-block_type={block_type}
+                    phx-value-zone="main_content"
+                    class="p-3 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 text-left transition-colors group add-block-btn"
+                    data-block-type={block_type}>
+                    <div class="flex items-center mb-1">
+                      <span class="text-lg mr-2"><%= block_config.icon %></span>
+                      <span class="font-medium text-sm text-gray-900 group-hover:text-blue-700"><%= block_config.name %></span>
+                    </div>
+                    <p class="text-xs text-gray-500"><%= block_config.description %></p>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+
+            <!-- Creative Blocks -->
+            <div class="mb-4">
+              <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Creative</h4>
+              <div class="grid grid-cols-2 gap-2">
+                <%= for {block_type, block_config} <- [
+                  {"gallery_card", %{name: "Image Gallery", icon: "🖼️", description: "Photo showcase"}},
+                  {"video_card", %{name: "Video", icon: "🎥", description: "Video content"}},
+                  {"social_card", %{name: "Social Links", icon: "🔗", description: "Social media"}},
+                  {"service_card", %{name: "Services", icon: "⚙️", description: "What you offer"}}
+                ] do %>
+                  <button
+                    phx-click="add_content_block"
+                    phx-value-block_type={block_type}
+                    phx-value-zone="sidebar"
+                    class="p-3 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 text-left transition-colors group add-block-btn"
+                    data-block-type={block_type}>
+                    <div class="flex items-center mb-1">
+                      <span class="text-lg mr-2"><%= block_config.icon %></span>
+                      <span class="font-medium text-sm text-gray-900 group-hover:text-blue-700"><%= block_config.name %></span>
+                    </div>
+                    <p class="text-xs text-gray-500"><%= block_config.description %></p>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+          </div>
+
+          <!-- Import Options -->
+          <div class="pt-4 border-t border-gray-200">
+            <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Quick Import</h4>
+            <div class="space-y-2">
+              <button
+                phx-click="show_resume_import"
+                class="w-full flex items-center px-3 py-2 text-sm text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
+                <svg class="w-4 h-4 mr-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+                </svg>
+                Import from Resume
+                <span class="ml-auto text-xs text-gray-500">PDF, DOCX</span>
+              </button>
+
+              <button
+                phx-click="show_linkedin_import"
+                class="w-full flex items-center px-3 py-2 text-sm text-left text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
+                <svg class="w-4 h-4 mr-3 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                </svg>
+                Import from LinkedIn
+                <span class="ml-auto text-xs text-orange-600">Pro</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Simple JavaScript for zone selection enhancement -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        let selectedZone = 'main_content';
+
+        // Handle zone selection with visual feedback
+        document.addEventListener('click', function(e) {
+          if (e.target.closest('.zone-selector')) {
+            const button = e.target.closest('.zone-selector');
+            const zone = button.dataset.zone;
+            selectedZone = zone;
+
+            // Update visual selection
+            document.querySelectorAll('.zone-selector').forEach(btn => {
+              btn.classList.remove('border-blue-500', 'bg-blue-50', 'text-blue-700');
+              btn.classList.add('border-gray-200');
+            });
+            button.classList.remove('border-gray-200');
+            button.classList.add('border-blue-500', 'bg-blue-50', 'text-blue-700');
+          }
+
+          // Update block buttons with selected zone before Phoenix handles them
+          if (e.target.closest('.add-block-btn')) {
+            const button = e.target.closest('.add-block-btn');
+            button.setAttribute('phx-value-zone', selectedZone);
+          }
+        });
+
+        // Set default selection
+        const defaultButton = document.querySelector('.zone-selector[data-zone="main_content"]');
+        if (defaultButton) {
+          defaultButton.classList.add('border-blue-500', 'bg-blue-50', 'text-blue-700');
+          defaultButton.classList.remove('border-gray-200');
+        }
+      });
+    </script>
+    """
+  end
+
+
+  defp map_block_type_to_section_type(block_type) do
+    case block_type do
+      "hero_card" -> "hero"
+      "about_card" -> "about"
+      "experience_card" -> "experience"
+      "skills_card" -> "skills"
+      "project_card" -> "portfolio"
+      "contact_card" -> "contact"
+      "testimonial_card" -> "testimonials"
+      "service_card" -> "services"
+      "gallery_card" -> "gallery"
+      "video_card" -> "video"
+      "social_card" -> "social"
+      "text_card" -> "text"
+      _ -> "text"
+    end
+  end
+
+  defp get_default_title_for_block_type(block_type) do
+    case block_type do
+      "hero_card" -> "Welcome"
+      "about_card" -> "About Me"
+      "experience_card" -> "Work Experience"
+      "skills_card" -> "Skills & Expertise"
+      "project_card" -> "Featured Projects"
+      "contact_card" -> "Get In Touch"
+      "testimonial_card" -> "What People Say"
+      "service_card" -> "Services"
+      "gallery_card" -> "Gallery"
+      "video_card" -> "Video"
+      "social_card" -> "Connect With Me"
+      "text_card" -> "Custom Content"
+      _ -> "New Section"
+    end
+  end
+
+  defp get_default_content_for_block_type(block_type) do
+    base_content = %{
+      "created_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
+      "block_type" => block_type
+    }
+
+    case block_type do
+      "hero_card" ->
+        Map.merge(base_content, %{
+          "subtitle" => "Professional [Your Title]",
+          "description" => "Brief introduction about yourself and what you do.",
+          "cta_text" => "Get Started",
+          "background_style" => "gradient"
+        })
+      "about_card" ->
+        Map.merge(base_content, %{
+          "description" => "Tell your story here. What drives you? What's your background?",
+          "image_url" => "",
+          "highlights" => []
+        })
+      "experience_card" ->
+        Map.merge(base_content, %{
+          "experiences" => [
+            %{
+              "title" => "Your Job Title",
+              "company" => "Company Name",
+              "duration" => "2020 - Present",
+              "description" => "Brief description of your role and achievements."
+            }
+          ]
+        })
+      "skills_card" ->
+        Map.merge(base_content, %{
+          "skills" => [
+            %{"name" => "Skill 1", "level" => "Expert"},
+            %{"name" => "Skill 2", "level" => "Advanced"},
+            %{"name" => "Skill 3", "level" => "Intermediate"}
+          ]
+        })
+      "contact_card" ->
+        Map.merge(base_content, %{
+          "email" => "your.email@example.com",
+          "phone" => "",
+          "location" => "Your City, Country",
+          "social_links" => []
+        })
+      _ ->
+        Map.merge(base_content, %{
+          "description" => "Add your content here."
+        })
+    end
+  end
+
+  defp get_next_position_for_zone(portfolio_id, zone) do
+    # Get current sections in this zone
+    case Portfolios.list_portfolio_sections(portfolio_id) do
+      sections when is_list(sections) ->
+        zone_sections = Enum.filter(sections, fn section ->
+          get_in(section, [:metadata, "zone"]) == zone
+        end)
+        length(zone_sections) + 1
+      _ -> 1
+    end
+  rescue
+    _ -> 1
+  end
+
+  defp add_section_to_zone(layout_zones, zone, section) do
+    zone_atom = String.to_atom(zone)
+    current_blocks = Map.get(layout_zones, zone_atom, [])
+
+    new_block = %{
+      id: section.id,
+      block_type: String.to_atom(get_in(section, [:metadata, "block_type"]) || "text_card"),
+      content_data: section.content || %{},
+      original_section: section,
+      position: section.position,
+      visible: section.visible,
+      zone: zone_atom
+    }
+
+    Map.put(layout_zones, zone_atom, current_blocks ++ [new_block])
+  end
+
+  defp get_block_display_name(block_type) do
+    case block_type do
+      "hero_card" -> "Hero Banner"
+      "about_card" -> "About Section"
+      "experience_card" -> "Work Experience"
+      "skills_card" -> "Skills"
+      "project_card" -> "Projects"
+      "contact_card" -> "Contact Info"
+      "testimonial_card" -> "Testimonials"
+      "service_card" -> "Services"
+      "gallery_card" -> "Image Gallery"
+      "video_card" -> "Video"
+      "social_card" -> "Social Links"
+      "text_card" -> "Text Block"
+      _ -> "Content Block"
+    end
+  end
+
+  defp format_zone_name(zone) do
+    case zone do
+      "hero" -> "Hero Section"
+      "main_content" -> "Main Content"
+      "sidebar" -> "Sidebar"
+      "footer" -> "Footer"
+      _ -> String.replace(zone, "_", " ") |> String.capitalize()
+    end
+  end
 end

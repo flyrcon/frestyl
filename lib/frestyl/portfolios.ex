@@ -4,8 +4,12 @@ defmodule Frestyl.Portfolios do
   Seamlessly integrated with existing functionality.
   """
 
+  use Ecto.Schema
+  import Ecto.Changeset
+
   import Ecto.Query, warn: false
   require Logger  # 🔥 ADD THIS LINE
+  alias Ecto.Multi
 
   alias Frestyl.Repo
   alias Frestyl.Portfolios.{
@@ -735,16 +739,33 @@ defmodule Frestyl.Portfolios do
   @doc """
   Safely deletes a section and its associated media
   """
-  def delete_section(%PortfolioSection{} = section) do
+  def delete_section(section) do
     Multi.new()
-    |> Multi.delete_all(:delete_media, fn _ ->
-      from(m in PortfolioMedia, where: m.section_id == ^section.id)
+    |> Multi.delete(:section, section)
+    |> Multi.run(:update_positions, fn repo, %{section: deleted_section} ->
+      # Update positions of remaining sections
+      from(s in PortfolioSection,
+        where: s.portfolio_id == ^deleted_section.portfolio_id and s.position > ^deleted_section.position
+      )
+      |> repo.update_all(inc: [position: -1])
+
+      {:ok, :positions_updated}
     end)
-    |> Multi.delete(:delete_section, section)
     |> Repo.transaction()
     |> case do
-      {:ok, %{delete_section: section}} -> {:ok, section}
-      {:error, _failed_operation, failed_value, _changes_so_far} -> {:error, failed_value}
+      {:ok, %{section: section}} -> {:ok, section}
+      {:error, _failed_operation, changeset, _changes} -> {:error, changeset}
+    end
+  end
+
+  # Also fix any other functions using Multi without the alias
+  def delete_portfolio_section(section) do
+    Multi.new()
+    |> Multi.delete(:section, section)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{section: section}} -> {:ok, section}
+      {:error, _failed_operation, changeset, _changes} -> {:error, changeset}
     end
   end
 

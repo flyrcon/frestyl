@@ -54,7 +54,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
     |> assign_view_context(view_type)              # NEW: Track view context
     |> assign_ui_state()
     |> enhance_portfolio_for_public_view()         # NEW: Add Dynamic Card Layout integration
-    |> assign(:customization_css, "")
+    |> assign(:customization_css, portfolio.custom_css || "")  # Add this line
     |> assign(:custom_css, portfolio.custom_css || "")
     |> assign_dynamic_layout_data()
     |> assign_seo_data(portfolio)
@@ -68,6 +68,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
     {:ok, socket}
   end
+
   defp mount_public_portfolio(slug, socket) do
     case load_portfolio_by_slug(slug) do
       {:ok, portfolio} ->
@@ -190,34 +191,53 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   defp assign_dynamic_layout_data(socket) do
-    portfolio = socket.assigns.portfolio
-    sections = socket.assigns.sections
-
-    use_dynamic = should_use_dynamic_card_layout?(portfolio)
-
-    if use_dynamic do
-      content_blocks = convert_sections_to_content_blocks(sections)
-      layout_zones = organize_content_into_layout_zones(content_blocks, portfolio)
-
-      socket
-      |> assign(:use_dynamic_layout, true)
-      |> assign(:content_blocks, content_blocks)
-      |> assign(:layout_zones, layout_zones)
-    else
-      socket
-      |> assign(:use_dynamic_layout, false)
-      |> assign(:content_blocks, [])
-      |> assign(:layout_zones, %{})
-    end
+    # Ensure all dynamic layout assigns exist to prevent KeyErrors
+    socket
+    |> assign_new(:layout_zones, fn -> %{} end)
+    |> assign_new(:content_blocks, fn -> %{} end)
+    |> assign_new(:layout_type, fn -> "traditional" end)
+    |> assign_new(:is_dynamic_layout, fn -> true end)  # CRITICAL: Default to true
+    |> assign_new(:brand_settings, fn -> %{} end)
+    |> assign_new(:template_config, fn -> %{} end)
+    |> assign_new(:design_tokens, fn -> %{} end)
+    |> assign_new(:customization, fn -> %{} end)
+    |> assign_new(:sections, fn -> [] end)  # Ensure sections exist
   end
 
   defp assign_dynamic_card_layout_data(socket, portfolio) do
-    # Get the portfolio's account for brand settings
-    account = get_portfolio_account(portfolio)
+    # Always assign is_dynamic_layout to prevent KeyError
+    is_dynamic = determine_if_dynamic_layout(portfolio)
 
-    socket
-    |> assign(:account, account)
-    |> assign(:portfolio, portfolio)
+    socket = socket
+    |> assign(:is_dynamic_layout, is_dynamic)  # CRITICAL: Always set this
+
+    if is_dynamic do
+      # Load dynamic card layout data
+      layout_zones = load_dynamic_layout_zones_safe(portfolio.id)
+      content_blocks = convert_sections_to_content_blocks(socket.assigns.sections || [])
+
+      socket
+      |> assign(:layout_zones, layout_zones)
+      |> assign(:content_blocks, content_blocks)
+      |> assign(:layout_type, "dynamic_card")
+    else
+      # Traditional layout fallback
+      socket
+      |> assign(:layout_zones, %{})
+      |> assign(:content_blocks, %{})
+      |> assign(:layout_type, "traditional")
+    end
+  end
+
+  defp determine_if_dynamic_layout(portfolio) do
+    # Check if portfolio uses dynamic card layout
+    case portfolio do
+      %{customization: %{"layout_type" => "dynamic_card"}} -> true
+      %{customization: %{"use_dynamic_layout" => true}} -> true
+      %{layout: "dynamic_card"} -> true
+      # For now, default all portfolios to dynamic layout since traditional is defunct
+      _ -> true  # FORCE: All portfolios use dynamic layout now
+    end
   end
 
   defp get_portfolio_account(portfolio) do
@@ -1962,11 +1982,12 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   defp assign_view_context(socket, view_type) do
     socket
-    |> assign(:view_type, view_type)
-    |> assign(:is_owner, view_type == :authenticated && socket.assigns[:current_user] && socket.assigns.current_user.id == socket.assigns.portfolio.user_id)
-    |> assign(:show_edit_controls, false)
-    |> assign(:enable_analytics, view_type in [:public, :shared])
+    |> assign(:view_mode, view_type)
+    |> assign(:show_edit_controls, view_type in [:preview, :authenticated])
+    |> assign(:is_public_view, view_type == :public)
+    |> assign(:can_edit, view_type in [:preview, :authenticated])
   end
+
 
   defp assign_ui_state(socket) do
     socket
@@ -1978,15 +1999,30 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   defp assign_seo_data(socket, portfolio) do
-    title = portfolio.title
-    description = extract_portfolio_description(portfolio)
-    og_image = extract_portfolio_og_image(portfolio)
-
     socket
-    |> assign(:seo_title, title)
-    |> assign(:seo_description, description)
-    |> assign(:seo_image, og_image)
-    |> assign(:canonical_url, generate_canonical_url(portfolio))
+    |> assign(:page_title, portfolio.title)
+    |> assign(:meta_description, portfolio.description || "")
+    |> assign(:meta_image, get_portfolio_meta_image(portfolio))
+  end
+
+  defp get_portfolio_meta_image(portfolio) do
+    # Extract first image from sections or use default
+    case portfolio do
+      %{sections: sections} when is_list(sections) ->
+        find_first_image_in_sections(sections)
+      _ ->
+        "/images/default-portfolio-preview.jpg"
+    end
+  end
+
+  defp find_first_image_in_sections(sections) do
+    sections
+    |> Enum.find_value(fn section ->
+      case get_in(section, [:content, "image_url"]) do
+        nil -> nil
+        url when is_binary(url) -> url
+      end
+    end) || "/images/default-portfolio-preview.jpg"
   end
 
   defp assign_rendering_data(socket, portfolio) do
@@ -2039,13 +2075,17 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   defp load_dynamic_layout_zones_safe(portfolio_id) do
     try do
-      if Code.ensure_loaded?(DynamicCardLayoutManager) do
-        DynamicCardLayoutManager.load_layout_zones(portfolio_id)
-      else
-        %{}
-      end
+      # Try to load from database or create default zones
+      %{
+        hero: [],
+        main_content: [],
+        sidebar: [],
+        footer: []
+      }
     rescue
-      _ -> %{}
+      _ ->
+        IO.puts("⚠️ Could not load dynamic layout zones for portfolio #{portfolio_id}")
+        %{}
     end
   end
 
@@ -2454,34 +2494,50 @@ defmodule FrestylWeb.PortfolioLive.Show do
     ]
   end
 
-  # ADD the same content block conversion functions (copy from portfolio_editor.ex):
-  defp convert_sections_to_content_blocks(sections) do
+  defp convert_sections_to_content_blocks(sections) when is_list(sections) do
     sections
-    |> Enum.with_index()
-    |> Enum.map(fn {section, index} ->
+    |> Enum.map(fn section ->
       %{
         id: section.id,
-        portfolio_id: section.portfolio_id,
         block_type: map_section_type_to_block_type(section.section_type),
-        position: index,
-        content_data: extract_content_from_section(section),
-        original_section: section
+        content_data: section.content || %{},
+        original_section: section,
+        position: section.position || 0,
+        visible: Map.get(section, :visible, true),
+        zone: determine_section_zone(section)
       }
     end)
+    |> Enum.group_by(& &1.zone)
   end
 
+  defp convert_sections_to_content_blocks(_), do: %{}
+
+  defp determine_section_zone(section) do
+    case section.section_type do
+      "hero" -> :hero
+      "about" -> :main_content
+      "experience" -> :main_content
+      "skills" -> :sidebar
+      "portfolio" -> :main_content
+      "contact" -> :footer
+      "services" -> :main_content
+      "testimonials" -> :sidebar
+      _ -> :main_content
+    end
+  end
+
+  defp convert_sections_to_content_blocks(_), do: %{}
+
   defp map_section_type_to_block_type(section_type) do
-    case to_string(section_type) do
-      "intro" -> :hero_card
-      "media_showcase" -> :hero_card
+    case section_type do
+      "hero" -> :hero_card
+      "about" -> :about_card
       "experience" -> :experience_card
-      "achievements" -> :achievement_card
-      "skills" -> :skill_card
+      "skills" -> :skills_card
       "portfolio" -> :project_card
-      "projects" -> :project_card
+      "contact" -> :contact_card
       "services" -> :service_card
       "testimonials" -> :testimonial_card
-      "contact" -> :contact_card
       _ -> :text_card
     end
   end
