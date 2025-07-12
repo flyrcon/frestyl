@@ -135,8 +135,9 @@ defmodule FrestylWeb.Router do
     # Public portfolio routes
     # Public portfolio viewing
 
-    live "/p/:slug", PortfolioLive.Show, :public
     live "/portfolio/:slug", PortfolioLive.View, :show  # Alternative URL
+    live "/p/:slug", PortfolioLive.Show, :public
+
 
     # Shared portfolio access via token
     live "/share/:token", PortfolioLive.SharedView, :shared

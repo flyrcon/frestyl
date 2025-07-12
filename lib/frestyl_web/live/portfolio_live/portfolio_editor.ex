@@ -239,6 +239,169 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     warnings
   end
 
+  defp has_video_intro?(sections) do
+    Enum.any?(sections, fn section ->
+      is_video_intro_section?(section)
+    end)
+  end
+
+  defp video_intro_visible?(sections) do
+    case get_video_intro_section(sections) do
+      nil -> false
+      section -> section.visible
+    end
+  end
+
+  defp get_video_intro_section(sections) do
+    Enum.find(sections, fn section ->
+      is_video_intro_section?(section)
+    end)
+  end
+
+  defp is_video_intro_section?(section) do
+    case section do
+      # Check by section type and content
+      %{section_type: :intro, content: content} when is_map(content) ->
+        has_video_content?(content)
+
+      %{section_type: "intro", content: content} when is_map(content) ->
+        has_video_content?(content)
+
+      # Check by title patterns
+      %{title: title} when is_binary(title) ->
+        title_lower = String.downcase(title)
+        String.contains?(title_lower, "video") and
+        (String.contains?(title_lower, "intro") or String.contains?(title_lower, "introduction"))
+
+      # Check by content type
+      %{content: content} when is_map(content) ->
+        Map.get(content, "video_type") == "introduction" or
+        Map.get(content, "media_type") == "video"
+
+      _ ->
+        false
+    end
+  end
+
+  defp has_video_content?(content) when is_map(content) do
+    # Check for video-related content fields
+    Map.has_key?(content, "video_url") or
+    Map.has_key?(content, "video_file") or
+    Map.has_key?(content, "media_file") or
+    Map.get(content, "video_type") == "introduction"
+  end
+
+  defp has_video_content?(_), do: false
+
+  defp has_video_intro?(sections) when is_list(sections) do
+    try do
+      Enum.any?(sections, fn section ->
+        is_video_intro_section?(section)
+      end)
+    rescue
+      _ -> false
+    end
+  end
+
+  defp has_video_intro?(_), do: false
+
+  defp video_intro_visible?(sections) when is_list(sections) do
+    try do
+      case get_video_intro_section(sections) do
+        nil -> false
+        section -> Map.get(section, :visible, false)
+      end
+    rescue
+      _ -> false
+    end
+  end
+
+  defp video_intro_visible?(_), do: false
+
+  defp get_video_intro_section(sections) when is_list(sections) do
+    try do
+      Enum.find(sections, fn section ->
+        is_video_intro_section?(section)
+      end)
+    rescue
+      _ -> nil
+    end
+  end
+
+  defp get_video_intro_section(_), do: nil
+
+  defp is_video_intro_section?(section) when is_map(section) do
+    try do
+      case section do
+        # Check by section type and content
+        %{section_type: :intro, content: content} when is_map(content) ->
+          has_video_content?(content)
+
+        %{section_type: "intro", content: content} when is_map(content) ->
+          has_video_content?(content)
+
+        # Check by title patterns
+        %{title: title} when is_binary(title) ->
+          title_lower = String.downcase(title)
+          String.contains?(title_lower, "video") and
+          (String.contains?(title_lower, "intro") or String.contains?(title_lower, "introduction"))
+
+        # Check by content type
+        %{content: content} when is_map(content) ->
+          Map.get(content, "video_type") == "introduction" or
+          Map.get(content, "media_type") == "video"
+
+        _ ->
+          false
+      end
+    rescue
+      _ -> false
+    end
+  end
+
+  defp is_video_intro_section?(_), do: false
+
+  defp has_video_content?(content) when is_map(content) do
+    try do
+      Map.has_key?(content, "video_url") or
+      Map.has_key?(content, "video_file") or
+      Map.has_key?(content, "media_file") or
+      Map.get(content, "video_type") == "introduction"
+    rescue
+      _ -> false
+    end
+  end
+
+  defp has_video_content?(_), do: false
+
+  defp get_sections_safely(data) do
+    try do
+      case data do
+        # If it's assigns (a map with :sections key)
+        %{sections: sections} when is_list(sections) ->
+          sections
+
+        # If it's assigns (a map with "sections" string key)
+        %{"sections" => sections} when is_list(sections) ->
+          sections
+
+        # If it's already a list of sections
+        sections when is_list(sections) ->
+          sections
+
+        # If it's a single section
+        section when is_map(section) ->
+          [section]
+
+        # Fallback
+        _ ->
+          []
+      end
+    rescue
+      _ -> []
+    end
+  end
+
   defp convert_sections_to_clean_layout_zones(sections) do
     sections
     |> Enum.group_by(fn section ->
@@ -1130,7 +1293,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     }
   end
 
-
   defp determine_layout_category(portfolio) do
     case portfolio.theme do
       theme when theme in ["professional_service", "consultant", "freelancer"] -> :service_provider
@@ -1555,14 +1717,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     """
   end
 
-
-  defp get_portfolio_layout(portfolio) do
-    case portfolio.customization do
-      %{"layout" => layout} when is_binary(layout) -> layout
-      _ -> portfolio.theme || "dynamic_card_layout"
-    end
-  end
-
   # And update any functions that access portfolio.layout
   # For example, in get_current_layout_config:
   defp get_current_layout_config(portfolio, brand_settings) do
@@ -1934,8 +2088,8 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
       IO.puts("🔥🔥🔥 Creating section with simple attrs: #{inspect(attrs)}")
 
-      # Try to create the section
-      case Portfolios.create_portfolio_section(attrs) do
+      # FIXED: Use Portfolios.create_section instead of create_portfolio_section
+      case Portfolios.create_section(attrs) do
         {:ok, new_section} ->
           IO.puts("🔥🔥🔥 SUCCESS: Section created: #{inspect(new_section.id)}")
 
@@ -1962,6 +2116,127 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
+  # Video intro
+
+  @impl true
+  def handle_event("start_video_intro_recording", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_video_recorder, true)
+    |> assign(:video_recording_mode, :intro)}
+  end
+
+  @impl true
+  def handle_event("preview_video_intro", _params, socket) do
+    video_section = get_video_intro_section(socket.assigns.sections)
+
+    if video_section do
+      {:noreply,
+      socket
+      |> assign(:show_video_preview, true)
+      |> assign(:preview_video_section, video_section)}
+    else
+      {:noreply, put_flash(socket, :error, "No video introduction found")}
+    end
+  end
+
+  @impl true
+  def handle_event("edit_video_intro", _params, socket) do
+    video_section = get_video_intro_section(socket.assigns.sections)
+
+    if video_section do
+      {:noreply,
+      socket
+      |> assign(:editing_section, video_section)
+      |> assign(:section_edit_mode, true)
+      |> assign(:section_edit_tab, "media")}
+    else
+      {:noreply, put_flash(socket, :error, "No video introduction found")}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_video_menu", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_video_menu, false)
+    {:noreply, assign(socket, :show_video_menu, !current_state)}
+  end
+
+  @impl true
+  def handle_event("close_video_menu", _params, socket) do
+    {:noreply, assign(socket, :show_video_menu, false)}
+  end
+
+  @impl true
+  def handle_event("rerecord_video_intro", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_video_recorder, true)
+    |> assign(:video_recording_mode, :rerecord)
+    |> assign(:show_video_menu, false)}
+  end
+
+  @impl true
+  def handle_event("toggle_video_visibility", _params, socket) do
+    video_section = get_video_intro_section(socket.assigns.sections)
+
+    if video_section do
+      case Portfolios.update_section(video_section, %{visible: !video_section.visible}) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == video_section.id, do: updated_section, else: s
+          end)
+
+          visibility_text = if updated_section.visible, do: "visible", else: "hidden"
+
+          {:noreply,
+          socket
+          |> assign(:sections, updated_sections)
+          |> assign(:show_video_menu, false)
+          |> put_flash(:info, "Video introduction is now #{visibility_text}")}
+
+        {:error, _changeset} ->
+          {:noreply,
+          socket
+          |> assign(:show_video_menu, false)
+          |> put_flash(:error, "Failed to update video visibility")}
+      end
+    else
+      {:noreply,
+      socket
+      |> assign(:show_video_menu, false)
+      |> put_flash(:error, "No video introduction found")}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_video_intro", _params, socket) do
+    video_section = get_video_intro_section(socket.assigns.sections)
+
+    if video_section do
+      case delete_section(video_section.id) do
+        {:ok, _deleted_section} ->
+          updated_sections = Enum.reject(socket.assigns.sections, &(&1.id == video_section.id))
+
+          {:noreply,
+          socket
+          |> assign(:sections, updated_sections)
+          |> assign(:show_video_menu, false)
+          |> put_flash(:info, "Video introduction deleted successfully")}
+
+        {:error, _reason} ->
+          {:noreply,
+          socket
+          |> assign(:show_video_menu, false)
+          |> put_flash(:error, "Failed to delete video introduction")}
+      end
+    else
+      {:noreply,
+      socket
+      |> assign(:show_video_menu, false)
+      |> put_flash(:error, "No video introduction found")}
+    end
+  end
+
   # ============================================================================
   # ADD THIS CATCH-ALL FOR ANY PARAMETER MISMATCHES
   # ============================================================================
@@ -1972,21 +2247,19 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     {:noreply, put_flash(socket, :error, "❌ Wrong parameters: #{inspect(params)}")}
   end
 
-
   @impl true
-  def handle_event("delete_section", %{"section_id" => section_id}, socket) do
-    section_id = String.to_integer(section_id)
+  def handle_event("delete_section", %{"section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
 
-    case delete_section(section_id) do
+    case delete_section(section_id_int) do
       {:ok, _deleted_section} ->
-        sections = Enum.reject(socket.assigns.sections, &(&1.id == section_id))
+        sections = Enum.reject(socket.assigns.sections, &(&1.id == section_id_int))
 
         socket = socket
         |> assign(:sections, sections)
         |> assign(:editing_section, nil)
         |> assign(:unsaved_changes, true)
-
-        broadcast_sections_update(socket)
+        |> put_flash(:info, "Section deleted successfully")
 
         {:noreply, socket}
 
@@ -3413,38 +3686,7 @@ end
     end
   end
 
-  @impl true
-  def handle_event("apply_color_scheme", %{"scheme" => scheme}, socket) do
-    scheme_config = case Enum.find(get_color_schemes(), fn {key, _} -> key == scheme end) do
-      {_, config} -> config
-      nil -> %{}
-    end
 
-    portfolio = socket.assigns.portfolio
-    current_customization = portfolio.customization || %{}
-
-    updated_customization = current_customization
-    |> Map.put("color_scheme", scheme)
-    |> Map.put("primary_color", scheme_config[:primary] || "#3b82f6")
-    |> Map.put("secondary_color", scheme_config[:secondary] || "#64748b")
-    |> Map.put("accent_color", scheme_config[:accent] || "#f59e0b")
-
-    IO.puts("🔥 Applying color scheme: #{scheme}")
-
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        socket = socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:unsaved_changes, false)
-        |> put_flash(:info, "Color scheme applied!")
-
-        {:noreply, socket}
-
-      {:error, changeset} ->
-        IO.puts("🔥 Failed to apply color scheme: #{inspect(changeset)}")
-        {:noreply, put_flash(socket, :error, "Failed to apply color scheme")}
-    end
-  end
 
   @impl true
   def handle_event("apply_color_preset", %{"preset" => preset_json}, socket) do
@@ -3540,47 +3782,7 @@ end
     end
   end
 
-  @impl true
-  def handle_event("update_typography", %{"property" => property, "value" => value}, socket) do
-    IO.puts("🎨 UPDATE TYPOGRAPHY: #{property} = #{value}")
 
-    try do
-      portfolio = socket.assigns.portfolio
-      current_customization = portfolio.customization || %{}
-
-      # Update typography property
-      updated_customization = Map.put(current_customization, property, value)
-
-      case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-        {:ok, updated_portfolio} ->
-          # Generate new CSS
-          updated_css = generate_portfolio_css_safe(updated_customization, portfolio.theme)
-
-          socket = socket
-          |> assign(:portfolio, updated_portfolio)
-          |> assign(:customization, updated_customization)
-          |> assign(:preview_css, updated_css)
-          |> assign(:unsaved_changes, false)
-          |> push_event("typography_updated", %{
-            property: property,
-            value: value,
-            css: updated_css
-          })
-
-          # Broadcast to live preview
-          broadcast_design_update(socket, updated_customization)
-
-          {:noreply, socket}
-
-        {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to update typography")}
-      end
-    rescue
-      error ->
-        IO.puts("❌ Typography update error: #{inspect(error)}")
-        {:noreply, socket}
-    end
-  end
 
   @impl true
   def handle_event("add_experience_item", %{"block_id" => block_id}, socket) do
@@ -3914,27 +4116,6 @@ end
     end
   end
 
-  @impl true
-  def handle_event("update_layout", %{"field" => "layout", "value" => layout_value}, socket) do
-    # Same as update_layout_live but without immediate broadcast
-    portfolio = socket.assigns.portfolio
-    current_customization = portfolio.customization || %{}
-    updated_customization = Map.put(current_customization, "layout", layout_value)
-
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        socket = socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:portfolio_layout, layout_value)
-        |> assign(:unsaved_changes, false)
-
-        {:noreply, socket}
-
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to save layout changes")}
-    end
-  end
 
   defp strip_html_safely(value) when is_binary(value) do
     value
@@ -4368,6 +4549,205 @@ end
     end
   end
 
+  @impl true
+  def handle_event("update_theme", %{"theme" => theme}, socket) do
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{theme: theme}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Theme updated to #{String.capitalize(theme)}")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update theme")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_design_color", %{"color" => color_key, "value" => color_value}, socket) do
+    current_customization = socket.assigns.portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, color_key, color_value)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> broadcast_design_update(updated_customization)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update color")}
+    end
+  end
+
+  @impl true
+  def handle_event("apply_color_scheme", %{"scheme" => scheme}, socket) do
+    scheme_colors = case scheme do
+      "professional" -> %{"primary_color" => "#1e40af", "secondary_color" => "#64748b", "accent_color" => "#3b82f6"}
+      "creative" -> %{"primary_color" => "#7c3aed", "secondary_color" => "#ec4899", "accent_color" => "#f59e0b"}
+      "warm" -> %{"primary_color" => "#dc2626", "secondary_color" => "#ea580c", "accent_color" => "#f59e0b"}
+      "cool" -> %{"primary_color" => "#0891b2", "secondary_color" => "#0284c7", "accent_color" => "#6366f1"}
+      "minimal" -> %{"primary_color" => "#374151", "secondary_color" => "#6b7280", "accent_color" => "#059669"}
+      _ -> %{}
+    end
+
+    current_customization = socket.assigns.portfolio.customization || %{}
+    updated_customization = Map.merge(current_customization, scheme_colors)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> broadcast_design_update(updated_customization)
+        |> put_flash(:info, "Applied #{String.capitalize(scheme)} color scheme")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to apply color scheme")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_typography", %{"field" => field, "value" => value}, socket) do
+    current_customization = socket.assigns.portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, field, value)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> broadcast_design_update(updated_customization)
+        |> put_flash(:info, "Typography updated")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update typography")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_layout", %{"layout" => layout}, socket) do
+    current_customization = socket.assigns.portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, "layout", layout)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> broadcast_design_update(updated_customization)
+        |> put_flash(:info, "Layout updated to #{String.capitalize(layout)}")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update layout")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_layout_setting", %{"field" => field, "value" => value}, socket) do
+    current_customization = socket.assigns.portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, field, value)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> broadcast_design_update(updated_customization)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update layout setting")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_custom_css", %{"value" => css}, socket) do
+    current_customization = socket.assigns.portfolio.customization || %{}
+    updated_customization = Map.put(current_customization, "custom_css", css)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> broadcast_design_update(updated_customization)
+        |> put_flash(:info, "Custom CSS updated")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update custom CSS")}
+    end
+  end
+
+  @impl true
+  def handle_event("reset_color", %{"color" => color_key}, socket) do
+    current_customization = socket.assigns.portfolio.customization || %{}
+    default_color = get_default_color(color_key)
+    updated_customization = Map.put(current_customization, color_key, default_color)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> broadcast_design_update(updated_customization)
+        |> put_flash(:info, "Color reset to default")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to reset color")}
+    end
+  end
+
+  @impl true
+  def handle_event("reset_all_design", _params, socket) do
+    # Reset to theme defaults
+    theme_defaults = get_theme_defaults(socket.assigns.portfolio.theme)
+
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{customization: theme_defaults}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> broadcast_design_update(theme_defaults)
+        |> put_flash(:info, "All design settings reset to defaults")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to reset design settings")}
+    end
+  end
+
+  @impl true
+  def handle_event("preview_design_changes", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_design_preview, true)
+    |> put_flash(:info, "Preview mode enabled")}
+  end
+
+  @impl true
+  def handle_event("save_design_changes", _params, socket) do
+    # Force save current state
+    case Portfolios.update_portfolio(socket.assigns.portfolio, %{}) do
+      {:ok, updated_portfolio} ->
+        {:noreply,
+        socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Design changes saved successfully")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to save design changes")}
+    end
+  end
+
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
@@ -4712,6 +5092,486 @@ end
     end
   end
 
+  defp render_section_content_editor(assigns) do
+    ~H"""
+    <div class="section-content-editor space-y-6">
+      <!-- Section Title -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Section Title</label>
+        <input type="text"
+              value={@editing_section.title}
+              phx-blur="update_section_field"
+              phx-value-field="title"
+              phx-value-section-id={@editing_section.id}
+              placeholder="Enter section title..."
+              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-semibold" />
+      </div>
+
+      <!-- Main Content -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Content</label>
+        <textarea phx-blur="update_section_content"
+                  phx-value-field="main_content"
+                  phx-value-section-id={@editing_section.id}
+                  rows="12"
+                  placeholder="Add content for this section..."
+                  class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"><%= get_in(@editing_section.content, ["main_content"]) || "" %></textarea>
+        <p class="text-xs text-gray-500 mt-2">
+          Content will be automatically formatted for display. HTML will be cleaned for security.
+        </p>
+      </div>
+
+      <!-- Section Visibility -->
+      <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+        <div>
+          <h4 class="font-medium text-gray-900">Section Visibility</h4>
+          <p class="text-sm text-gray-600">Control whether this section appears on your portfolio</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox"
+                checked={@editing_section.visible}
+                phx-click="update_section_field"
+                phx-value-field="visible"
+                phx-value-value={!@editing_section.visible}
+                phx-value-section-id={@editing_section.id}
+                class="sr-only peer">
+          <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+        </label>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_section_media_editor(assigns) do
+    ~H"""
+    <div class="section-media-editor">
+      <div class="text-center py-12">
+        <div class="text-gray-400 text-xl mb-4">Media Management</div>
+        <p class="text-gray-600">Upload and manage media for this section</p>
+        <button type="button" class="mt-4 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+          Upload Media
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_section_settings_editor(assigns) do
+    ~H"""
+    <div class="section-settings-editor space-y-6">
+      <!-- Section Position -->
+      <div>
+        <label class="block text-sm font-semibold text-gray-800 mb-3">Section Position</label>
+        <input type="number"
+              value={@editing_section.position}
+              phx-blur="update_section_field"
+              phx-value-field="position"
+              phx-value-section-id={@editing_section.id}
+              min="1"
+              class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+        <p class="text-xs text-gray-500 mt-2">Lower numbers appear first in your portfolio</p>
+      </div>
+
+      <!-- Danger Zone -->
+      <div class="border border-red-200 rounded-lg p-4 bg-red-50">
+        <h4 class="font-medium text-red-900 mb-2">Danger Zone</h4>
+        <p class="text-sm text-red-700 mb-4">Once you delete a section, there is no going back. Please be certain.</p>
+        <button type="button"
+                phx-click="delete_section"
+                phx-value-section-id={@editing_section.id}
+                data-confirm="Are you sure you want to delete this section? This action cannot be undone."
+                class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
+          Delete Section
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_design_tab(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Header -->
+      <div class="border-b border-gray-200 pb-4">
+        <h3 class="text-xl font-semibold text-gray-900">Design & Customization</h3>
+        <p class="text-sm text-gray-600 mt-1">Customize the look and feel of your portfolio</p>
+      </div>
+
+      <!-- Color Customization -->
+      <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <h4 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a2 2 0 002-2V5z"/>
+          </svg>
+          Brand Colors
+        </h4>
+
+        <!-- Quick Color Schemes -->
+        <div class="mb-6">
+          <label class="text-sm font-medium text-gray-700 mb-3 block">Quick Color Schemes</label>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <%= for {scheme_key, scheme_config} <- get_safe_color_schemes() do %>
+              <button type="button"
+                      phx-click="apply_color_scheme"
+                      phx-value-scheme={scheme_key}
+                      class="flex items-center p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
+                <div class="flex space-x-1 mr-3">
+                  <%= for color <- get_scheme_colors_safe(scheme_config) do %>
+                    <div class="w-4 h-4 rounded-full" style={"background-color: #{color}"}></div>
+                  <% end %>
+                </div>
+                <div>
+                  <div class="text-sm font-medium text-gray-900"><%= get_scheme_name_safe(scheme_config) %></div>
+                  <div class="text-xs text-gray-500"><%= get_scheme_description_safe(scheme_config) %></div>
+                </div>
+              </button>
+            <% end %>
+          </div>
+        </div>
+
+        <!-- Individual Color Controls -->
+        <div class="space-y-4">
+          <%= for {color_key, color_config} <- get_color_controls() do %>
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-900 mb-1"><%= color_config.label %></label>
+                <p class="text-xs text-gray-600"><%= color_config.description %></p>
+              </div>
+
+              <div class="flex items-center space-x-3">
+                <!-- Color Picker -->
+                <input type="color"
+                      value={get_portfolio_color(@portfolio, color_key)}
+                      phx-change="update_design_color"
+                      phx-value-color={color_key}
+                      class="w-12 h-12 rounded-lg border border-gray-300 cursor-pointer shadow-sm">
+
+                <!-- Hex Input -->
+                <input type="text"
+                      value={get_portfolio_color(@portfolio, color_key)}
+                      phx-change="update_design_color"
+                      phx-value-color={color_key}
+                      placeholder="#000000"
+                      class="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+
+                <!-- Reset Button -->
+                <button type="button"
+                        phx-click="reset_color"
+                        phx-value-color={color_key}
+                        class="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                        title="Reset to default">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Preview & Save -->
+      <div class="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div class="flex items-center">
+          <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <div>
+            <div class="text-sm font-medium text-blue-900">Design Changes</div>
+            <div class="text-xs text-blue-700">
+              <%= if Map.get(assigns, :unsaved_changes, false) do %>
+                You have unsaved design changes
+              <% else %>
+                All design changes are saved
+              <% end %>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <%= if Map.get(assigns, :unsaved_changes, false) do %>
+            <button type="button"
+                    phx-click="save_design_changes"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+              Save Changes
+            </button>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+
+  defp render_analytics_tab(assigns) do
+    ~H"""
+    <div class="analytics-tab space-y-6">
+      <div class="mb-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Portfolio Analytics</h3>
+
+        <!-- Analytics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <div class="text-2xl font-bold text-gray-900">0</div>
+            <div class="text-sm text-gray-600">Total Views</div>
+          </div>
+
+          <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <div class="text-2xl font-bold text-gray-900">0</div>
+            <div class="text-sm text-gray-600">Unique Visitors</div>
+          </div>
+
+          <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <div class="text-2xl font-bold text-gray-900">0%</div>
+            <div class="text-sm text-gray-600">Conversion Rate</div>
+          </div>
+        </div>
+
+        <div class="mt-4 text-xs text-gray-500">
+          Analytics data updates every 24 hours
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp get_safe_color_schemes do
+    # Return the safe color schemes we defined
+    get_color_schemes()
+  end
+
+  defp get_scheme_colors(scheme_config) do
+    case scheme_config do
+      %{colors: colors} when is_list(colors) -> colors
+      %{"colors" => colors} when is_list(colors) -> colors
+      %{primary: primary, secondary: secondary, accent: accent} -> [primary, secondary, accent]
+      %{"primary" => primary, "secondary" => secondary, "accent" => accent} -> [primary, secondary, accent]
+      _ -> ["#3b82f6", "#64748b", "#f59e0b"]  # fallback colors
+    end
+  end
+
+  defp get_scheme_name(scheme_config) do
+    case scheme_config do
+      %{name: name} when is_binary(name) -> name
+      %{"name" => name} when is_binary(name) -> name
+      _ -> "Color Scheme"
+    end
+  end
+
+  defp get_scheme_description(scheme_config) do
+    case scheme_config do
+      %{description: desc} when is_binary(desc) -> desc
+      %{"description" => desc} when is_binary(desc) -> desc
+      _ -> "Custom colors"
+    end
+  end
+
+  defp get_available_themes do
+    [
+      {"professional", %{
+        name: "Professional",
+        description: "Clean, corporate look",
+        icon: "<svg class='w-4 h-4 text-white' fill='currentColor' viewBox='0 0 20 20'><path fill-rule='evenodd' d='M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z' clip-rule='evenodd'></path></svg>",
+        color: "bg-blue-500"
+      }},
+      {"creative", %{
+        name: "Creative",
+        description: "Bold, artistic design",
+        icon: "<svg class='w-4 h-4 text-white' fill='currentColor' viewBox='0 0 20 20'><path fill-rule='evenodd' d='M4 2a2 2 0 00-2 2v11a3 3 0 106 0V4a2 2 0 00-2-2H4z' clip-rule='evenodd'></path></svg>",
+        color: "bg-purple-500"
+      }},
+      {"minimal", %{
+        name: "Minimal",
+        description: "Simple, clean layout",
+        icon: "<svg class='w-4 h-4 text-white' fill='currentColor' viewBox='0 0 20 20'><path fill-rule='evenodd' d='M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z' clip-rule='evenodd'></path></svg>",
+        color: "bg-gray-500"
+      }},
+      {"modern", %{
+        name: "Modern",
+        description: "Contemporary design",
+        icon: "<svg class='w-4 h-4 text-white' fill='currentColor' viewBox='0 0 20 20'><path fill-rule='evenodd' d='M2 5a2 2 0 012-2h8a2 2 0 012 2v10a2 2 0 002 2H4a2 2 0 01-2-2V5zm3 1h6v4H5V6zm6 6H5v2h6v-2z' clip-rule='evenodd'></path></svg>",
+        color: "bg-green-500"
+      }}
+    ]
+  end
+
+  defp get_color_schemes do
+    [
+      {"professional", %{
+        name: "Professional",
+        description: "Blue tones",
+        colors: ["#1e40af", "#64748b", "#3b82f6"]
+      }},
+      {"creative", %{
+        name: "Creative",
+        description: "Purple & pink",
+        colors: ["#7c3aed", "#ec4899", "#f59e0b"]
+      }},
+      {"warm", %{
+        name: "Warm",
+        description: "Red & orange",
+        colors: ["#dc2626", "#ea580c", "#f59e0b"]
+      }},
+      {"cool", %{
+        name: "Cool",
+        description: "Blue & teal",
+        colors: ["#0891b2", "#0284c7", "#6366f1"]
+      }},
+      {"minimal", %{
+        name: "Minimal",
+        description: "Grayscale",
+        colors: ["#374151", "#6b7280", "#059669"]
+      }}
+    ]
+  end
+
+  defp get_color_controls do
+    [
+      {"primary_color", %{
+        label: "Primary Color",
+        description: "Main brand color for headers and key elements"
+      }},
+      {"secondary_color", %{
+        label: "Secondary Color",
+        description: "Supporting color for text and backgrounds"
+      }},
+      {"accent_color", %{
+        label: "Accent Color",
+        description: "Highlight color for buttons and links"
+      }}
+    ]
+  end
+
+  defp get_available_fonts do
+    [
+      {"inter", "Inter (Default)"},
+      {"roboto", "Roboto"},
+      {"open_sans", "Open Sans"},
+      {"montserrat", "Montserrat"},
+      {"poppins", "Poppins"},
+      {"lato", "Lato"}
+    ]
+  end
+
+  defp get_available_layouts do
+    [
+      {"standard", %{
+        name: "Standard",
+        description: "Traditional layout"
+      }},
+      {"cards", %{
+        name: "Cards",
+        description: "Card-based sections"
+      }},
+      {"timeline", %{
+        name: "Timeline",
+        description: "Chronological layout"
+      }}
+    ]
+  end
+
+  defp get_safe_color_schemes do
+    try do
+      [
+        {"professional", %{
+          name: "Professional",
+          description: "Blue tones",
+          colors: ["#1e40af", "#64748b", "#3b82f6"]
+        }},
+        {"creative", %{
+          name: "Creative",
+          description: "Purple & pink",
+          colors: ["#7c3aed", "#ec4899", "#f59e0b"]
+        }},
+        {"warm", %{
+          name: "Warm",
+          description: "Red & orange",
+          colors: ["#dc2626", "#ea580c", "#f59e0b"]
+        }},
+        {"cool", %{
+          name: "Cool",
+          description: "Blue & teal",
+          colors: ["#0891b2", "#0284c7", "#6366f1"]
+        }},
+        {"minimal", %{
+          name: "Minimal",
+          description: "Grayscale",
+          colors: ["#374151", "#6b7280", "#059669"]
+        }}
+      ]
+    rescue
+      _ ->
+        [{"default", %{name: "Default", description: "Basic colors", colors: ["#3b82f6", "#64748b", "#f59e0b"]}}]
+    end
+  end
+
+  defp get_scheme_colors_safe(scheme_config) do
+    try do
+      case scheme_config do
+        %{colors: colors} when is_list(colors) ->
+          colors
+        %{"colors" => colors} when is_list(colors) ->
+          colors
+        %{primary: primary, secondary: secondary, accent: accent} ->
+          [primary, secondary, accent]
+        %{"primary" => primary, "secondary" => secondary, "accent" => accent} ->
+          [primary, secondary, accent]
+        _ ->
+          ["#3b82f6", "#64748b", "#f59e0b"]
+      end
+    rescue
+      _ -> ["#3b82f6", "#64748b", "#f59e0b"]
+    end
+  end
+
+  defp get_scheme_name_safe(scheme_config) do
+    try do
+      case scheme_config do
+        %{name: name} when is_binary(name) ->
+          name
+        %{"name" => name} when is_binary(name) ->
+          name
+        _ ->
+          "Color Scheme"
+      end
+    rescue
+      _ -> "Color Scheme"
+    end
+  end
+
+  defp get_scheme_description_safe(scheme_config) do
+    try do
+      case scheme_config do
+        %{description: desc} when is_binary(desc) ->
+          desc
+        %{"description" => desc} when is_binary(desc) ->
+          desc
+        _ ->
+          "Custom colors"
+      end
+    rescue
+      _ -> "Custom colors"
+    end
+  end
+
+  defp get_color_controls do
+    [
+      {"primary_color", %{
+        label: "Primary Color",
+        description: "Main brand color for headers and key elements"
+      }},
+      {"secondary_color", %{
+        label: "Secondary Color",
+        description: "Supporting color for text and backgrounds"
+      }},
+      {"accent_color", %{
+        label: "Accent Color",
+        description: "Highlight color for buttons and links"
+      }}
+    ]
+  end
+
+
   defp get_current_theme(assigns) do
     portfolio = Map.get(assigns, :portfolio, %{})
     customization = Map.get(portfolio, :customization, %{})
@@ -4864,6 +5724,11 @@ end
   end
 
   @impl true
+  def handle_event("switch_section_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :section_edit_tab, tab)}
+  end
+
+  @impl true
   def handle_event("switch_section_edit_tab", %{"tab" => tab}, socket) do
     IO.puts("🔧 Switching section edit tab to: #{tab}")
     {:noreply, assign(socket, :section_edit_tab, tab)}
@@ -4871,9 +5736,8 @@ end
 
   @impl true
   def handle_event("toggle_add_section_dropdown", _params, socket) do
-    show_dropdown = !Map.get(socket.assigns, :show_add_section_dropdown, false)
-    IO.puts("🔥 Toggling add section dropdown: #{show_dropdown}")
-    {:noreply, assign(socket, :show_add_section_dropdown, show_dropdown)}
+    current_state = Map.get(socket.assigns, :show_add_section_dropdown, false)
+    {:noreply, assign(socket, :show_add_section_dropdown, !current_state)}
   end
 
   @impl true
@@ -4891,13 +5755,17 @@ end
       visible: true
     }
 
-    Portfolios.create_portfolio_section(attrs)
+    # FIXED: Use Portfolios.create_section instead of create_portfolio_section
+    Portfolios.create_section(attrs)
   end
 
   defp delete_section(section_id) do
-    case Portfolios.get_portfolio_section(section_id) do
-      nil -> {:error, :not_found}
-      section -> Portfolios.delete_portfolio_section(section)
+    # FIXED: Use proper function names from portfolios.ex context with try/rescue
+    try do
+      section = Portfolios.get_section!(section_id)
+      Portfolios.delete_section(section)
+    rescue
+      Ecto.NoResultsError -> {:error, :not_found}
     end
   end
 
@@ -4920,6 +5788,16 @@ end
     end
   end
 
+  defp strip_html_safely(content) when is_binary(content) do
+    # Basic HTML stripping for security - you may want a more robust solution
+    content
+    |> String.replace(~r/<[^>]*>/, "")
+    |> String.trim()
+  end
+
+  defp strip_html_safely(content), do: content
+
+
   defp save_all_changes(portfolio, sections) do
     # This would typically save any pending changes
     {:ok, portfolio}
@@ -4935,7 +5813,95 @@ end
     end)
   end
 
-    defp process_external_video_url(url) do
+  defp section_allows_media?(section) do
+    # Define which section types support media attachments
+    section.section_type in [
+      :intro, :experience, :projects, :featured_project,
+      :case_study, :achievements, :testimonial, :media_showcase,
+      "intro", "experience", "projects", "featured_project",
+      "case_study", "achievements", "testimonial", "media_showcase"
+    ]
+  end
+
+  @impl true
+  def handle_event("manage_section_media", %{"section-id" => section_id}, socket) do
+    section_id_int = String.to_integer(section_id)
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
+
+    if section do
+      {:noreply,
+      socket
+      |> assign(:show_media_library, true)
+      |> assign(:media_modal_section_id, section_id_int)
+      |> assign(:media_modal_section, section)}
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  defp count_section_media(section_id) do
+    try do
+      # Try to get media count for this section
+      case Portfolios.list_section_media(section_id) do
+        media_list when is_list(media_list) -> length(media_list)
+        _ -> 0
+      end
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp get_theme_defaults(theme) do
+    case theme do
+      "professional" -> %{
+        "primary_color" => "#1e40af",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#3b82f6",
+        "font_family" => "inter",
+        "font_scale" => "medium",
+        "layout" => "standard",
+        "section_spacing" => "normal"
+      }
+      "creative" -> %{
+        "primary_color" => "#7c3aed",
+        "secondary_color" => "#ec4899",
+        "accent_color" => "#f59e0b",
+        "font_family" => "poppins",
+        "font_scale" => "medium",
+        "layout" => "cards",
+        "section_spacing" => "relaxed"
+      }
+      "minimal" -> %{
+        "primary_color" => "#374151",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#059669",
+        "font_family" => "inter",
+        "font_scale" => "medium",
+        "layout" => "standard",
+        "section_spacing" => "compact"
+      }
+      "modern" -> %{
+        "primary_color" => "#059669",
+        "secondary_color" => "#6b7280",
+        "accent_color" => "#f59e0b",
+        "font_family" => "montserrat",
+        "font_scale" => "medium",
+        "layout" => "timeline",
+        "section_spacing" => "normal"
+      }
+      _ -> %{
+        "primary_color" => "#3b82f6",
+        "secondary_color" => "#64748b",
+        "accent_color" => "#f59e0b",
+        "font_family" => "inter",
+        "font_scale" => "medium",
+        "layout" => "standard",
+        "section_spacing" => "normal"
+      }
+    end
+  end
+
+  defp process_external_video_url(url) do
     case Portfolios.detect_video_platform(url) do
       nil ->
         {:error, "Unsupported video platform"}
@@ -4995,18 +5961,12 @@ end
   end
 
   defp humanize_section_type(section_type) do
-    case section_type do
-      "hero" -> "Hero Section"
-      "about" -> "About Me"
-      "experience" -> "Experience"
-      "education" -> "Education"
-      "skills" -> "Skills"
-      "projects" -> "Projects"
-      "contact" -> "Contact"
-      "testimonials" -> "Testimonials"
-      "achievements" -> "Achievements"
-      _ -> String.capitalize(String.replace(to_string(section_type), "_", " "))
-    end
+    section_type
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.split()
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
   end
 
   defp humanize_category(category) do
@@ -5036,6 +5996,21 @@ end
     end
   end
 
+  defp get_next_position(portfolio_id) do
+    try do
+      # Get the maximum position for this portfolio
+      sections = Portfolios.list_portfolio_sections(portfolio_id) || []
+      case sections do
+        [] -> 1
+        sections ->
+          max_position = Enum.max_by(sections, & &1.position, fn -> %{position: 0} end).position
+          max_position + 1
+      end
+    rescue
+      _ -> 1  # Fallback position
+    end
+  end
+
   defp broadcast_preview_update(socket) do
     portfolio = socket.assigns.portfolio
 
@@ -5051,33 +6026,86 @@ end
   end
 
   defp generate_portfolio_css(customization) do
-    primary_color = customization["primary_color"] || "#374151"
-    secondary_color = customization["secondary_color"] || "#6b7280"
-    accent_color = customization["accent_color"] || "#059669"
-    background_color = customization["background_color"] || "#ffffff"
-    text_color = customization["text_color"] || "#1f2937"
+    primary = Map.get(customization, "primary_color", "#3b82f6")
+    secondary = Map.get(customization, "secondary_color", "#64748b")
+    accent = Map.get(customization, "accent_color", "#f59e0b")
+    font_family = Map.get(customization, "font_family", "inter")
+    font_scale = Map.get(customization, "font_scale", "medium")
+    custom_css = Map.get(customization, "custom_css", "")
+
+    # Font scale values
+    base_size = case font_scale do
+      "small" -> "14px"
+      "large" -> "18px"
+      _ -> "16px"  # medium
+    end
+
+    # Font family mapping
+    font_stack = case font_family do
+      "roboto" -> "'Roboto', sans-serif"
+      "open_sans" -> "'Open Sans', sans-serif"
+      "montserrat" -> "'Montserrat', sans-serif"
+      "poppins" -> "'Poppins', sans-serif"
+      "lato" -> "'Lato', sans-serif"
+      _ -> "'Inter', system-ui, sans-serif"  # inter default
+    end
 
     """
+    <style>
     :root {
-      --primary-color: #{primary_color};
-      --secondary-color: #{secondary_color};
-      --accent-color: #{accent_color};
-      --background-color: #{background_color};
-      --text-color: #{text_color};
+      --primary-color: #{primary};
+      --secondary-color: #{secondary};
+      --accent-color: #{accent};
+      --font-family: #{font_stack};
+      --base-font-size: #{base_size};
     }
 
     body {
-      background-color: var(--background-color);
-      color: var(--text-color);
+      font-family: var(--font-family);
+      font-size: var(--base-font-size);
+      color: var(--secondary-color);
     }
 
-    .primary { color: var(--primary-color); }
-    .secondary { color: var(--secondary-color); }
-    .accent { color: var(--accent-color); }
+    .text-primary { color: var(--primary-color) !important; }
+    .bg-primary { background-color: var(--primary-color) !important; }
+    .border-primary { border-color: var(--primary-color) !important; }
 
-    .bg-primary { background-color: var(--primary-color); }
-    .bg-secondary { background-color: var(--secondary-color); }
-    .bg-accent { background-color: var(--accent-color); }
+    .text-secondary { color: var(--secondary-color) !important; }
+    .bg-secondary { background-color: var(--secondary-color) !important; }
+
+    .text-accent { color: var(--accent-color) !important; }
+    .bg-accent { background-color: var(--accent-color) !important; }
+    .border-accent { border-color: var(--accent-color) !important; }
+
+    /* Headings */
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--primary-color);
+    }
+
+    /* Links */
+    a {
+      color: var(--accent-color);
+    }
+
+    a:hover {
+      color: var(--primary-color);
+    }
+
+    /* Buttons */
+    .btn-primary {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-color);
+      border-color: var(--accent-color);
+    }
+
+    /* Custom CSS */
+    #{custom_css}
+    </style>
     """
   end
 
@@ -5890,16 +6918,25 @@ end
     }
   end
 
-  # Additional broadcasting helpers
   defp broadcast_design_update(socket, customization) do
     portfolio = socket.assigns.portfolio
-    css = generate_css(customization)
 
+    # Generate CSS with new customization
+    css = generate_portfolio_css(customization)
+
+    # Broadcast to live preview
     Phoenix.PubSub.broadcast(
       Frestyl.PubSub,
       "portfolio_preview:#{portfolio.id}",
-      {:preview_update, customization, css}
+      {:design_update, %{customization: customization, css: css}}
     )
+
+    # Push event to update client-side CSS
+    socket
+    |> push_event("design_updated", %{
+      customization: customization,
+      css: css
+    })
   end
 
   defp broadcast_layout_update(socket, layout) do
@@ -6013,29 +7050,29 @@ end
   end
 
   @impl true
-  def handle_event("toggle_section_visibility", %{"section-id" => section_id}, socket) do
+  def handle_event("toggle_section_visibility", %{"id" => section_id}, socket) do
     section_id_int = String.to_integer(section_id)
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id_int))
 
-    case Enum.find(socket.assigns.sections, &(&1.id == section_id_int)) do
-      nil ->
-        {:noreply, put_flash(socket, :error, "Section not found")}
+    if section do
+      case Portfolios.update_section(section, %{visible: !section.visible}) do
+        {:ok, updated_section} ->
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == section_id_int, do: updated_section, else: s
+          end)
 
-      section ->
-        new_visibility = !section.visible
-        case Portfolios.update_section(section, %{visible: new_visibility}) do
-          {:ok, updated_section} ->
-            updated_sections = Enum.map(socket.assigns.sections, fn s ->
-              if s.id == section_id_int, do: updated_section, else: s
-            end)
+          visibility_text = if updated_section.visible, do: "visible", else: "hidden"
 
-            {:noreply, socket
-            |> assign(:sections, updated_sections)
-            |> assign(:editing_section, if(socket.assigns.editing_section && socket.assigns.editing_section.id == section_id_int, do: updated_section, else: socket.assigns.editing_section))
-            |> put_flash(:info, "Section visibility updated")}
+          {:noreply,
+          socket
+          |> assign(:sections, updated_sections)
+          |> put_flash(:info, "Section is now #{visibility_text}")}
 
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to update section visibility")}
-        end
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update section visibility")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
     end
   end
 
@@ -6127,17 +7164,38 @@ end
   # ============================================================================
 
   defp get_portfolio_color(portfolio, color_key) do
-    case portfolio.customization do
-      %{^color_key => color} when is_binary(color) -> color
-      _ ->
-        case color_key do
-          "primary_color" -> "#3b82f6"
-          "secondary_color" -> "#64748b"
-          "accent_color" -> "#f59e0b"
-          _ -> "#3b82f6"
-        end
+    Map.get(portfolio.customization || %{}, color_key, get_default_color(color_key))
+  end
+
+  defp get_default_color(color_key) do
+    case color_key do
+      "primary_color" -> "#3b82f6"
+      "secondary_color" -> "#64748b"
+      "accent_color" -> "#f59e0b"
+      _ -> "#000000"
     end
   end
+
+  defp get_portfolio_font(portfolio) do
+    Map.get(portfolio.customization || %{}, "font_family", "inter")
+  end
+
+  defp get_portfolio_font_scale(portfolio) do
+    Map.get(portfolio.customization || %{}, "font_scale", "medium")
+  end
+
+  defp get_portfolio_layout(portfolio) do
+    Map.get(portfolio.customization || %{}, "layout", "standard")
+  end
+
+  defp get_section_spacing(portfolio) do
+    Map.get(portfolio.customization || %{}, "section_spacing", "normal")
+  end
+
+  defp get_custom_css(portfolio) do
+    Map.get(portfolio.customization || %{}, "custom_css", "")
+  end
+
 
   defp get_zone_description(zone_name) do
     case zone_name do
@@ -6154,41 +7212,7 @@ end
   # EVENT HANDLERS - Updated for consolidated approach
   # ============================================================================
 
-  @impl true
-  def handle_event("update_design_color", %{"color" => color_key, "value" => color_value}, socket) do
-    portfolio = socket.assigns.portfolio
-    current_customization = portfolio.customization || %{}
-    updated_customization = Map.put(current_customization, color_key, color_value)
 
-    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
-      {:ok, updated_portfolio} ->
-        # Generate new CSS
-        new_css = generate_portfolio_css(updated_customization)
-
-        socket = socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_customization)
-        |> assign(:portfolio_css, new_css)
-        |> assign(String.to_atom(color_key), color_value)
-        |> assign(:unsaved_changes, false)
-
-        # Push event to update the hex input field
-        socket = push_event(socket, "update_color_input", %{
-          color_key: color_key,
-          color_value: color_value
-        })
-
-        # Broadcast to live preview
-        if socket.assigns.show_live_preview do
-          broadcast_preview_update(socket)
-        end
-
-      {:noreply, socket}
-
-    {:error, _changeset} ->
-      {:noreply, put_flash(socket, :error, "Failed to save color changes")}
-  end
-end
 
   @impl true
   def handle_event("add_block_to_zone", %{"zone" => zone_name}, socket) do
@@ -6802,18 +7826,6 @@ end
     }
   end
 
-  defp get_portfolio_color(portfolio, color_key) do
-    case portfolio.customization do
-      %{^color_key => color} when is_binary(color) -> color
-      _ ->
-        case color_key do
-          "primary_color" -> "#3b82f6"
-          "secondary_color" -> "#64748b"
-          "accent_color" -> "#f59e0b"
-          _ -> "#3b82f6"
-        end
-    end
-  end
 
   defp get_category_description(category) do
     case category do
@@ -6826,24 +7838,17 @@ end
     end
   end
 
-
   defp get_available_tabs(assigns) do
     base_tabs = [
-      content: "Content",
-      design: "Design",
-      analytics: "Analytics"
+      {:content, "Content"},
+      {:design, "Design"},
+      {:analytics, "Analytics"}
     ]
 
-    # Always include settings tab
-    all_tabs = base_tabs ++ [settings: "Settings"]
-
-    # Add dynamic layout tab if applicable
-    if Map.get(assigns, :is_dynamic_layout, false) do
-      [content: "Content", dynamic_layout: "Dynamic Layout"] ++ Keyword.delete(all_tabs, :content)
-    else
-      all_tabs
-    end
+    # Add conditional tabs based on features
+    base_tabs
   end
+
 
   defp get_available_tabs(assigns) do
     # ALWAYS include Settings tab as requested in Phase 1
