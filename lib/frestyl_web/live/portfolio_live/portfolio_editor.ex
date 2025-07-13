@@ -18,6 +18,8 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   alias Frestyl.Studio.PortfolioCollaborationManager
   alias Phoenix.PubSub
 
+  alias FrestylWeb.PortfolioLive.PortfolioEditorSectionHandlers
+
   # ============================================================================
   # MOUNT - Account-Aware Foundation
   # ============================================================================
@@ -41,43 +43,65 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         streaming_config = load_streaming_config(portfolio, account)
         available_layouts = get_available_layouts(account)
         brand_constraints = get_brand_constraints(account)
+        portfolio = Map.put(portfolio, :customization, portfolio.customization || %{
+          "color_scheme" => "purple-pink",
+          "layout_style" => "single_page",
+          "section_spacing" => "normal",
+          "font_style" => "inter",
+          "fixed_navigation" => true,
+          "dark_mode_support" => false,
+          "use_dynamic_layout" => false
+        })
 
         if connected?(socket) do
           Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
         end
 
         socket = socket
-        |> assign_core_data(portfolio, account, user)
+        |> assign(:portfolio, portfolio)
+        |> assign(:customization, portfolio.customization || %{}) |> assign_core_data(portfolio, account, user)
         |> assign_features_and_limits(features, limits)
         |> assign_content_data(sections, media_library, content_blocks)
         |> assign_monetization_data(monetization_data, streaming_config)
         |> assign_design_system(portfolio, account, available_layouts, brand_constraints)
-        |> assign_ui_state()
         |> assign_live_preview_state()
-        |> assign(:content_blocks, [])
+        |> assign(:content_blocks, content_blocks || [])
         |> assign(:layout_zones, %{})
         |> assign(:brand_settings, %{primary_color: "#3b82f6", secondary_color: "#64748b", accent_color: "#f59e0b"})
         |> assign(:available_dynamic_blocks, [])
         |> assign(:layout_metrics, %{})
-        |> assign(:active_tab, :content)
-        # PHASE 4: Always use dynamic layout, remove use_dynamic_layout check
-        |> assign(:is_dynamic_layout, true)
+        |> assign(:use_dynamic_layout, should_use_dynamic_card_layout?(portfolio))
         |> assign_content_blocks_if_dynamic(portfolio)
-        # PHASE 4: Remove display_mode - always dynamic
-        |> assign(:show_video_modal, false)
-        |> assign(:video_target_block_id, nil)
-        |> assign(:video_target_block, nil)
-        |> assign(:available_tabs_debug, get_available_tabs(%{is_dynamic_layout: true}))
+        |> assign(:display_mode, :traditional) # Start in traditional mode
+        |> assign(:section_edit_tab, nil)
+        |> assign(:active_section_id, nil)
+        |> assign(:active_tab, "content")  # ADD THIS - default to content tab
+        |> assign(:available_tabs, ["content", "design", "layout", "settings"])  # ADD THIS TOO
+        |> assign(:show_section_editor, false)
+        |> assign(:editing_section, nil)
+        |> assign(:show_media_library, false)
+        |> assign(:show_add_section_dropdown, false)
+        |> assign(:show_resume_import_modal, false)
+        |> assign(:section_types, get_available_section_types())
+        |> assign(:ui_state, %{
+          sidebar_open: false,
+          preview_mode: false,
+          editing_section: nil,
+          section_edit_tab: nil,
+          active_section_id: nil,
+          show_section_editor: false
+        })
+        |> assign(:unsaved_changes, false)
+        |> assign(:auto_save_enabled, true)
+        |> assign(:last_saved_at, nil)
+        |> assign(:change_tracker, %{
+          has_changes: false,
+          last_change_at: nil,
+          auto_save_timer: nil
+        })
 
         socket = if collaboration_mode and can_collaborate?(account, portfolio) do
-          setup_collaboration_session(socket, portfolio, account)
-        else
-          assign(socket, :collaboration_mode, false)
-        end
-
-        socket = if socket.assigns.show_live_preview do
-          broadcast_preview_update(socket)
-          socket
+          enable_collaboration_mode(socket, portfolio, user)
         else
           socket
         end
@@ -85,10 +109,25 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         {:ok, socket}
 
       {:error, :not_found} ->
-        {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/hub")}
+        {:ok, socket
+        |> put_flash(:error, "Portfolio not found")
+        |> push_navigate(to: ~p"/hub")}
 
-      {:error, :unauthorized} ->
-        {:ok, socket |> put_flash(:error, "Access denied") |> redirect(to: "/hub")}
+      {:error, :access_denied} ->
+        {:ok, socket
+        |> put_flash(:error, "You don't have permission to edit this portfolio")
+        |> push_navigate(to: ~p"/hub")}
+
+      {:error, :database_error} ->
+        # Handle database errors gracefully
+        {:ok, socket
+        |> put_flash(:error, "There was an issue loading the portfolio. Please try again.")
+        |> push_navigate(to: ~p"/hub")}
+
+      {:error, _reason} ->
+        {:ok, socket
+        |> put_flash(:error, "Failed to load portfolio")
+        |> push_navigate(to: ~p"/hub")}
     end
   end
 
@@ -373,6 +412,16 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   defp has_video_content?(_), do: false
+
+  defp get_available_section_types do
+    [
+      %{type: :intro, name: "Introduction", icon: "👋"},
+      %{type: :experience, name: "Experience", icon: "💼"},
+      %{type: :skills, name: "Skills", icon: "🛠️"},
+      %{type: :projects, name: "Projects", icon: "🚀"},
+      %{type: :contact, name: "Contact", icon: "📧"}
+    ]
+  end
 
   defp get_sections_safely(data) do
     try do
@@ -1758,6 +1807,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:features, features)
     |> assign(:limits, limits)
   end
+
   defp assign_content_data(socket, sections, media_library, content_blocks) do
     socket
     |> assign(:sections, sections)
@@ -1836,6 +1886,9 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:resume_parsing_state, :idle)
     |> assign(:parsed_resume_data, nil)
     |> assign(:resume_parsing_error, nil)
+    |> assign(:section_edit_tab, nil)  # ADD THIS LINE
+    |> assign(:active_section_id, nil)  # ADD THIS TOO if missing
+    |> assign(:show_section_editor, false)  # AND THIS
   end
 
   defp assign_live_preview_state(socket) do
@@ -1849,7 +1902,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:debounce_timer, nil)
   end
 
-    defp setup_collaboration_session(socket, portfolio, account) do
+  defp setup_collaboration_session(socket, portfolio, account) do
     user = socket.assigns.current_user
 
     # Setup subscriptions for real-time collaboration
@@ -1953,25 +2006,52 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
+  @impl true
   def handle_event("toggle_live_preview", _params, socket) do
-    new_state = !socket.assigns.show_live_preview
-    IO.puts("🎨 TOGGLE LIVE PREVIEW: #{new_state}")
+    current_state = socket.assigns[:show_live_preview] || false
+    new_state = !current_state
+
+    IO.puts("🔄 TOGGLING LIVE PREVIEW: #{current_state} -> #{new_state}")
 
     socket = socket
     |> assign(:show_live_preview, new_state)
-    |> push_event("live_preview_toggled", %{enabled: new_state})
+    |> assign(:preview_loading, new_state)
 
-    if new_state do
-      # Broadcast current state to preview
-      broadcast_design_update(socket, socket.assigns.customization)
+    socket = if new_state do
+      # Initialize preview
+      broadcast_initial_preview_data(socket)
+      socket
+      |> put_flash(:info, "Live preview enabled")
+      |> push_event("preview-enabled", %{})
+    else
+      socket
+      |> put_flash(:info, "Live preview disabled")
+      |> push_event("preview-disabled", %{})
     end
 
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("toggle_preview_mobile", _params, socket) do
-    mobile_view = !socket.assigns.preview_mobile_view
+  def handle_event("toggle_preview_mode", _params, socket) do
+    current_mode = socket.assigns[:preview_mode] || :desktop
+    new_mode = case current_mode do
+      :desktop -> :tablet
+      :tablet -> :mobile
+      :mobile -> :desktop
+      _ -> :desktop
+    end
+
+    socket = socket
+    |> assign(:preview_mode, new_mode)
+    |> push_event("preview-mode-changed", %{mode: new_mode})
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("toggle_mobile_preview", _params, socket) do
+    mobile_view = !socket.assigns[:preview_mobile_view] || false
     socket = assign(socket, :preview_mobile_view, mobile_view)
 
     # Broadcast viewport change
@@ -1982,13 +2062,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    tab_atom = case tab do
-      tab when is_atom(tab) -> tab
-      tab when is_binary(tab) -> String.to_atom(tab)
-      _ -> :content
-    end
-
-    IO.puts("🔥 Switching to tab: #{tab_atom}")
+    tab_atom = String.to_atom(tab)
     {:noreply, assign(socket, :active_tab, tab_atom)}
   end
 
@@ -2056,6 +2130,16 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     end
   end
 
+  def handle_event("mark_unsaved", _params, socket) do
+    {:noreply, assign(socket, :unsaved_changes, true)}
+  end
+
+  def handle_event("mark_saved", _params, socket) do
+    {:noreply, socket
+    |> assign(:unsaved_changes, false)
+    |> assign(:last_saved_at, DateTime.utc_now())}
+  end
+
   # FIXED: Close section editor that properly resets state
   @impl true
   def handle_event("close_section_editor", _params, socket) do
@@ -2066,6 +2150,14 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     |> assign(:editing_section, nil)
     |> assign(:section_edit_tab, nil)
     |> assign(:unsaved_changes, false)}
+  end
+
+  def handle_event("show_add_section", _params, socket) do
+    {:noreply, assign(socket, :show_add_section, true)}
+  end
+
+  def handle_event("hide_add_section", _params, socket) do
+    {:noreply, assign(socket, :show_add_section, false)}
   end
 
   @impl true
@@ -2241,11 +2333,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   # ADD THIS CATCH-ALL FOR ANY PARAMETER MISMATCHES
   # ============================================================================
 
-  @impl true
-  def handle_event("add_section", params, socket) do
-    IO.puts("🚨🚨🚨 add_section called with unexpected params: #{inspect(params)}")
-    {:noreply, put_flash(socket, :error, "❌ Wrong parameters: #{inspect(params)}")}
-  end
 
   @impl true
   def handle_event("delete_section", %{"section-id" => section_id}, socket) do
@@ -2269,26 +2356,30 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
   end
 
   @impl true
-  def handle_event("toggle_preview_mode", _params, socket) do
-    current_mode = socket.assigns[:layout_preview_mode] || false
-    {:noreply, assign(socket, :layout_preview_mode, !current_mode)}
-  end
-
-  @impl true
   def handle_event("save_portfolio", _params, socket) do
+    IO.puts("💾 SAVING PORTFOLIO")
+
     portfolio = socket.assigns.portfolio
-    layout_zones = socket.assigns.layout_zones
 
-    case save_dynamic_card_portfolio(portfolio, layout_zones) do
+    # Prepare save data
+    save_data = %{
+      customization: portfolio.customization || %{},
+      last_modified: DateTime.utc_now()
+    }
+
+    case Portfolios.update_portfolio(portfolio, save_data) do
       {:ok, updated_portfolio} ->
-        {:noreply,
-        socket
+        socket = socket
         |> assign(:portfolio, updated_portfolio)
-        |> put_flash(:info, "Portfolio saved successfully")
-        }
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Portfolio saved successfully!")
+        |> push_event("portfolio-saved", %{})
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to save portfolio: #{inspect(reason)}")}
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("❌ Portfolio save failed: #{inspect(changeset.errors)}")
+        {:noreply, put_flash(socket, :error, "Failed to save portfolio")}
     end
   end
 
@@ -2568,22 +2659,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
     """
   end
 
-  defp broadcast_design_update(socket, customization) do
-    portfolio = socket.assigns.portfolio
-    css = generate_portfolio_css_safe(customization, portfolio.theme)
-
-    Phoenix.PubSub.broadcast(
-      Frestyl.PubSub,
-      "portfolio_preview:#{portfolio.id}",
-      {:design_update, %{
-        customization: customization,
-        css: css,
-        timestamp: DateTime.utc_now()
-      }}
-    )
-  end
-
-
   defp get_block_title_safe(block) do
     case Map.get(block.content_data, :title) do
       title when is_binary(title) -> title
@@ -2733,6 +2808,28 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
       end
     else
       {:error, "Section not found"}
+    end
+  end
+
+  def handle_event("update_section_title", %{"section_id" => section_id, "title" => title}, socket) do
+    section_id_int = String.to_integer(section_id)
+
+    case Portfolios.get_section!(section_id_int) do
+      section ->
+        case Portfolios.update_section(section, %{title: title}) do
+          {:ok, updated_section} ->
+            # Update the sections in socket assigns
+            updated_sections = Enum.map(socket.assigns.sections, fn s ->
+              if s.id == section_id_int, do: updated_section, else: s
+            end)
+
+            {:noreply, socket
+            |> assign(:sections, updated_sections)
+            |> put_flash(:info, "Section title updated")}
+
+          {:error, _changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to update section title")}
+        end
     end
   end
 
@@ -4748,19 +4845,224 @@ end
     end
   end
 
+    @impl true
+  def handle_event("update_design_setting", %{"setting" => setting, "value" => value}, socket) do
+    IO.puts("🎨 UPDATING DESIGN SETTING: #{setting} = #{value}")
+
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+
+    updated_customization = Map.put(current_customization, setting, value)
+
+    case Portfolios.update_portfolio(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        # Regenerate CSS
+        brand_settings = socket.assigns[:brand_settings] || %{}
+        new_css = try do
+          DynamicCardCssManager.generate_portfolio_css(updated_portfolio, brand_settings, updated_customization)
+        rescue
+          _ -> socket.assigns[:customization_css] || ""
+        end
+
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization_css, new_css)
+        |> assign(:unsaved_changes, false)
+
+        # Update live preview
+        if socket.assigns[:show_live_preview] do
+          broadcast_design_update(socket, updated_customization, new_css)
+        end
+
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update design setting")}
+    end
+  end
+
+  @impl true
+  def handle_event("reset_design", _params, socket) do
+    IO.puts("🔄 RESETTING DESIGN TO DEFAULTS")
+
+    portfolio = socket.assigns.portfolio
+    default_customization = get_default_customization()
+
+    case Portfolios.update_portfolio(portfolio, %{customization: default_customization}) do
+      {:ok, updated_portfolio} ->
+        # Regenerate CSS with defaults
+        brand_settings = socket.assigns[:brand_settings] || %{}
+        new_css = DynamicCardCssManager.generate_portfolio_css(updated_portfolio, brand_settings, default_customization)
+
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization_css, new_css)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "Design reset to defaults")
+
+        # Update live preview
+        if socket.assigns[:show_live_preview] do
+          broadcast_design_update(socket, default_customization, new_css)
+        end
+
+        {:noreply, socket}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to reset design")}
+    end
+  end
+
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
 
   defp load_portfolio_with_account_and_blocks(portfolio_id, user) do
-    with {:ok, portfolio} <- get_portfolio_safe(portfolio_id, user),
-         account <- get_user_account(user) do
-      # Don't try to load content_blocks if the association doesn't exist
-      {:ok, portfolio, account, []}
-    else
-      {:error, reason} -> {:error, reason}
-      _ -> {:error, :unexpected_error}
+    try do
+      case Portfolios.get_portfolio_with_account_context(portfolio_id, user) do
+        {:ok, portfolio, account} ->
+          # Try to load content blocks, but handle gracefully if association is missing
+          content_blocks = try do
+            Portfolios.list_content_blocks_for_portfolio(portfolio_id)
+          rescue
+            _ -> []
+          catch
+            _ -> []
+          end
+
+          {:ok, portfolio, account, content_blocks}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    rescue
+      error in ArgumentError ->
+        if String.contains?(error.message, "does not have association") do
+          # Handle missing association gracefully
+          IO.puts("Warning: Missing association detected - #{error.message}")
+
+          # Try to load portfolio without content blocks
+          case Portfolios.get_portfolio(portfolio_id) do
+            nil -> {:error, :not_found}
+            portfolio ->
+              account = get_portfolio_account(portfolio, user)
+              {:ok, portfolio, account, []}
+          end
+        else
+          {:error, :database_error}
+        end
+      _ ->
+        {:error, :database_error}
     end
+  end
+
+  defp get_portfolio_account(portfolio, user) do
+    cond do
+      portfolio.account_id && portfolio.account ->
+        portfolio.account
+      portfolio.user_id == user.id && user.account ->
+        user.account
+      true ->
+        %{subscription_tier: "personal"} # Default fallback
+    end
+  end
+
+  defp can_edit_portfolio?(portfolio, user) do
+    portfolio.user_id == user.id or is_portfolio_collaborator?(portfolio, user)
+  end
+
+  defp is_portfolio_collaborator?(_portfolio, _user) do
+    # TODO: Implement collaboration check
+    false
+  end
+
+  defp load_portfolio_sections(portfolio_id) do
+    try do
+      Portfolios.list_portfolio_sections(portfolio_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_content_blocks_safe(portfolio_id) do
+    try do
+      Portfolios.list_portfolio_content_blocks(portfolio_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp broadcast_initial_preview_data(socket) do
+    try do
+      portfolio_id = socket.assigns.portfolio.id
+
+      preview_data = %{
+        portfolio: socket.assigns.portfolio,
+        sections: socket.assigns[:sections] || [],
+        css: socket.assigns[:customization_css] || "",
+        design_tokens: socket.assigns[:design_tokens] || %{}
+      }
+
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{portfolio_id}",
+        {:initial_preview_data, preview_data}
+      )
+
+      IO.puts("📡 Initial preview data broadcasted for portfolio #{portfolio_id}")
+    rescue
+      e ->
+        IO.puts("❌ Failed to broadcast initial preview data: #{inspect(e)}")
+    end
+  end
+
+  defp broadcast_design_update(socket, customization, css) do
+    try do
+      portfolio_id = socket.assigns.portfolio.id
+
+      update_data = %{
+        customization: customization,
+        css: css,
+        timestamp: DateTime.utc_now()
+      }
+
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{portfolio_id}",
+        {:design_update, update_data}
+      )
+
+      IO.puts("📡 Design update broadcasted")
+    rescue
+      e ->
+        IO.puts("❌ Failed to broadcast design update: #{inspect(e)}")
+    end
+  end
+
+  defp broadcast_viewport_change(socket, mobile_view) do
+    try do
+      portfolio_id = socket.assigns.portfolio.id
+
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{portfolio_id}",
+        {:viewport_change, %{mobile: mobile_view}}
+      )
+
+      IO.puts("📡 Viewport change broadcasted")
+    rescue
+      e ->
+        IO.puts("❌ Failed to broadcast viewport change: #{inspect(e)}")
+    end
+  end
+
+  defp get_default_customization do
+    %{
+      "primary_color" => "#3b82f6",
+      "secondary_color" => "#64748b",
+      "accent_color" => "#f59e0b",
+      "font_family" => "system-ui, sans-serif",
+      "layout" => "dynamic_card_layout"
+    }
   end
 
   defp get_portfolio_safe(portfolio_id, user) do
@@ -4832,25 +5134,6 @@ end
     end
   end
 
-  defp load_portfolio_sections(portfolio_id) do
-    try do
-      # Try the most likely function name first
-      Portfolios.list_portfolio_sections(portfolio_id)
-    rescue
-      _ ->
-        try do
-          # Alternative: use query if list function doesn't exist
-          import Ecto.Query
-          Repo.all(from s in "portfolio_sections", where: s.portfolio_id == ^portfolio_id, order_by: [asc: s.position])
-        rescue
-          _ ->
-            # Last resort: return empty list
-            IO.puts("⚠️ Could not load portfolio sections for portfolio #{portfolio_id}")
-            []
-        end
-    end
-  end
-
   defp load_portfolio_media(portfolio_id) do
     try do
       Portfolios.list_portfolio_media(portfolio_id)
@@ -4919,6 +5202,155 @@ end
       scheduled_streams: [],
       stream_analytics: %{},
       rtmp_config: %{}
+    }
+  end
+
+  defp enable_collaboration_mode(socket, portfolio, user) do
+    # Enable collaboration features for the portfolio editor
+    socket
+    |> assign(:collaboration_enabled, true)
+    |> assign(:collaboration_portfolio, portfolio)
+    |> assign(:collaboration_user, user)
+    |> assign(:collaborators, [])
+    |> assign(:collaboration_session_id, generate_collaboration_session_id())
+  end
+
+  defp generate_collaboration_session_id do
+    # Generate a unique session ID for collaboration
+    :crypto.strong_rand_bytes(16) |> Base.encode64()
+  end
+
+  defp can_collaborate?(account, portfolio) do
+    # Check if the account has collaboration permissions
+    # This is a placeholder - implement based on your business logic
+    account.subscription_tier in ["creator", "professional", "enterprise"]
+  end
+
+  defp should_use_dynamic_card_layout?(portfolio) do
+    # Check if portfolio should use dynamic card layout
+    # This is a placeholder - implement based on your business logic
+    Map.get(portfolio.customization || %{}, "use_dynamic_layout", false)
+  end
+
+  defp assign_content_blocks_if_dynamic(socket, portfolio) do
+    if socket.assigns[:use_dynamic_layout] do
+      socket
+      |> assign(:dynamic_layout_enabled, true)
+      |> assign(:layout_blocks, [])
+    else
+      socket
+    end
+  end
+
+  # Add placeholder functions for the missing assign functions
+  defp assign_core_data(socket, portfolio, account, user) do
+
+    portfolio = Map.put(portfolio, :customization, portfolio.customization || %{
+      "color_scheme" => "purple-pink",
+      "layout_style" => "single_page",
+      "section_spacing" => "normal",
+      "font_style" => "inter",
+      "fixed_navigation" => true,
+      "dark_mode_support" => false,
+      "use_dynamic_layout" => false
+    })
+
+    socket
+    |> assign(:portfolio, portfolio)
+    |> assign(:account, account)
+    |> assign(:current_user, user)
+    |> assign(:page_title, portfolio.title)
+  end
+
+  defp assign_features_and_limits(socket, features, limits) do
+    socket
+    |> assign(:features, features)
+    |> assign(:limits, limits)
+  end
+
+  defp assign_content_data(socket, sections, media_library, content_blocks) do
+    socket
+    |> assign(:sections, sections)
+    |> assign(:media_library, media_library)
+    |> assign(:content_blocks, content_blocks)
+  end
+
+  defp assign_monetization_data(socket, monetization_data, streaming_config) do
+    socket
+    |> assign(:monetization_data, monetization_data)
+    |> assign(:streaming_config, streaming_config)
+  end
+
+  defp assign_design_system(socket, portfolio, account, available_layouts, brand_constraints) do
+    socket
+    |> assign(:available_layouts, available_layouts)
+    |> assign(:brand_constraints, brand_constraints)
+    |> assign(:design_system, %{})
+  end
+
+  defp assign_ui_state(socket) do
+    socket
+    |> assign(:ui_state, %{
+      sidebar_open: false,
+      preview_mode: false,
+      editing_section: nil
+    })
+  end
+
+  defp assign_live_preview_state(socket) do
+    socket
+    |> assign(:live_preview, %{
+      enabled: false,
+      url: nil
+    })
+  end
+
+  # Add placeholder functions for data loading
+  defp get_account_features(account) do
+    %{
+      collaboration: account.subscription_tier in ["creator", "professional", "enterprise"],
+      advanced_analytics: account.subscription_tier in ["professional", "enterprise"],
+      custom_domains: account.subscription_tier == "enterprise"
+    }
+  end
+
+  defp get_account_limits(account) do
+    case account.subscription_tier do
+      "personal" -> %{max_sections: 10, max_media: 50}
+      "creator" -> %{max_sections: 25, max_media: 200}
+      "professional" -> %{max_sections: -1, max_media: -1}
+      "enterprise" -> %{max_sections: -1, max_media: -1}
+      _ -> %{max_sections: 5, max_media: 20}
+    end
+  end
+
+  defp load_portfolio_sections(portfolio_id) do
+    try do
+      Portfolios.list_portfolio_sections_ordered(portfolio_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_portfolio_media(portfolio_id) do
+    try do
+      Portfolios.list_portfolio_media(portfolio_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_monetization_data(portfolio, account) do
+    %{
+      enabled: account.subscription_tier in ["creator", "professional", "enterprise"],
+      settings: portfolio.monetization_settings || %{}
+    }
+  end
+
+  defp load_streaming_config(portfolio, account) do
+    %{
+      enabled: account.subscription_tier in ["professional", "enterprise"],
+      settings: %{}
     }
   end
 
@@ -6130,16 +6562,6 @@ end
     )
   end
 
-  defp broadcast_viewport_change(socket, mobile_view) do
-    portfolio = socket.assigns.portfolio
-
-    Phoenix.PubSub.broadcast(
-      Frestyl.PubSub,
-      "portfolio_preview:#{portfolio.id}",
-      {:viewport_change, mobile_view}
-    )
-  end
-
   defp generate_css(customization) when is_map(customization) do
     primary_color = Map.get(customization, "primary_color", "#1e40af")
     accent_color = Map.get(customization, "accent_color", "#f59e0b")
@@ -6288,6 +6710,21 @@ end
      |> update_collaborator_list(accepting_user)}
   end
 
+    @impl true
+  def handle_info({:preview_update_requested, data}, socket) do
+    broadcast_complete_preview_update(socket, data)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:collaboration_update, update}, socket) do
+    handle_collaboration_update(socket, update)
+  end
+
+  @impl true
+  def handle_info(_info, socket) do
+    {:noreply, socket}
+  end
 
   # Helper functions for the improved layout:
 
@@ -6381,6 +6818,20 @@ end
       "services" -> %{"main_content" => "Services you offer..."}
       _ -> %{"main_content" => "Add your content here..."}
     end
+  end
+
+  defp handle_collaboration_update(socket, update) do
+    # Placeholder for collaboration system
+    # TODO: Implement collaboration update handling
+    IO.puts("🤝 Collaboration update received: #{inspect(update)}")
+    {:noreply, socket}
+  end
+
+  defp broadcast_complete_preview_update(socket, data) do
+    # Placeholder for complete preview updates
+    # TODO: Implement complete preview update broadcasting
+    IO.puts("📡 Complete preview update requested: #{inspect(data)}")
+    socket
   end
 
     @impl true
@@ -8017,7 +8468,16 @@ end
     {:ok, "/exports/#{filename}"}
   end
 
-    @impl true
+  @impl true
+  def handle_event("auto_save", _params, socket) do
+    if socket.assigns[:unsaved_changes] do
+      handle_event("save_portfolio", %{}, socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_info(:auto_save_portfolio, socket) do
     if socket.assigns.collaboration_mode do
       # In collaboration mode, save more frequently but with conflict resolution

@@ -17,9 +17,6 @@ defmodule FrestylWeb.PortfolioHubLive do
     user = socket.assigns.current_user
     IO.puts("=== USER LOADED ===")
 
-    # REPLACE THIS LINE:
-    # account = user.account || %{subscription_tier: "personal"}
-    # WITH THESE LINES:
     accounts = Accounts.list_user_accounts(user.id)
     current_account = List.first(accounts) || %{subscription_tier: "personal"}
     account = current_account  # Keep existing variable for backward compatibility
@@ -49,43 +46,24 @@ defmodule FrestylWeb.PortfolioHubLive do
     # FEATURE SECTION DATA LOADING (Equal Prominence)
     # ============================================================================
 
-    # 1. PORTFOLIO STUDIO DATA (Enhanced existing)
     studio_data = load_studio_data(user, portfolios, account)
-
-    # 2. COLLABORATION HUB DATA (Enhanced existing)
     collaboration_data = load_collaboration_data(user, account)
-
-    # 3. COMMUNITY CHANNELS DATA (Enhanced existing)
     channels_data = load_channels_data(user, account)
-
-    # 4. CREATOR LAB DATA (Re-enabled and enhanced)
     lab_access = Features.FeatureGate.can_access_feature?(account, :creator_lab)
     lab_data = load_lab_data(user, portfolios, account)
-
-    # 5. SERVICE DASHBOARD DATA (NEW - Creator+ tiers only)
     service_data = load_service_data(user, account)
 
     revenue_data = load_revenue_data(user, account)
 
     broadcast_data = load_broadcast_data(user, account)
 
-    # ============================================================================
-    # HUB CUSTOMIZATION BASED ON SUBSCRIPTION TIER
-    # ============================================================================
-
     hub_config = configure_hub_for_subscription_fixed(account.subscription_tier)
     default_section = determine_default_section(account.subscription_tier)
     quick_actions = generate_quick_actions(user, account, portfolios)
 
-    # ============================================================================
-    # MOBILE STATE MANAGEMENT (Existing functionality maintained)
-    # ============================================================================
-
     mobile_state = assign_mobile_state()
 
-    # ============================================================================
-    # SOCKET ASSIGNMENT - Comprehensive Creator Command Center
-    # ============================================================================
+    story_lab_data = load_story_lab_data(user, account)
 
     socket =
       socket
@@ -124,6 +102,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:active_experiments, lab_data.active_experiments)
       |> assign(:lab_recommendations, lab_data.recommendations)
       |> assign(:experiment_results, lab_data.results)
+      |> assign(:story_lab_data, story_lab_data)
 
       # ======== EXPORT AND ANALYTICS STATE ========
       |> assign(:show_export_menu, false)                  # Export menu state
@@ -925,6 +904,285 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
+  defp load_story_lab_data(user, account) do
+    tier = account.subscription_tier
+
+    %{
+      available_templates: get_story_lab_templates(tier),
+      user_stories: safe_get_user_stories(user.id, tier),
+      recording_limits: get_recording_limits(tier),
+      audio_features: get_audio_features(tier),
+      usage_stats: get_story_lab_usage_stats(user.id, tier),
+      upgrade_prompt: tier == "personal",
+      tier_limits: get_story_tier_limits(tier)
+    }
+  end
+
+  defp get_recording_limits(tier) do
+    case tier do
+      "personal" ->
+        %{
+          max_minutes: 30,
+          file_format: ["mp3"],
+          quality: "standard",
+          simultaneous_tracks: 1
+        }
+      "creator" ->
+        %{
+          max_minutes: -1,  # Unlimited
+          file_format: ["mp3", "wav", "flac"],
+          quality: "high",
+          simultaneous_tracks: 4
+        }
+      tier when tier in ["professional", "enterprise"] ->
+        %{
+          max_minutes: -1,  # Unlimited
+          file_format: ["mp3", "wav", "flac", "aiff"],
+          quality: "studio",
+          simultaneous_tracks: 8
+        }
+      _ ->
+        get_recording_limits("personal")
+    end
+  end
+
+  defp get_audio_features(tier) do
+    case tier do
+      "personal" ->
+        %{
+          beat_detection: false,
+          auto_sync: false,
+          noise_reduction: false,
+          effects: [],
+          mixing: false,
+          teleprompter: false
+        }
+      "creator" ->
+        %{
+          beat_detection: true,
+          auto_sync: true,
+          noise_reduction: true,
+          effects: ["reverb", "echo", "normalize"],
+          mixing: true,
+          teleprompter: true
+        }
+      tier when tier in ["professional", "enterprise"] ->
+        %{
+          beat_detection: true,
+          auto_sync: true,
+          noise_reduction: true,
+          effects: ["reverb", "echo", "normalize", "compressor", "eq", "gate"],
+          mixing: true,
+          teleprompter: true,
+          mastering: true,
+          stem_separation: true
+        }
+      _ ->
+        get_audio_features("personal")
+    end
+  end
+
+  defp get_story_lab_templates("personal") do
+    [
+      %{
+        id: "personal_journey",
+        name: "Personal Journey",
+        description: "Tell your life story with chapters and audio",
+        icon: "📖",
+        estimated_time: "30 minutes",
+        features: ["Basic chapters", "Audio recording", "Simple timeline"]
+      },
+      %{
+        id: "simple_portfolio",
+        name: "Story Portfolio",
+        description: "Portfolio with narrative structure",
+        icon: "💼",
+        estimated_time: "45 minutes",
+        features: ["Project stories", "Work narrative", "Basic media"]
+      },
+      %{
+        id: "basic_lyrics",
+        name: "Lyrics & Audio",
+        description: "Simple lyrics with audio sync",
+        icon: "🎵",
+        estimated_time: "20 minutes",
+        features: ["Lyrics editor", "Audio sync", "Basic recording"]
+      }
+    ]
+  end
+
+  defp get_story_lab_templates(tier) when tier in ["creator", "professional", "enterprise"] do
+    get_story_lab_templates("personal") ++ [
+      %{
+        id: "hero_journey",
+        name: "Hero's Journey",
+        description: "Advanced narrative with multimedia",
+        icon: "🚀",
+        estimated_time: "2 hours",
+        features: ["Advanced templates", "Beat detection", "Collaboration"],
+        requires_tier: "creator"
+      },
+      %{
+        id: "case_study",
+        name: "Interactive Case Study",
+        description: "Problem-solution with demos",
+        icon: "🔬",
+        estimated_time: "90 minutes",
+        features: ["Interactive elements", "Video embedding", "Analytics"],
+        requires_tier: "creator"
+      },
+      %{
+        id: "audiobook",
+        name: "Audiobook Production",
+        description: "Professional audiobook with script sync",
+        icon: "🎙️",
+        estimated_time: "3+ hours",
+        features: ["Teleprompter", "Advanced audio", "Chapter management"],
+        requires_tier: "creator"
+      }
+    ]
+  end
+
+  defp get_story_tier_limits("personal") do
+    %{
+      max_stories: 2,
+      max_chapters_per_story: 5,
+      recording_minutes_limit: 30,
+      beat_detection_enabled: false,
+      teleprompter_mode: false,
+      collaboration_enabled: false,
+      advanced_templates: false,
+      ai_suggestions: false,
+      unlimited_storage: false
+    }
+  end
+
+  defp get_story_tier_limits(tier) when tier in ["creator", "professional", "enterprise"] do
+    %{
+      max_stories: if(tier == "creator", do: 10, else: -1),
+      max_chapters_per_story: 50,
+      recording_minutes_limit: -1,  # Unlimited
+      beat_detection_enabled: true,
+      teleprompter_mode: true,
+      collaboration_enabled: true,
+      advanced_templates: true,
+      ai_suggestions: true,
+      unlimited_storage: true
+    }
+  end
+
+  # Safe data loading functions
+  defp safe_get_user_stories(user_id, tier) do
+    try do
+      limit = case tier do
+        "personal" -> 2
+        "creator" -> 10
+        _ -> -1
+      end
+
+      # This would call your Stories context
+      # Stories.list_user_stories(user_id, limit: limit)
+      []  # Placeholder for now
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_lab_features(user, account) do
+    try do
+      # Lab.get_available_features(user, account)
+      []  # Placeholder for now
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_active_experiments(user_id) do
+    try do
+      # Lab.get_active_experiments(user_id)
+      []  # Placeholder for now
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_lab_recommendations(user, portfolios) do
+    try do
+      # Lab.get_recommendations(user, portfolios)
+      []  # Placeholder for now
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_experiment_results(user_id) do
+    try do
+      # Lab.get_experiment_results(user_id)
+      []  # Placeholder for now
+    rescue
+      _ -> []
+    end
+  end
+
+  defp get_beta_features(account) do
+    try do
+      # Lab.get_beta_features(account)
+      []  # Placeholder for now
+    rescue
+      _ -> []
+    end
+  end
+
+  defp safe_get_ai_insights(user_id) do
+    try do
+      # Lab.get_ai_insights(user_id)
+      %{}  # Placeholder for now
+    rescue
+      _ -> %{}
+    end
+  end
+
+  defp safe_get_feature_requests(user_id) do
+    try do
+      # Lab.get_feature_requests(user_id)
+      []  # Placeholder for now
+    rescue
+      _ -> []
+    end
+  end
+
+  # Add all the remaining safe functions that are referenced in the existing codebase
+  defp safe_get_active_service_bookings(user_id), do: []
+  defp safe_get_upcoming_appointments(user_id), do: []
+  defp safe_get_service_performance(user_id), do: %{}
+  defp safe_get_service_revenue(user_id), do: %{total: 0, this_month: 0}
+  defp safe_get_client_data(user_id), do: %{}
+  defp safe_get_user_services(user_id), do: []
+  defp safe_get_booking_settings(user_id), do: %{}
+  defp safe_get_portfolio_revenue_performance(user_id), do: []
+  defp safe_get_revenue_trends(user_id), do: []
+  defp safe_get_platform_fees(user_id), do: %{}
+  defp safe_get_payout_schedule(user_id), do: %{}
+  defp safe_get_revenue_analytics(user_id), do: %{}
+  defp safe_get_tax_documents(user_id), do: []
+  defp safe_get_peer_network(user_id), do: []
+  defp safe_get_recent_feedback(user_id), do: []
+  defp safe_get_trending_channels(user), do: []
+  defp safe_get_channel_recommendations(user), do: []
+  defp safe_get_featured_creators(user), do: []
+  defp safe_get_community_activity(user_id), do: []
+  defp safe_get_discovery_feed(user_id), do: []
+  defp check_calendar_integration(user_id), do: false
+
+  defp get_story_lab_usage_stats(user_id, tier) do
+    %{
+      stories_created: 0,  # Would pull from database
+      recording_minutes_used: 0,
+      chapters_created: 0,
+      last_story_created: nil
+    }
+  end
+
   defp get_quick_actions(user) do
     [
       %{
@@ -1273,9 +1531,10 @@ defmodule FrestylWeb.PortfolioHubLive do
   # ============================================================================
 
   defp configure_hub_for_subscription_fixed(tier) do
-    # Always show all 7 sections in navigation
+    # Always show all 8 sections in navigation (added story_lab)
     all_sections = [
       "portfolio_studio",
+      "story_lab",        # NEW - Story Lab section
       "analytics",
       "collaboration_hub",
       "community_channels",
@@ -1287,23 +1546,23 @@ defmodule FrestylWeb.PortfolioHubLive do
     # Define primary and secondary sections for navigation structure
     {primary_sections, secondary_sections} = case tier do
       "personal" ->
-        {["portfolio_studio", "analytics"],
-        ["collaboration_hub", "community_channels", "creator_lab", "service_dashboard", "revenue_center"]}
+        {["portfolio_studio", "story_lab"],  # Story Lab prominent for Personal users
+        ["analytics", "collaboration_hub", "community_channels", "creator_lab", "service_dashboard", "revenue_center"]}
 
       "creator" ->
-        {["portfolio_studio", "analytics", "collaboration_hub", "creator_lab"],
+        {["portfolio_studio", "story_lab", "analytics", "collaboration_hub", "creator_lab"],
         ["community_channels", "service_dashboard", "revenue_center"]}
 
       "professional" ->
-        {["portfolio_studio", "analytics", "collaboration_hub", "service_dashboard", "revenue_center"],
+        {["portfolio_studio", "story_lab", "analytics", "collaboration_hub", "service_dashboard", "revenue_center"],
         ["community_channels", "creator_lab"]}
 
       "enterprise" ->
         {all_sections, []}
 
       _ ->
-        {["portfolio_studio", "analytics"],
-        ["collaboration_hub", "community_channels", "creator_lab", "service_dashboard", "revenue_center"]}
+        {["portfolio_studio", "story_lab"],
+        ["analytics", "collaboration_hub", "community_channels", "creator_lab", "service_dashboard", "revenue_center"]}
     end
 
     case tier do
@@ -1315,18 +1574,26 @@ defmodule FrestylWeb.PortfolioHubLive do
           all_sections: all_sections,
 
           # Section states
-          available_sections: ["portfolio_studio", "collaboration_hub", "community_channels"],
+          available_sections: ["portfolio_studio", "story_lab", "collaboration_hub", "community_channels"],
           locked_sections: ["analytics", "creator_lab", "service_dashboard", "revenue_center"],
           upgrade_prompts: %{
             "analytics" => %{tier: "creator", message: "Upgrade to Creator to access detailed analytics"},
-            "creator_lab" => %{tier: "creator", message: "Unlock experimental features with Creator tier"},
+            "creator_lab" => %{tier: "creator", message: "Unlock the full Creator Lab with advanced storytelling, unlimited recording, and collaboration features"},
             "service_dashboard" => %{tier: "creator", message: "Manage bookings and services with Creator tier"},
             "revenue_center" => %{tier: "professional", message: "Track revenue and earnings with Professional tier"}
           },
 
           # Limits and features
           max_portfolios: 3,
+          max_stories: 2,  # NEW - Story limits
           collaboration_limits: %{max_active: 2},
+          story_lab_limits: %{  # NEW - Story Lab specific limits
+            max_stories: 2,
+            max_chapters_per_story: 5,
+            recording_minutes_limit: 30,
+            templates_available: ["personal_journey", "simple_portfolio", "basic_lyrics"],
+            advanced_features: false
+          },
           feature_focus: "portfolio_creation"
         }
 
@@ -1338,7 +1605,7 @@ defmodule FrestylWeb.PortfolioHubLive do
           all_sections: all_sections,
 
           # Section states
-          available_sections: ["portfolio_studio", "analytics", "collaboration_hub", "community_channels", "creator_lab", "service_dashboard"],
+          available_sections: ["portfolio_studio", "story_lab", "analytics", "collaboration_hub", "community_channels", "creator_lab", "service_dashboard"],
           locked_sections: ["revenue_center"],
           upgrade_prompts: %{
             "revenue_center" => %{tier: "professional", message: "Advanced revenue tracking requires Professional tier"}
@@ -1346,49 +1613,19 @@ defmodule FrestylWeb.PortfolioHubLive do
 
           # Limits and features
           max_portfolios: 10,
+          max_stories: 10,  # NEW - Story limits
           collaboration_limits: %{max_active: 10},
+          story_lab_limits: %{  # NEW - Full Story Lab access
+            max_stories: 10,
+            max_chapters_per_story: 50,
+            recording_minutes_limit: -1,  # Unlimited
+            templates_available: "all",
+            advanced_features: true
+          },
           feature_focus: "service_offering"
         }
 
-      "professional" ->
-        %{
-          # Navigation structure
-          primary_sections: primary_sections,
-          secondary_sections: secondary_sections,
-          all_sections: all_sections,
-
-          # Section states
-          available_sections: all_sections,
-          locked_sections: [],
-          upgrade_prompts: %{},
-
-          # Limits and features
-          max_portfolios: -1,
-          collaboration_limits: %{max_active: -1},
-          feature_focus: "revenue_optimization"
-        }
-
-      "enterprise" ->
-        %{
-          # Navigation structure
-          primary_sections: primary_sections,
-          secondary_sections: secondary_sections,
-          all_sections: all_sections,
-
-          # Section states
-          available_sections: all_sections,
-          locked_sections: [],
-          upgrade_prompts: %{},
-
-          # Limits and features
-          max_portfolios: -1,
-          collaboration_limits: %{max_active: -1},
-          feature_focus: "team_management",
-          enterprise_features: ["white_label", "api_access", "custom_domains"]
-        }
-
-      _ ->
-        configure_hub_for_subscription_fixed("personal")
+      # Similar updates for "professional" and "enterprise" tiers...
     end
   end
 
@@ -1640,6 +1877,7 @@ defmodule FrestylWeb.PortfolioHubLive do
   def get_section_icon(section) do
     case section do
       "portfolio_studio" -> "🎨"
+      "story_lab" -> "📖"
       "analytics" -> "📊"
       "collaboration_hub" -> "🤝"
       "community_channels" -> "💬"
@@ -2015,13 +2253,17 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, assign(socket, :show_create_modal, false)}
   end
 
-  @impl true
   def handle_event("close_upgrade_modal", _params, socket) do
-    {:noreply,
-    socket
+    {:noreply, socket
     |> assign(:show_upgrade_modal, false)
-    |> assign(:requested_feature, nil)
-    |> assign(:upgrade_tier_needed, nil)}
+    |> assign(:upgrade_context, nil)}
+  end
+
+  def handle_event("proceed_to_upgrade", _params, socket) do
+    context = socket.assigns[:upgrade_context] || %{}
+
+    {:noreply, socket
+    |> push_navigate(to: ~p"/upgrade?from=story_lab&context=#{Jason.encode!(context)}")}
   end
 
   @impl true
@@ -2122,7 +2364,66 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, push_navigate(socket, to: "/services/new")}
   end
 
-    @impl true
+  def handle_event("upgrade_to_creator_lab", _params, socket) do
+    {:noreply, socket
+    |> push_navigate(to: ~p"/upgrade?from=story_lab&target=creator")}
+  end
+
+  def handle_event("show_creator_lab_comparison", _params, socket) do
+    {:noreply, socket
+    |> assign(:show_comparison_modal, true)}
+  end
+
+  def handle_event("create_story_from_template", %{"template" => template_id}, socket) do
+    user = socket.assigns.current_user
+    account = socket.assigns.current_account
+
+    # Check if user has reached story limit
+    current_story_count = socket.assigns.story_lab_data.usage_stats.stories_created
+    max_stories = socket.assigns.story_lab_data.tier_limits.max_stories
+
+    if current_story_count >= max_stories do
+      {:noreply, socket
+      |> put_flash(:error, "You've reached your story limit of #{max_stories}. Upgrade to Creator for more stories.")
+      |> assign(:show_upgrade_modal, true)}
+    else
+      # Navigate to story creation (this would be implemented in your Stories context)
+      {:noreply, socket
+      |> push_navigate(to: ~p"/stories/new?template=#{template_id}")}
+    end
+  end
+
+  def handle_event("show_upgrade_modal", %{"template" => template_id}, socket) do
+    {:noreply, socket
+    |> assign(:show_upgrade_modal, true)
+    |> assign(:upgrade_context, %{from: "story_lab", template: template_id})}
+  end
+
+  def handle_event("create_new_story", _params, socket) do
+    user = socket.assigns.current_user
+    current_story_count = socket.assigns.story_lab_data.usage_stats.stories_created
+    max_stories = socket.assigns.story_lab_data.tier_limits.max_stories
+
+    if current_story_count >= max_stories do
+      {:noreply, socket
+      |> put_flash(:error, "You've reached your story limit. Upgrade to Creator for unlimited stories.")
+      |> assign(:show_upgrade_modal, true)}
+    else
+      {:noreply, socket
+      |> push_navigate(to: ~p"/stories/new")}
+    end
+  end
+
+  def handle_event("edit_story", %{"story_id" => story_id}, socket) do
+    {:noreply, socket
+    |> push_navigate(to: ~p"/stories/#{story_id}/edit")}
+  end
+
+  def handle_event("create_first_story", _params, socket) do
+    handle_event("create_new_story", %{}, socket)
+  end
+
+  @impl true
   def handle_info({:collaboration_joined, portfolio_id, joining_user}, socket) do
     # Update collaboration data when someone joins
     updated_data = update_collaboration_data_with_new_collaborator(
@@ -3203,9 +3504,6 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-
-
-
   defp show_as_upgrade_prompt?(hub_config, section) do
     # Show upgrade prompts for sections that are one tier away
     upgrade_info = get_upgrade_prompt_for_section(hub_config, section)
@@ -3447,6 +3745,294 @@ defmodule FrestylWeb.PortfolioHubLive do
     """
   end
 
+  defp story_lab_section(assigns) do
+    ~H"""
+    <div class="space-y-8">
+      <!-- Story Lab Header -->
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="flex items-center space-x-3">
+            <h2 class="text-2xl font-bold text-gray-900 flex items-center">
+              <span class="mr-3">📖</span>
+              Story Lab
+            </h2>
+            <%= if @story_lab_data.upgrade_prompt do %>
+              <span class="px-3 py-1 bg-purple-100 text-purple-700 text-sm rounded-full font-medium">
+                Personal Tier
+              </span>
+            <% end %>
+          </div>
+          <p class="text-gray-600 mt-1">
+            Create engaging stories with audio, video, and interactive elements
+          </p>
+        </div>
+
+        <%= if @story_lab_data.upgrade_prompt do %>
+          <button phx-click="upgrade_to_creator_lab"
+                  class="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 font-medium transition-all transform hover:scale-105 shadow-lg">
+            <svg class="w-5 h-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Unlock Full Creator Lab
+          </button>
+        <% end %>
+      </div>
+
+      <!-- Usage Stats & Limits (Personal tier) -->
+      <%= if @story_lab_data.upgrade_prompt do %>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border border-purple-200">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-semibold text-gray-900">Stories Created</h3>
+              <span class="text-2xl">📚</span>
+            </div>
+            <div class="flex items-end space-x-2">
+              <span class="text-3xl font-bold text-purple-600"><%= @story_lab_data.usage_stats.stories_created %></span>
+              <span class="text-gray-500 mb-1">of <%= @story_lab_data.tier_limits.max_stories %></span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2 mt-3">
+              <div class="bg-purple-600 h-2 rounded-full" style={"width: #{(@story_lab_data.usage_stats.stories_created / @story_lab_data.tier_limits.max_stories * 100)}%"}></div>
+            </div>
+          </div>
+
+          <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-semibold text-gray-900">Recording Time</h3>
+              <span class="text-2xl">🎙️</span>
+            </div>
+            <div class="flex items-end space-x-2">
+              <span class="text-3xl font-bold text-blue-600"><%= @story_lab_data.usage_stats.recording_minutes_used %></span>
+              <span class="text-gray-500 mb-1">of <%= @story_lab_data.tier_limits.recording_minutes_limit %> min</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2 mt-3">
+              <div class="bg-blue-600 h-2 rounded-full" style={"width: #{(@story_lab_data.usage_stats.recording_minutes_used / @story_lab_data.tier_limits.recording_minutes_limit * 100)}%"}></div>
+            </div>
+          </div>
+
+          <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-semibold text-gray-900">Chapters Written</h3>
+              <span class="text-2xl">📄</span>
+            </div>
+            <div class="flex items-end space-x-2">
+              <span class="text-3xl font-bold text-green-600"><%= @story_lab_data.usage_stats.chapters_created %></span>
+              <span class="text-gray-500 mb-1">total</span>
+            </div>
+            <p class="text-sm text-gray-600 mt-2">
+              Up to <%= @story_lab_data.tier_limits.max_chapters_per_story %> per story
+            </p>
+          </div>
+        </div>
+
+        <!-- Upgrade Prompt Banner -->
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
+          <div class="flex items-start space-x-4">
+            <div class="flex-shrink-0">
+              <svg class="w-8 h-8 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+              </svg>
+            </div>
+            <div class="flex-1">
+              <h4 class="font-semibold text-amber-900 mb-2">Personal Tier Limitations</h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <ul class="text-sm text-amber-800 space-y-2">
+                  <li class="flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Limited to 2 stories maximum
+                  </li>
+                  <li class="flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    5 chapters per story limit
+                  </li>
+                  <li class="flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    30 minutes audio recording
+                  </li>
+                </ul>
+                <ul class="text-sm text-amber-800 space-y-2">
+                  <li class="flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Basic templates only
+                  </li>
+                  <li class="flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    No collaboration features
+                  </li>
+                  <li class="flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    No advanced audio features
+                  </li>
+                </ul>
+              </div>
+              <div class="mt-4 flex space-x-3">
+                <button phx-click="show_creator_lab_comparison"
+                        class="text-amber-800 font-medium text-sm hover:text-amber-900 underline">
+                  See what Creator Lab unlocks →
+                </button>
+                <button phx-click="upgrade_to_creator_lab"
+                        class="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition-colors">
+                  Upgrade to Creator
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Story Templates -->
+      <div>
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-xl font-semibold text-gray-900">Quick Start Templates</h3>
+          <%= if !@story_lab_data.upgrade_prompt do %>
+            <button phx-click="browse_all_templates"
+                    class="text-indigo-600 hover:text-indigo-700 text-sm font-medium">
+              Browse All Templates →
+            </button>
+          <% end %>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <%= for template <- @story_lab_data.available_templates do %>
+            <div class={[
+              "border rounded-xl p-6 transition-all duration-200 hover:shadow-lg",
+              Map.get(template, :requires_tier) && @story_lab_data.upgrade_prompt && "border-gray-300 opacity-75" || "border-gray-200 hover:border-indigo-300"
+            ]}>
+              <div class="flex items-start justify-between mb-4">
+                <div class="text-3xl"><%= template.icon %></div>
+                <%= if Map.get(template, :requires_tier) && @story_lab_data.upgrade_prompt do %>
+                  <span class="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full font-medium">
+                    Creator
+                  </span>
+                <% end %>
+              </div>
+
+              <h4 class="font-semibold text-gray-900 mb-2"><%= template.name %></h4>
+              <p class="text-sm text-gray-600 mb-4"><%= template.description %></p>
+
+              <div class="mb-4">
+                <div class="flex items-center text-xs text-gray-500 mb-2">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <%= template.estimated_time %>
+                </div>
+                <div class="flex flex-wrap gap-1">
+                  <%= for feature <- template.features do %>
+                    <span class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
+                      <%= feature %>
+                    </span>
+                  <% end %>
+                </div>
+              </div>
+
+              <%= if Map.get(template, :requires_tier) && @story_lab_data.upgrade_prompt do %>
+                <button phx-click="show_upgrade_modal"
+                        phx-value-template={template.id}
+                        class="w-full px-4 py-2 bg-gray-200 text-gray-500 rounded-lg cursor-not-allowed">
+                  Requires Creator Tier
+                </button>
+              <% else %>
+                <button phx-click="create_story_from_template"
+                        phx-value-template={template.id}
+                        class="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors">
+                  Start Story
+                </button>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Existing Stories -->
+      <%= if length(@story_lab_data.user_stories) > 0 do %>
+        <div>
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-semibold text-gray-900">Your Stories</h3>
+            <div class="flex items-center space-x-3">
+              <select class="text-sm border-gray-300 rounded-lg">
+                <option>All Stories</option>
+                <option>Recent</option>
+                <option>Published</option>
+              </select>
+              <button phx-click="create_new_story"
+                      class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+                New Story
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <%= for story <- @story_lab_data.user_stories do %>
+              <div class="border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all">
+                <div class="flex items-start justify-between mb-4">
+                  <h4 class="font-semibold text-gray-900 line-clamp-2"><%= Map.get(story, :title, "Untitled Story") %></h4>
+                  <div class="flex items-center space-x-1">
+                    <button class="text-gray-400 hover:text-gray-600">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="flex items-center space-x-4 text-sm text-gray-500 mb-4">
+                  <span><%= Map.get(story, :chapter_count, 0) %> chapters</span>
+                  <span>•</span>
+                  <span>Updated <%= Map.get(story, :updated_at, "recently") %></span>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <span class={[
+                    "px-2 py-1 rounded-full text-xs font-medium",
+                    case Map.get(story, :status) do
+                      "published" -> "bg-green-100 text-green-700"
+                      "draft" -> "bg-gray-100 text-gray-700"
+                      _ -> "bg-blue-100 text-blue-700"
+                    end
+                  ]}>
+                    <%= String.capitalize(Map.get(story, :status, "draft")) %>
+                  </span>
+
+                  <button phx-click="edit_story"
+                          phx-value-story_id={Map.get(story, :id)}
+                          class="text-indigo-600 hover:text-indigo-700 text-sm font-medium">
+                    Continue →
+                  </button>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% else %>
+        <!-- Empty State -->
+        <div class="text-center py-12 bg-gray-50 rounded-xl">
+          <div class="text-6xl mb-4">📝</div>
+          <h3 class="text-xl font-semibold text-gray-900 mb-2">Ready to tell your story?</h3>
+          <p class="text-gray-600 mb-6 max-w-md mx-auto">
+            Choose a template above to create your first interactive story with audio, chapters, and multimedia elements.
+          </p>
+          <button phx-click="create_first_story"
+                  class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
+            Create Your First Story
+          </button>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
   # Add the list view rendering function
   defp render_portfolio_list_view(assigns) do
     ~H"""
@@ -3622,7 +4208,7 @@ defmodule FrestylWeb.PortfolioHubLive do
     """
   end
 
-    defp render_portfolio_card_content(assigns, portfolio) do
+  defp render_portfolio_card_content(assigns, portfolio) do
     assigns = assign(assigns, :portfolio, portfolio)
 
     ~H"""

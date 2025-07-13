@@ -4,26 +4,39 @@ defmodule Frestyl.Portfolios.PortfolioMedia do
   import Ecto.Changeset
 
   schema "portfolio_media" do
-    field :filename, :string
-    field :original_filename, :string
-    field :file_type, :string
-    field :file_size, :integer
+    field :title, :string
+    field :media_type, :string
     field :file_path, :string
+    field :position, :integer
+    field :metadata, :map
+    field :thumbnail_path, :string
+    field :visible, :boolean, default: true
+    field :description, :string
+    field :file_size, :integer
+    field :mime_type, :string
+    field :file_type, :string
+    field :media_file_id, :integer
+    field :media_category, :string
+    field :audio_metadata, :map
+    field :image_metadata, :map
+    field :social_embed_data, :map
+    field :display_settings, :map
+    field :processing_status, :string
     field :alt_text, :string
     field :caption, :string
-    field :sort_order, :integer, default: 0
-
-    # NEW: Video-specific fields
+    field :display_order, :integer  # NOT sort_order
+    field :featured, :boolean
     field :video_thumbnail_url, :string
-    field :video_duration, :integer  # in seconds
-    field :video_format, :string     # mp4, webm, etc.
-    field :is_external_video, :boolean, default: false
-    field :external_video_platform, :string  # youtube, vimeo
+    field :video_duration, :integer
+    field :video_format, :string
+    field :is_external_video, :boolean
+    field :external_video_platform, :string
     field :external_video_id, :string
-    field :video_metadata, :map, default: %{}
+    field :video_metadata, :map
+    field :filename, :string  # NOT original_filename
 
     belongs_to :portfolio, Frestyl.Portfolios.Portfolio
-    belongs_to :section, Frestyl.Portfolios.PortfolioSection, foreign_key: :section_id
+    belongs_to :section, Frestyl.Portfolios.PortfolioSection
 
     timestamps()
   end

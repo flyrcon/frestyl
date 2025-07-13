@@ -71,6 +71,33 @@ defmodule Frestyl.Features.FeatureGate do
       :priority_support ->
         TierManager.feature_available?(user_tier, :priority_support)
 
+      :story_lab ->
+        true  # Available to all tiers
+
+      :story_lab_advanced ->
+        TierManager.feature_available?(user_tier, :story_lab_advanced)
+
+      :unlimited_stories ->
+        TierManager.feature_available?(user_tier, :unlimited_stories)
+
+      :unlimited_recording ->
+        TierManager.feature_available?(user_tier, :unlimited_recording)
+
+      :beat_detection ->
+        TierManager.feature_available?(user_tier, :beat_detection)
+
+      :story_collaboration ->
+        TierManager.feature_available?(user_tier, :story_collaboration)
+
+      :teleprompter_mode ->
+        TierManager.feature_available?(user_tier, :teleprompter_mode)
+
+      :ai_story_suggestions ->
+        TierManager.feature_available?(user_tier, :ai_story_suggestions)
+
+      :creator_lab ->
+        TierManager.feature_available?(user_tier, :creator_lab)
+
       _ ->
         false
     end

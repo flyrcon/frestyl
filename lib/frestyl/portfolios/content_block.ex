@@ -9,8 +9,8 @@ defmodule Frestyl.Portfolios.ContentBlock do
   import Ecto.Changeset
   import Ecto.Query
 
-  @primary_key {:id, :binary_id, autogenerate: true}
-  @foreign_key_type :binary_id
+  @primary_key {:id, :id, autogenerate: true}
+  @foreign_key_type :id
 
   schema "portfolio_content_blocks" do
     field :block_uuid, :string
@@ -54,7 +54,7 @@ defmodule Frestyl.Portfolios.ContentBlock do
     field :is_premium_feature, :boolean, default: false
 
     # Dual relationships - can belong to either portfolio section OR story chapter
-    belongs_to :portfolio_section, Frestyl.Portfolios.PortfolioSection, on_replace: :nilify
+    belongs_to :portfolio_section, Frestyl.Portfolios.PortfolioSection, type: :id, on_replace: :nilify
     belongs_to :chapter, Frestyl.Stories.Chapter, on_replace: :nilify
 
     # Portfolio media relationships

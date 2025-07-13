@@ -117,7 +117,7 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
             <div class="portfolio-footer bg-gray-50 mt-16">
               <div class="max-w-4xl mx-auto px-6 py-8 text-center">
                 <p class="text-gray-500 text-sm">
-                  Created with Frestyl Portfolio System
+                  Created with Frestyl
                 </p>
               </div>
             </div>

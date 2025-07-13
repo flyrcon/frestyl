@@ -17,6 +17,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   @impl true
   def mount(params, _session, socket) do
+    IO.puts("🌍 MOUNTING PORTFOLIO SHOW with params: #{inspect(params)}")
     case params do
       # Public view via slug
       %{"slug" => slug} ->
@@ -35,14 +36,55 @@ defmodule FrestylWeb.PortfolioLive.Show do
           mount_authenticated_portfolio(id, socket)
 
       _ ->
-        {:ok, socket |> put_flash(:error, "Invalid portfolio") |> redirect(to: "/")}
+        IO.puts("❌ Invalid portfolio URL parameters")
+        {:ok,
+         socket
+         |> put_flash(:error, "Portfolio not found")
+         |> redirect(to: "/")}
     end
   end
 
+  defp mount_public_portfolio(slug, socket) do
+    IO.puts("🌍 MOUNTING PUBLIC PORTFOLIO: /p/#{slug}")
 
-  defp mount_portfolio(portfolio, socket, _view_type) do
-    # CRITICAL: Ensure sections are assigned to prevent KeyError
-    socket = ensure_sections_assigned(socket, portfolio)
+    case load_portfolio_by_slug_safe(slug) do
+      {:ok, portfolio} ->
+        IO.puts("✅ Portfolio found: #{portfolio.title}")
+
+        # Check if portfolio is publicly viewable
+        if is_portfolio_public?(portfolio) do
+          # Call mount_portfolio with 2 parameters, then add view_type
+          case mount_portfolio(portfolio, socket) do
+            {:ok, updated_socket} ->
+              {:ok, assign(updated_socket, :view_type, :public)}
+            error -> error
+          end
+        else
+          IO.puts("🔒 Portfolio is not public: #{portfolio.visibility}")
+          {:ok,
+          socket
+          |> put_flash(:error, "This portfolio is not publicly available")
+          |> redirect(to: "/")}
+        end
+
+      {:error, :not_found} ->
+        IO.puts("❌ Portfolio not found for slug: #{slug}")
+        {:ok,
+        socket
+        |> put_flash(:error, "Portfolio not found")
+        |> redirect(to: "/")}
+
+      {:error, reason} ->
+        IO.puts("❌ Portfolio loading error: #{inspect(reason)}")
+        {:ok,
+        socket
+        |> put_flash(:error, "Unable to load portfolio")
+        |> redirect(to: "/")}
+    end
+  end
+
+  defp mount_portfolio(portfolio, socket) do
+    IO.puts("📁 MOUNTING PORTFOLIO DATA: #{portfolio.title}")
 
     # Subscribe to live updates from editor
     if connected?(socket) do
@@ -52,35 +94,61 @@ defmodule FrestylWeb.PortfolioLive.Show do
     # Track portfolio visit safely
     track_portfolio_visit_safe(portfolio, socket)
 
-    # Basic assignment - keep it simple to avoid missing function errors
+    # Load portfolio sections safely
+    sections = load_portfolio_sections_safe(portfolio.id)
+    IO.puts("📋 Loaded #{length(sections)} sections")
+
+    # Process customization and CSS
+    {template_config, customization_css, template_layout} = process_portfolio_customization_safe(portfolio)
+
+    # Extract intro video if present
+    {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(sections)
+
+    is_dynamic = Map.get(portfolio.customization || %{}, "use_dynamic_layout", false)
+
+    # Basic assignments that work with your existing code
     socket = socket
     |> assign(:page_title, portfolio.title)
     |> assign(:portfolio, portfolio)
     |> assign(:owner, get_portfolio_owner_safe(portfolio))
+    |> assign(:sections, filtered_sections)
+    |> assign(:all_sections, sections)
     |> assign(:customization, portfolio.customization || %{})
-    |> assign(:template_theme, portfolio.theme || "professional")
+    |> assign(:custom_css, portfolio.custom_css || "")
+    |> assign(:is_dynamic_layout, is_dynamic)
+    |> assign(:template_config, template_config)
+    |> assign(:template_theme, normalize_theme_safe(portfolio.theme))
+    |> assign(:template_layout, template_layout)
+    |> assign(:customization_css, customization_css)
+    |> assign(:intro_video, intro_video)
+    |> assign(:intro_video_section, intro_video)
+    |> assign(:has_intro_video, intro_video != nil)
+    |> assign(:video_url, get_video_url_safe(intro_video))
+    |> assign(:video_content, get_video_content_safe(intro_video))
+    |> assign(:show_contact_modal, false)
+    |> assign(:show_share_modal, false)
+    |> assign(:show_export_modal, false)
     |> assign(:show_video_modal, false)
     |> assign(:show_mobile_nav, false)
-    |> assign(:view_type, _view_type)
+    |> assign(:active_lightbox_media, nil)
+    |> assign(:seo_title, nil)
+    |> assign(:seo_image, nil)
+    |> assign(:seo_description, nil)
+    |> assign(:canonical_url, nil)
+    |> assign(:public_view_settings, %{
+      show_contact_info: true,
+      show_social_links: true,
+      show_download_resume: false,
+      enable_animations: true,
+      show_visitor_count: false,
+      allow_comments: false,
+      enable_back_to_top: true,
+      sticky_header: true,
+      show_progress_bar: true,
+      enable_smooth_scroll: true
+    })
 
     {:ok, socket}
-  end
-
-  defp get_portfolio_owner_safe(portfolio) do
-    case portfolio do
-      %{user: %Ecto.Association.NotLoaded{}} ->
-        # Try to load user if not loaded
-        try do
-          portfolio = Repo.preload(portfolio, :user)
-          portfolio.user || %{name: "Portfolio Owner", email: ""}
-        rescue
-          _ -> %{name: "Portfolio Owner", email: ""}
-        end
-      %{user: user} when not is_nil(user) ->
-        user
-      _ ->
-        %{name: "Portfolio Owner", email: ""}
-    end
   end
 
   defp mount_public_portfolio(slug, socket) do
@@ -97,51 +165,100 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  defp mount_shared_portfolio(token, socket) do
-    try do
-      case Portfolios.get_portfolio_by_share_token_simple(token) do
-        {:ok, portfolio, _share} ->
-          mount_portfolio(portfolio, socket, :share)
-        {:error, :not_found} ->
-          {:ok, socket |> put_flash(:error, "Portfolio link not found or expired") |> redirect(to: "/")}
-      end
-    rescue
-      _ ->
-        {:ok, socket |> put_flash(:error, "Portfolio link not found") |> redirect(to: "/")}
+  defp mount_portfolio(portfolio, socket, view_type) do
+    case mount_portfolio(portfolio, socket) do
+      {:ok, updated_socket} ->
+        {:ok, assign(updated_socket, :view_type, view_type)}
+      error -> error
     end
   end
 
+  defp mount_shared_portfolio(token, socket) do
+    IO.puts("🔗 MOUNTING SHARED PORTFOLIO: /share/#{token}")
+
+    case load_portfolio_by_share_token(token) do
+      {:ok, portfolio, share} ->
+        # Track share visit
+        track_share_visit_safe(portfolio, share, socket)
+
+        # Use mount_portfolio/2 function, then add view_type and share
+        case mount_portfolio(portfolio, socket) do
+          {:ok, updated_socket} ->
+            {:ok, updated_socket
+            |> assign(:view_type, :shared)
+            |> assign(:share, share)
+            |> assign(:is_shared_view, true)}
+          error -> error
+        end
+
+      {:error, :not_found} ->
+        {:ok,
+        socket
+        |> put_flash(:error, "Invalid or expired share link")
+        |> redirect(to: "/")}
+
+      {:error, reason} ->
+        IO.puts("❌ Shared portfolio loading error: #{inspect(reason)}")
+        {:ok,
+        socket
+        |> put_flash(:error, "Unable to access shared portfolio")
+        |> redirect(to: "/")}
+    end
+  end
+
+
   defp mount_preview_portfolio(id, token, socket) do
-    try do
-      # Simple validation - just check if portfolio exists
-      case Portfolios.get_portfolio_with_sections(id) do
-        nil ->
-          {:ok, socket |> put_flash(:error, "Portfolio preview not available") |> redirect(to: "/")}
-        portfolio ->
-          mount_portfolio(portfolio, socket, :preview)
-      end
-    rescue
-      _ ->
-        {:ok, socket |> put_flash(:error, "Portfolio preview not available") |> redirect(to: "/")}
+    IO.puts("👁️ MOUNTING PREVIEW PORTFOLIO: /preview/#{id}/#{token}")
+
+    case load_portfolio_for_preview(id, token) do
+      {:ok, portfolio} ->
+        # Use mount_portfolio/2 function, then add view_type
+        case mount_portfolio(portfolio, socket) do
+          {:ok, updated_socket} ->
+            {:ok, assign(updated_socket, :view_type, :preview)}
+          error -> error
+        end
+
+      {:error, :invalid_token} ->
+        {:ok,
+        socket
+        |> put_flash(:error, "Invalid preview token")
+        |> redirect(to: "/")}
+
+      {:error, reason} ->
+        IO.puts("❌ Preview portfolio loading error: #{inspect(reason)}")
+        {:ok,
+        socket
+        |> put_flash(:error, "Unable to load portfolio preview")
+        |> redirect(to: "/")}
     end
   end
 
   defp mount_authenticated_portfolio(id, socket) do
-    try do
-      user = socket.assigns.current_user
-      case Portfolios.get_portfolio_with_sections(id) do
-        nil ->
-          {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
-        portfolio ->
-          if can_view_portfolio_safe?(portfolio, user) do
-            mount_portfolio(portfolio, socket, :authenticated)
-          else
-            {:ok, socket |> put_flash(:error, "Access denied") |> redirect(to: "/")}
+    IO.puts("🔐 MOUNTING AUTHENTICATED PORTFOLIO: #{id}")
+
+    user = socket.assigns.current_user
+    case load_portfolio_by_id(id) do
+      {:ok, portfolio} ->
+        if can_view_portfolio?(portfolio, user) do
+          # Use mount_portfolio/2 function, then add view_type
+          case mount_portfolio(portfolio, socket) do
+            {:ok, updated_socket} ->
+              {:ok, assign(updated_socket, :view_type, :authenticated)}
+            error -> error
           end
-      end
-    rescue
-      _ ->
-        {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
+        else
+          {:ok,
+          socket
+          |> put_flash(:error, "Access denied")
+          |> redirect(to: "/")}
+        end
+
+      {:error, :not_found} ->
+        {:ok,
+        socket
+        |> put_flash(:error, "Portfolio not found")
+        |> redirect(to: "/")}
     end
   end
 
@@ -240,54 +357,120 @@ defmodule FrestylWeb.PortfolioLive.Show do
         portfolio -> {:ok, portfolio}
       end
     rescue
-      _ -> {:error, :not_found}
+      e ->
+        IO.puts("❌ Error loading portfolio by id #{id}: #{inspect(e)}")
+        {:error, :database_error}
     end
   end
 
   defp load_portfolio_for_preview(id, token) do
     try do
-      # Add token validation here if needed
-      case Portfolios.get_portfolio_with_sections(id) do
-        nil -> {:error, :not_found}
-        portfolio -> {:ok, portfolio}
+      expected_token = generate_preview_token(id)
+
+      if token == expected_token do
+        case Portfolios.get_portfolio_with_sections(id) do
+          nil -> {:error, :not_found}
+          portfolio -> {:ok, portfolio}
+        end
+      else
+        {:error, :invalid_token}
       end
     rescue
-      _ -> {:error, :not_found}
+      e ->
+        IO.puts("❌ Error loading preview portfolio: #{inspect(e)}")
+        {:error, :database_error}
     end
   end
 
-  defp can_view_portfolio?(portfolio, user) do
-    case portfolio.visibility do
-      :public -> true
-      :private -> user && portfolio.user_id == user.id
-      _ -> false
+  defp load_portfolio_by_slug_safe(slug) do
+    IO.puts("🔍 Loading portfolio by slug: #{slug}")
+
+    try do
+      case Portfolios.get_portfolio_by_slug_with_sections_simple(slug) do
+        {:ok, portfolio} ->  # CHANGE: Handle the new tuple format
+          # Ensure user is loaded
+          portfolio = if Ecto.assoc_loaded?(portfolio.user) do
+            portfolio
+          else
+            Frestyl.Repo.preload(portfolio, :user)
+          end
+
+          IO.puts("✅ Portfolio loaded: #{portfolio.title}")
+          {:ok, portfolio}
+
+        {:error, :not_found} ->  # CHANGE: Handle the error tuple
+          IO.puts("❌ No portfolio found with slug: #{slug}")
+          {:error, :not_found}
+
+        {:error, reason} ->  # CHANGE: Handle other errors
+          IO.puts("❌ Error from portfolio function: #{inspect(reason)}")
+          {:error, reason}
+      end
+    rescue
+      e ->
+        IO.puts("❌ Error loading portfolio by slug #{slug}: #{inspect(e)}")
+        {:error, :database_error}
+    end
+  end
+
+  defp load_portfolio_sections_safe(portfolio_id) do
+    try do
+      sections = Portfolios.list_portfolio_sections(portfolio_id)
+      IO.puts("📋 Found #{length(sections)} sections for portfolio #{portfolio_id}")
+      sections
+    rescue
+      e ->
+        IO.puts("❌ Error loading sections for portfolio #{portfolio_id}: #{inspect(e)}")
+        []
     end
   end
 
   defp generate_fallback_css(customization, brand_settings) do
-    primary = Map.get(brand_settings, :primary_color) || "#3b82f6"
-    secondary = Map.get(brand_settings, :secondary_color) || "#64748b"
-    accent = Map.get(brand_settings, :accent_color) || "#f59e0b"
-    background = Map.get(customization, "background_color") || "#ffffff"
-    text = Map.get(customization, "text_color") || "#1f2937"
+    primary = Map.get(brand_settings, :primary_color) || Map.get(customization, "primary_color", "#3b82f6")
+    secondary = Map.get(brand_settings, :secondary_color) || Map.get(customization, "secondary_color", "#64748b")
+    accent = Map.get(brand_settings, :accent_color) || Map.get(customization, "accent_color", "#f59e0b")
 
     """
     :root {
       --primary-color: #{primary};
       --secondary-color: #{secondary};
       --accent-color: #{accent};
-      --background-color: #{background};
-      --text-color: #{text};
+      --font-family: system-ui, sans-serif;
     }
-
-    body {
-      font-family: system-ui, sans-serif;
-      color: var(--text-color);
-      background-color: var(--background-color);
-    }
-
     .portfolio-public-view {
+      font-family: var(--font-family);
+      color: #1f2937;
+      line-height: 1.6;
+    }
+    .dynamic-card-layout-manager {
+      background-color: #f9fafb;
       min-height: 100vh;
+    }
+    """
+  end
+
+  defp generate_fallback_css(customization) do
+    primary = Map.get(customization, "primary_color", "#3b82f6")
+    secondary = Map.get(customization, "secondary_color", "#64748b")
+    accent = Map.get(customization, "accent_color", "#f59e0b")
+    font_family = Map.get(customization, "font_family", "system-ui, sans-serif")
+
+    """
+    :root {
+      --primary-color: #{primary};
+      --secondary-color: #{secondary};
+      --accent-color: #{accent};
+      --font-family: #{font_family};
+    }
+    .portfolio-public-view {
+      font-family: var(--font-family);
+      color: #1f2937;
+      line-height: 1.6;
+    }
+    .dynamic-card-layout-manager {
+      background-color: #f9fafb;
+      min-height: 100vh;
+      padding: 2rem;
     }
     """
   end
@@ -432,17 +615,205 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+  defp process_portfolio_customization_safe(portfolio) do
+    try do
+      customization = portfolio.customization || %{}
+      theme = portfolio.theme || "dynamic_card_layout"
 
-  # ADD THESE HELPER FUNCTIONS:
+      template_config = %{
+        theme: theme,
+        layout: get_portfolio_layout_safe(portfolio),
+        colors: get_color_scheme_safe(customization)
+      }
+
+      # Generate CSS using Dynamic Card CSS Manager if available
+      css = try do
+        brand_settings = %{
+          primary_color: Map.get(customization, "primary_color", "#3b82f6"),
+          secondary_color: Map.get(customization, "secondary_color", "#64748b"),
+          accent_color: Map.get(customization, "accent_color", "#f59e0b"),
+          font_family: Map.get(customization, "font_family", "system-ui, sans-serif")
+        }
+        DynamicCardCssManager.generate_portfolio_css(portfolio, brand_settings, customization)
+      rescue
+        _ -> generate_fallback_css(customization)
+      end
+
+      layout = Map.get(customization, "layout", "dynamic_card_layout")
+
+      {template_config, css, layout}
+    rescue
+      e ->
+        IO.puts("❌ Error processing portfolio customization: #{inspect(e)}")
+        {%{}, "", "dynamic_card_layout"}
+    end
+  end
+
+  defp get_portfolio_layout_safe(portfolio) do
+    case portfolio.customization do
+      %{"layout" => layout} when is_binary(layout) -> layout
+      _ -> "dynamic_card_layout"
+    end
+  end
+
+  defp get_color_scheme_safe(customization) do
+    %{
+      primary: Map.get(customization, "primary_color", "#3b82f6"),
+      secondary: Map.get(customization, "secondary_color", "#64748b"),
+      accent: Map.get(customization, "accent_color", "#f59e0b")
+    }
+  end
+
+  defp normalize_theme_safe(theme) do
+    case theme do
+      nil -> :dynamic_card_layout
+      "" -> :dynamic_card_layout
+      theme when is_binary(theme) ->
+        try do
+          String.to_atom(theme)
+        rescue
+          _ -> :dynamic_card_layout
+        end
+      theme when is_atom(theme) -> theme
+      _ -> :dynamic_card_layout
+    end
+  end
+
+  defp extract_intro_video_and_filter_sections(sections) do
+    intro_video_section = Enum.find(sections, fn section ->
+      section.title == "Video Introduction" ||
+      (section.content && Map.get(section.content, "video_type") == "introduction")
+    end)
+
+    filtered_sections = if intro_video_section do
+      Enum.reject(sections, &(&1.id == intro_video_section.id))
+    else
+      sections
+    end
+
+    intro_video = if intro_video_section do
+      content = intro_video_section.content || %{}
+      %{
+        url: Map.get(content, "video_url"),
+        duration: Map.get(content, "duration"),
+        title: Map.get(content, "title", "Personal Introduction"),
+        description: Map.get(content, "description"),
+        filename: Map.get(content, "video_filename")
+      }
+    else
+      nil
+    end
+
+    {intro_video, filtered_sections}
+  end
+
+  defp get_video_url_safe(nil), do: nil
+  defp get_video_url_safe(intro_video), do: Map.get(intro_video, :url)
+
+  defp get_video_content_safe(nil), do: nil
+  defp get_video_content_safe(intro_video), do: intro_video
+
+  defp is_portfolio_public?(portfolio) do
+    case portfolio.visibility do
+      :public -> true
+      "public" -> true
+      _ -> false
+    end
+  end
+
   defp can_view_portfolio?(portfolio, user) do
-    # Add your authorization logic here
-    portfolio.user_id == user.id || portfolio.visibility == :public
+    cond do
+      user && portfolio.user_id == user.id -> true
+      is_portfolio_public?(portfolio) -> true
+      true -> false
+    end
+  end
+
+  defp track_portfolio_visit_safe(portfolio, socket) do
+    try do
+      current_user = Map.get(socket.assigns, :current_user, nil)
+
+      ip_address = get_connect_info(socket, :peer_data)
+                  |> Map.get(:address, {127, 0, 0, 1})
+                  |> :inet.ntoa()
+                  |> to_string()
+      user_agent = get_connect_info(socket, :user_agent) || ""
+
+      visit_attrs = %{
+        portfolio_id: portfolio.id,
+        ip_address: ip_address,
+        user_agent: user_agent,
+        referrer: get_connect_params(socket)["ref"]
+      }
+
+      visit_attrs = if current_user do
+        Map.put(visit_attrs, :user_id, current_user.id)
+      else
+        visit_attrs
+      end
+
+      Portfolios.create_visit(visit_attrs)
+      IO.puts("📊 Portfolio visit tracked")
+    rescue
+      e ->
+        IO.puts("❌ Error tracking portfolio visit: #{inspect(e)}")
+        :ok
+    end
+  end
+
+  defp track_share_visit_safe(portfolio, share, socket) do
+    try do
+      ip_address = get_connect_info(socket, :peer_data)
+                  |> Map.get(:address, {127, 0, 0, 1})
+                  |> :inet.ntoa()
+                  |> to_string()
+      user_agent = get_connect_info(socket, :user_agent) || ""
+
+      visit_attrs = %{
+        portfolio_id: portfolio.id,
+        share_id: share.id,
+        ip_address: ip_address,
+        user_agent: user_agent,
+        referrer: get_connect_params(socket)["ref"]
+      }
+
+      Portfolios.create_visit(visit_attrs)
+      IO.puts("📊 Share visit tracked")
+    rescue
+      e ->
+        IO.puts("❌ Error tracking share visit: #{inspect(e)}")
+        :ok
+    end
+  end
+
+  defp generate_preview_token(portfolio_id) do
+    :crypto.hash(:sha256, "preview_#{portfolio_id}_#{Date.utc_today()}")
+    |> Base.encode16(case: :lower)
+  end
+
+  defp get_portfolio_owner_safe(portfolio) do
+    if Ecto.assoc_loaded?(portfolio.user) do
+      portfolio.user
+    else
+      try do
+        Frestyl.Repo.preload(portfolio, :user).user
+      rescue
+        _ -> %{name: "Portfolio Owner", email: ""}
+      end
+    end
+  end
+
+  defp can_view_portfolio?(portfolio, user) do
+    cond do
+      user && portfolio.user_id == user.id -> true
+      is_portfolio_public?(portfolio) -> true
+      true -> false
+    end
   end
 
   defp can_edit_portfolio?(portfolio, user) do
     portfolio.user_id == user.id
   end
-
 
   defp verify_preview_token(portfolio_id, token) do
     expected_token = :crypto.hash(:sha256, "preview_#{portfolio_id}_#{Date.utc_today()}")
@@ -619,10 +990,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     socket = assign(socket, :mobile_view, mobile_view)
     {:noreply, socket}
   end
-
-  # ============================================================================
-  # RENDERING LOGIC
-  # ============================================================================
 
   @impl true
   def render(assigns) do
@@ -1026,7 +1393,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
       _ -> "Section content..."
     end
 
-    Phoenix.HTML.raw("<p>#{Phoenix.HTML.html_escape(text)}</p>")
+    Phoenix.HTML.raw("<p>#{text}</p>")
   end
 
   defp get_portfolio_public_url(portfolio) do
@@ -2397,16 +2764,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
   # PORTFOLIO DATA LOADING
   # ============================================================================
 
-  defp load_portfolio_by_slug(slug) do
-    try do
-      case Portfolios.get_portfolio_by_slug(slug) do
-        nil -> {:error, :not_found}
-        portfolio -> {:ok, portfolio}
-      end
-    rescue
-      _ -> {:error, :not_found}
-    end
-  end
 
   defp load_portfolio_by_id(id) do
     try do
@@ -2421,12 +2778,18 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   defp load_portfolio_by_share_token(token) do
     try do
-      case Portfolios.get_portfolio_by_share_token(token) do
+      case Portfolios.get_share_by_token(token) do
         nil -> {:error, :not_found}
-        portfolio -> {:ok, portfolio}
+        share ->
+          case Portfolios.get_portfolio_with_sections(share.portfolio_id) do
+            nil -> {:error, :not_found}
+            portfolio -> {:ok, portfolio, share}
+          end
       end
     rescue
-      _ -> {:error, :not_found}
+      e ->
+        IO.puts("❌ Error loading shared portfolio: #{inspect(e)}")
+        {:error, :database_error}
     end
   end
 
@@ -2731,33 +3094,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end)
   end
 
-  defp track_portfolio_visit_safe(portfolio, socket) do
-    try do
-      current_user = Map.get(socket.assigns, :current_user, nil)
-
-      visit_attrs = %{
-        portfolio_id: portfolio.id,
-        ip_address: get_client_ip(socket),
-        user_agent: get_user_agent(socket),
-        referrer: get_referrer(socket)
-      }
-
-      visit_attrs = if current_user do
-        Map.put(visit_attrs, :user_id, current_user.id)
-      else
-        visit_attrs
-      end
-
-      # Use the Portfolios context function to create visit
-      Portfolios.create_visit(visit_attrs)
-    rescue
-      error ->
-        # Log error but don't crash
-        IO.puts("Failed to track portfolio visit: #{inspect(error)}")
-        :ok
-    end
-  end
-
   defp get_client_ip(socket) do
     case get_connect_info(socket, :peer_data) do
       %{address: address} -> :inet.ntoa(address) |> to_string()
@@ -2850,20 +3186,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     Phoenix.HTML.raw("<p>#{Phoenix.HTML.html_escape(text)}</p>")
   end
 
-  defp track_portfolio_visit_safe(portfolio, socket) do
-    try do
-      Portfolios.track_portfolio_visit(portfolio, %{
-        ip_address: get_connect_info(socket, :peer_data).address,
-        user_agent: get_connect_info(socket, :user_agent)
-      })
-    rescue
-      _ -> :ok
-    end
-  end
-
-  defp can_view_portfolio?(portfolio, user) do
-    portfolio.user_id == (user && user.id) || portfolio.visibility in [:public, :link_only]
-  end
 
   defp valid_preview_token?(portfolio, token) do
     # Implement token validation logic
@@ -3295,5 +3617,13 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   defp extract_contact_methods_from_section(_section) do
     [%{type: "email", value: "contact@example.com", label: "Email"}]
+  end
+
+  defp is_portfolio_public?(portfolio) do
+    case portfolio.visibility do
+      :public -> true
+      "public" -> true
+      _ -> false
+    end
   end
 end

@@ -32,6 +32,9 @@ defmodule Frestyl.Portfolios.PortfolioSection do
     belongs_to :portfolio, Frestyl.Portfolios.Portfolio
     has_many :portfolio_media, Frestyl.Portfolios.PortfolioMedia, foreign_key: :section_id
 
+    has_many :content_blocks, Frestyl.Portfolios.ContentBlock, foreign_key: :portfolio_section_id
+
+
     timestamps()
   end
 

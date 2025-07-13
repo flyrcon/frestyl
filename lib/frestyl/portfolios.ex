@@ -956,18 +956,64 @@ defmodule Frestyl.Portfolios do
     |> Repo.one()
   end
 
-  def get_portfolio_by_slug_with_sections_simple(slug) do
-    case Repo.get_by(Portfolio, slug: slug) do
-      nil ->
-        {:error, :not_found}
-      portfolio ->
-        portfolio_with_sections = Repo.preload(portfolio, [
-          :user,
-          sections: [:portfolio_media]
-        ])
-        {:ok, portfolio_with_sections}
+  def get_portfolio_by_slug_with_sections_simple(slug) when is_binary(slug) do
+    try do
+      case Repo.get_by(Portfolio, slug: slug) do
+        nil ->
+          Logger.info("No portfolio found with slug: #{slug}")
+          {:error, :not_found}
+
+        portfolio ->
+          # Preload user
+          portfolio = Repo.preload(portfolio, :user)
+
+          # Get sections with error handling
+          sections = try do
+            PortfolioSection
+            |> where([s], s.portfolio_id == ^portfolio.id)
+            |> order_by([s], s.position)
+            |> Repo.all()
+          rescue
+            e ->
+              Logger.error("Error loading sections for portfolio #{portfolio.id}: #{inspect(e)}")
+              []
+          end
+
+          # Get media for sections
+          section_ids = Enum.map(sections, & &1.id)
+          media = if length(section_ids) > 0 do
+            try do
+              PortfolioMedia
+              |> where([pm], pm.section_id in ^section_ids)
+              |> order_by([pm], pm.section_id)
+              |> Repo.all()
+            rescue
+              e ->
+                Logger.error("Error loading media for sections: #{inspect(e)}")
+                []
+            end
+          else
+            []
+          end
+
+          # Group media by section and add to sections
+          media_by_section = Enum.group_by(media, & &1.section_id)
+          sections_with_media = Enum.map(sections, fn section ->
+            section_media = Map.get(media_by_section, section.id, [])
+            Map.put(section, :portfolio_media, section_media)
+          end)
+
+          portfolio_with_sections = Map.put(portfolio, :sections, sections_with_media)
+          {:ok, portfolio_with_sections}
+      end
+    rescue
+      e ->
+        Logger.error("Critical error in get_portfolio_by_slug_with_sections_simple: #{inspect(e)}")
+        {:error, :database_error}
     end
   end
+
+  def get_portfolio_by_slug_with_sections_simple(_), do: {:error, :invalid_slug}
 
   def get_portfolio_by_share_token_simple(token) do
     IO.puts("🔥 LOADING SHARED PORTFOLIO: #{token}")
@@ -1035,6 +1081,143 @@ defmodule Frestyl.Portfolios do
   @doc """
   URGENT: Clean infinite legacy_backup loops from portfolio customization
   """
+
+  defp get_user_account_safe(user_id) do
+    try do
+      case Accounts.get_user_with_account(user_id) do
+        %{account: account} when not is_nil(account) -> account
+        _ -> create_default_account()
+      end
+    rescue
+      _ -> create_default_account()
+    end
+  end
+
+  defp create_default_account do
+    %{
+      subscription_tier: "free",
+      features: %{
+        monetization_enabled: false,
+        streaming_enabled: false,
+        collaboration_enabled: false,
+        advanced_analytics: false
+      },
+      limits: %{
+        max_portfolios: 3,
+        max_sections: 10,
+        max_media_size_mb: 50
+      }
+    }
+  end
+
+
+  def get_portfolio_with_account_context(portfolio_id, user_id) do
+    try do
+      # First get the portfolio
+      case get_portfolio_with_sections(portfolio_id) do
+        nil -> {:error, :not_found}
+        portfolio ->
+          # Get the account through the user relationship
+          account = get_user_account_safe(portfolio.user_id)
+          {:ok, portfolio, account}
+      end
+    rescue
+      e ->
+        Logger.error("Error loading portfolio with account context: #{inspect(e)}")
+        {:error, :database_error}
+    end
+  end
+
+  @doc """
+  Get portfolio section by ID
+  """
+  def get_portfolio_section(section_id) when is_integer(section_id) do
+    try do
+      PortfolioSection |> Repo.get(section_id)
+    rescue
+      _ -> nil
+    end
+  end
+
+  def get_portfolio_section(section_id) when is_binary(section_id) do
+    case Integer.parse(section_id) do
+      {int_id, ""} -> get_portfolio_section(int_id)
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Create a new portfolio section
+  """
+  def create_portfolio_section(attrs) do
+    try do
+      %PortfolioSection{}
+      |> PortfolioSection.changeset(attrs)
+      |> Repo.insert()
+    rescue
+      e ->
+        Logger.error("Error creating portfolio section: #{inspect(e)}")
+        {:error, "Database error: #{Exception.message(e)}"}
+    end
+  end
+
+  @doc """
+  Update a portfolio section
+  """
+  def update_section(section, attrs) do
+    try do
+      section
+      |> PortfolioSection.changeset(attrs)
+      |> Repo.update()
+    rescue
+      e ->
+        Logger.error("Error updating portfolio section: #{inspect(e)}")
+        {:error, "Database error: #{Exception.message(e)}"}
+    end
+  end
+
+  @doc """
+  Delete a portfolio section
+  """
+  def delete_portfolio_section(section) do
+    try do
+      Repo.delete(section)
+    rescue
+      e ->
+        Logger.error("Error deleting portfolio section: #{inspect(e)}")
+        {:error, "Database error: #{Exception.message(e)}"}
+    end
+  end
+
+  @doc """
+  Get share by token
+  """
+  def get_share_by_token(token) when is_binary(token) do
+    try do
+      PortfolioShare
+      |> where([s], s.token == ^token)
+      |> Repo.one()
+    rescue
+      _ -> nil
+    end
+  end
+
+  def get_share_by_token(_), do: nil
+
+  @doc """
+  List portfolio content blocks
+  """
+  def list_portfolio_content_blocks(portfolio_id) do
+    try do
+      ContentBlock
+      |> where([cb], cb.portfolio_id == ^portfolio_id)
+      |> order_by([cb], cb.position)
+      |> Repo.all()
+    rescue
+      _ -> []
+    end
+  end
+
   def clean_legacy_backup_loops do
     require Logger
     Logger.info("🔧 Starting legacy backup cleanup...")
@@ -1598,40 +1781,6 @@ defmodule Frestyl.Portfolios do
     Portfolio
     |> where([p], p.slug == ^slug)
     |> Repo.one!()
-  end
-
-  @doc """
-  Get portfolio by slug with all sections and media preloaded
-  """
-  def get_portfolio_by_slug_with_sections_simple(slug) do
-    case get_portfolio_by_slug(slug) do
-      nil -> nil
-      portfolio ->
-        # Get sections
-        sections = list_portfolio_sections(portfolio.id)
-
-        # Get media for all sections
-        section_ids = Enum.map(sections, & &1.id)
-        media = if length(section_ids) > 0 do
-          PortfolioMedia
-          |> where([pm], pm.section_id in ^section_ids)
-          |> order_by([pm], pm.section_id)
-          |> Repo.all()
-        else
-          []
-        end
-
-        # Group media by section
-        media_by_section = Enum.group_by(media, & &1.section_id)
-
-        # Add media to sections
-        sections_with_media = Enum.map(sections, fn section ->
-          section_media = Map.get(media_by_section, section.id, [])
-          Map.put(section, :portfolio_media, section_media)
-        end)
-
-        Map.put(portfolio, :sections, sections_with_media)
-    end
   end
 
   @doc """

@@ -180,10 +180,13 @@ defmodule Frestyl.Features.TierManager do
   defp personal_limits do
     %{
       max_portfolios: 2,
-      max_stories: 3,
+      max_stories: 2,
+      max_chapters_per_story: 5,
+      max_recording_minutes: 30,
       storage_quota_gb: 1,
       max_collaborators: 1,
       video_recording_minutes: 30,
+      story_templates: ["basic"],
       story_type_access: ["personal_narrative"],
       real_time_collaboration: false,
       custom_branding: false,
@@ -200,10 +203,13 @@ defmodule Frestyl.Features.TierManager do
   defp creator_limits do
     %{
       max_portfolios: 10,
-      max_stories: 25,
+      max_stories: 10,
+      max_chapters_per_story: 50,
+      max_recording_minutes: -1,
       storage_quota_gb: 10,
       max_collaborators: 5,
       video_recording_minutes: 120,
+      story_templates: ["all"],
       story_type_access: ["personal_narrative", "creative_showcase", "service_provider"],
       real_time_collaboration: true,
       custom_branding: false,
@@ -275,6 +281,41 @@ defmodule Frestyl.Features.TierManager do
       _ -> false
     end
   end
+
+  def feature_available?(tier, :story_lab), do: true  # All tiers
+
+  def feature_available?(tier, :story_lab_advanced) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :unlimited_stories) do
+    tier in ["professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :unlimited_recording) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :beat_detection) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :story_collaboration) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :teleprompter_mode) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :ai_story_suggestions) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :creator_lab) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
 
   @doc """
   Get all available features for a tier

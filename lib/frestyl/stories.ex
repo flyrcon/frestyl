@@ -1,8 +1,9 @@
 # lib/frestyl/stories.ex
 defmodule Frestyl.Stories do
-  import Ecto.Query
-  alias Frestyl.{Repo, Stories, Accounts}
-  alias Frestyl.Stories.Collaboration
+  import Ecto.Query, warn: false
+  alias Frestyl.{Repo, Accounts}
+  alias Frestyl.Stories.{Chapter, Collaboration, ContentBlock, Story, StoryLabUsage}
+  alias Frestyl.Features.TierManager
 
   def invite_collaborator(story, inviting_user, invitee_email, role, permissions \\ %{}) do
     host_account = get_story_account(story)
@@ -79,6 +80,207 @@ defmodule Frestyl.Stories do
             error
         end
     end
+  end
+
+    def list_user_stories(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, -1)
+
+    query = from s in Story,
+      where: s.created_by_id == ^user_id,
+      order_by: [desc: s.updated_at]
+
+    query = if limit > 0, do: limit(query, ^limit), else: query
+
+    Repo.all(query)
+  end
+
+  @doc """
+  Creates a story from a template with tier checking
+  """
+    def create_story_from_template(user, account, template_id, attrs \\ %{}) do
+      with {:ok, _} <- check_story_limits(user, account),
+          {:ok, template} <- get_template(template_id),
+          {:ok, _} <- check_template_access(account, template) do
+
+        story_attrs = Map.merge(attrs, %{
+          created_by_id: user.id,
+          account_id: account.id,
+          story_type: template.story_type,
+          narrative_structure: template.narrative_structure
+        })
+
+        create_story_with_template(story_attrs, template)
+      end
+    end
+
+  defp check_story_limits(user, account) do
+    current_count = count_user_stories(user.id)
+    limits = TierManager.get_tier_limits(account.subscription_tier)
+    max_stories = Map.get(limits, :max_stories, 0)
+
+    if max_stories == -1 or current_count < max_stories do
+      {:ok, :within_limits}
+    else
+      {:error, :story_limit_exceeded}
+    end
+  end
+
+  defp check_template_access(account, template) do
+    if template.requires_tier do
+      if TierManager.has_tier_access?(account.subscription_tier, template.requires_tier) do
+        {:ok, :access_granted}
+      else
+        {:error, :insufficient_tier}
+      end
+    else
+      {:ok, :access_granted}
+    end
+  end
+
+  def count_user_stories(user_id) do
+    from(s in Story, where: s.created_by_id == ^user_id)
+    |> Repo.aggregate(:count)
+  end
+
+  @doc """
+  Gets or creates story lab usage tracking
+  """
+  def get_story_lab_usage(user_id) do
+    case Repo.get_by(Frestyl.Stories.StoryLabUsage, user_id: user_id) do
+      nil ->
+        %Frestyl.Stories.StoryLabUsage{
+          user_id: user_id,
+          stories_created: count_user_stories(user_id),
+          chapters_created: count_user_chapters(user_id),
+          recording_minutes_used: get_recording_minutes_used(user_id)
+        }
+      usage -> usage
+    end
+  end
+
+  defp count_user_chapters(user_id) do
+    from(c in Chapter,
+      join: s in Story, on: c.story_id == s.id,
+      where: s.created_by_id == ^user_id)
+    |> Repo.aggregate(:count)
+  end
+
+  defp get_recording_minutes_used(user_id) do
+    # This would calculate total recording time from audio files
+    # associated with user's stories
+    0  # Placeholder
+  end
+
+  @doc """
+  Updates story lab usage when user creates content
+  """
+  def track_story_lab_usage(user_id, action, data \\ %{}) do
+    usage = get_story_lab_usage(user_id)
+
+    updated_usage = case action do
+      :story_created ->
+        %{usage |
+          stories_created: usage.stories_created + 1,
+          last_story_created_at: DateTime.utc_now()
+        }
+      :chapter_created ->
+        %{usage | chapters_created: usage.chapters_created + 1}
+      :recording_added ->
+        minutes = Map.get(data, :minutes, 0)
+        %{usage | recording_minutes_used: usage.recording_minutes_used + minutes}
+    end
+
+    Repo.insert_or_update(Frestyl.Stories.StoryLabUsage.changeset(updated_usage, %{}))
+  end
+
+  # Template management
+  defp get_template("personal_journey") do
+    {:ok, %{
+      id: "personal_journey",
+      name: "Personal Journey",
+      story_type: :personal_narrative,
+      narrative_structure: "chronological",
+      requires_tier: nil,
+      chapters: [
+        %{title: "The Beginning", type: :intro, narrative_purpose: :hook},
+        %{title: "The Journey", type: :content, narrative_purpose: :journey},
+        %{title: "Where I Am Now", type: :conclusion, narrative_purpose: :resolution}
+      ]
+    }}
+  end
+
+  defp get_template("simple_portfolio") do
+    {:ok, %{
+      id: "simple_portfolio",
+      name: "Story Portfolio",
+      story_type: :professional_showcase,
+      narrative_structure: "skills_first",
+      requires_tier: nil,
+      chapters: [
+        %{title: "About Me", type: :intro, narrative_purpose: :context},
+        %{title: "My Work", type: :content, narrative_purpose: :journey},
+        %{title: "Let's Connect", type: :call_to_action, narrative_purpose: :call_to_action}
+      ]
+    }}
+  end
+
+  defp get_template("basic_lyrics") do
+    {:ok, %{
+      id: "basic_lyrics",
+      name: "Lyrics & Audio",
+      story_type: :creative_portfolio,
+      narrative_structure: "artistic",
+      requires_tier: nil,
+      chapters: [
+        %{title: "Verse 1", type: :content, narrative_purpose: :hook},
+        %{title: "Chorus", type: :content, narrative_purpose: :journey},
+        %{title: "Verse 2", type: :content, narrative_purpose: :journey}
+      ]
+    }}
+  end
+
+  defp get_template("hero_journey") do
+    {:ok, %{
+      id: "hero_journey",
+      name: "Hero's Journey",
+      story_type: :personal_narrative,
+      narrative_structure: "hero_journey",
+      requires_tier: "creator",
+      chapters: [
+        %{title: "The Call", type: :intro, narrative_purpose: :hook},
+        %{title: "The Challenge", type: :content, narrative_purpose: :conflict},
+        %{title: "The Journey", type: :content, narrative_purpose: :journey},
+        %{title: "The Transformation", type: :conclusion, narrative_purpose: :resolution}
+      ]
+    }}
+  end
+
+  defp get_template(_), do: {:error, :template_not_found}
+
+  defp create_story_with_template(story_attrs, template) do
+    Repo.transaction(fn ->
+      # Create the story
+      story = %Story{}
+      |> Story.changeset(story_attrs)
+      |> Repo.insert!()
+
+      # Create chapters from template
+      template.chapters
+      |> Enum.with_index()
+      |> Enum.each(fn {chapter_template, index} ->
+        %Chapter{}
+        |> Chapter.changeset(%{
+          story_id: story.id,
+          title: chapter_template.title,
+          chapter_type: chapter_template.type,
+          narrative_purpose: chapter_template.narrative_purpose,
+          position: index
+        })
+        |> Repo.insert!()
+      end)
+
+      story
+    end)
   end
 
   def list_story_collaborators(story_id) do
