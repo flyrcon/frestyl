@@ -1,8 +1,8 @@
 <!-- lib/frestyl_web/components/layouts/app.html.heex -->
-<.flash_group flash={@flash} />
-
 <!-- Only render navigation for authenticated dashboard views -->
 <%= if assigns[:current_user] && assigns[:show_nav] != false do %>
+  <!-- Dashboard layout - no duplicate flash groups -->
+  <.flash_group flash={@flash} id="dashboard-flash" />
   <%= @inner_content %>
 <% else %>
   <!-- Legacy layout for non-dashboard pages -->
@@ -43,7 +43,8 @@
   </header>
   <main class="px-4 py-20 sm:px-6 lg:px-8" phx-main>
     <div class="mx-auto max-w-7xl">
-      <.flash_group flash={@flash} />
+      <!-- FIXED: Only ONE flash group with unique ID -->
+      <.flash_group flash={@flash} id="legacy-flash" />
       <%= @inner_content %>
     </div>
   </main>

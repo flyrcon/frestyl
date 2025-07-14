@@ -335,47 +335,23 @@ defmodule FrestylWeb.CoreComponents do
 
       <.flash_group flash={@flash} />
   """
-  attr :flash, :map, required: true, doc: "the map of flash messages"
-  attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
+
 
   def flash_group(assigns) do
+    # Use the provided ID or generate a unique one
+    assigns = assign_new(assigns, :id, fn ->
+      "flash-#{System.unique_integer([:positive])}"
+    end)
+
     ~H"""
-    <div id={@id} class="space-y-4">
-      <!-- Info flash -->
+    <div id={@id}>
       <%= if @flash[:info] do %>
         <.flash kind={:info} title={gettext("Success!")} flash={@flash} />
       <% end %>
 
-      <!-- Error flash -->
       <%= if @flash[:error] do %>
         <.flash kind={:error} title={gettext("Error!")} flash={@flash} />
       <% end %>
-
-      <!-- Client (offline) error -->
-      <.flash
-        id="client-error"
-        kind={:error}
-        title={gettext("We can't find the internet")}
-        phx-disconnected={show(".phx-client-error #client-error")}
-        phx-connected={hide("#client-error")}
-        hidden
-      >
-        {gettext("Attempting to reconnect")}
-        <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
-      </.flash>
-
-      <!-- Server error -->
-      <.flash
-        id="server-error"
-        kind={:error}
-        title={gettext("Something went wrong!")}
-        phx-disconnected={show(".phx-server-error #server-error")}
-        phx-connected={hide("#server-error")}
-        hidden
-      >
-        {gettext("Hang in there while we get back on track")}
-        <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
-      </.flash>
     </div>
     """
   end

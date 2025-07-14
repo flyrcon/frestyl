@@ -15,6 +15,9 @@ import FileUpload from "./hooks/file_upload"
 
 // Import template hooks
 import TemplateHooks from "./hooks/template_hooks"
+import PortfolioEditorFixedHooks from "./hooks/portfolio_editor_fixed_hooks"
+
+import MobileEditorHooks from "./hooks/mobile_editor_hooks"
 
 // Portfolio collaboration
 import PortfolioCollaboration from './portfolio_collaboration_hooks'
@@ -22,7 +25,7 @@ import PortfolioCollaboration from './portfolio_collaboration_hooks'
 // Import Sortable Hooks
 import SortableHooks from "./hooks/sortable_hooks"
 
-import SortableSections from "./hooks/section_sortable"
+import { SortableSections, PreviewRefresh } from "./hooks/sortable_sections"
 
 // Import Sortable for drag-and-drop
 import Sortable from 'sortablejs'
@@ -75,6 +78,8 @@ const PortfolioEditorHooks = {
   }
 };
 
+
+
 // ============================================================================
 // GLOBAL PORTFOLIO EDITOR UTILITIES
 // ============================================================================
@@ -123,6 +128,421 @@ const DevicePreviewSwitcher = {};
 const AutoSaveControl = {};
 const LayoutPreview = {};
 
+const PortfolioEditorFixedHooks = {
+  
+  // ============================================================================
+  // LIVE PREVIEW MANAGER - Fixed for PortfolioEditorFixed
+  // ============================================================================
+  LivePreviewManager: {
+    mounted() {
+      console.log("🖥️ LivePreviewManager hook mounted for PortfolioEditorFixed");
+      this.setupPreviewRefresh();
+      this.setupPreviewCommunication();
+    },
+
+    setupPreviewRefresh() {
+      // Listen for the CORRECT event names that PortfolioEditorFixed sends
+      this.handleEvent("refresh_portfolio_preview", (data) => {
+        console.log("🔄 Refreshing portfolio preview", data);
+        this.refreshPreview(data);
+      });
+
+      this.handleEvent("update_preview_css", (data) => {
+        console.log("🎨 Updating preview CSS", data);
+        this.updatePreviewCSS(data.css);
+      });
+
+      this.handleEvent("section_added", (data) => {
+        console.log("➕ Section added:", data);
+        this.showFeedback(`${data.title} section added!`, 'success');
+        setTimeout(() => this.refreshPreview(), 100);
+      });
+
+      this.handleEvent("section_saved", (data) => {
+        console.log("💾 Section saved:", data);
+        this.showFeedback("Section saved!", 'success');
+        this.refreshPreview();
+      });
+
+      this.handleEvent("section_deleted", (data) => {
+        console.log("🗑️ Section deleted:", data);
+        this.showFeedback("Section deleted", 'info');
+        this.refreshPreview();
+      });
+
+      this.handleEvent("sections_reordered", (data) => {
+        console.log("🔄 Sections reordered:", data);
+        this.showFeedback("Sections reordered!", 'success');
+        this.refreshPreview();
+      });
+    },
+
+    setupPreviewCommunication() {
+      // Set up communication with the iframe
+      window.addEventListener('message', (event) => {
+        if (event.data.type === 'preview_loaded') {
+          console.log("✅ Preview loaded successfully");
+          this.handlePreviewLoaded();
+        }
+      });
+    },
+
+    refreshPreview(data = {}) {
+      // Use the CORRECT iframe ID from PortfolioEditorFixed
+      const iframe = document.getElementById('portfolio-preview');
+      if (!iframe) {
+        console.warn("⚠️ Portfolio preview iframe not found");
+        return;
+      }
+
+      const currentUrl = new URL(iframe.src);
+      
+      // Add timestamp to force refresh
+      currentUrl.searchParams.set('t', data.timestamp || Date.now());
+      
+      // Add any additional parameters
+      if (data.template) {
+        currentUrl.searchParams.set('template', data.template);
+      }
+      
+      console.log("🔄 Refreshing iframe:", currentUrl.toString());
+      iframe.src = currentUrl.toString();
+      
+      this.showRefreshAnimation();
+    },
+
+    updatePreviewCSS(css) {
+      if (!css) return;
+      
+      // Try to update iframe content if accessible
+      try {
+        const iframe = document.getElementById('portfolio-preview');
+        if (iframe && iframe.contentDocument) {
+          // Remove existing preview CSS
+          const existingCSS = iframe.contentDocument.getElementById('portfolio-preview-css');
+          if (existingCSS) {
+            existingCSS.remove();
+          }
+          
+          // Add new CSS
+          const style = iframe.contentDocument.createElement('style');
+          style.id = 'portfolio-preview-css';
+          style.innerHTML = css;
+          iframe.contentDocument.head.appendChild(style);
+          
+          console.log("✅ CSS updated directly in iframe");
+        } else {
+          throw new Error("Cannot access iframe content");
+        }
+      } catch (e) {
+        // Cross-origin restriction, will refresh instead
+        console.log("🔄 Cross-origin CSS update failed, refreshing iframe");
+        setTimeout(() => this.refreshPreview(), 300);
+      }
+    },
+
+    showRefreshAnimation() {
+      const iframe = document.getElementById('portfolio-preview');
+      if (iframe) {
+        iframe.style.opacity = '0.7';
+        iframe.style.transform = 'scale(0.98)';
+        
+        setTimeout(() => {
+          iframe.style.opacity = '1';
+          iframe.style.transform = 'scale(1)';
+        }, 200);
+      }
+    },
+
+    showFeedback(message, type = 'success') {
+      // Remove existing feedback
+      const existingFeedback = document.querySelector('.preview-feedback');
+      if (existingFeedback) {
+        existingFeedback.remove();
+      }
+
+      const colors = {
+        success: 'bg-green-500 text-white',
+        error: 'bg-red-500 text-white',
+        info: 'bg-blue-500 text-white',
+        warning: 'bg-yellow-500 text-black'
+      };
+
+      const feedback = document.createElement('div');
+      feedback.className = `preview-feedback fixed top-20 right-4 px-4 py-2 rounded-lg shadow-lg z-50 transition-all ${colors[type]}`;
+      feedback.textContent = message;
+      document.body.appendChild(feedback);
+
+      setTimeout(() => {
+        feedback.style.opacity = '0';
+        feedback.style.transform = 'translateX(20px)';
+        setTimeout(() => {
+          if (feedback.parentNode) {
+            feedback.remove();
+          }
+        }, 300);
+      }, 2000);
+    },
+
+    handlePreviewLoaded() {
+      console.log("📱 Preview loaded, ready for updates");
+    }
+  },
+
+    MobileNavigation: {
+    mounted() {
+      console.log("📱 MobileNavigation hook mounted");
+    }
+  },
+
+  FloatingButtons: {
+    mounted() {
+      console.log("📱 FloatingButtons hook mounted");
+    }
+  },
+
+  PreviewDevice: {
+    mounted() {
+      console.log("📱 PreviewDevice hook mounted");
+    }
+  },
+
+  LivePreviewManager: {
+    mounted() {
+      console.log("🖥️ LivePreviewManager hook mounted");
+      this.setupPreviewRefresh();
+    },
+
+    setupPreviewRefresh() {
+      this.handleEvent("refresh_portfolio_preview", (data) => {
+        console.log("🔄 Refreshing portfolio preview", data);
+        const iframe = document.getElementById('portfolio-preview');
+        if (iframe) {
+          const url = new URL(iframe.src);
+          url.searchParams.set('t', data.timestamp || Date.now());
+          iframe.src = url.toString();
+          console.log("🔄 Preview refreshed:", url.toString());
+        } else {
+          console.warn("⚠️ Portfolio preview iframe not found");
+        }
+      });
+    }
+  },
+
+  // ============================================================================
+  // SORTABLE SECTIONS - Fixed for PortfolioEditorFixed
+  // ============================================================================
+  SortableSections: {
+    mounted() {
+      console.log("📝 SortableSections hook mounted for PortfolioEditorFixed");
+      this.initializeSortable();
+      this.setupEventListeners();
+    },
+
+    updated() {
+      // Only reinitialize if sections actually changed
+      if (this.shouldReinitialize()) {
+        console.log("🔄 Reinitializing sortable - sections changed");
+        this.initializeSortable();
+      }
+    },
+
+    shouldReinitialize() {
+      const currentItems = this.el.querySelectorAll('[data-section-id]');
+      const currentCount = currentItems.length;
+      
+      if (this.lastItemCount !== currentCount) {
+        this.lastItemCount = currentCount;
+        return true;
+      }
+      
+      return false;
+    },
+
+    initializeSortable() {
+      // Destroy existing sortable
+      if (this.sortable) {
+        this.sortable.destroy();
+        this.sortable = null;
+      }
+
+      // Find the sections container
+      const container = this.el.querySelector('#sections-list') || this.el;
+      
+      if (!container || typeof Sortable === 'undefined') {
+        console.warn("⚠️ Sortable container or SortableJS not found");
+        return;
+      }
+
+      try {
+        this.sortable = Sortable.create(container, {
+          handle: '.section-item',
+          animation: 200,
+          ghostClass: 'sortable-ghost',
+          chosenClass: 'sortable-chosen',
+          dragClass: 'sortable-drag',
+          
+          onStart: (evt) => {
+            console.log("🎯 Drag started:", evt.oldIndex);
+            document.body.classList.add('sorting-active');
+          },
+          
+          onEnd: (evt) => {
+            console.log("🎯 Drag ended:", evt.oldIndex, "->", evt.newIndex);
+            document.body.classList.remove('sorting-active');
+            
+            if (evt.oldIndex !== evt.newIndex) {
+              this.handleReorder();
+            }
+          }
+        });
+
+        this.lastItemCount = container.querySelectorAll('[data-section-id]').length;
+        console.log("✅ SortableSections initialized successfully");
+        
+      } catch (error) {
+        console.error("❌ Failed to initialize SortableJS:", error);
+      }
+    },
+
+    handleReorder() {
+      // Get all section IDs in their new order
+      const sectionItems = this.el.querySelectorAll('[data-section-id]');
+      const sectionIds = Array.from(sectionItems).map(item => 
+        item.getAttribute('data-section-id')
+      );
+
+      console.log("🔄 New section order:", sectionIds);
+
+      // Push the reorder event with the correct format
+      this.pushEvent("reorder_sections", {
+        section_ids: sectionIds
+      });
+    },
+
+    setupEventListeners() {
+      // Listen for section updates from PortfolioEditorFixed
+      this.handleEvent("section_added", () => {
+        setTimeout(() => this.initializeSortable(), 100);
+      });
+
+      this.handleEvent("section_deleted", () => {
+        setTimeout(() => this.initializeSortable(), 100);
+      });
+    },
+
+    destroyed() {
+      if (this.sortable) {
+        this.sortable.destroy();
+      }
+      document.body.classList.remove('sorting-active');
+    }
+  },
+
+  // ============================================================================
+  // MOBILE NAVIGATION - From your mobile navigation code
+  // ============================================================================
+  MobileNavigation: {
+    mounted() {
+      console.log("📱 MobileNavigation hook mounted");
+      this.setupMobileNavigation();
+      this.setupSwipeGestures();
+    },
+    
+    setupMobileNavigation() {
+      // Handle mobile nav events
+      this.handleEvent('mobile_nav_opened', () => {
+        document.body.style.overflow = 'hidden';
+        document.body.classList.add('mobile-nav-open');
+      });
+      
+      this.handleEvent('mobile_nav_closed', () => {
+        document.body.style.overflow = '';
+        document.body.classList.remove('mobile-nav-open');
+      });
+    },
+    
+    setupSwipeGestures() {
+      let startX = 0;
+      let isDragging = false;
+      
+      document.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+        isDragging = true;
+      }, { passive: true });
+      
+      document.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        
+        const currentX = e.touches[0].clientX;
+        const deltaX = currentX - startX;
+        
+        // Swipe right from left edge to open nav
+        if (startX < 30 && deltaX > 80) {
+          this.pushEvent('toggle_mobile_nav');
+          isDragging = false;
+        }
+      }, { passive: true });
+      
+      document.addEventListener('touchend', () => {
+        isDragging = false;
+      }, { passive: true });
+    }
+  },
+
+  // ============================================================================
+  // PREVIEW DEVICE - For mobile/tablet/desktop switching
+  // ============================================================================
+  PreviewDevice: {
+    mounted() {
+      console.log("📱 PreviewDevice hook mounted");
+      this.setupDevicePreview();
+    },
+    
+    setupDevicePreview() {
+      this.handleEvent('device_changed', ({ device }) => {
+        console.log(`📱 Device changed to: ${device}`);
+        this.updatePreviewFrame(device);
+      });
+    },
+    
+    updatePreviewFrame(device) {
+      const iframe = document.getElementById('portfolio-preview');
+      if (iframe) {
+        const container = iframe.closest('.preview-container');
+        if (container) {
+          container.className = `preview-container device-${device}`;
+        }
+      }
+    }
+  },
+
+  // ============================================================================
+  // FLOATING BUTTONS - For mobile floating action buttons
+  // ============================================================================
+  FloatingButtons: {
+    mounted() {
+      console.log("📱 FloatingButtons hook mounted");
+      this.setupFloatingButtons();
+    },
+    
+    setupFloatingButtons() {
+      // Handle unsaved changes indicator
+      this.handleEvent('unsaved_changes_updated', ({ has_changes }) => {
+        const saveButton = document.querySelector('.floating-save-button, [phx-click="save_portfolio"]');
+        if (saveButton) {
+          if (has_changes) {
+            saveButton.classList.add('has-changes');
+            saveButton.style.backgroundColor = '#f59e0b';
+          } else {
+            saveButton.classList.remove('has-changes');
+            saveButton.style.backgroundColor = '';
+          }
+        }
+      });
+    }
+  }
+};
 
 // Portfolio Hub Hooks
 export const PortfolioHub = {
@@ -238,10 +658,11 @@ export const WelcomeCelebration = {
 window.Sortable = Sortable;
 
 // Chart.js compatibility
-window.Chart = window.Chart || {};
-if (typeof window.Chart._adapters === 'undefined') {
-  window.Chart._adapters = {};
+
+if (typeof Chart !== 'undefined' && Chart.adapters) {
+  Chart.adapters._adapters = Chart.adapters._adapters || {};
 }
+window.Chart = window.Chart || {};
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
@@ -250,11 +671,65 @@ let Hooks = {
   // Video Recording
   VideoPlayer,
   VideoCapture,
-  ...PortfolioEditorHooks,
+ ...PortfolioEditorFixedHooks,
   FileUpload,
 
   PublicPortfolioRenderer,
   DesignSettings,
+
+   ...MobileEditorHooks,
+
+     MobileNavigation: {
+    mounted() {
+      console.log("📱 MobileNavigation hook mounted");
+    }
+  },
+
+  FloatingButtons: {
+    mounted() {
+      console.log("📱 FloatingButtons hook mounted");
+    }
+  },
+
+  PreviewDevice: {
+    mounted() {
+      console.log("📱 PreviewDevice hook mounted");
+    }
+  },
+
+  LivePreviewManager: {
+    mounted() {
+      console.log("🖥️ LivePreviewManager hook mounted for PortfolioEditorFixed");
+      this.setupPreviewRefresh();
+    },
+
+    setupPreviewRefresh() {
+      this.handleEvent("refresh_portfolio_preview", (data) => {
+        console.log("🔄 Refreshing portfolio preview", data);
+        const iframe = document.getElementById('portfolio-preview');
+        if (iframe) {
+          const currentUrl = new URL(iframe.src);
+          currentUrl.searchParams.set('t', data.timestamp || Date.now());
+          console.log("🔄 New iframe URL:", currentUrl.toString());
+          iframe.src = currentUrl.toString();
+        } else {
+          console.warn("⚠️ Portfolio preview iframe not found");
+        }
+      });
+    }
+  },
+  
+  SortableSections: {
+    mounted() {
+      console.log("📝 SortableSections hook mounted");
+      // Basic sortable functionality will be added later
+    },
+    
+    updated() {
+      console.log("📝 SortableSections updated");
+    }
+  },
+  
 
   // Portfolio Collaboration
   PortfolioCollaboration,
@@ -265,265 +740,24 @@ let Hooks = {
   SortableExperience: SortableHooks.ExperienceSortable,
   SortableEducation: SortableHooks.EducationSortable,
     // FIXED: Enhanced Sortable Sections Hook
-  SortableSections: {
-    mounted() {
-      console.log("📝 Enhanced SortableSections hook mounted");
-      this.initializeSortable();
-      this.setupEventListeners();
-    },
+  SortableSections: OptimizedSortableHooks.SortableSections,
+  SortableSections: SortableHooks.SectionSortable, 
+  PreviewRefresh: PreviewRefresh,
 
-    updated() {
-      console.log("📝 SortableSections updated - reinitializing");
-      // Reinitialize when sections are added/removed
-      setTimeout(() => this.initializeSortable(), 100);
-    },
-
-    initializeSortable() {
-      // Destroy existing sortable instance
-      if (this.sortable) {
-        this.sortable.destroy();
-        this.sortable = null;
-      }
-
-      // Find sortable container
-      const container = this.el.querySelector('[data-sortable="sections"]') || this.el;
-      if (!container) {
-        console.warn("⚠️ No sortable container found");
-        return;
-      }
-
-      // Check if Sortable library is available
-      if (typeof Sortable === 'undefined') {
-        console.warn("⚠️ Sortable.js library not loaded - using fallback");
-        this.initializeFallbackSortable(container);
-        return;
-      }
-
-      // Initialize SortableJS
-      this.sortable = Sortable.create(container, {
-        handle: '.drag-handle, .section-drag-handle',
-        animation: 200,
-        ghostClass: 'sortable-ghost',
-        chosenClass: 'sortable-chosen',
-        dragClass: 'sortable-drag',
-        direction: 'vertical',
+    // Other existing hooks...
+    PreviewFrame: {
+      mounted() {
+        console.log("📱 PreviewFrame hook mounted");
         
-        onStart: (evt) => {
-          console.log("🎯 Drag started:", evt.oldIndex);
-          document.body.classList.add('sorting-active');
-          container.classList.add('drag-in-progress');
-        },
-        
-        onEnd: (evt) => {
-          console.log("🎯 Drag ended:", evt.oldIndex, "->", evt.newIndex);
-          document.body.classList.remove('sorting-active');
-          container.classList.remove('drag-in-progress');
-          
-          if (evt.oldIndex !== evt.newIndex) {
-            this.handleSectionReorder(evt);
-          }
-        }
-      });
-
-      console.log("✅ SortableJS initialized successfully");
-    },
-
-    initializeFallbackSortable(container) {
-      console.log("🔄 Initializing fallback drag and drop");
-      
-      let draggedElement = null;
-      let placeholder = null;
-
-      // Make sections draggable
-      const sections = container.querySelectorAll('[data-section-id]');
-      sections.forEach(section => {
-        section.draggable = true;
-        
-        section.addEventListener('dragstart', (e) => {
-          draggedElement = section;
-          section.classList.add('dragging');
-          
-          // Create placeholder
-          placeholder = section.cloneNode(true);
-          placeholder.classList.add('drag-placeholder');
-          placeholder.style.opacity = '0.5';
-          placeholder.style.pointerEvents = 'none';
-          
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/html', section.outerHTML);
-        });
-
-        section.addEventListener('dragend', (e) => {
-          section.classList.remove('dragging');
-          if (placeholder && placeholder.parentNode) {
-            placeholder.remove();
-          }
-          draggedElement = null;
-        });
-
-        section.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          
-          if (draggedElement && draggedElement !== section) {
-            const rect = section.getBoundingClientRect();
-            const midpoint = rect.top + rect.height / 2;
-            
-            if (e.clientY < midpoint) {
-              section.parentNode.insertBefore(placeholder, section);
-            } else {
-              section.parentNode.insertBefore(placeholder, section.nextSibling);
-            }
+        this.handleEvent("refresh_preview", () => {
+          const iframe = this.el.querySelector('iframe');
+          if (iframe) {
+            iframe.src = iframe.src;
           }
         });
-
-        section.addEventListener('drop', (e) => {
-          e.preventDefault();
-          
-          if (draggedElement && placeholder && placeholder.parentNode) {
-            placeholder.parentNode.insertBefore(draggedElement, placeholder);
-            placeholder.remove();
-            
-            // Calculate new order
-            this.handleFallbackReorder(container);
-          }
-        });
-      });
-    },
-
-    handleSectionReorder(evt) {
-      // Get section IDs in new order
-      const sectionElements = this.el.querySelectorAll('[data-section-id]');
-      const newOrder = Array.from(sectionElements).map(el => el.dataset.sectionId);
-      
-      console.log("📋 New section order:", newOrder);
-      
-      // Send to server
-      this.pushEvent("reorder_sections", {
-        section_ids: newOrder,
-        old_index: evt.oldIndex,
-        new_index: evt.newIndex
-      });
-      
-      // Visual feedback
-      this.showReorderFeedback();
-    },
-
-    handleFallbackReorder(container) {
-      const sectionElements = container.querySelectorAll('[data-section-id]');
-      const newOrder = Array.from(sectionElements).map(el => el.dataset.sectionId);
-      
-      console.log("📋 Fallback reorder - new order:", newOrder);
-      
-      this.pushEvent("reorder_sections", {
-        section_ids: newOrder
-      });
-      
-      this.showReorderFeedback();
-    },
-
-    setupEventListeners() {
-      // Listen for server responses
-      this.handleEvent("sections_reordered", (data) => {
-        console.log("✅ Sections reordered successfully:", data);
-        this.showFeedback("Sections reordered successfully!", 'success');
-      });
-
-      this.handleEvent("reorder_failed", (data) => {
-        console.log("❌ Reorder failed:", data);
-        this.showFeedback("Failed to reorder sections", 'error');
-        // Refresh to restore original order
-        location.reload();
-      });
-    },
-
-    showReorderFeedback() {
-      // Animate sections to show reorder
-      const sections = this.el.querySelectorAll('[data-section-id]');
-      sections.forEach((section, index) => {
-        setTimeout(() => {
-          section.style.transform = 'scale(1.02)';
-          section.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-          
-          setTimeout(() => {
-            section.style.transform = '';
-            section.style.boxShadow = '';
-          }, 200);
-        }, index * 50);
-      });
-    },
-
-    showFeedback(message, type = 'success') {
-      const colors = {
-        success: 'bg-green-500 text-white',
-        error: 'bg-red-500 text-white',
-        info: 'bg-blue-500 text-white'
-      };
-
-      const feedback = document.createElement('div');
-      feedback.className = `fixed top-4 right-4 px-4 py-2 rounded-lg shadow-lg z-50 ${colors[type]}`;
-      feedback.textContent = message;
-      document.body.appendChild(feedback);
-
-      setTimeout(() => {
-        feedback.style.opacity = '0';
-        setTimeout(() => feedback.remove(), 300);
-      }, 3000);
-    },
-
-    destroyed() {
-      if (this.sortable) {
-        this.sortable.destroy();
-      }
-      document.body.classList.remove('sorting-active');
-    }
-  },
-
-  // Block-level sortable for dynamic card layouts
-  SortableBlocks: {
-    mounted() {
-      console.log("🎯 SortableBlocks hook mounted");
-      this.initializeSortable();
-    },
-
-    initializeSortable() {
-      if (typeof Sortable !== 'undefined') {
-        this.sortable = Sortable.create(this.el, {
-          group: 'blocks',
-          handle: '.block-drag-handle',
-          animation: 150,
-          onEnd: (evt) => {
-            this.pushEvent("reorder_blocks", {
-              zone: this.el.dataset.zone,
-              old_index: evt.oldIndex,
-              new_index: evt.newIndex
-            });
-          }
-        });
-      }
-    },
-
-    destroyed() {
-      if (this.sortable) {
-        this.sortable.destroy();
       }
     }
-  },
-
-  // Other existing hooks...
-  PreviewFrame: {
-    mounted() {
-      console.log("📱 PreviewFrame hook mounted");
-      
-      this.handleEvent("refresh_preview", () => {
-        const iframe = this.el.querySelector('iframe');
-        if (iframe) {
-          iframe.src = iframe.src;
-        }
-      });
-    }
-  }
-};
+  };
 
 // Add sortable CSS if not already present
 if (!document.getElementById('sortable-styles')) {
@@ -582,11 +816,11 @@ if (!document.getElementById('sortable-styles')) {
   PortfolioHub: PortfolioHub,
 
   // Mobile Hooks
-  MobileGestures: window.MobilePortfolioHooks?.MobileGestures,
-  MobilePullRefresh: window.MobilePortfolioHooks?.MobilePullRefresh,
+  window.MobilePortfolioHooks?.MobileGestures;
+  window.MobilePortfolioHooks?.MobilePullRefresh;
 
   // Auto Focus Hook
-  AutoFocus: {
+  AutoFocus = {
     mounted() {
       setTimeout(() => {
         this.el.focus();
@@ -695,7 +929,7 @@ if (!document.getElementById('sortable-styles')) {
     }
   },
 
-  PdfDownload: {
+  PdfDownload = {
     mounted() {
       console.log('🎯 PdfDownload hook mounted successfully on element:', this.el.id)
       
@@ -1039,10 +1273,10 @@ if (!document.getElementById('sortable-styles')) {
     }
   },
 
-    ...TemplateHooks,
+  TemplateHooks,
   
   // Preview refresh hook
-  PreviewRefresh: {
+  PreviewRefresh = {
     mounted() {
       this.handleEvent("refresh_portfolio_preview", ({timestamp}) => {
         console.log("🔄 Refreshing portfolio preview");
@@ -1066,7 +1300,7 @@ if (!document.getElementById('sortable-styles')) {
   },
 
     // Clipboard Hook
-  Clipboard: {
+  Clipboard ={
     mounted() {
       this.el.addEventListener('click', async () => {
         const textToCopy = this.el.dataset.clipboard || this.el.textContent;
@@ -1109,7 +1343,7 @@ if (!document.getElementById('sortable-styles')) {
   },
 
   // Template selection hook
-  TemplateSelector: {
+  TemplateSelector = {
     mounted() {
       console.log("🎨 Template Selector mounted");
       this.el.addEventListener('click', (e) => {
@@ -1155,7 +1389,7 @@ if (!document.getElementById('sortable-styles')) {
   },
 
   // Color picker enhancements
-  ColorPickerLive: {
+  ColorPickerLive = {
     mounted() {
       console.log("🎨 Live Color Picker mounted");
       this.setupColorPicker();
@@ -1238,7 +1472,7 @@ if (!document.getElementById('sortable-styles')) {
   },
 
   // Font preview hook
-  FontPreview: {
+  FontPreview = {
     mounted() {
       console.log("🎨 Font Preview mounted");
       this.setupFontPreview();
@@ -1320,7 +1554,7 @@ if (!document.getElementById('sortable-styles')) {
   },
 
   // Template Upload Hook
-  TemplateUpload: {
+  TemplateUpload = {
     mounted() {
       console.log('🎨 TemplateUpload hook mounted');
       
@@ -1476,7 +1710,7 @@ if (!document.getElementById('sortable-styles')) {
   },
 
   // Template Export Hook
-  TemplateExport: {
+  TemplateExport = {
     mounted() {
       this.handleEvent("download_template", (data) => {
         console.log('📥 Downloading template:', data.filename);
@@ -1506,7 +1740,7 @@ if (!document.getElementById('sortable-styles')) {
   },
 
   // Copy to Clipboard Hook
-  CopyToClipboard: {
+  CopyToClipboard = {
     mounted() {
       this.handleEvent('copy_to_clipboard', (payload) => {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1548,11 +1782,49 @@ if (!document.getElementById('sortable-styles')) {
 
       document.body.removeChild(textArea);
     }
-  }
-};
+  };
+
 
 // Global hooks reference
 window.Hooks = Hooks;
+
+// Add this to your existing hooks
+const LivePreviewManager = {
+  mounted() {
+    console.log("🔥 LivePreviewManager hook mounted");
+    this.iframe = this.el;
+    this.setupPreviewCommunication();
+  },
+
+  updated() {
+    console.log("🔥 LivePreviewManager hook updated");
+    this.refreshPreview();
+  },
+
+  setupPreviewCommunication() {
+    // Listen for messages from the preview iframe
+    window.addEventListener('message', (event) => {
+      if (event.source === this.iframe.contentWindow) {
+        console.log("🔥 Preview message received:", event.data);
+        // Handle preview events if needed
+      }
+    });
+  },
+
+  refreshPreview() {
+    if (this.iframe && this.iframe.contentWindow) {
+      try {
+        this.iframe.contentWindow.location.reload();
+      } catch (e) {
+        console.log("Preview refresh blocked by same-origin policy");
+      }
+    }
+  }
+};
+
+// Add to your existing hooks object
+window.Hooks = window.Hooks || {};
+window.Hooks.LivePreviewManager = LivePreviewManager;
 
 // LiveSocket configuration
 let liveSocket = new LiveSocket("/live", Socket, {
@@ -1591,6 +1863,7 @@ topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"});
 
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300));
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide());
+window.PortfolioEditorFixedHooks = PortfolioEditorFixedHooks;
 
 // Connect LiveSocket
 liveSocket.connect();

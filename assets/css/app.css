@@ -1916,3 +1916,187 @@ input:disabled {
   pointer-events: none;
   border-radius: inherit;
 }
+
+/* Mobile Navigation Animations */
+.mobile-nav-enter {
+  transform: translateX(-100%);
+}
+
+.mobile-nav-enter-active {
+  transform: translateX(0);
+  transition: transform 300ms ease-out;
+}
+
+.mobile-nav-exit {
+  transform: translateX(0);
+}
+
+.mobile-nav-exit-active {
+  transform: translateX(-100%);
+  transition: transform 300ms ease-in;
+}
+
+/* Floating Button Animations */
+.floating-button {
+  transform: scale(1);
+  transition: all 200ms ease-out;
+}
+
+.floating-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.floating-button:active {
+  transform: scale(0.95);
+}
+
+/* Quick Add Menu Animation */
+.quick-add-menu {
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+  transition: all 200ms ease-out;
+}
+
+.quick-add-menu.active {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* Mobile Section Cards */
+.mobile-section-card {
+  transition: all 200ms ease-out;
+}
+
+.mobile-section-card:active {
+  transform: scale(0.98);
+  background-color: #f3f4f6;
+}
+
+/* Preview Device Frame Transitions */
+.preview-frame {
+  transition: all 300ms ease-out;
+}
+
+/* Line clamp utility for text truncation */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Mobile-first responsive utilities */
+@media (max-width: 768px) {
+  .mobile-hidden {
+    display: none !important;
+  }
+  
+  .mobile-full-width {
+    width: 100% !important;
+  }
+  
+  .mobile-px-4 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
+
+/* Touch-friendly button sizes */
+@media (max-width: 768px) {
+  button, .button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  input, textarea, select {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+}
+
+/* Dark mode support for mobile */
+@media (prefers-color-scheme: dark) {
+  .mobile-nav-panel {
+    background-color: #1f2937;
+    border-color: #374151;
+  }
+  
+  .mobile-nav-panel .text-gray-900 {
+    color: #f9fafb;
+  }
+  
+  .mobile-nav-panel .text-gray-600 {
+    color: #d1d5db;
+  }
+}
+
+const additionalCSS = `
+/* Sortable States for PortfolioEditorFixed */
+.sorting-active {
+  user-select: none;
+}
+
+.sortable-ghost {
+  opacity: 0.5;
+  background: #f3f4f6 !important;
+  border: 2px dashed #d1d5db !important;
+}
+
+.sortable-chosen {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+.sortable-drag {
+  transform: rotate(2deg);
+  opacity: 0.8;
+}
+
+/* Preview refresh animation */
+#portfolio-preview {
+  transition: all 0.2s ease;
+}
+
+/* Mobile navigation states */
+.mobile-nav-open {
+  overflow: hidden !important;
+}
+
+/* Floating button states */
+.has-changes {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Device preview frames */
+.device-mobile .preview-container {
+  max-width: 375px;
+  margin: 0 auto;
+}
+
+.device-tablet .preview-container {
+  max-width: 768px;
+  margin: 0 auto;
+}
+
+.device-desktop .preview-container {
+  max-width: 100%;
+}
+
+/* Preview feedback */
+.preview-feedback {
+  transition: all 0.3s ease;
+}
+

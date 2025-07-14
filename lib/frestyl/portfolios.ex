@@ -1162,21 +1162,6 @@ defmodule Frestyl.Portfolios do
   end
 
   @doc """
-  Update a portfolio section
-  """
-  def update_section(section, attrs) do
-    try do
-      section
-      |> PortfolioSection.changeset(attrs)
-      |> Repo.update()
-    rescue
-      e ->
-        Logger.error("Error updating portfolio section: #{inspect(e)}")
-        {:error, "Database error: #{Exception.message(e)}"}
-    end
-  end
-
-  @doc """
   Delete a portfolio section
   """
   def delete_portfolio_section(section) do

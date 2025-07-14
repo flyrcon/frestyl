@@ -87,6 +87,75 @@ defmodule FrestylWeb.PortfolioLive.DynamicCardPortfolioEditor do
   # DYNAMIC CARD SPECIFIC EVENT HANDLERS
   # ============================================================================
 
+  # ============================================================================
+# EVENT DELEGATION TO BASE PORTFOLIO EDITOR
+# ============================================================================
+
+  @impl true
+  def handle_event("toggle_add_section_dropdown", params, socket) do
+    IO.puts("🔥 DYNAMIC CARD: Delegating toggle_add_section_dropdown to base editor")
+    PortfolioEditor.handle_event("toggle_add_section_dropdown", params, socket)
+  end
+
+  @impl true
+  def handle_event("add_section", params, socket) do
+    IO.puts("🔥 DYNAMIC CARD: Delegating add_section to base editor")
+    PortfolioEditor.handle_event("add_section", params, socket)
+  end
+
+  @impl true
+  def handle_event("toggle_section_visibility", params, socket) do
+    IO.puts("🔥 DYNAMIC CARD: Delegating toggle_section_visibility to base editor")
+    PortfolioEditor.handle_event("toggle_section_visibility", params, socket)
+  end
+
+  @impl true
+  def handle_event("edit_section", params, socket) do
+    IO.puts("🔥 DYNAMIC CARD: Delegating edit_section to base editor")
+    PortfolioEditor.handle_event("edit_section", params, socket)
+  end
+
+  @impl true
+  def handle_event("show_section_media_library", params, socket) do
+    IO.puts("🔥 DYNAMIC CARD: Delegating show_section_media_library to base editor")
+    PortfolioEditor.handle_event("show_section_media_library", params, socket)
+  end
+
+  @impl true
+  def handle_event("show_video_intro_modal", params, socket) do
+    IO.puts("🔥 DYNAMIC CARD: Delegating show_video_intro_modal to base editor")
+    PortfolioEditor.handle_event("show_video_intro_modal", params, socket)
+  end
+
+  @impl true
+  def handle_event("hide_video_intro_modal", params, socket) do
+    IO.puts("🔥 DYNAMIC CARD: Delegating hide_video_intro_modal to base editor")
+    PortfolioEditor.handle_event("hide_video_intro_modal", params, socket)
+  end
+
+  @impl true
+  def handle_event("close_media_library", params, socket) do
+    IO.puts("🔥 DYNAMIC CARD: Delegating close_media_library to base editor")
+    PortfolioEditor.handle_event("close_media_library", params, socket)
+  end
+
+  @impl true
+  def handle_event("close_add_section_dropdown", params, socket) do
+    IO.puts("🔥 DYNAMIC CARD: Delegating close_add_section_dropdown to base editor")
+    PortfolioEditor.handle_event("close_add_section_dropdown", params, socket)
+  end
+
+  # For any event not specifically handled by dynamic card system, delegate to base editor
+  @impl true
+  def handle_event(event_name, params, socket) when event_name not in [
+    "toggle_layout_mode", "toggle_brand_settings", "toggle_preview_mode",
+    "switch_device_preview", "add_dynamic_block", "remove_dynamic_block",
+    "update_brand_settings", "reorder_blocks"
+  ] do
+    IO.puts("🔥 DYNAMIC CARD: Delegating #{event_name} to base PortfolioEditor")
+    PortfolioEditor.handle_event(event_name, params, socket)
+  end
+
   @impl true
   def handle_event("toggle_layout_mode", %{"mode" => "dynamic"}, socket) do
     {:noreply, assign(socket, :show_dynamic_layout_manager, true)}

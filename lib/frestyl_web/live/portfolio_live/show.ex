@@ -11,7 +11,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
   alias Phoenix.PubSub
   alias FrestylWeb.PortfolioLive.DynamicCardCssManager
 
-  alias FrestylWeb.PortfolioLive.{DynamicCardLayoutManager, DynamicCardPublicRenderer}
+  alias FrestylWeb.PortfolioLive.{PorfolioEditorFixed}
   alias Frestyl.ResumeExporter
 
 
