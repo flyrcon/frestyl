@@ -60,7 +60,6 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditorFixed do
     end
   end
 
-
   defp add_mobile_assigns(socket) do
     socket
     |> assign(:show_mobile_nav, false)
