@@ -3291,7 +3291,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
       sections = Frestyl.Portfolios.list_portfolio_sections(portfolio_id)
 
       Enum.each(sections, fn section ->
-        Frestyl.Portfolios.delete_portfolio_section(section)
+        Frestyl.Portfolios.delete_section(section)
       end)
 
       :ok
@@ -3312,7 +3312,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
         false ->
           # Create sections individually
           sections = Enum.map(sections_data, fn attrs ->
-            case Frestyl.Portfolios.create_portfolio_section(attrs) do
+            case Frestyl.Portfolios.create_section(attrs) do
               {:ok, section} -> section
               {:error, _} -> nil
             end
@@ -3342,7 +3342,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditor do
 
   defp create_portfolio_section(attrs) do
     try do
-      Portfolios.create_portfolio_section(attrs)
+      Portfolios.create_section(attrs)
     rescue
       _ ->
         # Fallback if function doesn't exist
@@ -4429,7 +4429,7 @@ end
 
     IO.puts("🔥 Creating dynamic block with attrs: #{inspect(attrs)}")
 
-    case Portfolios.create_portfolio_section(attrs) do
+    case Portfolios.create_section(attrs) do
       {:ok, new_section} ->
         IO.puts("🔥 Dynamic block created successfully: #{inspect(new_section)}")
         updated_sections = (socket.assigns.sections || []) ++ [new_section]
@@ -5122,7 +5122,7 @@ end
   defp create_portfolio_section_safe(attrs) do
     try do
       # Try the main function first
-      Portfolios.create_portfolio_section(attrs)
+      Portfolios.create_section(attrs)
     rescue
       UndefinedFunctionError ->
         # Try alternative function names
@@ -6183,17 +6183,30 @@ end
 
 
   defp create_new_section(portfolio_id, section_type) do
+    # ✅ FIXED: Generate proper content structure based on section type
+    content = case section_type do
+      "experience" -> %{"jobs" => []}
+      "education" -> %{"education" => []}
+      "skills" -> %{"skills" => []}
+      "projects" -> %{"projects" => []}
+      "achievements" -> %{"achievements" => []}
+      "testimonials" -> %{"testimonials" => []}
+      "contact" -> %{"email" => "", "phone" => "", "location" => ""}
+      "intro" -> %{"headline" => "", "summary" => ""}
+      _ -> %{"main_content" => "Add your content here..."}
+    end
+
     attrs = %{
       portfolio_id: portfolio_id,
       section_type: section_type,
       title: humanize_section_type(section_type),
-      content: %{},
+      content: content,  # ← NOW USES CORRECT STRUCTURE
       position: get_next_position(portfolio_id),
       visible: true
     }
 
-    # FIXED: Use Portfolios.create_section instead of create_portfolio_section
-    Portfolios.create_section(attrs)
+    # ✅ FIXED: Use correct function name
+    Portfolios.create_section(attrs)  # ← Changed from create_portfolio_section
   end
 
   defp delete_section(section_id) do
@@ -6208,9 +6221,9 @@ end
 
   defp delete_portfolio_section(section_id) do
     try do
-      case Portfolios.get_portfolio_section(section_id) do
+      case Portfolios.get_section!(section_id) do
         nil -> {:error, :not_found}
-        section -> Portfolios.delete_portfolio_section(section)
+        section -> Portfolios.delete_section(section)
       end
     rescue
       _ -> {:error, "Function not available"}
@@ -7684,7 +7697,7 @@ end
         }
       }
 
-      case Portfolios.create_portfolio_section(section_attrs) do
+      case Portfolios.create_section(section_attrs) do
         {:ok, new_section} ->
           updated_sections = socket.assigns.sections ++ [new_section]
 
@@ -7730,7 +7743,7 @@ end
       block_id_int = String.to_integer(block_id)
 
       # Find the section that corresponds to this block
-      case Portfolios.get_portfolio_section(block_id_int) do
+      case Portfolios.get_section!(block_id_int) do
         nil ->
           {:noreply, put_flash(socket, :error, "Block not found")}
 
@@ -8557,7 +8570,7 @@ end
       multi = Enum.with_index(ordered_section_ids, 1)
       |> Enum.reduce(multi, fn {section_id, new_position}, multi_acc ->
         Multi.update(multi_acc, "section_#{section_id}", fn _repo, _changes ->
-          case Portfolios.get_portfolio_section(section_id) do
+          case Portfolios.get_section!(section_id) do
             nil ->
               {:error, "Section #{section_id} not found"}
             section ->

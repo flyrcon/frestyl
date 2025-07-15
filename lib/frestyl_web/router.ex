@@ -202,10 +202,12 @@ defmodule FrestylWeb.Router do
 
     # Generic routes LAST
     live "/portfolios/:id", PortfolioLive.Show, :show
+    live "/portfolios/:id/edit-legacy", PortfolioLive.Edit, :edit
+    live "/portfolios/:id/edit_dynamic", PortfolioLive.DynamicCardPortfolioEditor, :edit
     live "/portfolios/:id/edit_fixed", PortfolioLive.PortfolioEditorFixed, :edit
     live "/portfolios/:id/edit", PortfolioLive.PortfolioEditor, :edit
     live "/portfolios/:id/enhance/:type", PortfolioLive.PortfolioEditor, :enhance
-    live "/portfolios/:id/edit-legacy", PortfolioLive.Edit, :edit
+
     live "/portfolios/:id/settings", PortfolioLive.Settings, :settings
 
 

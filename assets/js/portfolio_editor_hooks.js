@@ -3,277 +3,78 @@
 const PortfolioEditorHooks = {
   // ============================================================================
   // SORTABLE SECTIONS - DRAG & DROP FUNCTIONALITY
-  // ============================================================================
-  SortableSections: {
-    mounted() {
-      console.log("📝 SortableSections hook mounted");
-      this.initializeSortable();
-      this.setupEventListeners();
-    },
-
-    updated() {
-      // Reinitialize sortable when sections are added/removed
-      this.initializeSortable();
-    },
-
-    initializeSortable() {
-      // Destroy existing sortable instance if it exists
-      if (this.sortable) {
-        this.sortable.destroy();
-      }
-
-      // Initialize drag and drop with SortableJS if available
-      if (typeof Sortable !== 'undefined') {
-        this.sortable = Sortable.create(this.el, {
-          handle: '.drag-handle',
-          animation: 150,
-          ghostClass: 'sortable-ghost',
-          chosenClass: 'sortable-chosen',
-          dragClass: 'sortable-drag',
-          onStart: (evt) => {
-            console.log("🎯 Drag started:", evt.oldIndex);
-            this.addSortingStyles();
-          },
-          onEnd: (evt) => {
-            console.log("🎯 Drag ended:", evt.oldIndex, "->", evt.newIndex);
-            this.removeSortingStyles();
-            
-            if (evt.oldIndex !== evt.newIndex) {
-              this.pushEvent("reorder_sections", {
-                old_index: evt.oldIndex,
-                new_index: evt.newIndex
-              });
-            }
-          }
-        });
-      } else {
-        // Fallback: Basic drag and drop with HTML5 API
-        this.initializeFallbackDragDrop();
-      }
-    },
-
-    initializeFallbackDragDrop() {
-      const sections = this.el.querySelectorAll('.section-card');
-      
-      sections.forEach((section, index) => {
-        const dragHandle = section.querySelector('.drag-handle');
-        if (dragHandle) {
-          section.draggable = true;
-          section.dataset.index = index;
-          
-          section.addEventListener('dragstart', this.handleDragStart.bind(this));
-          section.addEventListener('dragover', this.handleDragOver.bind(this));
-          section.addEventListener('drop', this.handleDrop.bind(this));
-          section.addEventListener('dragend', this.handleDragEnd.bind(this));
-        }
-      });
-    },
-
-    handleDragStart(e) {
-      this.draggedElement = e.target;
-      this.draggedIndex = parseInt(e.target.dataset.index);
-      e.target.style.opacity = '0.5';
-      this.addSortingStyles();
-    },
-
-    handleDragOver(e) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-    },
-
-    handleDrop(e) {
-      e.preventDefault();
-      const dropTarget = e.target.closest('.section-card');
-      const dropIndex = parseInt(dropTarget.dataset.index);
-      
-      if (this.draggedIndex !== dropIndex) {
-        this.pushEvent("reorder_sections", {
-          old_index: this.draggedIndex,
-          new_index: dropIndex
-        });
-      }
-    },
-
-    handleDragEnd(e) {
-      e.target.style.opacity = '';
-      this.removeSortingStyles();
-      this.draggedElement = null;
-      this.draggedIndex = null;
-    },
-
-    addSortingStyles() {
-      this.el.classList.add('sorting-active');
-      document.body.classList.add('drag-in-progress');
-    },
-
-    removeSortingStyles() {
-      this.el.classList.remove('sorting-active');
-      document.body.classList.remove('drag-in-progress');
-    },
-
-    setupEventListeners() {
-      // Listen for section updates
-      this.handleEvent("section_added", (data) => {
-        console.log("➕ Section added:", data);
-        this.showFeedback(`${data.title} section added successfully!`, 'success');
-        setTimeout(() => this.initializeSortable(), 100);
-      });
-
-      this.handleEvent("section_deleted", (data) => {
-        console.log("🗑️ Section deleted:", data);
-        this.showFeedback(`Section deleted`, 'info');
-        setTimeout(() => this.initializeSortable(), 100);
-      });
-
-      this.handleEvent("sections_reordered", (data) => {
-        console.log("🔄 Sections reordered:", data);
-        this.showFeedback(`Sections reordered successfully!`, 'success');
-      });
-    },
-
-    showFeedback(message, type = 'success') {
-      const colors = {
-        success: 'bg-green-500 text-white',
-        error: 'bg-red-500 text-white',
-        info: 'bg-blue-500 text-white',
-        warning: 'bg-yellow-500 text-black'
-      };
-
-      const feedback = document.createElement('div');
-      feedback.className = `fixed top-4 right-4 px-4 py-2 rounded-lg shadow-lg z-50 transition-all ${colors[type]}`;
-      feedback.textContent = message;
-      document.body.appendChild(feedback);
-
-      setTimeout(() => {
-        feedback.style.opacity = '0';
-        feedback.style.transform = 'translateY(-20px)';
-        setTimeout(() => feedback.remove(), 300);
-      }, 3000);
-    },
-
-    destroyed() {
-      if (this.sortable) {
-        this.sortable.destroy();
-      }
-    }
-  },
+  // ===========================================================================
 
   // ============================================================================
   // LIVE PREVIEW IFRAME MANAGER
   // ============================================================================
-  LivePreviewManager: {
-    mounted() {
-      console.log("🖥️ LivePreviewManager hook mounted");
-      this.setupPreviewRefresh();
-      this.setupPreviewCommunication();
-    },
+// Live Preview Manager Hook
+LivePreviewManager: {
+  mounted() {
+    console.log("🔥 LivePreviewManager hook mounted");
+    
+    this.handleEvent("refresh_portfolio_preview", (data) => {
+      console.log("🔄 Refreshing preview", data);
+      this.refreshPreview();
+    });
 
-    setupPreviewRefresh() {
-      // Listen for various events that should trigger preview refresh
-      this.handleEvent("template_changed", (data) => {
-        console.log("🎨 Template changed:", data.template);
-        this.refreshPreview({ template: data.template });
-        this.showTemplateChangeAnimation(data.template);
-      });
+    this.handleEvent("update_preview_css", (data) => {
+      console.log("🎨 Updating preview CSS", data);
+      this.updatePreviewCSS(data.css);
+    });
 
-      this.handleEvent("customization_changed", (data) => {
-        console.log("🎨 Design updated:", data);
-        this.refreshPreview({ customization: data.customization });
-      });
+    this.handleEvent("section_added", (data) => {
+      console.log("➕ Section added", data);
+      this.refreshPreview();
+    });
 
-      this.handleEvent("section_updated", (data) => {
-        console.log("📝 Section updated:", data);
+    this.handleEvent("section_deleted", (data) => {
+      console.log("🗑️ Section deleted", data);
+      this.refreshPreview();
+    });
+
+    this.handleEvent("sections_reordered", (data) => {
+      console.log("🔄 Sections reordered", data);
+      this.refreshPreview();
+    });
+
+    // Auto-refresh preview on window focus
+    this.focusHandler = () => {
+      if (document.hidden === false) {
         this.refreshPreview();
-      });
+      }
+    };
+    
+    document.addEventListener("visibilitychange", this.focusHandler);
+  },
 
-      this.handleEvent("portfolio_saved", (data) => {
-        console.log("💾 Portfolio saved:", data);
-        this.showSaveAnimation();
-      });
-    },
-
-    setupPreviewCommunication() {
-      // Set up communication with the iframe
-      window.addEventListener('message', (event) => {
-        if (event.data.type === 'preview_loaded') {
-          console.log("✅ Preview loaded successfully");
-          this.handlePreviewLoaded();
-        }
-      });
-    },
-
-    refreshPreview(params = {}) {
-      const iframe = document.getElementById('live-preview-iframe');
-      if (!iframe) return;
-
-      const url = new URL(iframe.src);
-      
+  refreshPreview() {
+    const iframe = document.getElementById("portfolio-preview");
+    if (iframe) {
       // Add timestamp to force refresh
-      url.searchParams.set('t', Date.now());
-      
-      // Add any additional parameters
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          url.searchParams.set(key, typeof value === 'object' ? JSON.stringify(value) : value);
-        }
-      });
-
+      const url = new URL(iframe.src);
+      url.searchParams.set("t", Date.now());
       iframe.src = url.toString();
-      this.showRefreshAnimation();
-    },
-
-    showRefreshAnimation() {
-      const iframe = document.getElementById('live-preview-iframe');
-      if (iframe) {
-        iframe.style.opacity = '0.7';
-        iframe.style.transform = 'scale(0.98)';
-        
-        setTimeout(() => {
-          iframe.style.opacity = '1';
-          iframe.style.transform = 'scale(1)';
-        }, 200);
-      }
-    },
-
-    showTemplateChangeAnimation(template) {
-      const previewContainer = document.querySelector('.preview-container');
-      if (previewContainer) {
-        previewContainer.classList.add('template-changing');
-        
-        setTimeout(() => {
-          previewContainer.classList.remove('template-changing');
-        }, 500);
-      }
-    },
-
-    showSaveAnimation() {
-      // Create a save success indicator
-      const saveIndicator = document.createElement('div');
-      saveIndicator.className = 'fixed top-20 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center space-x-2';
-      saveIndicator.innerHTML = `
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-        </svg>
-        <span>Portfolio Saved!</span>
-      `;
-      
-      document.body.appendChild(saveIndicator);
-      
-      setTimeout(() => {
-        saveIndicator.style.opacity = '0';
-        saveIndicator.style.transform = 'translateX(20px)';
-        setTimeout(() => saveIndicator.remove(), 300);
-      }, 2000);
-    },
-
-    handlePreviewLoaded() {
-      // Add any post-load actions here
-      const iframe = document.getElementById('live-preview-iframe');
-      if (iframe) {
-        iframe.style.opacity = '1';
-      }
     }
   },
+
+  updatePreviewCSS(css) {
+    const iframe = document.getElementById("portfolio-preview");
+    if (iframe && iframe.contentDocument) {
+      let styleEl = iframe.contentDocument.getElementById("dynamic-portfolio-css");
+      if (!styleEl) {
+        styleEl = iframe.contentDocument.createElement("style");
+        styleEl.id = "dynamic-portfolio-css";
+        iframe.contentDocument.head.appendChild(styleEl);
+      }
+      styleEl.innerHTML = css;
+    }
+  },
+
+  destroyed() {
+    document.removeEventListener("visibilitychange", this.focusHandler);
+  }
+},
 
   // ============================================================================
   // SECTION EDITOR ENHANCEMENTS
@@ -429,6 +230,239 @@ const PortfolioEditorHooks = {
     }
   },
 
+  MobileNavigation: {
+  mounted() {
+    console.log("🔥 MobileNavigation hook mounted");
+    
+    // Handle mobile nav toggle
+    this.handleEvent("mobile_nav_opened", () => {
+      document.body.style.overflow = "hidden";
+    });
+    
+    this.handleEvent("mobile_nav_closed", () => {
+      document.body.style.overflow = "auto";
+    });
+
+    // Close mobile nav on escape key
+    this.escapeHandler = (e) => {
+      if (e.key === "Escape") {
+        this.pushEvent("toggle_mobile_nav");
+      }
+    };
+    
+    document.addEventListener("keydown", this.escapeHandler);
+
+    // Handle responsive behavior
+    this.resizeHandler = () => {
+      if (window.innerWidth >= 1024) { // lg breakpoint
+        this.pushEvent("close_mobile_nav");
+        document.body.style.overflow = "auto";
+      }
+    };
+    
+    window.addEventListener("resize", this.resizeHandler);
+  },
+
+  destroyed() {
+    document.removeEventListener("keydown", this.escapeHandler);
+    window.removeEventListener("resize", this.resizeHandler);
+    document.body.style.overflow = "auto";
+  }
+},
+
+// Live Preview Manager Hook
+LivePreviewManager: {
+  mounted() {
+    console.log("🔥 LivePreviewManager hook mounted");
+    
+    this.handleEvent("refresh_portfolio_preview", (data) => {
+      console.log("🔄 Refreshing preview", data);
+      this.refreshPreview();
+    });
+
+    this.handleEvent("update_preview_css", (data) => {
+      console.log("🎨 Updating preview CSS", data);
+      this.updatePreviewCSS(data.css);
+    });
+
+    this.handleEvent("section_added", (data) => {
+      console.log("➕ Section added", data);
+      this.refreshPreview();
+    });
+
+    this.handleEvent("section_deleted", (data) => {
+      console.log("🗑️ Section deleted", data);
+      this.refreshPreview();
+    });
+
+    this.handleEvent("sections_reordered", (data) => {
+      console.log("🔄 Sections reordered", data);
+      this.refreshPreview();
+    });
+
+    // Auto-refresh preview on window focus
+    this.focusHandler = () => {
+      if (document.hidden === false) {
+        this.refreshPreview();
+      }
+    };
+    
+    document.addEventListener("visibilitychange", this.focusHandler);
+  },
+
+  refreshPreview() {
+    const iframe = document.getElementById("portfolio-preview");
+    if (iframe) {
+      // Add timestamp to force refresh
+      const url = new URL(iframe.src);
+      url.searchParams.set("t", Date.now());
+      iframe.src = url.toString();
+    }
+  },
+
+  updatePreviewCSS(css) {
+    const iframe = document.getElementById("portfolio-preview");
+    if (iframe && iframe.contentDocument) {
+      let styleEl = iframe.contentDocument.getElementById("dynamic-portfolio-css");
+      if (!styleEl) {
+        styleEl = iframe.contentDocument.createElement("style");
+        styleEl.id = "dynamic-portfolio-css";
+        iframe.contentDocument.head.appendChild(styleEl);
+      }
+      styleEl.innerHTML = css;
+    }
+  },
+
+  destroyed() {
+    document.removeEventListener("visibilitychange", this.focusHandler);
+  }
+},
+
+// Sortable Sections Hook for drag and drop reordering
+SortableSections: {
+  mounted() {
+    console.log("🔥 SortableSections hook mounted");
+    
+    // Import Sortable library if available, otherwise provide fallback
+    if (typeof Sortable !== "undefined") {
+      this.sortable = Sortable.create(this.el, {
+        animation: 150,
+        handle: ".cursor-move, [title='Drag to reorder']",
+        ghostClass: "opacity-50",
+        dragClass: "transform rotate-2",
+        onEnd: (evt) => {
+          const sectionIds = Array.from(this.el.children).map(
+            child => child.dataset.sectionId
+          );
+          
+          console.log("🔄 Sections reordered:", sectionIds);
+          this.pushEvent("reorder_sections", { section_ids: sectionIds });
+        }
+      });
+    } else {
+      console.warn("Sortable library not found, drag-and-drop disabled");
+      // Add visual indicators that drag is not available
+      this.el.style.cursor = "default";
+    }
+  },
+
+  destroyed() {
+    if (this.sortable) {
+      this.sortable.destroy();
+    }
+  }
+},
+
+// Floating Buttons Hook for header actions
+FloatingButtons: {
+  mounted() {
+    console.log("🔥 FloatingButtons hook mounted");
+    
+    // Add floating animation on hover
+    this.el.addEventListener("mouseenter", () => {
+      this.el.style.transform = "translateY(-2px)";
+      this.el.style.transition = "transform 0.2s ease";
+    });
+    
+    this.el.addEventListener("mouseleave", () => {
+      this.el.style.transform = "translateY(0)";
+    });
+
+    // Handle keyboard shortcuts
+    this.keyHandler = (e) => {
+      // Ctrl+S or Cmd+S to save
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        this.pushEvent("save_portfolio");
+      }
+      
+      // Ctrl+Shift+P or Cmd+Shift+P to open preview
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "P") {
+        e.preventDefault();
+        const previewLink = document.querySelector('a[href*="/p/"]');
+        if (previewLink) {
+          window.open(previewLink.href, "_blank");
+        }
+      }
+    };
+    
+    document.addEventListener("keydown", this.keyHandler);
+  },
+
+  destroyed() {
+    document.removeEventListener("keydown", this.keyHandler);
+  }
+},
+
+// Preview Device Hook for responsive preview controls
+PreviewDevice: {
+  mounted() {
+    console.log("🔥 PreviewDevice hook mounted");
+    
+    this.handleEvent("set_preview_device", (data) => {
+      this.setPreviewDevice(data.device);
+    });
+  },
+
+  setPreviewDevice(device) {
+    const iframe = document.getElementById("portfolio-preview");
+    if (!iframe) return;
+
+    const container = iframe.parentElement;
+    
+    // Remove existing device classes
+    container.classList.remove("preview-mobile", "preview-tablet", "preview-desktop");
+    
+    // Add new device class
+    container.classList.add(`preview-${device}`);
+    
+    // Apply device-specific styles
+    switch (device) {
+      case "mobile":
+        iframe.style.maxWidth = "375px";
+        iframe.style.height = "667px";
+        break;
+      case "tablet":
+        iframe.style.maxWidth = "768px";
+        iframe.style.height = "1024px";
+        break;
+      case "desktop":
+        iframe.style.maxWidth = "100%";
+        iframe.style.height = "100%";
+        break;
+    }
+    
+    // Center the iframe
+    if (device !== "desktop") {
+      container.style.display = "flex";
+      container.style.justifyContent = "center";
+      container.style.alignItems = "flex-start";
+    } else {
+      container.style.display = "block";
+    }
+  }
+},
+
   // ============================================================================
   // COPY TO CLIPBOARD FUNCTIONALITY
   // ============================================================================
@@ -548,7 +582,7 @@ const PortfolioEditorHooks = {
     }
   },
   
-    const VideoPlayer = {
+  VideoPlayer: {
     mounted() {
       console.log("🎥 VideoPlayer hook mounted");
       this.setupVideoPlayers();

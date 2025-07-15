@@ -16,6 +16,7 @@ import FileUpload from "./hooks/file_upload"
 // Import template hooks
 import TemplateHooks from "./hooks/template_hooks"
 import PortfolioEditorFixedHooks from "./hooks/portfolio_editor_fixed_hooks"
+import PortfolioEditorHooks from "./portfolio_editor_hooks"
 
 import MobileEditorHooks from "./hooks/mobile_editor_hooks"
 
@@ -78,7 +79,205 @@ const PortfolioEditorHooks = {
   }
 };
 
+// Video Download Hook
+const VideoDownloader = {
+  mounted() {
+    console.log("🔥 VideoDownloader hook mounted");
+    
+    this.handleEvent("download_file", (data) => {
+      this.downloadFile(data.url, data.filename);
+    });
+  },
 
+  downloadFile(url, filename) {
+    // Create a temporary anchor element to trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || 'video.mp4';
+    link.style.display = 'none';
+    
+    // Add to DOM, click, and remove
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    console.log("🔥 Video download initiated:", filename);
+  }
+};
+
+// Video Upload Handler Hook
+const VideoUploadHandler = {
+  mounted() {
+    console.log("🔥 VideoUploadHandler hook mounted");
+    
+    // Handle file input changes
+    const fileInput = document.getElementById('video-upload');
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        this.handleFileSelection(e);
+      });
+    }
+    
+    // Handle drag and drop
+    this.setupDragAndDrop();
+  },
+
+  handleFileSelection(event) {
+    const file = event.target.files[0];
+    if (file) {
+      this.validateAndPreviewFile(file);
+    }
+  },
+
+  validateAndPreviewFile(file) {
+    // Validate file type
+    const validTypes = ['video/mp4', 'video/webm', 'video/mov', 'video/avi'];
+    if (!validTypes.includes(file.type)) {
+      this.showError('Please select a valid video file (MP4, WebM, MOV, or AVI)');
+      return;
+    }
+    
+    // Validate file size (100MB limit)
+    const maxSize = 100 * 1024 * 1024; // 100MB in bytes
+    if (file.size > maxSize) {
+      this.showError('File size must be less than 100MB');
+      return;
+    }
+    
+    // Show file preview
+    this.showFilePreview(file);
+    
+    // Trigger upload process
+    this.pushEvent("validate_video_upload", {
+      filename: file.name,
+      size: file.size,
+      type: file.type
+    });
+  },
+
+  showFilePreview(file) {
+    const previewArea = document.querySelector('.border-dashed');
+    if (previewArea) {
+      previewArea.innerHTML = `
+        <div class="text-center">
+          <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <p class="font-medium text-gray-900">${file.name}</p>
+          <p class="text-sm text-gray-600">${this.formatFileSize(file.size)}</p>
+        </div>
+      `;
+      previewArea.classList.remove('border-gray-300');
+      previewArea.classList.add('border-green-300', 'bg-green-50');
+    }
+  },
+
+  showError(message) {
+    // You can implement a toast notification system here
+    console.error("Video upload error:", message);
+    // For now, just alert - you can integrate with your notification system
+    alert(message);
+  },
+
+  formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  },
+
+  setupDragAndDrop() {
+    const dropArea = document.querySelector('.border-dashed');
+    if (!dropArea) return;
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropArea.addEventListener(eventName, this.preventDefaults, false);
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropArea.addEventListener(eventName, () => {
+        dropArea.classList.add('border-purple-400', 'bg-purple-50');
+      }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropArea.addEventListener(eventName, () => {
+        dropArea.classList.remove('border-purple-400', 'bg-purple-50');
+      }, false);
+    });
+
+    dropArea.addEventListener('drop', (e) => {
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        this.validateAndPreviewFile(files[0]);
+      }
+    }, false);
+  },
+
+  preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+};
+
+// Video Menu Closer Hook (closes menu when clicking outside)
+const VideoMenuCloser = {
+  mounted() {
+    this.outsideClickHandler = (e) => {
+      if (!this.el.contains(e.target)) {
+        this.pushEvent("toggle_video_menu");
+      }
+    };
+    
+    document.addEventListener("click", this.outsideClickHandler);
+  },
+
+  destroyed() {
+    document.removeEventListener("click", this.outsideClickHandler);
+  }
+};
+
+// Add CSS for video upload animations
+const videoUploadCSS = `
+  .video-upload-progress {
+    transition: width 0.3s ease;
+  }
+  
+  .video-upload-success {
+    animation: successPulse 0.6s ease-out;
+  }
+  
+  @keyframes successPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+  
+  .drag-over {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  }
+`;
+
+// Inject video upload CSS
+if (!document.getElementById("video-upload-css")) {
+  const style = document.createElement("style");
+  style.id = "video-upload-css";
+  style.textContent = videoUploadCSS;
+  document.head.appendChild(style);
+}
+
+// Update the main hooks export
+window.Hooks = window.Hooks || {};
+Object.assign(window.Hooks, {
+  // ... existing hooks
+  VideoDownloader,
+  VideoUploadHandler,
+  VideoMenuCloser
+});
 
 // ============================================================================
 // GLOBAL PORTFOLIO EDITOR UTILITIES
@@ -115,13 +314,6 @@ window.PortfolioEditor = {
       }
     });
   }
-};
-
-// Define missing objects before using them
-const LivePreviewManager = {
-  init: () => console.log('LivePreviewManager initialized'),
-  updatePreview: () => {},
-  toggleMobile: () => {}
 };
 
 const DevicePreviewSwitcher = {};
@@ -679,7 +871,7 @@ let Hooks = {
 
    ...MobileEditorHooks,
 
-     MobileNavigation: {
+  MobileNavigation: {
     mounted() {
       console.log("📱 MobileNavigation hook mounted");
     }
@@ -699,7 +891,7 @@ let Hooks = {
 
   LivePreviewManager: {
     mounted() {
-      console.log("🖥️ LivePreviewManager hook mounted for PortfolioEditorFixed");
+      console.log("🖥️ LivePreviewManager hook mounted");
       this.setupPreviewRefresh();
     },
 
@@ -708,10 +900,10 @@ let Hooks = {
         console.log("🔄 Refreshing portfolio preview", data);
         const iframe = document.getElementById('portfolio-preview');
         if (iframe) {
-          const currentUrl = new URL(iframe.src);
-          currentUrl.searchParams.set('t', data.timestamp || Date.now());
-          console.log("🔄 New iframe URL:", currentUrl.toString());
-          iframe.src = currentUrl.toString();
+          const url = new URL(iframe.src);
+          url.searchParams.set('t', data.timestamp || Date.now());
+          iframe.src = url.toString();
+          console.log("🔄 Preview refreshed:", url.toString());
         } else {
           console.warn("⚠️ Portfolio preview iframe not found");
         }
@@ -1795,6 +1987,10 @@ const LivePreviewManager = {
     this.iframe = this.el;
     this.setupPreviewCommunication();
   },
+
+  init: () => console.log('LivePreviewManager initialized'),
+  updatePreview: () => {},
+  toggleMobile: () => {},
 
   updated() {
     console.log("🔥 LivePreviewManager hook updated");
