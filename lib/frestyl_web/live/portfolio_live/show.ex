@@ -5,6 +5,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
   use FrestylWeb, :live_view
   import Phoenix.LiveView.Helpers
   import Phoenix.Controller, only: [get_csrf_token: 0]
+  import Phoenix.HTML, only: [raw: 1, html_escape: 1]
 
   alias Frestyl.Portfolios
   alias Frestyl.Portfolios.PortfolioTemplates
@@ -892,6 +893,25 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+  @impl true
+  def handle_info({:design_complete_update, design_data}, socket) do
+    IO.puts("🎨 Received design update in show.ex: theme=#{design_data.theme}, layout=#{design_data.layout}, colors=#{design_data.color_scheme}")
+
+    # Apply the CSS update to the live view
+    socket = socket
+    |> push_event("apply_portfolio_design", design_data)
+    |> push_event("inject_design_css", %{css: design_data.css})
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:design_update, data}, socket) do
+    # Handle legacy design update format
+    IO.puts("🎨 Received legacy design update")
+    {:noreply, socket}
+  end
+
 
   # ============================================================================
   # LIVE UPDATE HANDLERS (from editor)
@@ -999,6 +1019,65 @@ defmodule FrestylWeb.PortfolioLive.Show do
       <head>
         <%= render_seo_meta(assigns) %>
         <style><%= @custom_css %></style>
+        <style>
+          .portfolio-section {
+            scroll-margin-top: 2rem;
+          }
+
+          .portfolio-section:hover {
+            transform: translateY(-2px);
+          }
+
+          .hero-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: -2rem;
+            padding: 3rem 2rem;
+            border-radius: 0.75rem;
+          }
+
+          .hero-content h1 {
+            color: white !important;
+          }
+
+          .hero-content .text-blue-600 {
+            color: rgba(255, 255, 255, 0.9) !important;
+          }
+
+          .experience-item:last-child {
+            border-bottom: none !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
+          }
+
+          .project-item {
+            transition: all 0.2s ease;
+          }
+
+          .project-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+          }
+
+          .skill-category:last-child {
+            margin-bottom: 0;
+          }
+
+          .social-links a:hover {
+            transform: scale(1.1);
+          }
+
+          @media (max-width: 768px) {
+            .portfolio-section {
+              margin: 0 1rem;
+            }
+
+            .hero-content {
+              margin: -1.5rem;
+              padding: 2rem 1.5rem;
+            }
+          }
+        </style>
         <script phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
       </head>
 
@@ -1380,21 +1459,559 @@ defmodule FrestylWeb.PortfolioLive.Show do
     {:noreply, socket}
   end
 
+  defp render_hero_section_content(content) do
+    try do
+      headline = get_safe_text(content, "headline")
+      tagline = get_safe_text(content, "tagline")
+      main_content = get_safe_content(content, "main_content")
+      cta_text = get_safe_text(content, "cta_text")
+      cta_link = get_safe_text(content, "cta_link")
+      show_social = Map.get(content, "show_social", false)
+      social_links = Map.get(content, "social_links", %{})
 
-  # Simple helper function for section content
-  defp render_section_content_safe(section) do
-    content = Map.get(section, :content, %{})
+      hero_html = """
+      <div class="hero-content text-center py-8">
+        #{if String.length(headline) > 0, do: "<h1 class='text-4xl font-bold text-gray-900 mb-4'>#{headline}</h1>", else: ""}
+        #{if String.length(tagline) > 0, do: "<p class='text-xl text-blue-600 font-medium mb-6'>#{tagline}</p>", else: ""}
+        #{if String.length(main_content) > 0, do: "<div class='text-gray-700 mb-8 max-w-2xl mx-auto'>#{main_content}</div>", else: ""}
+        #{if String.length(cta_text) > 0 and String.length(cta_link) > 0, do: "<a href='#{cta_link}' class='inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors'>#{cta_text}</a>", else: ""}
+        #{if show_social, do: render_social_links_safe(social_links), else: ""}
+      </div>
+      """
 
-    text = case content do
-      %{"main_content" => text} when is_binary(text) -> text
-      %{"summary" => text} when is_binary(text) -> text
-      %{"description" => text} when is_binary(text) -> text
-      %{"headline" => text} when is_binary(text) -> text
-      _ -> "Section content..."
+      raw(hero_html)
+    rescue
+      error ->
+        IO.puts("❌ Error in render_hero_section_content: #{inspect(error)}")
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Hero content is being processed...</p>
+        </div>
+        """)
     end
-
-    Phoenix.HTML.raw("<p>#{text}</p>")
   end
+
+  defp render_section_content_safe(section) do
+    try do
+      content = Map.get(section, :content, %{})
+      section_type = safe_section_type(section.section_type)
+
+      case section_type do
+        "Hero" ->
+          render_hero_section_content(content)
+        "Experience" ->
+          render_experience_section_content(content)
+        "Skills" ->
+          render_skills_section_content(content)
+        "Projects" ->
+          render_projects_section_content(content)
+        "Contact" ->
+          render_contact_section_content(content)
+        "About" ->
+          render_about_section_content(content)
+        "Education" ->
+          render_education_section_content(content)
+        "Custom" ->
+          render_custom_section_content(content)
+        _ ->
+          render_generic_section_content(content)
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error rendering section: #{inspect(error)}")
+        # Return safe fallback content
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Content is being processed...</p>
+        </div>
+        """)
+    end
+  end
+
+
+  defp render_experience_section_content(content) do
+    try do
+      # Try multiple possible keys for jobs data
+      jobs = Map.get(content, "jobs", [])
+            |> case do
+              [] -> Map.get(content, :jobs, [])
+              jobs when is_list(jobs) -> jobs
+              _ -> []
+            end
+
+      if length(jobs) > 0 do
+        jobs_html = jobs
+        |> Enum.map(fn job ->
+          # Handle both string and atom keys, multiple possible field names
+          title = get_job_field(job, ["title", "job_title", "position"])
+          company = get_job_field(job, ["company", "company_name", "employer"])
+          start_date = get_job_field(job, ["start_date", "startDate", "from"])
+          end_date = get_job_field(job, ["end_date", "endDate", "to"])
+          current = get_job_boolean(job, ["current", "is_current", "present"])
+          description = get_job_field(job, ["description", "responsibilities", "details", "summary"])
+
+          # Format date range
+          date_range = cond do
+            current -> "#{start_date} - Present"
+            String.length(end_date) > 0 -> "#{start_date} - #{end_date}"
+            String.length(start_date) > 0 -> "#{start_date} - Present"
+            true -> ""
+          end
+
+          """
+          <div class="experience-item mb-8 pb-8 border-b border-gray-200 last:border-b-0">
+            <div class="flex flex-col md:flex-row md:items-start md:justify-between mb-4">
+              <div>
+                <h3 class="text-xl font-semibold text-gray-900">#{title}</h3>
+                <p class="text-lg text-blue-600 font-medium">#{company}</p>
+              </div>
+              #{if String.length(date_range) > 0, do: "<div class='text-sm text-gray-500 md:text-right mt-2 md:mt-0'>#{date_range}</div>", else: ""}
+            </div>
+            #{if String.length(description) > 0, do: "<div class='text-gray-700'>#{description}</div>", else: ""}
+          </div>
+          """
+        end)
+        |> Enum.join("")
+
+        raw("""
+        <div class="experience-content">
+          #{jobs_html}
+        </div>
+        """)
+      else
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Work experience will be displayed here.</p>
+        </div>
+        """)
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error in render_experience_section_content: #{inspect(error)}")
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Experience content is being processed...</p>
+        </div>
+        """)
+    end
+  end
+
+  defp render_skills_section_content(content) do
+    try do
+      # Try multiple possible keys for skills data
+      skills = Map.get(content, "skills", [])
+              |> case do
+                [] -> Map.get(content, :skills, [])
+                skills when is_list(skills) -> skills
+                _ -> []
+              end
+
+      if length(skills) > 0 do
+        skills_html = skills
+        |> Enum.group_by(fn skill ->
+          category = get_skill_field(skill, ["category", "skill_category", "type"])
+          if String.length(category) > 0, do: category, else: "General"
+        end)
+        |> Enum.map(fn {category, category_skills} ->
+          skills_list = category_skills
+          |> Enum.map(fn skill ->
+            name = get_skill_field(skill, ["name", "skill_name", "title"])
+            level = get_skill_field(skill, ["level", "proficiency", "expertise"])
+
+            level_class = case String.downcase(level) do
+              l when l in ["beginner", "basic", "novice"] -> "bg-yellow-100 text-yellow-800"
+              l when l in ["intermediate", "proficient", "good"] -> "bg-blue-100 text-blue-800"
+              l when l in ["advanced", "excellent", "strong"] -> "bg-green-100 text-green-800"
+              l when l in ["expert", "master", "exceptional"] -> "bg-purple-100 text-purple-800"
+              _ -> "bg-gray-100 text-gray-800"
+            end
+
+            if String.length(name) > 0 do
+              """
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium #{level_class} mr-2 mb-2">
+                #{name}
+              </span>
+              """
+            else
+              ""
+            end
+          end)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.join("")
+
+          if String.length(skills_list) > 0 do
+            """
+            <div class="skill-category mb-6">
+              <h4 class="text-lg font-semibold text-gray-900 mb-3">#{category}</h4>
+              <div class="flex flex-wrap">
+                #{skills_list}
+              </div>
+            </div>
+            """
+          else
+            ""
+          end
+        end)
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.join("")
+
+        if String.length(skills_html) > 0 do
+          raw("""
+          <div class="skills-content">
+            #{skills_html}
+          </div>
+          """)
+        else
+          raw("""
+          <div class="text-center py-8 text-gray-500">
+            <p>Skills and expertise will be displayed here.</p>
+          </div>
+          """)
+        end
+      else
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Skills and expertise will be displayed here.</p>
+        </div>
+        """)
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error in render_skills_section_content: #{inspect(error)}")
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Skills content is being processed...</p>
+        </div>
+        """)
+    end
+  end
+
+  defp render_projects_section_content(content) do
+    try do
+      # Try multiple possible keys for projects data
+      projects = Map.get(content, "projects", [])
+                |> case do
+                  [] -> Map.get(content, :projects, [])
+                  projects when is_list(projects) -> projects
+                  _ -> []
+                end
+
+      if length(projects) > 0 do
+        projects_html = projects
+        |> Enum.map(fn project ->
+          title = get_project_field(project, ["title", "name", "project_name"])
+          description = get_project_field(project, ["description", "summary", "details"])
+          demo_url = get_project_field(project, ["demo_url", "url", "link", "demo_link"])
+          github_url = get_project_field(project, ["github_url", "code_url", "repository", "repo"])
+          technologies = get_project_technologies(project, ["technologies", "tech", "stack", "tools"])
+          year = get_project_field(project, ["year", "date", "created"])
+          status = get_project_field(project, ["status", "state"])
+
+          status_class = case String.downcase(status) do
+            s when s in ["completed", "done", "finished"] -> "bg-green-100 text-green-800"
+            s when s in ["in-progress", "ongoing", "active"] -> "bg-yellow-100 text-yellow-800"
+            s when s in ["concept", "idea", "planned"] -> "bg-blue-100 text-blue-800"
+            _ -> "bg-gray-100 text-gray-800"
+          end
+
+          tech_tags = if length(technologies) > 0 do
+            technologies
+            |> Enum.take(5)
+            |> Enum.map(fn tech ->
+              safe_tech = get_safe_text_from_value(tech)
+              if String.length(safe_tech) > 0 do
+                """
+                <span class="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded mr-1 mb-1">
+                  #{safe_tech}
+                </span>
+                """
+              else
+                ""
+              end
+            end)
+            |> Enum.join("")
+          else
+            ""
+          end
+
+          links_html = [
+            if(String.length(demo_url) > 0, do: "<a href='#{demo_url}' target='_blank' class='inline-flex items-center px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 mr-2'>View Demo</a>", else: ""),
+            if(String.length(github_url) > 0, do: "<a href='#{github_url}' target='_blank' class='inline-flex items-center px-3 py-1 bg-gray-800 text-white text-sm rounded hover:bg-gray-900'>View Code</a>", else: "")
+          ] |> Enum.reject(&(&1 == "")) |> Enum.join("")
+
+          """
+          <div class="project-item bg-white rounded-lg border border-gray-200 p-6 mb-6">
+            <div class="flex items-start justify-between mb-4">
+              <div>
+                <h3 class="text-xl font-semibold text-gray-900">#{title}</h3>
+                <div class="flex items-center space-x-2 mt-2">
+                  #{if String.length(status) > 0, do: "<span class='px-2 py-1 text-xs font-medium rounded #{status_class}'>#{String.capitalize(status)}</span>", else: ""}
+                  #{if String.length(year) > 0, do: "<span class='text-sm text-gray-500'>#{year}</span>", else: ""}
+                </div>
+              </div>
+            </div>
+            #{if String.length(description) > 0, do: "<p class='text-gray-700 mb-4'>#{description}</p>", else: ""}
+            #{if String.length(tech_tags) > 0, do: "<div class='mb-4'>#{tech_tags}</div>", else: ""}
+            #{if String.length(links_html) > 0, do: "<div class='flex items-center space-x-2'>#{links_html}</div>", else: ""}
+          </div>
+          """
+        end)
+        |> Enum.join("")
+
+        raw("""
+        <div class="projects-content">
+          #{projects_html}
+        </div>
+        """)
+      else
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Projects and portfolio work will be displayed here.</p>
+        </div>
+        """)
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error in render_projects_section_content: #{inspect(error)}")
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Projects content is being processed...</p>
+        </div>
+        """)
+    end
+  end
+
+  # Contact section renderer
+  defp render_contact_section_content(content) do
+    main_content = safe_html_content(Map.get(content, "main_content", ""))
+    email = safe_text_content(Map.get(content, "email", ""))
+    phone = safe_text_content(Map.get(content, "phone", ""))
+    location = safe_text_content(Map.get(content, "location", ""))
+    website = safe_text_content(Map.get(content, "website", ""))
+    show_social = Map.get(content, "show_social", false)
+    social_links = Map.get(content, "social_links", %{})
+
+    contact_info = [
+      if(email != "", do: "<div class='flex items-center mb-3'><span class='text-blue-600 mr-3'>📧</span><a href='mailto:#{email}' class='text-blue-600 hover:text-blue-800'>#{email}</a></div>", else: ""),
+      if(phone != "", do: "<div class='flex items-center mb-3'><span class='text-blue-600 mr-3'>📱</span><a href='tel:#{phone}' class='text-blue-600 hover:text-blue-800'>#{phone}</a></div>", else: ""),
+      if(location != "", do: "<div class='flex items-center mb-3'><span class='text-blue-600 mr-3'>📍</span><span class='text-gray-700'>#{location}</span></div>", else: ""),
+      if(website != "", do: "<div class='flex items-center mb-3'><span class='text-blue-600 mr-3'>🌐</span><a href='#{website}' target='_blank' class='text-blue-600 hover:text-blue-800'>#{website}</a></div>", else: "")
+    ] |> Enum.reject(&(&1 == "")) |> Enum.join("")
+
+    Phoenix.HTML.raw("""
+      <div class="contact-content">
+        #{if main_content != "", do: "<div class='text-gray-700 mb-6 text-center'>#{main_content}</div>", else: ""}
+        #{if contact_info != "", do: "<div class='bg-gray-50 rounded-lg p-6 mb-6'>#{contact_info}</div>", else: ""}
+        #{if show_social, do: render_social_links_safe(social_links), else: ""}
+      </div>
+    """)
+  end
+
+  defp render_about_section_content(content) do
+    try do
+      main_content = get_safe_content(content, "main_content")
+      subtitle = get_safe_text(content, "subtitle")
+      show_stats = Map.get(content, "show_stats", false)
+      stats = Map.get(content, "stats", %{})
+
+      stats_html = if show_stats and map_size(stats) > 0 do
+        stats_items = stats
+        |> Enum.map(fn {key, value} ->
+          safe_value = get_safe_text_from_value(value)
+          if String.length(safe_value) > 0 do
+            label = key |> to_string() |> String.replace("_", " ") |> String.capitalize()
+            """
+            <div class="text-center">
+              <div class="text-2xl font-bold text-blue-600">#{safe_value}</div>
+              <div class="text-sm text-gray-600">#{html_escape(label)}</div>
+            </div>
+            """
+          else
+            ""
+          end
+        end)
+        |> Enum.reject(&(&1 == ""))
+        |> Enum.join("")
+
+        if String.length(stats_items) > 0 do
+          """
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 rounded-lg p-6 mt-6">
+            #{stats_items}
+          </div>
+          """
+        else
+          ""
+        end
+      else
+        ""
+      end
+
+      about_html = """
+      <div class="about-content">
+        #{if String.length(subtitle) > 0, do: "<p class='text-lg text-blue-600 font-medium mb-4'>#{subtitle}</p>", else: ""}
+        #{if String.length(main_content) > 0, do: "<div class='text-gray-700 leading-relaxed'>#{main_content}</div>", else: ""}
+        #{stats_html}
+      </div>
+      """
+
+      raw(about_html)
+    rescue
+      error ->
+        IO.puts("❌ Error in render_about_section_content: #{inspect(error)}")
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>About content is being processed...</p>
+        </div>
+        """)
+    end
+  end
+
+
+  # Education section renderer
+  defp render_education_section_content(content) do
+    education = Map.get(content, "education", [])
+
+    if length(education) > 0 do
+      education_html = education
+      |> Enum.map(fn edu ->
+        degree = Map.get(edu, "degree", "")
+        school = Map.get(edu, "school", "")
+        year = Map.get(edu, "year", "")
+        description = Map.get(edu, "description", "")
+
+        """
+        <div class="education-item mb-6 pb-6 border-b border-gray-200 last:border-b-0">
+          <div class="flex flex-col md:flex-row md:items-start md:justify-between mb-2">
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">#{Phoenix.HTML.html_escape(degree)}</h3>
+              <p class="text-blue-600 font-medium">#{Phoenix.HTML.html_escape(school)}</p>
+            </div>
+            #{if year != "", do: "<div class='text-sm text-gray-500 md:text-right mt-1 md:mt-0'>#{Phoenix.HTML.html_escape(year)}</div>", else: ""}
+          </div>
+          #{if description != "", do: "<p class='text-gray-700'>#{Phoenix.HTML.html_escape(description)}</p>", else: ""}
+        </div>
+        """
+      end)
+      |> Enum.join("")
+
+      Phoenix.HTML.raw("""
+        <div class="education-content">
+          #{education_html}
+        </div>
+      """)
+    else
+      Phoenix.HTML.raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Educational background will be displayed here.</p>
+        </div>
+      """)
+    end
+  end
+
+  # Custom section renderer
+  defp render_custom_section_content(content) do
+    main_content = Map.get(content, "main_content", "")
+    section_subtype = Map.get(content, "section_subtype", "text")
+
+    Phoenix.HTML.raw("""
+      <div class="custom-content">
+        #{if main_content != "", do: "<div class='text-gray-700'>#{Phoenix.HTML.html_escape(main_content)}</div>", else: "<div class='text-center py-8 text-gray-500'><p>Custom content will be displayed here.</p></div>"}
+      </div>
+    """)
+  end
+
+  defp render_generic_section_content(content) do
+    try do
+      main_content = get_safe_content(content, "main_content")
+
+      if String.length(main_content) > 0 do
+        raw("""
+        <div class="generic-content text-gray-700">
+          #{main_content}
+        </div>
+        """)
+      else
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Content will be displayed here when added.</p>
+        </div>
+        """)
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error in render_generic_section_content: #{inspect(error)}")
+        raw("""
+        <div class="text-center py-8 text-gray-500">
+          <p>Content is being processed...</p>
+        </div>
+        """)
+    end
+  end
+
+  defp render_social_links_safe(social_links) when is_map(social_links) do
+    try do
+      if map_size(social_links) > 0 do
+        links_html = social_links
+        |> Enum.filter(fn {_, url} ->
+          safe_url = get_safe_text_from_value(url)
+          String.length(safe_url) > 0
+        end)
+        |> Enum.map(fn {platform, url} ->
+          safe_platform = get_safe_text_from_value(platform)
+          safe_url = get_safe_text_from_value(url)
+
+          icon = case safe_platform do
+            "linkedin" -> "💼"
+            "github" -> "👨‍💻"
+            "twitter" -> "🐦"
+            "instagram" -> "📸"
+            "facebook" -> "👥"
+            "youtube" -> "📺"
+            "website" -> "🌐"
+            "email" -> "📧"
+            _ -> "🔗"
+          end
+
+          """
+          <a href="#{safe_url}" target="_blank" class="inline-flex items-center justify-center w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors mr-2 mb-2" title="#{String.capitalize(safe_platform)}">
+            <span class="text-lg">#{icon}</span>
+          </a>
+          """
+        end)
+        |> Enum.join("")
+
+        if String.length(links_html) > 0 do
+          """
+          <div class="social-links mt-6 text-center">
+            <h4 class="text-lg font-medium text-gray-900 mb-4">Connect with me</h4>
+            <div class="flex justify-center flex-wrap">
+              #{links_html}
+            </div>
+          </div>
+          """
+        else
+          ""
+        end
+      else
+        ""
+      end
+    rescue
+      _ -> ""
+    end
+  end
+
+  defp render_social_links_safe(_), do: ""
+
+  # Helper function to safely capitalize section types
+  defp safe_capitalize(value) when is_atom(value) do
+    value |> Atom.to_string() |> String.capitalize()
+  end
+
+  defp safe_capitalize(value) when is_binary(value) do
+    String.capitalize(value)
+  end
+
+  defp safe_capitalize(_), do: "Section"
 
   defp get_portfolio_public_url(portfolio) do
     FrestylWeb.Router.Helpers.portfolio_show_url(FrestylWeb.Endpoint, :show, portfolio.slug)
@@ -2590,6 +3207,36 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+  defp get_section_badge_class(section_type) do
+    case safe_capitalize(section_type) do
+      "Hero" -> "bg-purple-100 text-purple-800"
+      "About" -> "bg-blue-100 text-blue-800"
+      "Experience" -> "bg-green-100 text-green-800"
+      "Skills" -> "bg-yellow-100 text-yellow-800"
+      "Projects" -> "bg-red-100 text-red-800"
+      "Contact" -> "bg-indigo-100 text-indigo-800"
+      "Education" -> "bg-orange-100 text-orange-800"
+      "Testimonials" -> "bg-pink-100 text-pink-800"
+      "Custom" -> "bg-gray-100 text-gray-800"
+      _ -> "bg-gray-100 text-gray-800"
+    end
+  end
+
+  # Helper function to format section type names
+  defp format_section_type(section_type) do
+    case safe_capitalize(section_type) do
+      "Hero" -> "Hero Section"
+      "About" -> "About Me"
+      "Experience" -> "Work Experience"
+      "Skills" -> "Skills & Expertise"
+      "Projects" -> "Projects Portfolio"
+      "Contact" -> "Contact Information"
+      "Education" -> "Education & Certifications"
+      "Testimonials" -> "Testimonials & Reviews"
+      "Custom" -> "Custom Content"
+      _ -> safe_capitalize(section_type)
+    end
+  end
 
   # Safe CSS generation function
   defp generate_safe_portfolio_css(customization, template_config) do
@@ -2877,6 +3524,67 @@ defmodule FrestylWeb.PortfolioLive.Show do
       footer: []
     }
   end
+
+  defp get_safe_content(content_map, key) when is_map(content_map) do
+    try do
+      value = Map.get(content_map, key, "")
+      extract_safe_html(value)
+    rescue
+      _ -> ""
+    end
+  end
+
+  defp get_safe_content(_, _), do: ""
+
+  # Ultra-safe text getter that always escapes
+  defp get_safe_text(content_map, key) when is_map(content_map) do
+    try do
+      value = Map.get(content_map, key, "")
+      extract_safe_text(value)
+    rescue
+      _ -> ""
+    end
+  end
+
+  defp get_safe_text(_, _), do: ""
+
+  # Ultra-safe value converter
+  defp get_safe_text_from_value(value) do
+    try do
+      extract_safe_text(value)
+    rescue
+      _ -> ""
+    end
+  end
+
+  defp extract_safe_html(value) do
+    case value do
+      {:safe, html_content} when is_binary(html_content) ->
+        html_content
+      content when is_binary(content) ->
+        html_escape(content) |> safe_to_string()
+      nil ->
+        ""
+      _ ->
+        value |> to_string() |> html_escape() |> safe_to_string()
+    end
+  end
+
+  # Extract safe text content (always escaped)
+  defp extract_safe_text(value) do
+    case value do
+      {:safe, html_content} when is_binary(html_content) ->
+        html_content |> strip_html_basic() |> html_escape() |> safe_to_string()
+      content when is_binary(content) ->
+        html_escape(content) |> safe_to_string()
+      nil ->
+        ""
+      _ ->
+        value |> to_string() |> html_escape() |> safe_to_string()
+    end
+  end
+
+
 
   defp get_template_config(theme) do
     try do
@@ -3172,20 +3880,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
       "sameAs" => extract_social_links(portfolio)
     })
   end
-
-  # Safe helpers
-  defp render_section_content_safe(section) do
-    content = Map.get(section, :content, %{})
-    text = case content do
-      %{"main_content" => text} when is_binary(text) -> text
-      %{"summary" => text} when is_binary(text) -> text
-      %{"description" => text} when is_binary(text) -> text
-      %{"headline" => text} when is_binary(text) -> text
-      _ -> "Section content..."
-    end
-    Phoenix.HTML.raw("<p>#{Phoenix.HTML.html_escape(text)}</p>")
-  end
-
 
   defp valid_preview_token?(portfolio, token) do
     # Implement token validation logic
@@ -3575,6 +4269,90 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+  defp get_job_field(job, possible_keys) when is_map(job) do
+    possible_keys
+    |> Enum.reduce_while("", fn key, acc ->
+      value = case Map.get(job, key) do
+        nil -> Map.get(job, String.to_atom(key), "")
+        val -> val
+      end
+      safe_value = get_safe_text_from_value(value)
+      if String.length(safe_value) > 0, do: {:halt, safe_value}, else: {:cont, acc}
+    end)
+  end
+
+  defp get_job_field(_, _), do: ""
+
+  # Get job boolean field
+  defp get_job_boolean(job, possible_keys) when is_map(job) do
+    possible_keys
+    |> Enum.reduce_while(false, fn key, acc ->
+      value = case Map.get(job, key) do
+        nil -> Map.get(job, String.to_atom(key), false)
+        val -> val
+      end
+      case value do
+        true -> {:halt, true}
+        "true" -> {:halt, true}
+        _ -> {:cont, acc}
+      end
+    end)
+  end
+
+  defp get_job_boolean(_, _), do: false
+
+  # Get skill field with multiple possible keys
+  defp get_skill_field(skill, possible_keys) when is_map(skill) do
+    possible_keys
+    |> Enum.reduce_while("", fn key, acc ->
+      value = case Map.get(skill, key) do
+        nil -> Map.get(skill, String.to_atom(key), "")
+        val -> val
+      end
+      safe_value = get_safe_text_from_value(value)
+      if String.length(safe_value) > 0, do: {:halt, safe_value}, else: {:cont, acc}
+    end)
+  end
+
+  defp get_skill_field(_, _), do: ""
+
+  # Get project field with multiple possible keys
+  defp get_project_field(project, possible_keys) when is_map(project) do
+    possible_keys
+    |> Enum.reduce_while("", fn key, acc ->
+      value = case Map.get(project, key) do
+        nil -> Map.get(project, String.to_atom(key), "")
+        val -> val
+      end
+      safe_value = get_safe_text_from_value(value)
+      if String.length(safe_value) > 0, do: {:halt, safe_value}, else: {:cont, acc}
+    end)
+  end
+
+  defp get_project_field(_, _), do: ""
+
+  # Get project technologies (handle arrays)
+  defp get_project_technologies(project, possible_keys) when is_map(project) do
+    possible_keys
+    |> Enum.reduce_while([], fn key, acc ->
+      value = case Map.get(project, key) do
+        nil -> Map.get(project, String.to_atom(key), [])
+        val -> val
+      end
+
+      technologies = case value do
+        list when is_list(list) -> list
+        string when is_binary(string) ->
+          string |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+        _ -> []
+      end
+
+      if length(technologies) > 0, do: {:halt, technologies}, else: {:cont, acc}
+    end)
+  end
+
+  defp get_project_technologies(_, _), do: []
+
   defp extract_highlights_from_section(_section), do: []
 
   defp extract_skills_from_section(section) do
@@ -3626,4 +4404,73 @@ defmodule FrestylWeb.PortfolioLive.Show do
       _ -> false
     end
   end
+
+  defp safe_html_content(content) do
+    case content do
+      {:safe, html_content} when is_binary(html_content) ->
+        html_content
+      content when is_binary(content) ->
+        Phoenix.HTML.html_escape(content)
+      nil ->
+        ""
+      _ ->
+        content |> to_string() |> Phoenix.HTML.html_escape()
+    end
+  end
+
+  defp safe_to_string({:safe, content}), do: content
+  defp safe_to_string(content) when is_binary(content), do: content
+  defp safe_to_string(content), do: to_string(content)
+
+  # Basic HTML stripping
+  defp strip_html_basic(html) when is_binary(html) do
+    html
+    |> String.replace(~r/<[^>]*>/, "")
+    |> String.replace(~r/&\w+;/, " ")
+    |> String.trim()
+  end
+
+  defp strip_html_basic(content), do: to_string(content)
+
+  # Safe section type getter
+  defp safe_section_type(section_type) do
+    try do
+      case section_type do
+        atom when is_atom(atom) -> atom |> Atom.to_string() |> String.capitalize()
+        string when is_binary(string) -> String.capitalize(string)
+        _ -> "Section"
+      end
+    rescue
+      _ -> "Section"
+    end
+  end
+
+  defp safe_text_content(content) do
+    case content do
+      {:safe, html_content} when is_binary(html_content) ->
+        # Strip HTML tags and escape
+        html_content |> strip_html_tags() |> Phoenix.HTML.html_escape()
+      content when is_binary(content) ->
+        Phoenix.HTML.html_escape(content)
+      nil ->
+        ""
+      _ ->
+        content |> to_string() |> Phoenix.HTML.html_escape()
+    end
+  end
+
+  defp strip_html_tags(html) when is_binary(html) do
+    html
+    |> String.replace(~r/<[^>]*>/, "")
+    |> String.replace(~r/&nbsp;/, " ")
+    |> String.replace(~r/&amp;/, "&")
+    |> String.replace(~r/&lt;/, "<")
+    |> String.replace(~r/&gt;/, ">")
+    |> String.replace(~r/&quot;/, "\"")
+    |> String.replace(~r/&#39;/, "'")
+    |> String.trim()
+  end
+
+  defp strip_html_tags(content), do: to_string(content)
+
 end

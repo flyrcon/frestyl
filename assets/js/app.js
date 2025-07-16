@@ -1976,6 +1976,98 @@ if (!document.getElementById('sortable-styles')) {
     }
   };
 
+// Add this to your Phoenix LiveView hooks
+window.addEventListener("phx:apply_portfolio_design", (e) => {
+  console.log("🎨 Applying portfolio design:", e.detail);
+  
+  // Remove any existing dynamic design styles
+  const existingStyle = document.getElementById('dynamic-portfolio-design');
+  if (existingStyle) {
+    existingStyle.remove();
+  }
+  
+  // Inject new CSS
+  if (e.detail.css) {
+    const style = document.createElement('style');
+    style.id = 'dynamic-portfolio-design';
+    style.innerHTML = e.detail.css;
+    document.head.appendChild(style);
+  }
+  
+  // Update body classes for theme/layout
+  document.body.className = document.body.className.replace(/portfolio-theme-\w+/g, '');
+  document.body.className = document.body.className.replace(/portfolio-layout-\w+/g, '');
+  document.body.classList.add(`portfolio-theme-${e.detail.theme}`);
+  document.body.classList.add(`portfolio-layout-${e.detail.layout}`);
+  
+  console.log("✅ Design applied successfully");
+});
+
+window.addEventListener("phx:inject_design_css", (e) => {
+  console.log("🎨 Injecting design CSS");
+  
+  const existingStyle = document.getElementById('dynamic-portfolio-design');
+  if (existingStyle) {
+    existingStyle.remove();
+  }
+  
+  if (e.detail.css) {
+    const style = document.createElement('style');
+    style.id = 'dynamic-portfolio-design';
+    style.innerHTML = e.detail.css;
+    document.head.appendChild(style);
+  }
+});
+
+// Enhanced design application
+window.addEventListener("phx:apply_design_update", (e) => {
+  console.log("🎨 Applying portfolio design:", e.detail);
+  
+  // Remove any existing dynamic design styles
+  document.querySelectorAll('#dynamic-portfolio-design, [id*="portfolio-design"]').forEach(el => el.remove());
+  
+  // Inject new CSS with high priority
+  if (e.detail.css) {
+    const style = document.createElement('style');
+    style.id = 'dynamic-portfolio-design';
+    style.innerHTML = e.detail.css;
+    
+    // Insert at the very end of head to ensure highest priority
+    document.head.appendChild(style);
+    
+    // Also try to inject into iframe if it exists
+    const iframe = document.getElementById('portfolio-preview-iframe');
+    if (iframe) {
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        if (iframeDoc) {
+          // Remove existing
+          const existingStyle = iframeDoc.getElementById('dynamic-portfolio-design');
+          if (existingStyle) existingStyle.remove();
+          
+          // Add new
+          const iframeStyle = iframeDoc.createElement('style');
+          iframeStyle.id = 'dynamic-portfolio-design';
+          iframeStyle.innerHTML = e.detail.css;
+          iframeDoc.head.appendChild(iframeStyle);
+          
+          console.log("✅ CSS injected into iframe");
+        }
+      } catch (e) {
+        console.log("Cross-origin iframe, will refresh instead");
+      }
+    }
+  }
+  
+  // Update body classes
+  document.body.className = document.body.className.replace(/portfolio-theme-\w+|portfolio-layout-\w+/g, '');
+  document.body.classList.add(`portfolio-theme-${e.detail.theme}`);
+  document.body.classList.add(`portfolio-layout-${e.detail.layout}`);
+  document.body.classList.add('portfolio-view');
+  
+  console.log("✅ Design applied successfully");
+});
+
 
 // Global hooks reference
 window.Hooks = Hooks;
@@ -2228,6 +2320,56 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   });
+
+  // Add to your LiveView hooks object
+  const PreviewHooks = {
+    PreviewFrame: {
+      mounted() {
+        console.log("📱 Preview frame mounted");
+        
+        this.handleEvent("refresh_preview_iframe", ({url, timestamp}) => {
+          console.log("🔄 Refreshing preview iframe:", url);
+          this.el.src = `${url}?t=${timestamp}`;
+        });
+        
+        // Handle design updates
+        this.handleEvent("apply_design_update", (data) => {
+          console.log("🎨 Applying design to preview iframe");
+          
+          try {
+            const iframe = this.el;
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            
+            if (iframeDoc) {
+              // Remove existing design styles
+              const existingStyle = iframeDoc.getElementById('dynamic-portfolio-design');
+              if (existingStyle) {
+                existingStyle.remove();
+              }
+              
+              // Inject new CSS
+              if (data.css) {
+                const style = iframeDoc.createElement('style');
+                style.id = 'dynamic-portfolio-design';
+                style.innerHTML = data.css;
+                iframeDoc.head.appendChild(style);
+              }
+            }
+          } catch (e) {
+            console.log("Cross-origin iframe, refreshing instead");
+            this.el.src = this.el.src + '&design_update=' + data.timestamp;
+          }
+        });
+      },
+      
+      updated() {
+        // Handle any updates to the iframe
+      }
+    }
+  };
+
+  // Merge with existing hooks
+  Object.assign(window.liveSocket.getHooks(), PreviewHooks);
 
   window.PortfolioEditor.init();
   console.log('🚀 Portfolio Editor initialized successfully');

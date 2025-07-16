@@ -92,46 +92,66 @@
     </div>
 
     <!-- Portfolio Sections -->
-    <div class="space-y-6">
-      <h3 class="text-lg font-semibold text-gray-900">Portfolio Sections (<%= length(@sections) %>)</h3>
-      
-      <%= if length(@sections) > 0 do %>
-        <%= for section <- @sections do %>
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div class="flex justify-between items-start mb-4">
-              <div>
-                <h4 class="text-xl font-semibold text-gray-900"><%= section.title || "Untitled Section" %></h4>
-                <p class="text-sm text-gray-500">Type: <%= String.capitalize(to_string(section.section_type)) %></p>
-              </div>
-              <div class="flex items-center space-x-2">
-                <%= if Map.get(section, :visible, true) do %>
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Visible
-                  </span>
-                <% else %>
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                    Hidden
-                  </span>
-                <% end %>
-              </div>
-            </div>
-            
-            <!-- Section Content -->
-            <div class="prose prose-sm max-w-none">
-              <%= render_section_content_safe(section) %>
-            </div>
-          </div>
-        <% end %>
-      <% else %>
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-          </svg>
-          <h3 class="text-lg font-medium text-gray-900 mb-2">No sections yet</h3>
-          <p class="text-gray-500">This portfolio doesn't have any sections added yet.</p>
+    <%= if length(@sections) > 0 do %>
+      <div class="max-w-6xl mx-auto px-4 py-12">
+        <div class="space-y-12">
+          <%= for section <- @sections do %>
+            <%= if section.visible do %>
+              <section class={[
+                "portfolio-section bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden",
+                "transition-all duration-200 hover:shadow-md"
+              ]} 
+              data-section-id={section.id}
+              data-section-type={section.section_type}>
+                
+                <!-- Section Header -->
+                <div class="border-b border-gray-100 px-8 py-6">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                      <span class="text-2xl"><%= get_section_icon(section.section_type) %></span>
+                      <div>
+                        <h2 class="text-2xl font-bold text-gray-900"><%= section.title || "Untitled Section" %></h2>
+                        <p class="text-sm text-gray-600 capitalize"><%= safe_capitalize(section.section_type) %></p>
+                      </div>
+                    </div>
+                    
+                    <!-- Section Badge -->
+                    <div class="flex items-center space-x-2">
+                      <span class={[
+                        "px-3 py-1 text-xs font-medium rounded-full",
+                        get_section_badge_class(section.section_type)
+                      ]}>
+                        <%= format_section_type(section.section_type) %>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Section Content -->
+                <div class="px-8 py-8">
+                  <%= render_section_content_safe(section) %>
+                </div>
+              </section>
+            <% end %>
+          <% end %>
         </div>
-      <% end %>
-    </div>
+      </div>
+    <% else %>
+      <div class="max-w-4xl mx-auto px-4 py-20 text-center">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
+          <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold text-gray-900 mb-4">Portfolio Coming Soon</h3>
+          <p class="text-gray-600 mb-6">This portfolio is being built and will have content soon.</p>
+          <div class="text-sm text-gray-500">
+            Check back later to see the amazing work and experience shared here.
+          </div>
+        </div>
+      </div>
+    <% end %>
   </div>
 
   <!-- Export Panel (if shown) -->
