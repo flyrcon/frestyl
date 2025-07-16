@@ -19,7 +19,8 @@ defmodule FrestylWeb.PortfolioLive.Show do
   @impl true
   def mount(params, _session, socket) do
     IO.puts("🌍 MOUNTING PORTFOLIO SHOW with params: #{inspect(params)}")
-    case params do
+
+    result = case params do
       # Public view via slug
       %{"slug" => slug} ->
         mount_public_portfolio(slug, socket)
@@ -34,14 +35,27 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
       # Authenticated view by ID
       %{"id" => id} ->
-          mount_authenticated_portfolio(id, socket)
+        mount_authenticated_portfolio(id, socket)
 
       _ ->
         IO.puts("❌ Invalid portfolio URL parameters")
         {:ok,
-         socket
-         |> put_flash(:error, "Portfolio not found")
-         |> redirect(to: "/")}
+        socket
+        |> put_flash(:error, "Portfolio not found")
+        |> redirect(to: "/")}
+    end
+
+    case result do
+      {:ok, socket} ->
+        if connected?(socket) && socket.assigns[:portfolio] do
+          portfolio_id = socket.assigns.portfolio.id
+          Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
+          Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio:#{portfolio_id}")
+          Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_show:#{portfolio_id}")
+        end
+        {:ok, socket}
+      error ->
+        error
     end
   end
 
@@ -113,9 +127,9 @@ defmodule FrestylWeb.PortfolioLive.Show do
     |> assign(:portfolio, portfolio)
     |> assign(:owner, get_portfolio_owner_safe(portfolio))
     |> assign(:sections, filtered_sections)
+    |> initialize_portfolio_css()
     |> assign(:all_sections, sections)
     |> assign(:customization, portfolio.customization || %{})
-    |> assign(:custom_css, portfolio.custom_css || "")
     |> assign(:is_dynamic_layout, is_dynamic)
     |> assign(:template_config, template_config)
     |> assign(:template_theme, normalize_theme_safe(portfolio.theme))
@@ -157,6 +171,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
       case Portfolios.get_portfolio_by_slug_with_sections_simple(slug) do
         {:ok, portfolio} ->
           mount_portfolio(portfolio, socket, :public)
+          |> assign(:custom_css, generate_portfolio_css(portfolio))
         {:error, :not_found} ->
           {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
       end
@@ -170,6 +185,8 @@ defmodule FrestylWeb.PortfolioLive.Show do
     case mount_portfolio(portfolio, socket) do
       {:ok, updated_socket} ->
         {:ok, assign(updated_socket, :view_type, view_type)}
+        |> assign(:custom_css, generate_portfolio_css(portfolio))
+
       error -> error
     end
   end
@@ -217,6 +234,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
         case mount_portfolio(portfolio, socket) do
           {:ok, updated_socket} ->
             {:ok, assign(updated_socket, :view_type, :preview)}
+            |> assign(:custom_css, generate_portfolio_css(portfolio))
           error -> error
         end
 
@@ -246,6 +264,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
           case mount_portfolio(portfolio, socket) do
             {:ok, updated_socket} ->
               {:ok, assign(updated_socket, :view_type, :authenticated)}
+              |> assign(:custom_css, generate_portfolio_css(portfolio))
             error -> error
           end
         else
@@ -327,6 +346,25 @@ defmodule FrestylWeb.PortfolioLive.Show do
       _ ->
         %{name: "Portfolio Owner", email: ""}
     end
+  end
+
+  @impl true
+  def handle_info({:design_complete_update, design_data}, socket) do
+    IO.puts("🎨 SHOW PAGE received design update: theme=#{design_data.theme}, layout=#{design_data.layout}, colors=#{design_data.color_scheme}")
+
+    # Generate more aggressive CSS that overrides existing styles
+    override_css = generate_override_css(design_data)
+
+    socket = socket
+    |> assign(:custom_css, override_css)
+    |> push_event("force_design_override", design_data)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:design_update, design_data}, socket) do
+    handle_info({:design_complete_update, design_data}, socket)
   end
 
   defp load_portfolio_by_slug(slug) do
@@ -413,6 +451,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
         {:error, :database_error}
     end
   end
+
 
   defp load_portfolio_sections_safe(portfolio_id) do
     try do
@@ -678,6 +717,17 @@ defmodule FrestylWeb.PortfolioLive.Show do
       theme when is_atom(theme) -> theme
       _ -> :dynamic_card_layout
     end
+  end
+
+  defp initialize_portfolio_css(socket) do
+    portfolio = socket.assigns.portfolio
+    custom_css = if portfolio && portfolio.customization do
+      generate_portfolio_css(portfolio)
+    else
+      ""
+    end
+
+    assign(socket, :custom_css, custom_css)
   end
 
   defp extract_intro_video_and_filter_sections(sections) do
@@ -3820,37 +3870,406 @@ defmodule FrestylWeb.PortfolioLive.Show do
   defp generate_portfolio_css(portfolio) do
     customization = portfolio.customization || %{}
 
-    primary_color = Map.get(customization, "primary_color", "#1e40af")
-    accent_color = Map.get(customization, "accent_color", "#f59e0b")
-    font_family = Map.get(customization, "font_family", "Inter")
+    # Handle empty strings and ensure defaults
+    theme = case Map.get(customization, "theme") do
+      nil -> "professional"
+      "" -> "professional"
+      value -> value
+    end
+
+    layout = case Map.get(customization, "layout") do
+      nil -> "dashboard"
+      "" -> "dashboard"
+      value -> value
+    end
+
+    color_scheme = case Map.get(customization, "color_scheme") do
+      nil -> "blue"
+      "" -> "blue"
+      value -> value
+    end
+
+    # Get colors
+    colors = get_color_palette(color_scheme)
 
     """
-    :root {
-      --primary-color: #{primary_color};
-      --accent-color: #{accent_color};
-      --font-family: #{font_family}, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    /* Portfolio Dynamic Design - Applied from Database */
+    .portfolio-container,
+    .portfolio-public-view,
+    body.portfolio-public-view {
+      font-family: #{get_theme_font(theme)} !important;
+      background-color: #{colors.background} !important;
+      color: #{colors.text_primary} !important;
     }
 
-    .portfolio-public-view {
-      font-family: var(--font-family);
+    .portfolio-section,
+    .section {
+      background: #{colors.surface} !important;
+      border-radius: #{get_theme_radius(theme)} !important;
+      padding: 2rem !important;
+      margin-bottom: 1.5rem !important;
+      box-shadow: #{get_theme_shadow(theme)} !important;
     }
 
-    /* Dynamic Card Layout Styles */
-    .dynamic-card-layout {
-      /* Layout-specific styles will be injected by DynamicCardPublicRenderer */
+    h1, h2, h3, h4, h5, h6,
+    .portfolio-container h1,
+    .portfolio-container h2,
+    .portfolio-container h3 {
+      color: #{colors.primary} !important;
+      font-family: #{get_theme_font(theme)} !important;
     }
 
-    /* Responsive utilities */
-    @media (max-width: 768px) {
-      .mobile-stack {
-        flex-direction: column;
-      }
+    .btn, .button,
+    .cta-button, .btn-primary {
+      background-color: #{colors.primary} !important;
+      border-color: #{colors.primary} !important;
+      color: white !important;
+      border-radius: #{get_theme_radius(theme)} !important;
+    }
 
-      .mobile-full-width {
-        width: 100%;
-      }
+    .hero-content {
+      background: #{get_hero_bg(theme, colors)} !important;
+    }
+
+    /* Layout specific styles */
+    #{get_layout_css(layout)}
+
+    /* Theme specific overrides */
+    #{get_theme_css(theme, colors)}
+    """
+  end
+
+  defp generate_override_css(design_data) do
+    theme = design_data.theme || "professional"
+    color_scheme = design_data.color_scheme || "green"
+    layout = design_data.layout || "dashboard"
+
+    # Get colors
+    colors = case color_scheme do
+      "green" -> %{primary: "#059669", secondary: "#34d399", background: "#f0fdf4", surface: "#ffffff", text: "#064e3b"}
+      "purple" -> %{primary: "#7c3aed", secondary: "#a78bfa", background: "#faf5ff", surface: "#ffffff", text: "#581c87"}
+      "red" -> %{primary: "#dc2626", secondary: "#f87171", background: "#fef2f2", surface: "#ffffff", text: "#991b1b"}
+      "orange" -> %{primary: "#ea580c", secondary: "#fb923c", background: "#fff7ed", surface: "#ffffff", text: "#c2410c"}
+      "teal" -> %{primary: "#0f766e", secondary: "#5eead4", background: "#f0fdfa", surface: "#ffffff", text: "#134e4a"}
+      _ -> %{primary: "#1e40af", secondary: "#60a5fa", background: "#eff6ff", surface: "#ffffff", text: "#1e3a8a"}
+    end
+
+    """
+    /* PORTFOLIO DYNAMIC DESIGN - MAXIMUM OVERRIDE PRIORITY */
+
+    /* Remove any existing dynamic styles first */
+    [id*="portfolio"], [id*="dynamic"], [class*="portfolio"] {
+      all: unset !important;
+    }
+
+    /* GLOBAL FORCE OVERRIDE - HIGHEST SPECIFICITY POSSIBLE */
+    html body.portfolio-public-view,
+    html body.portfolio-public-view *,
+    html body div.portfolio-container,
+    html body div.portfolio-container *,
+    html body main,
+    html body main * {
+      box-sizing: border-box !important;
+    }
+
+    /* BACKGROUND AND CONTAINER OVERRIDE */
+    html body,
+    html body.portfolio-public-view,
+    html body div.portfolio-container {
+      background: #{colors.background} !important;
+      background-color: #{colors.background} !important;
+      background-image: none !important;
+      font-family: #{get_theme_font(theme)} !important;
+      color: #{colors.text} !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    /* SECTION OVERRIDE WITH EXTREME SPECIFICITY */
+    html body div.portfolio-container div.portfolio-section,
+    html body div.portfolio-container section,
+    html body div.portfolio-container article,
+    html body div.portfolio-container div[class*="section"],
+    html body main section,
+    html body main article,
+    html body main div[class*="section"] {
+      background: #{colors.surface} !important;
+      background-color: #{colors.surface} !important;
+      background-image: none !important;
+      border-radius: #{get_theme_radius(theme)} !important;
+      padding: #{get_theme_padding(theme)} !important;
+      margin: 0 0 1.5rem 0 !important;
+      box-shadow: #{get_theme_shadow(theme)} !important;
+      border: #{get_theme_border(theme, colors)} !important;
+      position: relative !important;
+      z-index: 1 !important;
+    }
+
+    /* TYPOGRAPHY OVERRIDE - MAXIMUM SPECIFICITY */
+    html body h1,
+    html body h2,
+    html body h3,
+    html body h4,
+    html body h5,
+    html body h6,
+    html body div.portfolio-container h1,
+    html body div.portfolio-container h2,
+    html body div.portfolio-container h3,
+    html body main h1,
+    html body main h2,
+    html body main h3,
+    html body section h1,
+    html body section h2,
+    html body section h3 {
+      color: #{colors.primary} !important;
+      font-family: #{get_theme_font(theme)} !important;
+      font-weight: #{get_theme_weight(theme)} !important;
+      line-height: 1.2 !important;
+      margin-bottom: 1rem !important;
+      text-shadow: none !important;
+    }
+
+    /* HERO SECTION EXTREME OVERRIDE */
+    html body div.hero-content,
+    html body section.hero,
+    html body div[class*="hero"],
+    html body header {
+      background: #{get_hero_bg(theme, colors)} !important;
+      background-image: #{get_hero_bg(theme, colors)} !important;
+      color: #{get_hero_text_color(theme)} !important;
+      border-radius: #{get_theme_radius(theme)} !important;
+      padding: 3rem 2rem !important;
+      margin: -2rem -2rem 2rem -2rem !important;
+      position: relative !important;
+      z-index: 2 !important;
+    }
+
+    html body div.hero-content h1,
+    html body section.hero h1,
+    html body div[class*="hero"] h1,
+    html body header h1 {
+      color: #{get_hero_text_color(theme)} !important;
+      font-size: 2.5rem !important;
+      font-weight: 700 !important;
+      margin-bottom: 1rem !important;
+    }
+
+    /* BUTTON OVERRIDE */
+    html body button,
+    html body a.btn,
+    html body a.button,
+    html body div.btn,
+    html body span.btn,
+    html body input[type="submit"],
+    html body input[type="button"] {
+      background: #{colors.primary} !important;
+      background-color: #{colors.primary} !important;
+      border: 2px solid #{colors.primary} !important;
+      border-color: #{colors.primary} !important;
+      color: white !important;
+      padding: 0.75rem 1.5rem !important;
+      border-radius: #{get_theme_radius(theme)} !important;
+      font-family: #{get_theme_font(theme)} !important;
+      text-decoration: none !important;
+      display: inline-block !important;
+      cursor: pointer !important;
+    }
+
+    /* LAYOUT SPECIFIC OVERRIDES */
+    #{get_layout_extreme_override(layout)}
+
+    /* THEME SPECIFIC VISUAL CHANGES */
+    #{get_theme_visual_override(theme, colors)}
+
+    /* FORCE REPAINT */
+    html body * {
+      transform: translateZ(0) !important;
     }
     """
+  end
+
+  defp get_theme_padding(theme) do
+    case theme do
+      "creative" -> "2.5rem"
+      "minimal" -> "1.5rem"
+      "modern" -> "2rem"
+      _ -> "2rem"
+    end
+  end
+
+  defp get_theme_weight(theme) do
+    case theme do
+      "creative" -> "800"
+      "minimal" -> "300"
+      "modern" -> "600"
+      _ -> "700"
+    end
+  end
+
+  defp get_theme_border(theme, colors) do
+    case theme do
+      "creative" -> "4px solid #{colors.secondary}"
+      "minimal" -> "2px solid #{colors.primary}"
+      "modern" -> "1px solid rgba(0,0,0,0.1)"
+      _ -> "1px solid rgba(0,0,0,0.05)"
+    end
+  end
+
+  defp get_hero_text_color(theme) do
+    case theme do
+      "minimal" -> "#1f2937"
+      _ -> "white"
+    end
+  end
+
+  defp get_layout_extreme_override(layout) do
+    case layout do
+      "grid" -> """
+        html body div.portfolio-container {
+          display: grid !important;
+          grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)) !important;
+          gap: 2rem !important;
+          max-width: 1400px !important;
+          margin: 0 auto !important;
+          padding: 2rem !important;
+        }
+      """
+      "timeline" -> """
+        html body div.portfolio-container {
+          display: flex !important;
+          flex-direction: column !important;
+          max-width: 900px !important;
+          margin: 0 auto !important;
+          padding: 2rem !important;
+        }
+      """
+      _ -> """
+        html body div.portfolio-container {
+          max-width: 1200px !important;
+          margin: 0 auto !important;
+          padding: 2rem !important;
+        }
+      """
+    end
+  end
+
+  defp get_theme_visual_override(theme, colors) do
+    case theme do
+      "creative" -> """
+        html body div.portfolio-section:nth-child(odd) {
+          transform: rotate(-1deg) !important;
+          border-left: 8px solid #{colors.secondary} !important;
+        }
+        html body div.portfolio-section:nth-child(even) {
+          transform: rotate(1deg) !important;
+          border-right: 8px solid #{colors.secondary} !important;
+        }
+        html body {
+          background: linear-gradient(45deg, #{colors.background} 0%, #{colors.secondary}20 100%) !important;
+        }
+      """
+      "minimal" -> """
+        html body div.portfolio-section {
+          box-shadow: none !important;
+          border: 2px solid #{colors.primary} !important;
+          background: white !important;
+        }
+        html body {
+          background: #ffffff !important;
+        }
+      """
+      "modern" -> """
+        html body div.portfolio-section {
+          border-top: 4px solid #{colors.primary} !important;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.1) !important;
+        }
+      """
+      _ -> ""
+    end
+  end
+
+  defp get_color_palette(scheme) do
+    case scheme do
+      "blue" -> %{primary: "#1e40af", secondary: "#3b82f6", accent: "#60a5fa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
+      "green" -> %{primary: "#065f46", secondary: "#059669", accent: "#34d399", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
+      "purple" -> %{primary: "#581c87", secondary: "#7c3aed", accent: "#a78bfa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
+      "red" -> %{primary: "#991b1b", secondary: "#dc2626", accent: "#f87171", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
+      "orange" -> %{primary: "#ea580c", secondary: "#f97316", accent: "#fb923c", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
+      "teal" -> %{primary: "#0f766e", secondary: "#14b8a6", accent: "#5eead4", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
+      _ -> %{primary: "#1e40af", secondary: "#3b82f6", accent: "#60a5fa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
+    end
+  end
+
+  defp get_theme_font(theme) do
+    case theme do
+      "professional" -> "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+      "creative" -> "'Poppins', 'Helvetica Neue', Arial, sans-serif"
+      "minimal" -> "'Source Sans Pro', 'Helvetica Neue', Arial, sans-serif"
+      "modern" -> "'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+      _ -> "system-ui, -apple-system, sans-serif"
+    end
+  end
+
+  defp get_theme_radius(theme) do
+    case theme do
+      "creative" -> "15px"
+      "minimal" -> "4px"
+      "modern" -> "10px"
+      _ -> "8px"
+    end
+  end
+
+  defp get_theme_shadow(theme) do
+    case theme do
+      "creative" -> "0 10px 30px rgba(0,0,0,0.1)"
+      "minimal" -> "0 1px 2px rgba(0,0,0,0.05)"
+      "modern" -> "0 8px 20px rgba(0,0,0,0.1)"
+      _ -> "0 2px 10px rgba(0,0,0,0.1)"
+    end
+  end
+
+  defp get_hero_bg(theme, colors) do
+    case theme do
+      "creative" -> "linear-gradient(135deg, #{colors.primary}, #{colors.accent})"
+      "minimal" -> colors.surface
+      "modern" -> "linear-gradient(45deg, #{colors.primary}15, #{colors.accent}15)"
+      _ -> colors.primary
+    end
+  end
+
+  defp get_layout_css(layout) do
+    case layout do
+      "grid" -> """
+        .portfolio-container .portfolio-section {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 1.5rem;
+        }
+      """
+      "timeline" -> """
+        .portfolio-container {
+          max-width: 900px;
+          margin: 0 auto;
+        }
+      """
+      _ -> ""
+    end
+  end
+
+  defp get_theme_css(theme, colors) do
+    case theme do
+      "creative" -> """
+        .portfolio-section {
+          border-left: 5px solid #{colors.accent} !important;
+        }
+      """
+      "minimal" -> """
+        .portfolio-section {
+          border: 2px solid #{colors.primary} !important;
+        }
+      """
+      _ -> ""
+    end
   end
 
   defp extract_portfolio_description(portfolio) do
@@ -4472,5 +4891,35 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   defp strip_html_tags(content), do: to_string(content)
+
+  defp generate_portfolio_css(portfolio) do
+    customization = portfolio.customization || %{}
+
+    theme = Map.get(customization, "theme", "professional")
+    color_scheme = Map.get(customization, "color_scheme", "blue")
+
+    colors = case color_scheme do
+      "green" -> %{primary: "#059669", background: "#fafafa"}
+      "purple" -> %{primary: "#7c3aed", background: "#fafafa"}
+      "red" -> %{primary: "#dc2626", background: "#fafafa"}
+      _ -> %{primary: "#1e40af", background: "#fafafa"}
+    end
+
+    """
+    /* Dynamic Portfolio Design */
+    .portfolio-container, body.portfolio-public-view {
+      background-color: #{colors.background} !important;
+    }
+
+    h1, h2, h3, .portfolio-container h1, .portfolio-container h2 {
+      color: #{colors.primary} !important;
+    }
+
+    .btn, .button, .cta-button {
+      background-color: #{colors.primary} !important;
+      border-color: #{colors.primary} !important;
+    }
+    """
+  end
 
 end

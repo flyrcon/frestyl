@@ -159,7 +159,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditorFixed do
           </div>
         </div>
           <!-- Live Preview Panel -->
-          <div class="flex-1 w-md border-l border-gray-200 bg-gray-100">
+          <div class="flex-1 lg:w-1/2 border-l border-gray-200 bg-gray-100">
             <%= render_live_preview_panel(assigns) %>
           </div>
       </div>
