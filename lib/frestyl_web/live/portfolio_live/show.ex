@@ -10,7 +10,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
   alias Frestyl.Portfolios
   alias Frestyl.Portfolios.PortfolioTemplates
   alias Phoenix.PubSub
-  alias FrestylWeb.PortfolioLive.DynamicCardCssManager
 
   alias FrestylWeb.PortfolioLive.{PorfolioEditorFixed}
   alias Frestyl.ResumeExporter
@@ -59,45 +58,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  defp mount_public_portfolio(slug, socket) do
-    IO.puts("🌍 MOUNTING PUBLIC PORTFOLIO: /p/#{slug}")
-
-    case load_portfolio_by_slug_safe(slug) do
-      {:ok, portfolio} ->
-        IO.puts("✅ Portfolio found: #{portfolio.title}")
-
-        # Check if portfolio is publicly viewable
-        if is_portfolio_public?(portfolio) do
-          # Call mount_portfolio with 2 parameters, then add view_type
-          case mount_portfolio(portfolio, socket) do
-            {:ok, updated_socket} ->
-              {:ok, assign(updated_socket, :view_type, :public)}
-            error -> error
-          end
-        else
-          IO.puts("🔒 Portfolio is not public: #{portfolio.visibility}")
-          {:ok,
-          socket
-          |> put_flash(:error, "This portfolio is not publicly available")
-          |> redirect(to: "/")}
-        end
-
-      {:error, :not_found} ->
-        IO.puts("❌ Portfolio not found for slug: #{slug}")
-        {:ok,
-        socket
-        |> put_flash(:error, "Portfolio not found")
-        |> redirect(to: "/")}
-
-      {:error, reason} ->
-        IO.puts("❌ Portfolio loading error: #{inspect(reason)}")
-        {:ok,
-        socket
-        |> put_flash(:error, "Unable to load portfolio")
-        |> redirect(to: "/")}
-    end
-  end
-
   defp mount_portfolio(portfolio, socket) do
     IO.puts("📁 MOUNTING PORTFOLIO DATA: #{portfolio.title}")
 
@@ -113,28 +73,20 @@ defmodule FrestylWeb.PortfolioLive.Show do
     sections = load_portfolio_sections_safe(portfolio.id)
     IO.puts("📋 Loaded #{length(sections)} sections")
 
-    # Process customization and CSS
-    {template_config, customization_css, template_layout} = process_portfolio_customization_safe(portfolio)
-
     # Extract intro video if present
     {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(sections)
 
     is_dynamic = Map.get(portfolio.customization || %{}, "use_dynamic_layout", false)
 
-    # Basic assignments that work with your existing code
+    # Basic assignments WITHOUT custom_css (will be set by mount functions)
     socket = socket
     |> assign(:page_title, portfolio.title)
     |> assign(:portfolio, portfolio)
     |> assign(:owner, get_portfolio_owner_safe(portfolio))
     |> assign(:sections, filtered_sections)
-    |> initialize_portfolio_css()
     |> assign(:all_sections, sections)
     |> assign(:customization, portfolio.customization || %{})
     |> assign(:is_dynamic_layout, is_dynamic)
-    |> assign(:template_config, template_config)
-    |> assign(:template_theme, normalize_theme_safe(portfolio.theme))
-    |> assign(:template_layout, template_layout)
-    |> assign(:customization_css, customization_css)
     |> assign(:intro_video, intro_video)
     |> assign(:intro_video_section, intro_video)
     |> assign(:has_intro_video, intro_video != nil)
@@ -146,10 +98,10 @@ defmodule FrestylWeb.PortfolioLive.Show do
     |> assign(:show_video_modal, false)
     |> assign(:show_mobile_nav, false)
     |> assign(:active_lightbox_media, nil)
-    |> assign(:seo_title, nil)
-    |> assign(:seo_image, nil)
-    |> assign(:seo_description, nil)
-    |> assign(:canonical_url, nil)
+    |> assign(:seo_title, portfolio.title)
+    |> assign(:seo_image, "/images/default-portfolio.jpg")
+    |> assign(:seo_description, portfolio.description || "Professional portfolio")
+    |> assign(:canonical_url, "/p/#{portfolio.slug}")
     |> assign(:public_view_settings, %{
       show_contact_info: true,
       show_social_links: true,
@@ -167,27 +119,26 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   defp mount_public_portfolio(slug, socket) do
+    IO.puts("🌍 MOUNTING PUBLIC PORTFOLIO: /p/#{slug}")
+
     try do
       case Portfolios.get_portfolio_by_slug_with_sections_simple(slug) do
         {:ok, portfolio} ->
-          mount_portfolio(portfolio, socket, :public)
-          |> assign(:custom_css, generate_portfolio_css(portfolio))
+          case mount_portfolio(portfolio, socket) do
+            {:ok, updated_socket} ->
+              # Generate CSS once and assign it
+              custom_css = generate_portfolio_css(portfolio)
+              {:ok, updated_socket
+              |> assign(:view_type, :public)
+              |> assign(:custom_css, custom_css)}
+            error -> error
+          end
         {:error, :not_found} ->
           {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
       end
     rescue
       _ ->
         {:ok, socket |> put_flash(:error, "Portfolio not found") |> redirect(to: "/")}
-    end
-  end
-
-  defp mount_portfolio(portfolio, socket, view_type) do
-    case mount_portfolio(portfolio, socket) do
-      {:ok, updated_socket} ->
-        {:ok, assign(updated_socket, :view_type, view_type)}
-        |> assign(:custom_css, generate_portfolio_css(portfolio))
-
-      error -> error
     end
   end
 
@@ -290,47 +241,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  defp enhance_portfolio_for_public_view(socket) do
-    portfolio = socket.assigns.portfolio
-
-    # Get or load sections if not already loaded
-    sections = case Map.get(socket.assigns, :sections, []) do
-      [] -> load_portfolio_sections(portfolio.id)
-      sections when is_list(sections) -> sections
-      _ -> []
-    end
-
-    # Convert sections to content blocks (same as editor)
-    content_blocks = convert_sections_to_content_blocks(sections)
-
-    # Get brand settings
-    brand_settings = get_portfolio_brand_settings(portfolio)
-
-    # Generate CSS for public view
-    customization = portfolio.customization || %{}
-    dynamic_card_css = try do
-      FrestylWeb.PortfolioLive.DynamicCardCssManager.generate_portfolio_css(
-        portfolio,
-        brand_settings,
-        customization
-      )
-    rescue
-      _ ->
-        # Fallback CSS if DynamicCardCssManager is not available
-        generate_fallback_css(customization, brand_settings)
-    end
-
-    # Create layout zones
-    layout_zones = organize_content_into_layout_zones(content_blocks, portfolio)
-
-    socket
-    |> assign(:sections, sections)
-    |> assign(:content_blocks, content_blocks)
-    |> assign(:brand_settings, brand_settings)
-    |> assign(:layout_zones, layout_zones)
-    |> assign(:customization_css, dynamic_card_css)
-  end
-
   defp get_portfolio_owner(portfolio) do
     case portfolio do
       %{user: %Ecto.Association.NotLoaded{}} ->
@@ -350,14 +260,17 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   @impl true
   def handle_info({:design_complete_update, design_data}, socket) do
-    IO.puts("🎨 SHOW PAGE received design update: theme=#{design_data.theme}, layout=#{design_data.layout}, colors=#{design_data.color_scheme}")
+    IO.puts("🎨 SHOW PAGE received comprehensive design update")
 
-    # Generate more aggressive CSS that overrides existing styles
-    override_css = generate_override_css(design_data)
+    template_class = Map.get(design_data, :template_class, "template-professional-dashboard")
 
     socket = socket
-    |> assign(:custom_css, override_css)
-    |> push_event("force_design_override", design_data)
+    |> assign(:customization, design_data.customization)
+    |> assign(:custom_css, design_data.css)
+    |> assign(:template_class, template_class)
+    |> push_event("apply_comprehensive_design", design_data)
+    |> push_event("apply_portfolio_design", design_data)
+    |> push_event("inject_design_css", %{css: design_data.css})
 
     {:noreply, socket}
   end
@@ -366,6 +279,12 @@ defmodule FrestylWeb.PortfolioLive.Show do
   def handle_info({:design_update, design_data}, socket) do
     handle_info({:design_complete_update, design_data}, socket)
   end
+
+  @impl true
+def handle_info(msg, socket) do
+  IO.puts("🔥 LivePreview received unhandled message: #{inspect(msg)}")
+  {:noreply, socket}
+end
 
   defp load_portfolio_by_slug(slug) do
     try do
@@ -465,112 +384,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  defp generate_fallback_css(customization, brand_settings) do
-    primary = Map.get(brand_settings, :primary_color) || Map.get(customization, "primary_color", "#3b82f6")
-    secondary = Map.get(brand_settings, :secondary_color) || Map.get(customization, "secondary_color", "#64748b")
-    accent = Map.get(brand_settings, :accent_color) || Map.get(customization, "accent_color", "#f59e0b")
-
-    """
-    :root {
-      --primary-color: #{primary};
-      --secondary-color: #{secondary};
-      --accent-color: #{accent};
-      --font-family: system-ui, sans-serif;
-    }
-    .portfolio-public-view {
-      font-family: var(--font-family);
-      color: #1f2937;
-      line-height: 1.6;
-    }
-    .dynamic-card-layout-manager {
-      background-color: #f9fafb;
-      min-height: 100vh;
-    }
-    """
-  end
-
-  defp generate_fallback_css(customization) do
-    primary = Map.get(customization, "primary_color", "#3b82f6")
-    secondary = Map.get(customization, "secondary_color", "#64748b")
-    accent = Map.get(customization, "accent_color", "#f59e0b")
-    font_family = Map.get(customization, "font_family", "system-ui, sans-serif")
-
-    """
-    :root {
-      --primary-color: #{primary};
-      --secondary-color: #{secondary};
-      --accent-color: #{accent};
-      --font-family: #{font_family};
-    }
-    .portfolio-public-view {
-      font-family: var(--font-family);
-      color: #1f2937;
-      line-height: 1.6;
-    }
-    .dynamic-card-layout-manager {
-      background-color: #f9fafb;
-      min-height: 100vh;
-      padding: 2rem;
-    }
-    """
-  end
-
-  defp get_portfolio_layout(portfolio) do
-    case portfolio.customization do
-      %{"layout" => layout} when is_binary(layout) -> layout
-      _ -> portfolio.theme || "dynamic_card_layout"
-    end
-  end
-
-  defp assign_dynamic_layout_data(socket) do
-    # Ensure all dynamic layout assigns exist to prevent KeyErrors
-    socket
-    |> assign_new(:layout_zones, fn -> %{} end)
-    |> assign_new(:content_blocks, fn -> %{} end)
-    |> assign_new(:layout_type, fn -> "traditional" end)
-    |> assign_new(:is_dynamic_layout, fn -> true end)  # CRITICAL: Default to true
-    |> assign_new(:brand_settings, fn -> %{} end)
-    |> assign_new(:template_config, fn -> %{} end)
-    |> assign_new(:design_tokens, fn -> %{} end)
-    |> assign_new(:customization, fn -> %{} end)
-    |> assign_new(:sections, fn -> [] end)  # Ensure sections exist
-  end
-
-  defp assign_dynamic_card_layout_data(socket, portfolio) do
-    # Always assign is_dynamic_layout to prevent KeyError
-    is_dynamic = determine_if_dynamic_layout(portfolio)
-
-    socket = socket
-    |> assign(:is_dynamic_layout, is_dynamic)  # CRITICAL: Always set this
-
-    if is_dynamic do
-      # Load dynamic card layout data
-      layout_zones = load_dynamic_layout_zones_safe(portfolio.id)
-      content_blocks = convert_sections_to_content_blocks(socket.assigns.sections || [])
-
-      socket
-      |> assign(:layout_zones, layout_zones)
-      |> assign(:content_blocks, content_blocks)
-      |> assign(:layout_type, "dynamic_card")
-    else
-      # Traditional layout fallback
-      socket
-      |> assign(:layout_zones, %{})
-      |> assign(:content_blocks, %{})
-      |> assign(:layout_type, "traditional")
-    end
-  end
-
-  defp determine_if_dynamic_layout(portfolio) do
-    # Check if portfolio uses dynamic card layout
-    case portfolio do
-      %{customization: %{"layout_type" => "dynamic_card"}} -> true
-      %{customization: %{"use_dynamic_layout" => true}} -> true
-      %{layout: "dynamic_card"} -> true
-      # For now, default all portfolios to dynamic layout since traditional is defunct
-      _ -> true  # FORCE: All portfolios use dynamic layout now
-    end
-  end
 
   defp get_portfolio_account(portfolio) do
     case portfolio do
@@ -655,79 +468,12 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  defp process_portfolio_customization_safe(portfolio) do
-    try do
-      customization = portfolio.customization || %{}
-      theme = portfolio.theme || "dynamic_card_layout"
-
-      template_config = %{
-        theme: theme,
-        layout: get_portfolio_layout_safe(portfolio),
-        colors: get_color_scheme_safe(customization)
-      }
-
-      # Generate CSS using Dynamic Card CSS Manager if available
-      css = try do
-        brand_settings = %{
-          primary_color: Map.get(customization, "primary_color", "#3b82f6"),
-          secondary_color: Map.get(customization, "secondary_color", "#64748b"),
-          accent_color: Map.get(customization, "accent_color", "#f59e0b"),
-          font_family: Map.get(customization, "font_family", "system-ui, sans-serif")
-        }
-        DynamicCardCssManager.generate_portfolio_css(portfolio, brand_settings, customization)
-      rescue
-        _ -> generate_fallback_css(customization)
-      end
-
-      layout = Map.get(customization, "layout", "dynamic_card_layout")
-
-      {template_config, css, layout}
-    rescue
-      e ->
-        IO.puts("❌ Error processing portfolio customization: #{inspect(e)}")
-        {%{}, "", "dynamic_card_layout"}
-    end
-  end
-
-  defp get_portfolio_layout_safe(portfolio) do
-    case portfolio.customization do
-      %{"layout" => layout} when is_binary(layout) -> layout
-      _ -> "dynamic_card_layout"
-    end
-  end
-
   defp get_color_scheme_safe(customization) do
     %{
       primary: Map.get(customization, "primary_color", "#3b82f6"),
       secondary: Map.get(customization, "secondary_color", "#64748b"),
       accent: Map.get(customization, "accent_color", "#f59e0b")
     }
-  end
-
-  defp normalize_theme_safe(theme) do
-    case theme do
-      nil -> :dynamic_card_layout
-      "" -> :dynamic_card_layout
-      theme when is_binary(theme) ->
-        try do
-          String.to_atom(theme)
-        rescue
-          _ -> :dynamic_card_layout
-        end
-      theme when is_atom(theme) -> theme
-      _ -> :dynamic_card_layout
-    end
-  end
-
-  defp initialize_portfolio_css(socket) do
-    portfolio = socket.assigns.portfolio
-    custom_css = if portfolio && portfolio.customization do
-      generate_portfolio_css(portfolio)
-    else
-      ""
-    end
-
-    assign(socket, :custom_css, custom_css)
   end
 
   defp extract_intro_video_and_filter_sections(sections) do
@@ -935,7 +681,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     if updated_portfolio.id == socket.assigns.portfolio.id do
       socket = socket
       |> assign(:portfolio, updated_portfolio)
-      |> assign_dynamic_layout_system(updated_portfolio)
 
       {:noreply, socket}
     else
@@ -1032,30 +777,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   @impl true
-  def handle_info({:dynamic_layout_update, layout_zones}, socket) do
-    socket = socket
-    |> assign(:layout_zones, layout_zones)
-    |> assign(:is_dynamic_layout, true)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:brand_update, brand_settings}, socket) do
-    # Regenerate design tokens with new brand settings
-    design_tokens = generate_design_tokens_with_brand(socket.assigns.portfolio, brand_settings)
-    custom_css = generate_brand_css(brand_settings)
-
-    socket = socket
-    |> assign(:brand_settings, brand_settings)
-    |> assign(:design_tokens, design_tokens)
-    |> assign(:custom_css, custom_css)
-    |> push_event("update_styles", %{css: custom_css})
-
-    {:noreply, socket}
-  end
-
-  @impl true
   def handle_info({:viewport_change, mobile_view}, socket) do
     socket = assign(socket, :mobile_view, mobile_view)
     {:noreply, socket}
@@ -1068,63 +789,35 @@ defmodule FrestylWeb.PortfolioLive.Show do
     <html lang="en" class="scroll-smooth">
       <head>
         <%= render_seo_meta(assigns) %>
-        <style><%= @custom_css %></style>
-        <style>
+        <style id="portfolio-server-css"><%= raw(@custom_css || "") %></style>
+        <style id="portfolio-base-styles">
           .portfolio-section {
             scroll-margin-top: 2rem;
+            transition: transform 0.2s ease !important;
           }
 
           .portfolio-section:hover {
             transform: translateY(-2px);
           }
 
-          .hero-content {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            margin: -2rem;
-            padding: 3rem 2rem;
-            border-radius: 0.75rem;
+          /* Ensure our styles have priority over any app.css */
+          .portfolio-container,
+          .portfolio-public-view,
+          body.portfolio-public-view {
+            isolation: isolate !important;
+            position: relative !important;
+            z-index: 1 !important;
           }
 
-          .hero-content h1 {
-            color: white !important;
-          }
-
-          .hero-content .text-blue-600 {
-            color: rgba(255, 255, 255, 0.9) !important;
-          }
-
-          .experience-item:last-child {
-            border-bottom: none !important;
-            padding-bottom: 0 !important;
-            margin-bottom: 0 !important;
-          }
-
-          .project-item {
-            transition: all 0.2s ease;
-          }
-
-          .project-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-          }
-
-          .skill-category:last-child {
-            margin-bottom: 0;
-          }
-
-          .social-links a:hover {
-            transform: scale(1.1);
-          }
-
+          /* Base responsive layout */
           @media (max-width: 768px) {
-            .portfolio-section {
-              margin: 0 1rem;
+            .portfolio-container {
+              padding: 1rem !important;
             }
 
-            .hero-content {
-              margin: -1.5rem;
-              padding: 2rem 1.5rem;
+            .portfolio-section {
+              margin-bottom: 1rem !important;
+              padding: 1.5rem !important;
             }
           }
         </style>
@@ -1132,40 +825,104 @@ defmodule FrestylWeb.PortfolioLive.Show do
       </head>
 
       <body class="portfolio-public-view bg-gray-50">
+        <!-- Enhanced CSS Update Handler -->
+        <script>
+          // Handle comprehensive design updates
+          window.addEventListener('phx:apply_comprehensive_design', (e) => {
+            console.log('🎨 APPLYING DESIGN UPDATE:', e.detail);
+
+            // Remove old CSS
+            const oldCSS = document.getElementById('comprehensive-portfolio-design');
+            if (oldCSS) oldCSS.remove();
+
+            // Inject new CSS
+            const style = document.createElement('style');
+            style.id = 'comprehensive-portfolio-design';
+            style.innerHTML = e.detail.css;
+            document.head.appendChild(style);
+
+            // Update body class with template
+            document.body.className = `portfolio-public-view ${e.detail.template_class}`;
+
+            // Update container classes
+            const container = document.querySelector('.portfolio-container');
+            if (container) {
+              container.className = `portfolio-container ${e.detail.template_class} min-h-screen`;
+            }
+
+            console.log('✅ Design applied successfully');
+          });
+
+          // Handle portfolio design updates
+          window.addEventListener('phx:apply_portfolio_design', (e) => {
+            console.log('🎨 APPLYING PORTFOLIO DESIGN:', e.detail);
+
+            // Remove old CSS
+            const oldCSS = document.getElementById('comprehensive-portfolio-design');
+            if (oldCSS) oldCSS.remove();
+
+            // Inject new CSS
+            const style = document.createElement('style');
+            style.id = 'comprehensive-portfolio-design';
+            style.innerHTML = e.detail.css;
+            document.head.appendChild(style);
+          });
+
+          // Handle CSS injection
+          window.addEventListener('phx:inject_design_css', (e) => {
+            console.log('🎨 INJECTING CSS:', e.detail);
+
+            const oldCSS = document.getElementById('comprehensive-portfolio-design');
+            if (oldCSS) oldCSS.remove();
+
+            const style = document.createElement('style');
+            style.id = 'comprehensive-portfolio-design';
+            style.innerHTML = e.detail.css;
+            document.head.appendChild(style);
+          });
+        </script>
+
         <!-- Portfolio Content -->
         <div class="portfolio-container min-h-screen">
-          <%= if @is_dynamic_layout do %>
-            <.live_component
-              module={FrestylWeb.PortfolioLive.Components.DynamicCardLayoutManager}
-              id={"public-renderer-#{@portfolio.id}"}
-              portfolio={@portfolio}
-              sections={@sections}
-              layout_type={@layout_type}
-              show_edit_controls={false}
-            />
+          <%= if Map.get(assigns, :is_dynamic_layout, false) do %>
+            <%= if function_exported?(FrestylWeb.PortfolioLive.Components.DynamicCardLayoutManager, :__live__, 0) do %>
+              <.live_component
+                module={FrestylWeb.PortfolioLive.Components.DynamicCardLayoutManager}
+                id={"public-renderer-#{@portfolio.id}"}
+                portfolio={@portfolio}
+                sections={Map.get(assigns, :sections, [])}
+                layout_type={Map.get(assigns, :layout_type, :traditional)}
+                show_edit_controls={false}
+              />
+            <% else %>
+              <!-- Fallback if DynamicCardLayoutManager doesn't exist -->
+              <%= render_traditional_public_view(assigns) %>
+            <% end %>
           <% else %>
             <%= render_traditional_public_view(assigns) %>
           <% end %>
         </div>
 
         <!-- Floating Action Buttons -->
-        <%= render_floating_actions(assigns) %>
+        <%= if Map.get(assigns, :show_floating_actions, true) do %>
+          <%= render_floating_actions(assigns) %>
+        <% end %>
 
-        <!-- Modals -->
-        <%= if @show_export_modal do %>
+        <!-- Modals - Only render if assigns exist -->
+        <%= if Map.get(assigns, :show_export_modal, false) do %>
           <%= render_export_modal(assigns) %>
         <% end %>
 
-        <%= if @show_share_modal do %>
+        <%= if Map.get(assigns, :show_share_modal, false) do %>
           <%= render_share_modal(assigns) %>
         <% end %>
 
-        <%= if @show_contact_modal do %>
+        <%= if Map.get(assigns, :show_contact_modal, false) do %>
           <%= render_contact_modal(assigns) %>
         <% end %>
 
-        <!-- Lightbox -->
-        <%= if @active_lightbox_media do %>
+        <!-- Lightbox - Only render if media exists -->
+        <%= if Map.get(assigns, :active_lightbox_media) do %>
           <%= render_lightbox(assigns) %>
         <% end %>
 
@@ -1223,37 +980,50 @@ defmodule FrestylWeb.PortfolioLive.Show do
     """
   end
 
-  defp render_floating_actions(assigns) do
+  defp render_seo_meta(assigns) do
     ~H"""
-    <div class="fixed bottom-6 right-6 z-40 space-y-3">
-      <!-- Back to Top -->
-      <%= if @public_view_settings.enable_back_to_top do %>
-        <button onclick="window.scrollTo({top: 0, behavior: 'smooth'})"
-                class="w-12 h-12 bg-white shadow-lg rounded-full flex items-center justify-center hover:bg-gray-50 transition-all duration-200">
-          <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
-          </svg>
-        </button>
-      <% end %>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
 
-      <!-- More Actions Menu -->
-      <div class="relative">
-        <button class="w-12 h-12 bg-blue-600 text-white shadow-lg rounded-full flex items-center justify-center hover:bg-blue-700 transition-all duration-200"
-                phx-click="toggle_actions_menu">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
-          </svg>
-        </button>
-      </div>
-    </div>
+    <!-- SEO Meta Tags -->
+    <title><%= Map.get(assigns, :seo_title) || Map.get(assigns, :page_title) || "Portfolio" %></title>
+    <meta name="description" content={Map.get(assigns, :seo_description) || "Professional portfolio"} />
+
+    <%= if Map.get(assigns, :canonical_url) do %>
+      <link rel="canonical" href={@canonical_url} />
+    <% end %>
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content={Map.get(assigns, :seo_title) || Map.get(assigns, :page_title) || "Portfolio"} />
+    <meta property="og:description" content={Map.get(assigns, :seo_description) || "Professional portfolio"} />
+
+    <%= if Map.get(assigns, :seo_image) do %>
+      <meta property="og:image" content={@seo_image} />
+    <% end %>
+
+    <%= if Map.get(assigns, :canonical_url) do %>
+      <meta property="og:url" content={@canonical_url} />
+    <% end %>
+
+    <meta property="og:type" content="profile" />
+
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={Map.get(assigns, :seo_title) || Map.get(assigns, :page_title) || "Portfolio"} />
+    <meta name="twitter:description" content={Map.get(assigns, :seo_description) || "Professional portfolio"} />
+
+    <%= if Map.get(assigns, :seo_image) do %>
+      <meta name="twitter:image" content={@seo_image} />
+    <% end %>
     """
   end
 
   defp render_traditional_public_view(assigns) do
     ~H"""
-    <div class="traditional-portfolio-view max-w-4xl mx-auto py-8 px-4">
+    <div class="traditional-portfolio-view">
       <!-- Portfolio Header -->
-      <header class="text-center mb-12">
+      <header class="portfolio-header text-center mb-8 p-6 bg-white rounded-lg shadow-sm">
         <h1 class="text-4xl font-bold text-gray-900 mb-4"><%= @portfolio.title %></h1>
         <%= if @portfolio.description do %>
           <p class="text-xl text-gray-600 max-w-2xl mx-auto"><%= @portfolio.description %></p>
@@ -1261,179 +1031,153 @@ defmodule FrestylWeb.PortfolioLive.Show do
       </header>
 
       <!-- Portfolio Sections -->
-      <div class="space-y-8">
-        <%= for section <- @sections do %>
-          <section class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-2xl font-semibold text-gray-900 mb-4"><%= section.title %></h2>
-            <div class="prose max-w-none">
-              <%= render_section_content_safe(section) %>
+      <div class="portfolio-sections">
+        <%= if length(Map.get(assigns, :sections, [])) > 0 do %>
+          <%= for section <- @sections do %>
+            <%= if Map.get(section, :visible, true) do %>
+              <section class="portfolio-section bg-white rounded-lg shadow-sm p-6 mb-6">
+                <h2 class="text-2xl font-semibold text-gray-900 mb-4"><%= section.title %></h2>
+                <div class="prose max-w-none">
+                  <%= render_section_content_safe(section) %>
+                </div>
+              </section>
+            <% end %>
+          <% end %>
+        <% else %>
+          <!-- Empty state -->
+          <div class="empty-portfolio text-center py-12">
+            <div class="empty-content max-w-md mx-auto">
+              <svg class="empty-icon w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <h3 class="text-xl font-semibold text-gray-900 mb-2">Portfolio Under Construction</h3>
+              <p class="text-gray-600">This portfolio is being set up. Check back soon!</p>
             </div>
-          </section>
+          </div>
         <% end %>
       </div>
     </div>
     """
   end
 
+  defp render_floating_actions(assigns) do
+    ~H"""
+    <div class="fixed bottom-6 right-6 z-40 space-y-3">
+      <!-- Back to Top -->
+      <%= if Map.get(assigns, :enable_back_to_top, true) do %>
+        <button onclick="window.scrollTo({top: 0, behavior: 'smooth'})"
+                class="w-12 h-12 bg-white shadow-lg rounded-full flex items-center justify-center hover:bg-gray-50 transition-all duration-200"
+                title="Back to top">
+          <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+          </svg>
+        </button>
+      <% end %>
+    </div>
+    """
+  end
+
   defp render_export_modal(assigns) do
     ~H"""
-    <%= if @show_export_modal do %>
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          phx-click="hide_export_modal">
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
-            phx-click="prevent_close">
-          <div class="p-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Export Portfolio</h3>
-
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Export Format</label>
-                <select class="w-full border border-gray-300 rounded-lg px-3 py-2">
-                  <option value="pdf">PDF Resume</option>
-                  <option value="json">JSON Data</option>
-                </select>
-              </div>
-
-              <div class="flex justify-end space-x-3">
-                <button phx-click="hide_export_modal"
-                        class="px-4 py-2 text-gray-600 hover:text-gray-800">
-                  Cancel
-                </button>
-                <button phx-click="export_portfolio"
-                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                  Export
-                </button>
-              </div>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        phx-click="hide_export_modal">
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+          phx-click="prevent_close">
+        <div class="p-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Export Portfolio</h3>
+          <div class="space-y-4">
+            <p class="text-gray-600">Export your portfolio in various formats.</p>
+            <div class="flex justify-end space-x-3">
+              <button phx-click="hide_export_modal"
+                      class="px-4 py-2 text-gray-600 hover:text-gray-800">
+                Cancel
+              </button>
+              <button phx-click="export_portfolio"
+                      class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                Export
+              </button>
             </div>
           </div>
         </div>
       </div>
-    <% end %>
+    </div>
     """
   end
 
   defp render_share_modal(assigns) do
     ~H"""
-    <%= if @show_share_modal do %>
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          phx-click="hide_share_modal">
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
-            phx-click="prevent_close">
-          <div class="p-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Share Portfolio</h3>
-
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Public URL</label>
-                <div class="flex">
-                  <input type="text"
-                        value={get_portfolio_public_url(@portfolio)}
-                        readonly
-                        class="flex-1 border border-gray-300 rounded-l-lg px-3 py-2 bg-gray-50">
-                  <button class="px-4 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700"
-                          phx-click="copy_portfolio_url">
-                    Copy
-                  </button>
-                </div>
-              </div>
-
-              <div class="flex justify-end space-x-3">
-                <button phx-click="hide_share_modal"
-                        class="px-4 py-2 text-gray-600 hover:text-gray-800">
-                  Close
-                </button>
-              </div>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        phx-click="hide_share_modal">
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+          phx-click="prevent_close">
+        <div class="p-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Share Portfolio</h3>
+          <div class="space-y-4">
+            <p class="text-gray-600">Share your portfolio with others.</p>
+            <div class="flex justify-end space-x-3">
+              <button phx-click="hide_share_modal"
+                      class="px-4 py-2 text-gray-600 hover:text-gray-800">
+                Close
+              </button>
             </div>
           </div>
         </div>
       </div>
-    <% end %>
+    </div>
     """
   end
 
   defp render_contact_modal(assigns) do
     ~H"""
-    <%= if @show_contact_modal do %>
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-          phx-click="hide_contact_modal">
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
-            phx-click="prevent_close">
-          <div class="p-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Contact</h3>
-
-            <form phx-submit="send_contact_message" class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input type="text" name="name" required
-                      class="w-full border border-gray-300 rounded-lg px-3 py-2">
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input type="email" name="email" required
-                      class="w-full border border-gray-300 rounded-lg px-3 py-2">
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
-                <textarea name="message" rows="4" required
-                          class="w-full border border-gray-300 rounded-lg px-3 py-2"></textarea>
-              </div>
-
-              <div class="flex justify-end space-x-3">
-                <button type="button" phx-click="hide_contact_modal"
-                        class="px-4 py-2 text-gray-600 hover:text-gray-800">
-                  Cancel
-                </button>
-                <button type="submit"
-                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                  Send Message
-                </button>
-              </div>
-            </form>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        phx-click="hide_contact_modal">
+      <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+          phx-click="prevent_close">
+        <div class="p-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Contact</h3>
+          <div class="space-y-4">
+            <p class="text-gray-600">Get in touch.</p>
+            <div class="flex justify-end space-x-3">
+              <button phx-click="hide_contact_modal"
+                      class="px-4 py-2 text-gray-600 hover:text-gray-800">
+                Close
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    <% end %>
+    </div>
     """
   end
 
   defp render_lightbox(assigns) do
     ~H"""
-    <%= if @show_lightbox do %>
-      <div class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50"
-          phx-click="hide_lightbox">
-        <div class="relative max-w-7xl max-h-full p-4">
-          <!-- Close button -->
-          <button class="absolute top-4 right-4 z-10 w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white hover:bg-opacity-30"
-                  phx-click="hide_lightbox">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-
-          <!-- Media content -->
-          <%= if @lightbox_media do %>
-            <%= if @lightbox_media.type == "video" do %>
-              <video controls class="max-w-full max-h-full">
-                <source src={@lightbox_media.url} type="video/mp4">
-              </video>
-            <% else %>
-              <img src={@lightbox_media.url}
-                  alt={@lightbox_media.alt || "Media"}
-                  class="max-w-full max-h-full object-contain">
-            <% end %>
-
-            <%= if @lightbox_media.caption do %>
-              <div class="absolute bottom-4 left-4 right-4 bg-black bg-opacity-70 text-white p-3 rounded">
-                <%= @lightbox_media.caption %>
-              </div>
-            <% end %>
-          <% end %>
+    <div class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50"
+        phx-click="hide_lightbox">
+      <div class="relative max-w-7xl max-h-full p-4">
+        <button class="absolute top-4 right-4 z-10 w-10 h-10 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white hover:bg-opacity-30"
+                phx-click="hide_lightbox">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+        <div class="lightbox-content">
+          <p class="text-white text-center">Lightbox content</p>
         </div>
       </div>
-    <% end %>
+    </div>
     """
+  end
+
+  defp render_section_content_safe(section) do
+    try do
+      content = Map.get(section, :content, %{})
+      # Add your existing section rendering logic here
+      raw("<p>#{Map.get(section, :title, "Section content")}</p>")
+    rescue
+      _ ->
+        raw("<p>Content loading...</p>")
+    end
   end
 
   @impl true
@@ -1540,44 +1284,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
         """)
     end
   end
-
-  defp render_section_content_safe(section) do
-    try do
-      content = Map.get(section, :content, %{})
-      section_type = safe_section_type(section.section_type)
-
-      case section_type do
-        "Hero" ->
-          render_hero_section_content(content)
-        "Experience" ->
-          render_experience_section_content(content)
-        "Skills" ->
-          render_skills_section_content(content)
-        "Projects" ->
-          render_projects_section_content(content)
-        "Contact" ->
-          render_contact_section_content(content)
-        "About" ->
-          render_about_section_content(content)
-        "Education" ->
-          render_education_section_content(content)
-        "Custom" ->
-          render_custom_section_content(content)
-        _ ->
-          render_generic_section_content(content)
-      end
-    rescue
-      error ->
-        IO.puts("❌ Error rendering section: #{inspect(error)}")
-        # Return safe fallback content
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Content is being processed...</p>
-        </div>
-        """)
-    end
-  end
-
 
   defp render_experience_section_content(content) do
     try do
@@ -1831,7 +1537,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  # Contact section renderer
   defp render_contact_section_content(content) do
     main_content = safe_html_content(Map.get(content, "main_content", ""))
     email = safe_text_content(Map.get(content, "email", ""))
@@ -1917,7 +1622,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
 
-  # Education section renderer
   defp render_education_section_content(content) do
     education = Map.get(content, "education", [])
 
@@ -1958,7 +1662,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  # Custom section renderer
   defp render_custom_section_content(content) do
     main_content = Map.get(content, "main_content", "")
     section_subtype = Map.get(content, "section_subtype", "text")
@@ -1968,6 +1671,171 @@ defmodule FrestylWeb.PortfolioLive.Show do
         #{if main_content != "", do: "<div class='text-gray-700'>#{Phoenix.HTML.html_escape(main_content)}</div>", else: "<div class='text-center py-8 text-gray-500'><p>Custom content will be displayed here.</p></div>"}
       </div>
     """)
+  end
+
+  defp generate_portfolio_css(portfolio) do
+    customization = portfolio.customization || %{}
+    theme = Map.get(customization, "theme", "professional")
+    layout = Map.get(customization, "layout", "dashboard")
+    color_scheme = Map.get(customization, "color_scheme", "blue")
+
+    colors = get_show_color_palette(color_scheme)
+    template_class = get_show_template_class(theme, layout)
+
+    """
+    <style id="portfolio-show-css" data-template="#{template_class}">
+    /* Portfolio Show CSS - Simplified */
+    :root {
+      --portfolio-primary: #{colors.primary};
+      --portfolio-secondary: #{colors.secondary};
+      --portfolio-accent: #{colors.accent};
+      --portfolio-background: #{colors.background};
+      --portfolio-text: #{colors.text_primary};
+    }
+
+    .#{template_class} {
+      font-family: 'Inter', system-ui, sans-serif;
+      background-color: var(--portfolio-background);
+      color: var(--portfolio-text);
+    }
+
+    .#{template_class} .portfolio-sections {
+      #{get_show_layout_styles(layout)}
+    }
+
+    .#{template_class} .portfolio-section {
+      background: white;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .#{template_class} .hero-section {
+      background: var(--portfolio-primary);
+      color: white;
+      text-align: center;
+      padding: 4rem 2rem;
+      margin-bottom: 2rem;
+      border-radius: 12px;
+    }
+
+    /* Theme-specific styles */
+    #{get_show_theme_styles(theme, colors)}
+    </style>
+    """
+  end
+
+  defp get_show_color_palette(scheme) do
+    case scheme do
+      "blue" -> %{
+        primary: "#1e40af",
+        secondary: "#3b82f6",
+        accent: "#60a5fa",
+        background: "#fafafa",
+        text_primary: "#1f2937"
+      }
+      "green" -> %{
+        primary: "#065f46",
+        secondary: "#059669",
+        accent: "#34d399",
+        background: "#f0fdf4",
+        text_primary: "#064e3b"
+      }
+      "purple" -> %{
+        primary: "#581c87",
+        secondary: "#7c3aed",
+        accent: "#a78bfa",
+        background: "#faf5ff",
+        text_primary: "#581c87"
+      }
+      _ -> %{
+        primary: "#1e40af",
+        secondary: "#3b82f6",
+        accent: "#60a5fa",
+        background: "#fafafa",
+        text_primary: "#1f2937"
+      }
+    end
+  end
+
+  defp get_show_template_class(theme, layout) do
+    "template-#{theme}-#{layout}"
+  end
+
+  defp get_show_layout_styles(layout) do
+    case layout do
+      "dashboard" -> """
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 2rem;
+      """
+      "grid" -> """
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.5rem;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+      """
+      "timeline" -> """
+        display: flex;
+        flex-direction: column;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 2rem;
+        gap: 3rem;
+      """
+      "magazine" -> """
+        column-count: 2;
+        column-gap: 2rem;
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 2rem;
+      """
+      "minimal" -> """
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 4rem 2rem;
+      """
+      _ -> """
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+      """
+    end
+  end
+
+  defp get_show_theme_styles(theme, colors) do
+    case theme do
+      "creative" -> """
+        .template-creative-dashboard .portfolio-section:nth-child(odd) {
+          transform: rotate(-1deg);
+          border-left: 5px solid #{colors.accent};
+        }
+        .template-creative-dashboard .portfolio-section:nth-child(even) {
+          transform: rotate(1deg);
+          border-right: 5px solid #{colors.accent};
+        }
+      """
+      "minimal" -> """
+        .template-minimal-dashboard .portfolio-section {
+          box-shadow: none;
+          border: 2px solid #{colors.primary};
+          background: white;
+        }
+      """
+      "modern" -> """
+        .template-modern-dashboard .portfolio-section {
+          border-top: 4px solid #{colors.primary};
+          box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+      """
+      _ -> ""
+    end
   end
 
   defp render_generic_section_content(content) do
@@ -2052,7 +1920,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   defp render_social_links_safe(_), do: ""
 
-  # Helper function to safely capitalize section types
   defp safe_capitalize(value) when is_atom(value) do
     value |> Atom.to_string() |> String.capitalize()
   end
@@ -2082,48 +1949,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
   # ============================================================================
   # LAYOUT RENDERING FUNCTIONS
   # ============================================================================
-
-  defp render_dynamic_card_layout(assigns) do
-    ~H"""
-    <div class="dynamic-card-layout">
-      <!-- Hero Zone -->
-      <%= if Map.get(@layout_zones, :hero, []) != [] do %>
-        <div class="layout-zone hero-zone">
-          <%= for block <- Map.get(@layout_zones, :hero, []) do %>
-            <%= render_dynamic_card_block(block, assigns) %>
-          <% end %>
-        </div>
-      <% end %>
-
-      <!-- Main Content Zone -->
-      <div class="main-content-wrapper">
-        <div class="layout-zone main-content-zone">
-          <%= for block <- Map.get(@layout_zones, :main_content, []) do %>
-            <%= render_dynamic_card_block(block, assigns) %>
-          <% end %>
-        </div>
-
-        <!-- Sidebar Zone -->
-        <%= if Map.get(@layout_zones, :sidebar, []) != [] do %>
-          <div class="layout-zone sidebar-zone">
-            <%= for block <- Map.get(@layout_zones, :sidebar, []) do %>
-              <%= render_dynamic_card_block(block, assigns) %>
-            <% end %>
-          </div>
-        <% end %>
-      </div>
-
-      <!-- Footer Zone -->
-      <%= if Map.get(@layout_zones, :footer, []) != [] do %>
-        <div class="layout-zone footer-zone">
-          <%= for block <- Map.get(@layout_zones, :footer, []) do %>
-            <%= render_dynamic_card_block(block, assigns) %>
-          <% end %>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
 
   defp render_traditional_layout(assigns) do
     ~H"""
@@ -2158,30 +1983,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
             <p>This portfolio is being set up. Check back soon!</p>
           </div>
         </div>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_dynamic_card_block(block, assigns) do
-    assigns = assign(assigns, :block, block)
-
-    ~H"""
-    <div class={["dynamic-card-block", "block-#{@block.block_type}"]}
-         data-block-id={@block.id}>
-      <%= case @block.block_type do %>
-        <% :intro_card -> %>
-          <%= render_intro_card_block(@block, assigns) %>
-        <% :experience_card -> %>
-          <%= render_experience_card_block(@block, assigns) %>
-        <% :skills_card -> %>
-          <%= render_skills_card_block(@block, assigns) %>
-        <% :projects_card -> %>
-          <%= render_projects_card_block(@block, assigns) %>
-        <% :contact_card -> %>
-          <%= render_contact_card_block(@block, assigns) %>
-        <% _ -> %>
-          <%= render_generic_card_block(@block, assigns) %>
       <% end %>
     </div>
     """
@@ -2812,35 +2613,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     """
   end
 
-  defp render_dynamic_card_public_view(assigns) do
-    ~H"""
-    <%= if map_size(@layout_zones || %{}) > 0 do %>
-      <%= for {zone_name, blocks} <- (@layout_zones || %{}) do %>
-        <%= if length(blocks) > 0 do %>
-          <%= render_zone_public(zone_name, blocks, assigns) %>
-        <% end %>
-      <% end %>
-    <% else %>
-      <div class="section text-center">
-        <h2 class="section-title">Portfolio</h2>
-        <p class="section-content">Content loading...</p>
-      </div>
-    <% end %>
-    """
-  end
-
-  defp render_zone_public(zone_name, blocks, assigns) do
-    zone_class = get_zone_css_class(zone_name)
-    assigns = assign(assigns, :zone_name, zone_name) |> assign(:blocks, blocks)
-
-    ~H"""
-    <section class={"#{zone_class} py-12"}>
-      <%= for block <- @blocks do %>
-        <%= render_content_block_public(block, assigns) %>
-      <% end %>
-    </section>
-    """
-  end
 
   defp get_zone_css_class(zone_name) do
     case zone_name do
@@ -3012,28 +2784,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
   # HELPER FUNCTIONS
   # ============================================================================
 
-  # Add to show.ex mount function
-  defp determine_portfolio_layout_type(portfolio) do
-    customization = portfolio.customization || %{}
-
-    # Check for dynamic card layout
-    layout_style = Map.get(customization, "layout") || portfolio.theme
-
-    dynamic_layouts = [
-      "professional_service_provider",
-      "creative_portfolio_showcase",
-      "technical_expert_dashboard",
-      "content_creator_hub",
-      "corporate_executive_profile"
-    ]
-
-    if layout_style in dynamic_layouts do
-      {:dynamic_card, layout_style}
-    else
-      {:traditional, "default"}
-    end
-  end
-
   defp render_portfolio_layout(assigns) do
     # Use the customization layout setting
     layout = assigns.portfolio_layout
@@ -3044,28 +2794,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
       "minimal" -> render_minimal_layout(assigns)
       _ -> render_minimal_layout(assigns)  # fallback
     end
-  end
-
-  defp get_dynamic_layout_config(portfolio, layout_style) do
-    customization = portfolio.customization || %{}
-
-    %{
-      layout_style: layout_style,
-      primary_color: Map.get(customization, "primary_color") || "#3b82f6",
-      secondary_color: Map.get(customization, "secondary_color") || "#64748b",
-      accent_color: Map.get(customization, "accent_color") || "#f59e0b",
-      grid_density: Map.get(customization, "grid_density") || "normal"
-    }
-  end
-
-  defp get_brand_colors(portfolio) do
-    customization = portfolio.customization || %{}
-
-    %{
-      primary: Map.get(customization, "primary_color") || "#3b82f6",
-      secondary: Map.get(customization, "secondary_color") || "#64748b",
-      accent: Map.get(customization, "accent_color") || "#f59e0b"
-    }
   end
 
   defp filter_sections_by_type(sections, types) do
@@ -3110,37 +2838,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
     """
   end
 
-  defp render_dynamic_card_layout(assigns, layout_style) do
-    # Get layout configuration
-    layout_config = get_dynamic_layout_config(assigns.portfolio, layout_style)
-
-    assigns = assigns
-    |> assign(:layout_style, layout_style)
-    |> assign(:layout_config, layout_config)
-    |> assign(:brand_colors, get_brand_colors(assigns.portfolio))
-
-    case layout_style do
-      "professional_service_provider" ->
-        render_service_provider_layout(assigns)
-
-      "creative_portfolio_showcase" ->
-        render_creative_showcase_layout(assigns)
-
-      "technical_expert_dashboard" ->
-        render_technical_expert_layout(assigns)
-
-      "content_creator_hub" ->
-        render_content_creator_layout(assigns)
-
-      "corporate_executive_profile" ->
-        render_corporate_executive_layout(assigns)
-
-      _ ->
-        render_service_provider_layout(assigns)  # Default fallback
-    end
-  end
-
-    defp assign_portfolio_data(socket, portfolio) do
+  defp assign_portfolio_data(socket, portfolio) do
     socket
     |> assign(:portfolio, portfolio)
     |> assign(:owner, portfolio.user)
@@ -3191,40 +2889,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
         url when is_binary(url) -> url
       end
     end) || "/images/default-portfolio-preview.jpg"
-  end
-
-  defp assign_rendering_data(socket, portfolio) do
-    # Use Dynamic Card Layout system as the rendering engine
-    case determine_layout_type_safe(portfolio) do
-      {:dynamic_card, layout_config} ->
-        layout_zones = load_dynamic_layout_zones_safe(portfolio.id)
-        custom_css = generate_safe_portfolio_css(portfolio.customization || %{}, layout_config)
-
-        socket
-        |> assign(:is_dynamic_layout, true)
-        |> assign(:layout_type, :dynamic_card)
-        |> assign(:layout_config, layout_config)
-        |> assign(:layout_zones, layout_zones)
-        |> assign(:sections, [])  # Dynamic card layouts use zones, not sections
-        |> assign(:custom_css, custom_css)
-
-      {:traditional, layout_config} ->
-        sections = load_portfolio_sections_for_display(portfolio)
-        # For traditional layouts, still use sections but prepare for dynamic rendering
-        custom_css = generate_safe_portfolio_css(portfolio.customization || %{}, layout_config)
-
-        socket
-        |> assign(:is_dynamic_layout, false)
-        |> assign(:layout_type, :traditional)
-        |> assign(:layout_config, layout_config)
-        |> assign(:layout_zones, %{})
-        |> assign(:sections, sections)
-        |> assign(:custom_css, custom_css)
-    end
-    |> assign(:customization, Map.get(portfolio, :customization, %{}))
-    |> assign(:template_config, get_template_config(portfolio.theme || "professional"))
-    |> assign(:design_tokens, generate_design_tokens(portfolio))
-    |> assign(:brand_settings, nil)
   end
 
   defp determine_layout_type_safe(portfolio) do
@@ -3288,158 +2952,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  # Safe CSS generation function
-  defp generate_safe_portfolio_css(customization, template_config) do
-    # Extract colors safely - prioritize customization over template
-    primary_color = Map.get(customization, "primary_color") ||
-                   Map.get(template_config, "primary_color") ||
-                   "#1e40af"
-
-    accent_color = Map.get(customization, "accent_color") ||
-                  Map.get(template_config, "accent_color") ||
-                  "#f59e0b"
-
-    """
-    :root {
-      --primary-color: #{primary_color};
-      --accent-color: #{accent_color};
-    }
-
-    .portfolio-show {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      line-height: 1.6;
-      color: #333;
-    }
-
-    .portfolio-header {
-      text-align: center;
-      padding: 2rem 1rem;
-      background: var(--primary-color);
-      color: white;
-    }
-
-    .portfolio-title {
-      font-size: 2.5rem;
-      font-weight: bold;
-      margin-bottom: 0.5rem;
-    }
-
-    .portfolio-description {
-      font-size: 1.2rem;
-      opacity: 0.9;
-    }
-
-    .traditional-layout {
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 2rem 1rem;
-    }
-
-    .portfolio-section {
-      background: white;
-      border-radius: 8px;
-      padding: 2rem;
-      margin-bottom: 2rem;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    .section-title {
-      font-size: 1.8rem;
-      font-weight: bold;
-      margin-bottom: 1rem;
-      color: var(--primary-color);
-    }
-
-    .empty-portfolio {
-      text-align: center;
-      padding: 4rem 2rem;
-      min-height: 400px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .empty-content {
-      max-width: 400px;
-    }
-
-    .empty-icon {
-      color: #9ca3af;
-      margin: 0 auto 1.5rem;
-    }
-
-    .empty-content h3 {
-      font-size: 1.5rem;
-      font-weight: bold;
-      color: #374151;
-      margin-bottom: 0.5rem;
-    }
-
-    .empty-content p {
-      color: #6b7280;
-      margin-bottom: 2rem;
-    }
-
-    .btn-primary {
-      display: inline-block;
-      background: var(--primary-color);
-      color: white;
-      padding: 0.75rem 1.5rem;
-      border-radius: 8px;
-      text-decoration: none;
-      font-weight: medium;
-      transition: background-color 0.2s;
-    }
-
-    .btn-primary:hover {
-      opacity: 0.9;
-    }
-
-    .debug-info {
-      font-family: monospace;
-      font-size: 0.75rem;
-      line-height: 1.4;
-    }
-
-    .portfolio-footer {
-      text-align: center;
-      padding: 2rem;
-      background: #f8f9fa;
-      color: #666;
-    }
-    """
-  end
-
-    defp assign_dynamic_layout_system(socket, portfolio) do
-    # Determine layout type and configuration
-    layout_detection = DynamicCardLayoutManager.determine_layout_type(portfolio)
-
-    case layout_detection do
-      {:dynamic_card, layout_config} ->
-        layout_zones = DynamicCardLayoutManager.load_layout_zones(portfolio.id)
-        custom_css = generate_portfolio_css(portfolio)
-
-        socket
-        |> assign(:is_dynamic_layout, true)
-        |> assign(:layout_type, :dynamic_card)
-        |> assign(:layout_config, layout_config)
-        |> assign(:layout_zones, layout_zones)
-        |> assign(:custom_css, custom_css)
-        |> assign(:public_view_settings, get_public_view_settings(portfolio))
-
-      {:traditional, layout_config} ->
-        sections = load_portfolio_sections_for_display(portfolio)
-        custom_css = generate_portfolio_css(portfolio)
-
-        socket
-        |> assign(:is_dynamic_layout, false)
-        |> assign(:layout_type, :traditional)
-        |> assign(:layout_config, layout_config)
-        |> assign(:sections, sections)
-        |> assign(:custom_css, custom_css)
-        |> assign(:public_view_settings, %{})
-    end
-  end
 
   defp get_public_view_settings(portfolio) do
     customization = portfolio.customization || %{}
@@ -3555,24 +3067,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
             end
         end
     end
-  end
-
-  defp is_dynamic_card_layout?(portfolio) do
-    # Get layout safely with fallback
-    layout = Map.get(portfolio, :layout, "traditional")
-
-    layout in ["dynamic_card", "professional_cards", "creative_cards"] ||
-    Map.get(Map.get(portfolio, :customization, %{}), "use_dynamic_cards", false)
-  end
-
-  defp load_dynamic_layout_zones(_portfolio_id) do
-    # This would load from database in real implementation
-    %{
-      hero: [],
-      main_content: [],
-      sidebar: [],
-      footer: []
-    }
   end
 
   defp get_safe_content(content_map, key) when is_map(content_map) do
@@ -3735,37 +3229,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  defp should_use_dynamic_card_layout?(portfolio) do
-    customization = portfolio.customization || %{}
-    layout = Map.get(customization, "layout", portfolio.theme)
-
-    layout in [
-      "dynamic_card_layout",
-      "professional_service_provider",
-      "creative_portfolio_showcase",
-      "technical_expert_dashboard",
-      "content_creator_hub",
-      "corporate_executive_profile"
-    ]
-  end
-
-  defp convert_sections_to_content_blocks(sections) when is_list(sections) do
-    sections
-    |> Enum.map(fn section ->
-      %{
-        id: section.id,
-        block_type: map_section_type_to_block_type(section.section_type),
-        content_data: section.content || %{},
-        original_section: section,
-        position: section.position || 0,
-        visible: Map.get(section, :visible, true),
-        zone: determine_section_zone(section)
-      }
-    end)
-    |> Enum.group_by(& &1.zone)
-  end
-
-  defp convert_sections_to_content_blocks(_), do: %{}
 
   defp determine_section_zone(section) do
     case section.section_type do
@@ -3867,225 +3330,46 @@ defmodule FrestylWeb.PortfolioLive.Show do
     get_connect_params(socket)["ref"]
   end
 
-  defp generate_portfolio_css(portfolio) do
-    customization = portfolio.customization || %{}
 
-    # Handle empty strings and ensure defaults
-    theme = case Map.get(customization, "theme") do
-      nil -> "professional"
-      "" -> "professional"
-      value -> value
+  defp get_enhanced_hero_styles(theme, colors) do
+    case theme do
+      "creative" ->
+        "background: linear-gradient(135deg, #{colors.primary}, #{colors.accent}) !important; color: white !important;"
+      "minimal" ->
+        "background: #{colors.surface} !important; color: #{colors.text_primary} !important; border: 2px solid #{colors.primary} !important;"
+      "modern" ->
+        "background: linear-gradient(45deg, #{colors.primary}15, #{colors.accent}15) !important; color: #{colors.text_primary} !important; border-left: 6px solid #{colors.primary} !important;"
+      _ ->
+        "background: #{colors.primary} !important; color: white !important;"
     end
-
-    layout = case Map.get(customization, "layout") do
-      nil -> "dashboard"
-      "" -> "dashboard"
-      value -> value
-    end
-
-    color_scheme = case Map.get(customization, "color_scheme") do
-      nil -> "blue"
-      "" -> "blue"
-      value -> value
-    end
-
-    # Get colors
-    colors = get_color_palette(color_scheme)
-
-    """
-    /* Portfolio Dynamic Design - Applied from Database */
-    .portfolio-container,
-    .portfolio-public-view,
-    body.portfolio-public-view {
-      font-family: #{get_theme_font(theme)} !important;
-      background-color: #{colors.background} !important;
-      color: #{colors.text_primary} !important;
-    }
-
-    .portfolio-section,
-    .section {
-      background: #{colors.surface} !important;
-      border-radius: #{get_theme_radius(theme)} !important;
-      padding: 2rem !important;
-      margin-bottom: 1.5rem !important;
-      box-shadow: #{get_theme_shadow(theme)} !important;
-    }
-
-    h1, h2, h3, h4, h5, h6,
-    .portfolio-container h1,
-    .portfolio-container h2,
-    .portfolio-container h3 {
-      color: #{colors.primary} !important;
-      font-family: #{get_theme_font(theme)} !important;
-    }
-
-    .btn, .button,
-    .cta-button, .btn-primary {
-      background-color: #{colors.primary} !important;
-      border-color: #{colors.primary} !important;
-      color: white !important;
-      border-radius: #{get_theme_radius(theme)} !important;
-    }
-
-    .hero-content {
-      background: #{get_hero_bg(theme, colors)} !important;
-    }
-
-    /* Layout specific styles */
-    #{get_layout_css(layout)}
-
-    /* Theme specific overrides */
-    #{get_theme_css(theme, colors)}
-    """
   end
 
-  defp generate_override_css(design_data) do
-    theme = design_data.theme || "professional"
-    color_scheme = design_data.color_scheme || "green"
-    layout = design_data.layout || "dashboard"
-
-    # Get colors
-    colors = case color_scheme do
-      "green" -> %{primary: "#059669", secondary: "#34d399", background: "#f0fdf4", surface: "#ffffff", text: "#064e3b"}
-      "purple" -> %{primary: "#7c3aed", secondary: "#a78bfa", background: "#faf5ff", surface: "#ffffff", text: "#581c87"}
-      "red" -> %{primary: "#dc2626", secondary: "#f87171", background: "#fef2f2", surface: "#ffffff", text: "#991b1b"}
-      "orange" -> %{primary: "#ea580c", secondary: "#fb923c", background: "#fff7ed", surface: "#ffffff", text: "#c2410c"}
-      "teal" -> %{primary: "#0f766e", secondary: "#5eead4", background: "#f0fdfa", surface: "#ffffff", text: "#134e4a"}
-      _ -> %{primary: "#1e40af", secondary: "#60a5fa", background: "#eff6ff", surface: "#ffffff", text: "#1e3a8a"}
+  defp get_theme_specific_overrides(theme, colors) do
+    case theme do
+      "creative" -> """
+        .portfolio-section:nth-child(odd) {
+          transform: rotate(-0.5deg) !important;
+          border-left: 6px solid #{colors.accent} !important;
+        }
+        .portfolio-section:nth-child(even) {
+          transform: rotate(0.5deg) !important;
+          border-right: 6px solid #{colors.accent} !important;
+        }
+      """
+      "minimal" -> """
+        .portfolio-section {
+          box-shadow: none !important;
+          border: 2px solid #{colors.primary} !important;
+        }
+      """
+      "modern" -> """
+        .portfolio-section {
+          border-top: 4px solid #{colors.primary} !important;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.1) !important;
+        }
+      """
+      _ -> ""
     end
-
-    """
-    /* PORTFOLIO DYNAMIC DESIGN - MAXIMUM OVERRIDE PRIORITY */
-
-    /* Remove any existing dynamic styles first */
-    [id*="portfolio"], [id*="dynamic"], [class*="portfolio"] {
-      all: unset !important;
-    }
-
-    /* GLOBAL FORCE OVERRIDE - HIGHEST SPECIFICITY POSSIBLE */
-    html body.portfolio-public-view,
-    html body.portfolio-public-view *,
-    html body div.portfolio-container,
-    html body div.portfolio-container *,
-    html body main,
-    html body main * {
-      box-sizing: border-box !important;
-    }
-
-    /* BACKGROUND AND CONTAINER OVERRIDE */
-    html body,
-    html body.portfolio-public-view,
-    html body div.portfolio-container {
-      background: #{colors.background} !important;
-      background-color: #{colors.background} !important;
-      background-image: none !important;
-      font-family: #{get_theme_font(theme)} !important;
-      color: #{colors.text} !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-
-    /* SECTION OVERRIDE WITH EXTREME SPECIFICITY */
-    html body div.portfolio-container div.portfolio-section,
-    html body div.portfolio-container section,
-    html body div.portfolio-container article,
-    html body div.portfolio-container div[class*="section"],
-    html body main section,
-    html body main article,
-    html body main div[class*="section"] {
-      background: #{colors.surface} !important;
-      background-color: #{colors.surface} !important;
-      background-image: none !important;
-      border-radius: #{get_theme_radius(theme)} !important;
-      padding: #{get_theme_padding(theme)} !important;
-      margin: 0 0 1.5rem 0 !important;
-      box-shadow: #{get_theme_shadow(theme)} !important;
-      border: #{get_theme_border(theme, colors)} !important;
-      position: relative !important;
-      z-index: 1 !important;
-    }
-
-    /* TYPOGRAPHY OVERRIDE - MAXIMUM SPECIFICITY */
-    html body h1,
-    html body h2,
-    html body h3,
-    html body h4,
-    html body h5,
-    html body h6,
-    html body div.portfolio-container h1,
-    html body div.portfolio-container h2,
-    html body div.portfolio-container h3,
-    html body main h1,
-    html body main h2,
-    html body main h3,
-    html body section h1,
-    html body section h2,
-    html body section h3 {
-      color: #{colors.primary} !important;
-      font-family: #{get_theme_font(theme)} !important;
-      font-weight: #{get_theme_weight(theme)} !important;
-      line-height: 1.2 !important;
-      margin-bottom: 1rem !important;
-      text-shadow: none !important;
-    }
-
-    /* HERO SECTION EXTREME OVERRIDE */
-    html body div.hero-content,
-    html body section.hero,
-    html body div[class*="hero"],
-    html body header {
-      background: #{get_hero_bg(theme, colors)} !important;
-      background-image: #{get_hero_bg(theme, colors)} !important;
-      color: #{get_hero_text_color(theme)} !important;
-      border-radius: #{get_theme_radius(theme)} !important;
-      padding: 3rem 2rem !important;
-      margin: -2rem -2rem 2rem -2rem !important;
-      position: relative !important;
-      z-index: 2 !important;
-    }
-
-    html body div.hero-content h1,
-    html body section.hero h1,
-    html body div[class*="hero"] h1,
-    html body header h1 {
-      color: #{get_hero_text_color(theme)} !important;
-      font-size: 2.5rem !important;
-      font-weight: 700 !important;
-      margin-bottom: 1rem !important;
-    }
-
-    /* BUTTON OVERRIDE */
-    html body button,
-    html body a.btn,
-    html body a.button,
-    html body div.btn,
-    html body span.btn,
-    html body input[type="submit"],
-    html body input[type="button"] {
-      background: #{colors.primary} !important;
-      background-color: #{colors.primary} !important;
-      border: 2px solid #{colors.primary} !important;
-      border-color: #{colors.primary} !important;
-      color: white !important;
-      padding: 0.75rem 1.5rem !important;
-      border-radius: #{get_theme_radius(theme)} !important;
-      font-family: #{get_theme_font(theme)} !important;
-      text-decoration: none !important;
-      display: inline-block !important;
-      cursor: pointer !important;
-    }
-
-    /* LAYOUT SPECIFIC OVERRIDES */
-    #{get_layout_extreme_override(layout)}
-
-    /* THEME SPECIFIC VISUAL CHANGES */
-    #{get_theme_visual_override(theme, colors)}
-
-    /* FORCE REPAINT */
-    html body * {
-      transform: translateZ(0) !important;
-    }
-    """
   end
 
   defp get_theme_padding(theme) do
@@ -4122,81 +3406,22 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
-  defp get_layout_extreme_override(layout) do
-    case layout do
-      "grid" -> """
-        html body div.portfolio-container {
-          display: grid !important;
-          grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)) !important;
-          gap: 2rem !important;
-          max-width: 1400px !important;
-          margin: 0 auto !important;
-          padding: 2rem !important;
-        }
-      """
-      "timeline" -> """
-        html body div.portfolio-container {
-          display: flex !important;
-          flex-direction: column !important;
-          max-width: 900px !important;
-          margin: 0 auto !important;
-          padding: 2rem !important;
-        }
-      """
-      _ -> """
-        html body div.portfolio-container {
-          max-width: 1200px !important;
-          margin: 0 auto !important;
-          padding: 2rem !important;
-        }
-      """
-    end
-  end
-
-  defp get_theme_visual_override(theme, colors) do
-    case theme do
-      "creative" -> """
-        html body div.portfolio-section:nth-child(odd) {
-          transform: rotate(-1deg) !important;
-          border-left: 8px solid #{colors.secondary} !important;
-        }
-        html body div.portfolio-section:nth-child(even) {
-          transform: rotate(1deg) !important;
-          border-right: 8px solid #{colors.secondary} !important;
-        }
-        html body {
-          background: linear-gradient(45deg, #{colors.background} 0%, #{colors.secondary}20 100%) !important;
-        }
-      """
-      "minimal" -> """
-        html body div.portfolio-section {
-          box-shadow: none !important;
-          border: 2px solid #{colors.primary} !important;
-          background: white !important;
-        }
-        html body {
-          background: #ffffff !important;
-        }
-      """
-      "modern" -> """
-        html body div.portfolio-section {
-          border-top: 4px solid #{colors.primary} !important;
-          box-shadow: 0 20px 40px rgba(0,0,0,0.1) !important;
-        }
-      """
-      _ -> ""
-    end
-  end
-
   defp get_color_palette(scheme) do
     case scheme do
-      "blue" -> %{primary: "#1e40af", secondary: "#3b82f6", accent: "#60a5fa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
-      "green" -> %{primary: "#065f46", secondary: "#059669", accent: "#34d399", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
-      "purple" -> %{primary: "#581c87", secondary: "#7c3aed", accent: "#a78bfa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
-      "red" -> %{primary: "#991b1b", secondary: "#dc2626", accent: "#f87171", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
-      "orange" -> %{primary: "#ea580c", secondary: "#f97316", accent: "#fb923c", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
-      "teal" -> %{primary: "#0f766e", secondary: "#14b8a6", accent: "#5eead4", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
-      _ -> %{primary: "#1e40af", secondary: "#3b82f6", accent: "#60a5fa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
+      "blue" ->
+        %{primary: "#1e40af", secondary: "#3b82f6", accent: "#60a5fa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
+      "green" ->
+        %{primary: "#065f46", secondary: "#059669", accent: "#34d399", background: "#f0fdf4", surface: "#ffffff", text_primary: "#064e3b", text_secondary: "#6b7280"}
+      "purple" ->
+        %{primary: "#581c87", secondary: "#7c3aed", accent: "#a78bfa", background: "#faf5ff", surface: "#ffffff", text_primary: "#581c87", text_secondary: "#6b7280"}
+      "red" ->
+        %{primary: "#991b1b", secondary: "#dc2626", accent: "#f87171", background: "#fef2f2", surface: "#ffffff", text_primary: "#991b1b", text_secondary: "#6b7280"}
+      "orange" ->
+        %{primary: "#ea580c", secondary: "#f97316", accent: "#fb923c", background: "#fff7ed", surface: "#ffffff", text_primary: "#ea580c", text_secondary: "#6b7280"}
+      "teal" ->
+        %{primary: "#0f766e", secondary: "#14b8a6", accent: "#5eead4", background: "#f0fdfa", surface: "#ffffff", text_primary: "#134e4a", text_secondary: "#6b7280"}
+      _ ->
+        %{primary: "#1e40af", secondary: "#3b82f6", accent: "#60a5fa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
     end
   end
 
@@ -4269,6 +3494,22 @@ defmodule FrestylWeb.PortfolioLive.Show do
         }
       """
       _ -> ""
+    end
+  end
+
+  defp get_portfolio_template_class(assigns) do
+    customization = Map.get(assigns, :customization, %{})
+    theme = Map.get(customization, "theme", "professional")
+    layout = Map.get(customization, "layout", "dashboard")
+
+    case {theme, layout} do
+      {"professional", "dashboard"} -> "template-professional-dashboard"
+      {"professional", "grid"} -> "template-professional-grid"
+      {"creative", "dashboard"} -> "template-creative-dashboard"
+      {"creative", "timeline"} -> "template-creative-timeline"
+      {"minimal", _} -> "template-minimal-#{layout}"
+      {"modern", _} -> "template-modern-#{layout}"
+      {theme, layout} -> "template-#{theme}-#{layout}"
     end
   end
 
@@ -4349,6 +3590,208 @@ defmodule FrestylWeb.PortfolioLive.Show do
         result -> result
       end
     end)
+  end
+
+  defp render_portfolio_with_template(assigns, template_class) do
+    assigns = assign(assigns, :template_class, template_class)
+
+    ~H"""
+    <div class={["portfolio-content", template_class]}>
+      <!-- Hero Section - Enhanced with Video Support -->
+      <%= render_enhanced_hero_section(assigns) %>
+
+      <!-- Portfolio Sections with Layout Structure -->
+      <div class="portfolio-sections">
+        <%= for section <- filter_non_hero_sections(@sections) do %>
+          <%= if Map.get(section, :visible, true) do %>
+            <section class="portfolio-section">
+              <h2 class="section-title"><%= section.title %></h2>
+              <div class="section-content">
+                <%= render_section_content_safe(section) %>
+              </div>
+            </section>
+          <% end %>
+        <% end %>
+      </div>
+
+      <!-- Video Modal for Hero Videos -->
+      <%= if Map.get(assigns, :show_video_modal, false) && Map.get(assigns, :intro_video) do %>
+        <%= render_video_modal(assigns) %>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp render_enhanced_hero_section(assigns) do
+    # Check for intro video first
+    intro_video = Map.get(assigns, :intro_video) || Map.get(assigns, :intro_video_section)
+    has_intro_video = intro_video != nil
+
+    # Get hero section from regular sections
+    hero_section = Enum.find(Map.get(assigns, :sections, []), &(&1.section_type == "hero"))
+
+    assigns = assigns
+    |> assign(:intro_video, intro_video)
+    |> assign(:has_intro_video, has_intro_video)
+    |> assign(:hero_section, hero_section)
+
+    ~H"""
+    <%= cond do %>
+      <% @has_intro_video -> %>
+        <!-- Video-Enhanced Hero -->
+        <%= render_video_enhanced_hero(assigns) %>
+      <% @hero_section -> %>
+        <!-- Standard Hero Section -->
+        <%= render_standard_hero(assigns) %>
+      <% true -> %>
+        <!-- Portfolio Header Fallback -->
+        <%= render_portfolio_header(assigns) %>
+    <% end %>
+    """
+  end
+
+  defp render_video_enhanced_hero(assigns) do
+    video_url = get_video_url_safe(assigns.intro_video)
+    video_content = get_video_content_safe(assigns.intro_video)
+
+    assigns = assigns
+    |> assign(:video_url, video_url)
+    |> assign(:video_content, video_content)
+
+    ~H"""
+    <section class={["hero-section", "video-enhanced-hero", @template_class]}>
+      <div class="hero-container">
+        <!-- Video Introduction Area -->
+        <div class="video-intro-area">
+          <%= if @video_url do %>
+            <div class="video-container">
+              <div class="video-wrapper">
+                <video
+                  controls
+                  poster={Map.get(@video_content, "thumbnail", "")}
+                  class="intro-video">
+                  <source src={@video_url} type="video/mp4">
+                  <source src={@video_url} type="video/webm">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+
+              <!-- Video Info Overlay -->
+              <div class="video-info-overlay">
+                <h1 class="hero-title"><%= @portfolio.title %></h1>
+                <p class="hero-subtitle"><%= @portfolio.description %></p>
+
+                <!-- Video Details -->
+                <div class="video-details">
+                  <span class="video-title">
+                    <%= Map.get(@video_content, "title", "Personal Introduction") %>
+                  </span>
+                  <%= if Map.get(@video_content, "duration") do %>
+                    <span class="video-duration">
+                      <%= format_video_duration(Map.get(@video_content, "duration")) %>
+                    </span>
+                  <% end %>
+                </div>
+              </div>
+            </div>
+          <% else %>
+            <!-- Fallback when video URL is missing -->
+            <div class="hero-content-fallback">
+              <h1 class="hero-title"><%= @portfolio.title %></h1>
+              <p class="hero-subtitle"><%= @portfolio.description %></p>
+              <div class="video-placeholder">
+                <svg class="video-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.01M15 10h1.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <p>Video introduction will appear here</p>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  defp render_standard_hero(assigns) do
+    hero_content = get_section_content_map(assigns.hero_section)
+
+    assigns = assign(assigns, :hero_content, hero_content)
+
+    ~H"""
+    <section class={["hero-section", "standard-hero", @template_class]}>
+      <div class="hero-container">
+        <div class="hero-content">
+          <h1 class="hero-title">
+            <%= Map.get(@hero_content, "headline", @hero_section.title) %>
+          </h1>
+
+          <%= if Map.get(@hero_content, "tagline") do %>
+            <p class="hero-tagline">
+              <%= Map.get(@hero_content, "tagline") %>
+            </p>
+          <% end %>
+
+          <%= if Map.get(@hero_content, "main_content") do %>
+            <div class="hero-description">
+              <%= raw(Map.get(@hero_content, "main_content")) %>
+            </div>
+          <% end %>
+
+          <!-- CTA Buttons -->
+          <%= if Map.get(@hero_content, "cta_text") && Map.get(@hero_content, "cta_link") do %>
+            <div class="hero-actions">
+              <a href={Map.get(@hero_content, "cta_link")} class="hero-cta-button">
+                <%= Map.get(@hero_content, "cta_text") %>
+              </a>
+            </div>
+          <% end %>
+
+          <!-- Social Links -->
+          <%= if Map.get(@hero_content, "show_social") do %>
+            <%= render_hero_social_links(Map.get(@hero_content, "social_links", %{})) %>
+          <% end %>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  defp render_portfolio_header(assigns) do
+    ~H"""
+    <header class={["portfolio-header", @template_class]}>
+      <div class="header-container">
+        <h1 class="portfolio-title"><%= @portfolio.title %></h1>
+        <%= if @portfolio.description do %>
+          <p class="portfolio-description"><%= @portfolio.description %></p>
+        <% end %>
+      </div>
+    </header>
+    """
+  end
+
+  defp render_video_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 backdrop-blur-sm"
+        phx-click="hide_video_modal">
+      <div class="relative max-w-6xl w-full mx-4 max-h-[90vh]" phx-click-away="hide_video_modal">
+        <!-- Close button -->
+        <button phx-click="hide_video_modal"
+                class="absolute -top-12 right-0 text-white hover:text-gray-300 z-10">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+
+        <!-- Video player -->
+        <video controls autoplay class="w-full h-auto rounded-xl shadow-2xl">
+          <source src={get_video_url_safe(@intro_video)} type="video/mp4">
+          <source src={get_video_url_safe(@intro_video)} type="video/webm">
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    </div>
+    """
   end
 
   defp render_dashboard_layout(assigns) do
@@ -4568,6 +4011,116 @@ defmodule FrestylWeb.PortfolioLive.Show do
         })]
     end
   end
+
+  defp has_hero_section?(sections) do
+    Enum.any?(sections, &(&1.section_type == "hero"))
+  end
+
+  defp filter_non_hero_sections(sections) do
+    Enum.reject(sections, &(&1.section_type == "hero"))
+  end
+
+  defp render_hero_with_template(assigns) do
+    hero_section = Enum.find(assigns.sections, &(&1.section_type == "hero"))
+
+    if hero_section do
+      assigns = assign(assigns, :hero_section, hero_section)
+
+      ~H"""
+      <div class="hero-content">
+        <h1 class="hero-title"><%= @hero_section.title %></h1>
+        <div class="hero-body">
+          <%= render_section_content_safe(@hero_section) %>
+        </div>
+      </div>
+      """
+    else
+      ~H"<div></div>"
+    end
+  end
+
+  defp get_section_content_map(section) do
+    case section do
+      %{content: content} when is_map(content) -> content
+      _ -> %{}
+    end
+  end
+
+  # Safe video content extraction
+  defp get_video_content_safe(intro_video) do
+    case intro_video do
+      %{content: content} when is_map(content) -> content
+      %{"video_url" => _} = content -> content
+      video_data when is_map(video_data) ->
+        %{
+          "video_url" => Map.get(video_data, :video_url, ""),
+          "title" => Map.get(video_data, :title, "Personal Introduction"),
+          "description" => Map.get(video_data, :description, ""),
+          "duration" => Map.get(video_data, :duration, 0)
+        }
+      _ -> %{}
+    end
+  end
+
+  # Safe video URL extraction
+  defp get_video_url_safe(intro_video) do
+    case intro_video do
+      nil -> nil
+      %{video_url: url} when is_binary(url) -> url
+      %{"video_url" => url} when is_binary(url) -> url
+      %{content: %{"video_url" => url}} when is_binary(url) -> url
+      %{content: content} when is_map(content) -> Map.get(content, "video_url")
+      _ -> nil
+    end
+  end
+
+  # Format video duration
+  defp format_video_duration(seconds) when is_integer(seconds) and seconds > 0 do
+    minutes = div(seconds, 60)
+    remaining_seconds = rem(seconds, 60)
+    "#{minutes}:#{String.pad_leading(to_string(remaining_seconds), 2, "0")}"
+  end
+
+  defp format_video_duration(_), do: "0:00"
+
+  # Render hero social links
+  defp render_hero_social_links(social_links) when is_map(social_links) do
+    social_items = social_links
+    |> Enum.filter(fn {_, url} -> url && url != "" end)
+    |> Enum.map(fn {platform, url} ->
+      {platform, url, get_social_icon(platform)}
+    end)
+
+    assigns = %{social_items: social_items}
+
+    ~H"""
+    <%= if length(@social_items) > 0 do %>
+      <div class="hero-social-links">
+        <%= for {platform, url, icon} <- @social_items do %>
+          <a href={url} target="_blank" rel="noopener" class="social-link" title={String.capitalize(platform)}>
+            <%= icon %>
+          </a>
+        <% end %>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_hero_social_links(_), do: ""
+
+  # Get social platform icons
+  defp get_social_icon(platform) do
+    case String.downcase(to_string(platform)) do
+      "linkedin" -> "💼"
+      "github" -> "👨‍💻"
+      "twitter" -> "🐦"
+      "instagram" -> "📸"
+      "website" -> "🌐"
+      "email" -> "📧"
+      _ -> "🔗"
+    end
+  end
+
 
   defp organize_content_into_layout_zones(content_blocks, portfolio) do
     layout_category = determine_portfolio_category(portfolio)
@@ -4891,35 +4444,5 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   defp strip_html_tags(content), do: to_string(content)
-
-  defp generate_portfolio_css(portfolio) do
-    customization = portfolio.customization || %{}
-
-    theme = Map.get(customization, "theme", "professional")
-    color_scheme = Map.get(customization, "color_scheme", "blue")
-
-    colors = case color_scheme do
-      "green" -> %{primary: "#059669", background: "#fafafa"}
-      "purple" -> %{primary: "#7c3aed", background: "#fafafa"}
-      "red" -> %{primary: "#dc2626", background: "#fafafa"}
-      _ -> %{primary: "#1e40af", background: "#fafafa"}
-    end
-
-    """
-    /* Dynamic Portfolio Design */
-    .portfolio-container, body.portfolio-public-view {
-      background-color: #{colors.background} !important;
-    }
-
-    h1, h2, h3, .portfolio-container h1, .portfolio-container h2 {
-      color: #{colors.primary} !important;
-    }
-
-    .btn, .button, .cta-button {
-      background-color: #{colors.primary} !important;
-      border-color: #{colors.primary} !important;
-    }
-    """
-  end
 
 end

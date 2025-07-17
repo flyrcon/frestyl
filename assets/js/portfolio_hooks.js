@@ -63,42 +63,24 @@ const PortfolioHooks = {
 
     // Update preview CSS immediately for better UX
     updatePreviewCSS(css) {
-      // Remove existing preview CSS
-      const existingCSS = document.getElementById('portfolio-preview-css');
-      if (existingCSS) {
-        existingCSS.remove();
-      }
-
-      // Add new CSS
-      if (css) {
-        document.head.insertAdjacentHTML('beforeend', css);
-      }
-
-      // Try to update iframe content if accessible
-      try {
-        const iframe = document.getElementById("design-preview");
-        if (iframe && iframe.contentDocument) {
-          const iframeStyle = iframe.contentDocument.getElementById('portfolio-preview-css');
-          if (iframeStyle) {
-            iframeStyle.innerHTML = css;
-          } else if (css) {
-            iframe.contentDocument.head.insertAdjacentHTML('beforeend', css);
-          }
+      if (!css) return;
+      
+      // Only update if this is the main template manager
+      if (this.el.id === 'template-manager-main') {
+        // Remove existing preview CSS
+        const existingCSS = document.getElementById('template-preview-css');
+        if (existingCSS) {
+          existingCSS.remove();
         }
-      } catch (e) {
-        // Cross-origin restriction, will refresh instead
-        console.log("🔄 Cross-origin CSS update failed, will refresh iframe");
-        setTimeout(() => this.refreshPreview(), 300);
-      }
 
-      // Force re-render of preview elements
-      const previewElements = document.querySelectorAll('.portfolio-preview, .template-preview-card');
-      previewElements.forEach(el => {
-        el.style.opacity = '0.8';
-        setTimeout(() => {
-          el.style.opacity = '1';
-        }, 100);
-      });
+        // Add new CSS with template-specific ID
+        const style = document.createElement('style');
+        style.id = 'template-preview-css';
+        style.innerHTML = css;
+        document.head.appendChild(style);
+        
+        console.log("✅ Template preview CSS updated");
+      }
     },
 
     showTemplateFeedback(template) {
@@ -579,27 +561,6 @@ const PortfolioHooks = {
       });
     },
 
-    updatePreviewCSS(css) {
-      // Remove existing preview CSS
-      const existingCSS = document.getElementById('portfolio-preview-css');
-      if (existingCSS) {
-        existingCSS.remove();
-      }
-
-      // Add new CSS
-      if (css) {
-        document.head.insertAdjacentHTML('beforeend', css);
-      }
-
-      // Force re-render of preview elements
-      const previewElements = document.querySelectorAll('.portfolio-preview, .template-preview-card');
-      previewElements.forEach(el => {
-        el.style.opacity = '0.8';
-        setTimeout(() => {
-          el.style.opacity = '1';
-        }, 100);
-      });
-    },
 
     showTemplateFeedback(template) {
       // Show visual feedback that template was applied

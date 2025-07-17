@@ -893,76 +893,257 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditorFixed do
   end
 
   @impl true
-def handle_event("select_theme", %{"theme" => theme}, socket) do
-  IO.puts("🎨 SELECT THEME: #{theme}")
-  handle_design_update(socket, "theme", theme)
-end
+  def handle_event("select_theme", %{"theme" => theme}, socket) do
+    IO.puts("🎨 SELECT THEME: #{theme}")
+    handle_comprehensive_design_update(socket, "theme", theme)
+  end
 
-@impl true
-def handle_event("select_layout", %{"layout" => layout}, socket) do
-  IO.puts("🎨 SELECT LAYOUT: #{layout}")
-  handle_design_update(socket, "layout", layout)
-end
+  @impl true
+  def handle_event("select_layout", %{"layout" => layout}, socket) do
+    IO.puts("🎨 SELECT LAYOUT: #{layout}")
+    handle_comprehensive_design_update(socket, "layout", layout)
+  end
 
-@impl true
-def handle_event("select_color_scheme", %{"scheme" => scheme}, socket) do
-  IO.puts("🎨 SELECT COLOR SCHEME: #{scheme}")
-  handle_design_update(socket, "color_scheme", scheme)
-end
+  @impl true
+  def handle_event("select_color_scheme", %{"scheme" => scheme}, socket) do
+    IO.puts("🎨 SELECT COLOR SCHEME: #{scheme}")
+    handle_comprehensive_design_update(socket, "color_scheme", scheme)
+  end
 
-# Keep the helper function from PATCH 3T
-defp handle_design_update(socket, setting, value) do
-  IO.puts("🎨 UPDATE DESIGN: #{setting} = #{value}")
+  defp handle_comprehensive_design_update(socket, setting, value) do
+    IO.puts("🎨 COMPREHENSIVE UPDATE: #{setting} = #{value}")
 
-  portfolio = socket.assigns.portfolio
-  current_customization = portfolio.customization || %{}
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
 
-  # Merge instead of overwrite
-  updated_customization = Map.merge(current_customization, %{setting => value})
+    # Build complete customization with the new change
+    updated_customization = Map.merge(current_customization, %{setting => value})
 
-  # Ensure we have defaults for all design settings
-  final_customization = Map.merge(%{
-    "theme" => "professional",
-    "layout" => "dashboard",
-    "color_scheme" => "blue"
-  }, updated_customization)
+    # Ensure all design settings are present
+    final_customization = Map.merge(%{
+      "theme" => "professional",
+      "layout" => "dashboard",
+      "color_scheme" => "blue"
+    }, updated_customization)
 
-  case update_portfolio_safely(portfolio, %{customization: final_customization}) do
-    {:ok, updated_portfolio} ->
-      design_settings = get_design_settings(updated_portfolio)
+    case update_portfolio_safely(portfolio, %{customization: final_customization}) do
+      {:ok, updated_portfolio} ->
+        design_settings = get_design_settings(updated_portfolio)
 
-      # Generate CSS with the complete customization
-      css = generate_complete_design_css(final_customization)
+        # Generate comprehensive CSS with template integration
+        css = generate_comprehensive_portfolio_css(final_customization)
 
-      # Create design update payload
-      design_update = %{
-        customization: final_customization,
-        css: css,
-        theme: Map.get(final_customization, "theme", "professional"),
-        layout: Map.get(final_customization, "layout", "dashboard"),
-        color_scheme: Map.get(final_customization, "color_scheme", "blue"),
-        timestamp: :os.system_time(:millisecond)
+        # Create enhanced design update payload
+        design_update = %{
+          customization: final_customization,
+          css: css,
+          theme: Map.get(final_customization, "theme", "professional"),
+          layout: Map.get(final_customization, "layout", "dashboard"),
+          color_scheme: Map.get(final_customization, "color_scheme", "blue"),
+          template_class: get_template_class(final_customization),
+          layout_structure: get_layout_structure(final_customization),
+          timestamp: :os.system_time(:millisecond)
+        }
+
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:design_settings, design_settings)
+        |> assign(:unsaved_changes, false)
+        |> put_flash(:info, "#{String.capitalize(setting)} updated to #{value}")
+        |> push_event("apply_comprehensive_design", design_update)
+        |> push_event("refresh_preview_iframe", %{
+          url: "#{build_preview_url(updated_portfolio)}&template=#{design_update.template_class}&force=true",
+          timestamp: design_update.timestamp
+        })
+        |> broadcast_comprehensive_design_update(design_update)
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        {:noreply, socket |> put_flash(:error, "Failed to update design: #{inspect(reason)}")}
+    end
+  end
+
+  # Template class mapping for distinct visual themes
+  defp get_template_class(customization) do
+    theme = Map.get(customization, "theme", "professional")
+    layout = Map.get(customization, "layout", "dashboard")
+
+    case {theme, layout} do
+      {"professional", "dashboard"} -> "template-professional-dashboard"
+      {"professional", "grid"} -> "template-professional-grid"
+      {"professional", "minimal"} -> "template-professional-minimal"
+      {"creative", "dashboard"} -> "template-creative-dashboard"
+      {"creative", "grid"} -> "template-creative-gallery"
+      {"creative", "timeline"} -> "template-creative-timeline"
+      {"minimal", "dashboard"} -> "template-minimal-cards"
+      {"minimal", "timeline"} -> "template-minimal-timeline"
+      {"modern", "dashboard"} -> "template-modern-dashboard"
+      {"modern", "magazine"} -> "template-modern-magazine"
+      {theme, layout} -> "template-#{theme}-#{layout}"
+    end
+  end
+
+  # Layout structure definitions for distinct layouts
+  defp get_layout_structure(customization) do
+    layout = Map.get(customization, "layout", "dashboard")
+
+    case layout do
+      "dashboard" -> %{
+        type: "grid",
+        columns: "repeat(auto-fit, minmax(350px, 1fr))",
+        gap: "2rem",
+        container_class: "dashboard-layout"
+      }
+      "grid" -> %{
+        type: "masonry",
+        columns: "repeat(auto-fill, minmax(300px, 1fr))",
+        gap: "1.5rem",
+        container_class: "grid-layout"
+      }
+      "timeline" -> %{
+        type: "linear",
+        columns: "1fr",
+        gap: "3rem",
+        container_class: "timeline-layout"
+      }
+      "magazine" -> %{
+        type: "columns",
+        columns: "2",
+        gap: "2rem",
+        container_class: "magazine-layout"
+      }
+      "minimal" -> %{
+        type: "single",
+        columns: "1fr",
+        gap: "4rem",
+        container_class: "minimal-layout"
+      }
+      _ -> %{
+        type: "grid",
+        columns: "repeat(auto-fit, minmax(350px, 1fr))",
+        gap: "2rem",
+        container_class: "standard-layout"
+      }
+    end
+  end
+
+  defp generate_comprehensive_portfolio_css(customization) do
+    theme = Map.get(customization, "theme", "professional")
+    layout = Map.get(customization, "layout", "dashboard")
+    color_scheme = Map.get(customization, "color_scheme", "blue")
+
+    # FIX: Use actual stored colors if they exist, otherwise use color scheme
+    colors = get_actual_portfolio_colors(customization)
+    theme_styles = get_enhanced_theme_styles(theme)
+    layout_styles = get_comprehensive_layout_styles(layout)
+    template_class = get_template_class(customization)
+
+    """
+    <style id="comprehensive-portfolio-design" data-template="#{template_class}">
+    /* ===== COMPREHENSIVE PORTFOLIO DESIGN SYSTEM ===== */
+
+    /* CSS Variables - Enhanced */
+    :root {
+      --portfolio-primary: #{colors.primary} !important;
+      --portfolio-secondary: #{colors.secondary} !important;
+      --portfolio-accent: #{colors.accent} !important;
+      --portfolio-background: #{colors.background} !important;
+      --portfolio-surface: #{colors.surface} !important;
+      --portfolio-text-primary: #{colors.text_primary} !important;
+      --portfolio-text-secondary: #{colors.text_secondary} !important;
+      --portfolio-font-family: #{theme_styles.font_family} !important;
+      --portfolio-border-radius: #{theme_styles.border_radius_md} !important;
+      --portfolio-shadow: #{theme_styles.shadow_md} !important;
+    }
+
+    /* Template Class Application */
+    .#{template_class} {
+      font-family: var(--portfolio-font-family) !important;
+      background-color: var(--portfolio-background) !important;
+      color: var(--portfolio-text-primary) !important;
+      #{get_template_specific_styles(theme, layout)}
+    }
+
+    /* Layout Structure */
+    .#{template_class} .portfolio-sections,
+    .#{template_class} .portfolio-content {
+      #{layout_styles}
+    }
+
+    /* Hero Section - Enhanced for all templates */
+    .#{template_class} .portfolio-section.hero-section,
+    .#{template_class} .hero,
+    .#{template_class} .section.hero {
+      #{get_enhanced_hero_styles_comprehensive(theme, colors)}
+      margin-bottom: 2rem !important;
+    }
+
+    /* Section Styling per Template */
+    .#{template_class} .portfolio-section,
+    .#{template_class} .section {
+      background: var(--portfolio-surface) !important;
+      border-radius: var(--portfolio-border-radius) !important;
+      box-shadow: var(--portfolio-shadow) !important;
+      margin-bottom: 1.5rem !important;
+      padding: 2rem !important;
+      #{get_section_styles_by_template(theme, layout)}
+    }
+
+    /* Mobile Responsive - Enhanced */
+    @media (max-width: 768px) {
+      .#{template_class} .portfolio-sections {
+        #{get_mobile_layout_styles(layout)}
       }
 
-      socket = socket
-      |> assign(:portfolio, updated_portfolio)
-      |> assign(:design_settings, design_settings)
-      |> assign(:unsaved_changes, false)
-      |> put_flash(:info, "#{String.capitalize(setting)} updated to #{value}")
-      |> push_event("apply_design_update", design_update)
-      |> push_event("refresh_preview_iframe", %{
-        url: "#{build_preview_url(updated_portfolio)}&force=true",
-        timestamp: design_update.timestamp
-      })
-      |> broadcast_complete_design_update(design_update)
+      .#{template_class} .portfolio-section,
+      .#{template_class} .section {
+        padding: 1.5rem !important;
+        margin-bottom: 1rem !important;
+      }
+    }
 
-      {:noreply, socket}
-
-    {:error, reason} ->
-      {:noreply, socket
-      |> put_flash(:error, "Failed to update design: #{inspect(reason)}")}
+    /* Theme-Specific Enhancements */
+    #{get_theme_specific_comprehensive_overrides(theme, layout, colors)}
+    </style>
+    """
   end
-end
+
+  # NEW: Get actual colors from portfolio customization
+  defp get_actual_portfolio_colors(customization) do
+    # Priority: Use stored individual colors first, then fallback to color scheme
+    primary = Map.get(customization, "primary_color") ||
+              get_scheme_color(customization, "primary")
+
+    secondary = Map.get(customization, "secondary_color") ||
+                get_scheme_color(customization, "secondary")
+
+    accent = Map.get(customization, "accent_color") ||
+            get_scheme_color(customization, "accent")
+
+    %{
+      primary: primary,
+      secondary: secondary,
+      accent: accent,
+      background: "#fafafa",
+      surface: "#ffffff",
+      text_primary: "#1f2937",
+      text_secondary: "#6b7280"
+    }
+  end
+
+  # Helper to get color from scheme if individual color not set
+  defp get_scheme_color(customization, color_type) do
+    color_scheme = Map.get(customization, "color_scheme", "blue")
+    scheme_colors = get_color_scheme_colors(color_scheme)
+
+    case color_type do
+      "primary" -> scheme_colors.primary
+      "secondary" -> scheme_colors.secondary
+      "accent" -> scheme_colors.accent
+      _ -> scheme_colors.primary
+    end
+  end
 
   defp render_section_preview_content(section) do
     content = section.content || %{}
@@ -4248,41 +4429,38 @@ end
     end
   end
 
-  @impl true
-  def handle_event("update_design", %{"setting" => setting, "value" => value}, socket) do
-    IO.puts("🎨 UPDATE DESIGN: #{setting} = #{value}")
-    IO.puts("🎨 Current design settings: #{inspect(socket.assigns.design_settings)}")
+  defp handle_comprehensive_design_update(socket, setting, value) do
+    IO.puts("🎨 COMPREHENSIVE UPDATE: #{setting} = #{value}")
+
     portfolio = socket.assigns.portfolio
     current_customization = portfolio.customization || %{}
 
-    IO.puts("🎨 Current customization: #{inspect(current_customization)}")
-
-    # FIXED: Merge instead of overwrite, and ensure we preserve existing values
+    # Build complete customization with the new change
     updated_customization = Map.merge(current_customization, %{setting => value})
 
-    # Ensure we have defaults for all design settings
+    # Ensure all design settings are present
     final_customization = Map.merge(%{
       "theme" => "professional",
       "layout" => "dashboard",
       "color_scheme" => "blue"
     }, updated_customization)
 
-    IO.puts("🎨 Final customization: #{inspect(final_customization)}")
-
     case update_portfolio_safely(portfolio, %{customization: final_customization}) do
       {:ok, updated_portfolio} ->
         design_settings = get_design_settings(updated_portfolio)
 
-        # Generate CSS with the complete customization
-        css = generate_complete_design_css(final_customization)
+        # Generate comprehensive CSS with template integration
+        css = generate_comprehensive_portfolio_css(final_customization)
 
-        # Create design update payload with actual values (not empty strings)
+        # Create enhanced design update payload
         design_update = %{
           customization: final_customization,
           css: css,
           theme: Map.get(final_customization, "theme", "professional"),
           layout: Map.get(final_customization, "layout", "dashboard"),
           color_scheme: Map.get(final_customization, "color_scheme", "blue"),
+          template_class: get_template_class(final_customization),
+          layout_structure: get_layout_structure(final_customization),
           timestamp: :os.system_time(:millisecond)
         }
 
@@ -4291,19 +4469,17 @@ end
         |> assign(:design_settings, design_settings)
         |> assign(:unsaved_changes, false)
         |> put_flash(:info, "#{String.capitalize(setting)} updated to #{value}")
-        |> push_event("apply_design_update", design_update)
-        |> push_event("refresh_portfolio_preview", %{
-          url: build_preview_url(updated_portfolio),
-          force: true,
+        |> push_event("apply_comprehensive_design", design_update)
+        |> push_event("refresh_preview_iframe", %{
+          url: "#{build_preview_url(updated_portfolio)}&template=#{design_update.template_class}&force=true",
           timestamp: design_update.timestamp
         })
-        |> broadcast_complete_design_update(design_update)
+        |> broadcast_comprehensive_design_update(design_update)
 
         {:noreply, socket}
 
       {:error, reason} ->
-        {:noreply, socket
-        |> put_flash(:error, "Failed to update design: #{inspect(reason)}")}
+        {:noreply, socket |> put_flash(:error, "Failed to update design: #{inspect(reason)}")}
     end
   end
 
@@ -4759,7 +4935,11 @@ end
     |> assign(:editing_video_section, nil)}
   end
 
-
+  @impl true
+  def handle_info({:design_complete_update, design_data}, socket) do
+    IO.puts("🎨 Received design update in editor: #{inspect(design_data.theme)}")
+    {:noreply, socket}
+  end
 
   # ADD this helper function:
   defp get_position_name(position) do
@@ -5944,264 +6124,6 @@ end
     """
   end
 
-  defp generate_complete_design_css(customization) do
-    # Handle empty strings and ensure defaults
-    theme = case Map.get(customization, "theme") do
-      nil -> "professional"
-      "" -> "professional"
-      value -> value
-    end
-
-    layout = case Map.get(customization, "layout") do
-      nil -> "dashboard"
-      "" -> "dashboard"
-      value -> value
-    end
-
-    color_scheme = case Map.get(customization, "color_scheme") do
-      nil -> "blue"
-      "" -> "blue"
-      value -> value
-    end
-
-    # Get enhanced color palette with the correct scheme
-    colors = get_enhanced_color_palette(color_scheme)
-    theme_styles = get_enhanced_theme_styles(theme)
-    layout_styles = get_enhanced_layout_styles(layout)
-
-    """
-    <style id="dynamic-portfolio-design" data-theme="#{theme}" data-layout="#{layout}" data-colors="#{color_scheme}">
-    /* ===== PORTFOLIO DESIGN SYSTEM - HIGH SPECIFICITY ===== */
-
-    /* Reset any existing styles */
-    body.portfolio-view * {
-      transition: all 0.3s ease !important;
-    }
-
-    /* Root variables */
-    html, body, .portfolio-view {
-      --portfolio-primary: #{colors.primary} !important;
-      --portfolio-secondary: #{colors.secondary} !important;
-      --portfolio-accent: #{colors.accent} !important;
-      --portfolio-background: #{colors.background} !important;
-      --portfolio-surface: #{colors.surface} !important;
-      --portfolio-text-primary: #{colors.text_primary} !important;
-      --portfolio-text-secondary: #{colors.text_secondary} !important;
-      --portfolio-font-family: #{theme_styles.font_family} !important;
-    }
-
-    /* ===== GLOBAL PORTFOLIO OVERRIDES ===== */
-    body,
-    body.portfolio-view,
-    .portfolio-container,
-    .portfolio-content,
-    .portfolio-wrapper,
-    main,
-    #app,
-    [data-portfolio="true"] {
-      font-family: #{theme_styles.font_family} !important;
-      background-color: #{colors.background} !important;
-      color: #{colors.text_primary} !important;
-    }
-
-    /* ===== LAYOUT OVERRIDES ===== */
-    .portfolio-sections,
-    .sections-container,
-    .portfolio-layout,
-    .portfolio-content > div,
-    .portfolio-content > main,
-    .portfolio-content .container {
-      #{layout_styles}
-    }
-
-    /* ===== SECTION OVERRIDES ===== */
-    .portfolio-section,
-    .section,
-    .section-container,
-    .content-section,
-    article,
-    .portfolio-content section,
-    .portfolio-content article,
-    .portfolio-content .section {
-      background: #{colors.surface} !important;
-      border-radius: #{theme_styles.border_radius_md} !important;
-      padding: 2rem !important;
-      margin-bottom: 1.5rem !important;
-      border: 1px solid rgba(0, 0, 0, 0.08) !important;
-      box-shadow: #{theme_styles.shadow_sm} !important;
-    }
-
-    /* ===== TYPOGRAPHY OVERRIDES ===== */
-    h1, .h1,
-    .portfolio-content h1,
-    .hero-title,
-    .section-title,
-    .portfolio-title {
-      color: #{colors.primary} !important;
-      font-family: #{theme_styles.font_family} !important;
-      font-weight: 700 !important;
-      line-height: 1.2 !important;
-      margin-bottom: 1rem !important;
-    }
-
-    h2, .h2,
-    .portfolio-content h2 {
-      color: #{colors.primary} !important;
-      font-family: #{theme_styles.font_family} !important;
-      font-weight: 600 !important;
-      line-height: 1.3 !important;
-      margin-bottom: 1rem !important;
-    }
-
-    h3, h4, h5, h6,
-    .h3, .h4, .h5, .h6,
-    .portfolio-content h3,
-    .portfolio-content h4,
-    .portfolio-content h5,
-    .portfolio-content h6 {
-      color: #{colors.text_primary} !important;
-      font-family: #{theme_styles.font_family} !important;
-      font-weight: 500 !important;
-      margin-bottom: 0.75rem !important;
-    }
-
-    p, .text,
-    .portfolio-content p,
-    .portfolio-content .text-content,
-    .description,
-    .content {
-      color: #{colors.text_secondary} !important;
-      font-family: #{theme_styles.font_family} !important;
-      line-height: 1.6 !important;
-      margin-bottom: 1rem !important;
-    }
-
-    /* ===== BUTTON OVERRIDES ===== */
-    .btn,
-    .button,
-    .btn-primary,
-    .cta-button,
-    .primary-button,
-    a.btn,
-    button.btn,
-    .portfolio-btn,
-    .portfolio-content .btn,
-    .portfolio-content button:not(.unstyled) {
-      background-color: #{colors.primary} !important;
-      border-color: #{colors.primary} !important;
-      color: white !important;
-      padding: 0.75rem 1.5rem !important;
-      border-radius: #{theme_styles.border_radius_md} !important;
-      font-weight: 500 !important;
-      text-decoration: none !important;
-      display: inline-block !important;
-      border: 2px solid #{colors.primary} !important;
-      font-family: #{theme_styles.font_family} !important;
-    }
-
-    .btn:hover,
-    .button:hover,
-    .btn-primary:hover,
-    .cta-button:hover,
-    .portfolio-btn:hover,
-    .portfolio-content .btn:hover,
-    .portfolio-content button:not(.unstyled):hover {
-      background-color: #{colors.secondary} !important;
-      border-color: #{colors.secondary} !important;
-      transform: translateY(-1px) !important;
-    }
-
-    /* ===== ACCENT ELEMENTS ===== */
-    .accent,
-    .accent-text,
-    .highlight,
-    .portfolio-accent,
-    .text-accent {
-      color: #{colors.accent} !important;
-    }
-
-    .accent-bg,
-    .portfolio-accent-bg,
-    .bg-accent {
-      background-color: #{colors.accent} !important;
-      color: white !important;
-    }
-
-    /* ===== HERO SECTION SPECIFIC ===== */
-    .hero,
-    .hero-section,
-    .hero-container,
-    .portfolio-hero,
-    .banner,
-    .jumbotron,
-    header.hero {
-      #{get_enhanced_hero_styles(theme, colors)}
-      padding: 4rem 2rem !important;
-      margin-bottom: 2rem !important;
-      border-radius: #{theme_styles.border_radius_lg} !important;
-      text-align: center !important;
-    }
-
-    .hero h1,
-    .hero-section h1,
-    .hero-title,
-    .hero .title {
-      font-size: 2.5rem !important;
-      font-weight: 700 !important;
-      margin-bottom: 1rem !important;
-      font-family: #{theme_styles.font_family} !important;
-    }
-
-    .hero .subtitle,
-    .hero-section .tagline,
-    .hero-tagline,
-    .hero .description {
-      font-size: 1.25rem !important;
-      margin-bottom: 2rem !important;
-      opacity: 0.9 !important;
-      font-family: #{theme_styles.font_family} !important;
-    }
-
-    /* ===== THEME-SPECIFIC OVERRIDES ===== */
-    #{get_theme_specific_overrides(theme, colors)}
-
-    /* ===== RESPONSIVE DESIGN ===== */
-    @media (max-width: 768px) {
-      .portfolio-section,
-      .section,
-      .content-section {
-        padding: 1.5rem !important;
-        margin-bottom: 1rem !important;
-      }
-
-      .hero,
-      .hero-section {
-        padding: 2rem 1rem !important;
-      }
-
-      .hero h1,
-      .hero-title {
-        font-size: 2rem !important;
-      }
-
-      .hero .subtitle,
-      .hero-tagline {
-        font-size: 1.1rem !important;
-      }
-    }
-
-    /* ===== FORCE APPLICATION ===== */
-    .portfolio-view,
-    .portfolio-view *,
-    [data-portfolio="true"],
-    [data-portfolio="true"] * {
-      color: inherit !important;
-      font-family: inherit !important;
-    }
-    </style>
-    """
-  end
-
   defp get_theme_styles(theme) do
     case theme do
       "professional" ->
@@ -6380,6 +6302,42 @@ end
     end
   end
 
+
+
+  # Update the available color schemes to include new ones
+  defp get_available_color_schemes do
+    [
+      %{key: "blue", name: "Ocean Blue", description: "Professional blue tones",
+        colors: ["#1e40af", "#3b82f6", "#60a5fa"]},
+      %{key: "green", name: "Forest Green", description: "Natural green palette",
+        colors: ["#065f46", "#059669", "#34d399"]},
+      %{key: "purple", name: "Royal Purple", description: "Creative purple shades",
+        colors: ["#581c87", "#7c3aed", "#a78bfa"]},
+      %{key: "red", name: "Warm Red", description: "Bold red accents",
+        colors: ["#991b1b", "#dc2626", "#f87171"]},
+      %{key: "orange", name: "Sunset Orange", description: "Energetic orange tones",
+        colors: ["#ea580c", "#f97316", "#fb923c"]},
+      %{key: "teal", name: "Modern Teal", description: "Contemporary teal palette",
+        colors: ["#0f766e", "#14b8a6", "#5eead4"]}
+    ]
+  end
+
+  defp get_enhanced_color_palette(scheme_key) do
+    base_colors = get_color_scheme_colors(scheme_key)
+
+    %{
+      primary: base_colors.primary,
+      primary_light: lighten_color(base_colors.primary, 20),
+      primary_dark: darken_color(base_colors.primary, 15),
+      secondary: base_colors.secondary,
+      accent: base_colors.accent,
+      background: "#fafafa",
+      surface: "#ffffff",
+      text_primary: "#1f2937",
+      text_secondary: "#6b7280"
+    }
+  end
+
   # Enhanced color scheme function
   defp get_color_scheme_colors(scheme_key) do
     color_schemes = %{
@@ -6422,40 +6380,6 @@ end
     }
 
     Map.get(color_schemes, scheme_key, color_schemes["blue"])
-  end
-
-  # Update the available color schemes to include new ones
-  defp get_available_color_schemes do
-    [
-      %{key: "blue", name: "Ocean Blue", description: "Professional blue tones",
-        colors: ["#1e40af", "#3b82f6", "#60a5fa"]},
-      %{key: "green", name: "Forest Green", description: "Natural green palette",
-        colors: ["#065f46", "#059669", "#34d399"]},
-      %{key: "purple", name: "Royal Purple", description: "Creative purple shades",
-        colors: ["#581c87", "#7c3aed", "#a78bfa"]},
-      %{key: "red", name: "Warm Red", description: "Bold red accents",
-        colors: ["#991b1b", "#dc2626", "#f87171"]},
-      %{key: "orange", name: "Sunset Orange", description: "Energetic orange tones",
-        colors: ["#ea580c", "#f97316", "#fb923c"]},
-      %{key: "teal", name: "Modern Teal", description: "Contemporary teal palette",
-        colors: ["#0f766e", "#14b8a6", "#5eead4"]}
-    ]
-  end
-
-  defp get_enhanced_color_palette(scheme_key) do
-    base_colors = get_color_scheme_colors(scheme_key)
-
-    %{
-      primary: base_colors.primary,
-      primary_light: lighten_color(base_colors.primary, 20),
-      primary_dark: darken_color(base_colors.primary, 15),
-      secondary: base_colors.secondary,
-      accent: base_colors.accent,
-      background: "#fafafa",
-      surface: "#ffffff",
-      text_primary: "#1f2937",
-      text_secondary: "#6b7280"
-    }
   end
 
   defp get_enhanced_theme_styles(theme) do
@@ -6528,146 +6452,193 @@ end
     end
   end
 
-  defp get_enhanced_layout_styles(layout) do
+  defp get_comprehensive_layout_styles(layout) do
     case layout do
-      "dashboard" ->
-        """
+      "dashboard" -> """
         display: grid !important;
         grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)) !important;
-        gap: var(--portfolio-spacing-lg) !important;
-        padding: var(--portfolio-spacing-lg) !important;
+        gap: 2rem !important;
         max-width: 1400px !important;
         margin: 0 auto !important;
-        """
-      "grid" ->
-        """
+        padding: 2rem !important;
+      """
+      "grid" -> """
         display: grid !important;
         grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)) !important;
-        gap: var(--portfolio-spacing-md) !important;
-        padding: var(--portfolio-spacing-md) !important;
+        gap: 1.5rem !important;
         max-width: 1200px !important;
         margin: 0 auto !important;
-        """
-      "timeline" ->
-        """
+        padding: 2rem !important;
+      """
+      "timeline" -> """
         display: flex !important;
         flex-direction: column !important;
         max-width: 900px !important;
         margin: 0 auto !important;
-        padding: var(--portfolio-spacing-lg) var(--portfolio-spacing-sm) !important;
-        gap: var(--portfolio-spacing-xl) !important;
-        """
-      "magazine" ->
-        """
+        padding: 2rem !important;
+        gap: 3rem !important;
+      """
+      "magazine" -> """
+        column-count: 2 !important;
+        column-gap: 2rem !important;
         max-width: 1000px !important;
         margin: 0 auto !important;
-        padding: var(--portfolio-spacing-lg) var(--portfolio-spacing-sm) !important;
-        column-count: 2 !important;
-        column-gap: var(--portfolio-spacing-lg) !important;
-        """
-      "minimal" ->
-        """
+        padding: 2rem !important;
+      """
+      "minimal" -> """
         max-width: 800px !important;
         margin: 0 auto !important;
-        padding: var(--portfolio-spacing-xl) var(--portfolio-spacing-lg) !important;
-        """
-      _ -> # standard
-        """
+        padding: 4rem 2rem !important;
+      """
+      _ -> """
         max-width: 1200px !important;
         margin: 0 auto !important;
-        padding: var(--portfolio-spacing-lg) var(--portfolio-spacing-sm) !important;
-        """
+        padding: 2rem !important;
+      """
     end
   end
 
-  defp get_enhanced_hero_styles(theme, colors) do
+  # Template-specific styles
+  defp get_template_specific_styles(theme, layout) do
+    case {theme, layout} do
+      {"professional", "dashboard"} -> """
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
+      """
+      {"creative", "dashboard"} -> """
+        background: linear-gradient(135deg, #faf7ff 0%, #f3e8ff 100%) !important;
+      """
+      {"creative", "timeline"} -> """
+        background: linear-gradient(180deg, #faf7ff 0%, #f3e8ff 50%, #fef3c7 100%) !important;
+      """
+      {"minimal", _} -> """
+        background: white !important;
+      """
+      {"modern", "dashboard"} -> """
+        background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) !important;
+      """
+      {"modern", "magazine"} -> """
+        background: linear-gradient(45deg, #f8fafc 25%, #e2e8f0 25%, #e2e8f0 50%, #f8fafc 50%) !important;
+        background-size: 40px 40px !important;
+      """
+      _ -> ""
+    end
+  end
+
+  # Enhanced hero styles for comprehensive templates
+  defp get_enhanced_hero_styles_comprehensive(theme, colors) do
     case theme do
-      "creative" ->
-        """
+      "creative" -> """
         background: linear-gradient(135deg, #{colors.primary}, #{colors.accent}) !important;
         color: white !important;
-        """
-      "minimal" ->
-        """
-        background: #{colors.surface} !important;
-        border: 2px solid #{colors.primary} !important;
+        transform: perspective(1000px) rotateX(5deg) !important;
+        border-radius: 20px !important;
+      """
+      "minimal" -> """
+        background: white !important;
+        border: 3px solid #{colors.primary} !important;
         color: #{colors.text_primary} !important;
-        """
-      "modern" ->
-        """
+        border-radius: 4px !important;
+      """
+      "modern" -> """
         background: linear-gradient(45deg, #{colors.primary}15, #{colors.accent}15) !important;
         color: #{colors.text_primary} !important;
-        """
-      _ -> # professional
-        """
+        border-left: 8px solid #{colors.primary} !important;
+        border-radius: 12px !important;
+      """
+      _ -> """
         background: #{colors.primary} !important;
         color: white !important;
-        """
+        border-radius: 8px !important;
+      """
     end
   end
 
-  defp get_theme_specific_overrides(theme, colors) do
-    case theme do
-      "creative" ->
-        """
-        /* Creative theme overrides */
-        .portfolio-section,
-        .section {
-          border-left: 5px solid #{colors.accent} !important;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.1) !important;
-        }
-
-        .hero,
-        .hero-section {
-          background: linear-gradient(135deg, #{colors.primary}, #{colors.accent}) !important;
-          color: white !important;
-        }
-        """
-
-      "minimal" ->
-        """
-        /* Minimal theme overrides */
-        .portfolio-section,
-        .section {
-          border: 2px solid #{colors.primary} !important;
-          box-shadow: none !important;
-          background: white !important;
-        }
-
-        .hero,
-        .hero-section {
-          background: white !important;
-          border: 2px solid #{colors.primary} !important;
-          color: #{colors.text_primary} !important;
-        }
-        """
-
-      "modern" ->
-        """
-        /* Modern theme overrides */
-        .portfolio-section,
-        .section {
-          border-top: 3px solid #{colors.primary} !important;
-          box-shadow: 0 8px 20px rgba(0,0,0,0.1) !important;
-        }
-
-        .hero,
-        .hero-section {
-          background: linear-gradient(45deg, #{colors.primary}15, #{colors.accent}15) !important;
-          color: #{colors.text_primary} !important;
-        }
-        """
-
-      _ -> # professional
-        """
-        /* Professional theme overrides */
-        .hero,
-        .hero-section {
-          background: #{colors.primary} !important;
-          color: white !important;
-        }
-        """
+  # Section styles by template
+  defp get_section_styles_by_template(theme, layout) do
+    case {theme, layout} do
+      {"creative", _} -> """
+        border-left: 5px solid var(--portfolio-accent) !important;
+        transform: rotate(-0.5deg) !important;
+        transition: transform 0.3s ease !important;
+      """
+      {"minimal", _} -> """
+        border: 2px solid var(--portfolio-primary) !important;
+        box-shadow: none !important;
+      """
+      {"modern", _} -> """
+        border-top: 4px solid var(--portfolio-primary) !important;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.15) !important;
+      """
+      _ -> """
+        padding: 2rem !important;
+      """
     end
+  end
+
+  # Mobile layout styles
+  defp get_mobile_layout_styles(layout) do
+    case layout do
+      "dashboard" -> """
+        grid-template-columns: 1fr !important;
+        padding: 1rem !important;
+        gap: 1rem !important;
+      """
+      "grid" -> """
+        grid-template-columns: 1fr !important;
+        padding: 1rem !important;
+        gap: 1rem !important;
+      """
+      "timeline" -> """
+        padding: 1rem !important;
+        gap: 2rem !important;
+      """
+      "magazine" -> """
+        column-count: 1 !important;
+        padding: 1rem !important;
+      """
+      _ -> """
+        padding: 1rem !important;
+      """
+    end
+  end
+
+  # Theme-specific comprehensive overrides
+  defp get_theme_specific_comprehensive_overrides(theme, layout, colors) do
+    case theme do
+      "creative" -> """
+        .template-creative-#{layout} .portfolio-section:hover {
+          transform: rotate(0deg) scale(1.02) !important;
+          box-shadow: 0 20px 40px rgba(124, 58, 237, 0.2) !important;
+        }
+      """
+      "minimal" -> """
+        .template-minimal-#{layout} h1,
+        .template-minimal-#{layout} h2 {
+          font-weight: 300 !important;
+          letter-spacing: 0.05em !important;
+        }
+      """
+      "modern" -> """
+        .template-modern-#{layout} .portfolio-section {
+          backdrop-filter: blur(10px) !important;
+          background: rgba(255, 255, 255, 0.9) !important;
+        }
+      """
+      _ -> ""
+    end
+  end
+
+  # Broadcast comprehensive design update
+  defp broadcast_comprehensive_design_update(socket, design_update) do
+    portfolio = socket.assigns.portfolio
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio.id}",
+      {:design_complete_update, design_update}
+    )
+
+    socket
   end
 
   # Color utility functions
@@ -6939,19 +6910,6 @@ end
       {:section_update, %{
         section: section,
         action: :updated
-      }}
-    )
-  end
-
-  defp broadcast_design_update(socket) do
-    portfolio = socket.assigns.portfolio
-
-    Phoenix.PubSub.broadcast(
-      Frestyl.PubSub,
-      "portfolio_preview:#{portfolio.id}",
-      {:design_update, %{
-        customization: portfolio.customization || %{},
-        css: generate_design_css(portfolio.customization || %{})
       }}
     )
   end

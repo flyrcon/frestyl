@@ -71,6 +71,20 @@ defmodule FrestylWeb.PortfolioLive.LivePreview do
   end
 
   @impl true
+  def handle_info({:design_complete_update, design_data}, socket) do
+    IO.puts("🎨 LivePreview handling design update: #{design_data.theme}-#{design_data.layout}")
+
+    socket = socket
+    |> assign(:customization, design_data.customization)
+    |> assign(:custom_css, design_data.css)
+    |> assign(:template_class, design_data.template_class)
+    |> push_event("apply_comprehensive_design", design_data)
+    |> push_event("inject_design_css", %{css: design_data.css})
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="live-preview-container" data-mobile-view={@mobile_view}>

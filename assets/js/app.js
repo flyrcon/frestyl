@@ -922,6 +922,162 @@ let Hooks = {
     }
   },
   
+  CSSPriorityManager: {
+    mounted() {
+      console.log("🎨 CSS Priority Manager mounted");
+      
+      // Single handler for ALL design updates
+      this.handleEvent("design_complete_update", (data) => {
+        console.log("🎨 CSS Manager received design update:", data);
+        this.applyDesignWithPriority(data);
+      });
+    },
+    
+    applyDesignWithPriority(data) {
+      // Clear ALL portfolio-related styles
+      this.clearAllPortfolioStyles();
+      
+      // Generate the CSS
+      const css = this.generateFinalCSS(data);
+      
+      // Apply with maximum priority
+      const style = document.createElement('style');
+      style.id = 'portfolio-final-design';
+      style.innerHTML = css;
+      document.head.appendChild(style);
+      
+      // Force immediate repaint
+      this.forceRepaint();
+      
+      console.log("✅ Final design applied with priority");
+    },
+    
+    clearAllPortfolioStyles() {
+      // Remove any style element that might contain portfolio CSS
+      document.querySelectorAll('style').forEach(style => {
+        const id = style.id;
+        const content = style.innerHTML;
+        
+        if (id && (
+          id.includes('portfolio') || 
+          id.includes('dynamic') || 
+          id.includes('design') ||
+          id.includes('template')
+        )) {
+          style.remove();
+          console.log("🗑️ Removed style:", id);
+        } else if (content.includes('.portfolio-') || content.includes('--portfolio-')) {
+          style.remove();
+          console.log("🗑️ Removed portfolio-related style");
+        }
+      });
+    },
+    
+    generateFinalCSS(data) {
+      const theme = data.theme || 'professional';
+      const layout = data.layout || 'dashboard';
+      const colorScheme = data.color_scheme || 'blue';
+      
+      // Use the same color palette function as your Elixir code
+      const colors = this.getColorPalette(colorScheme);
+      
+      return `
+      /* FINAL PORTFOLIO DESIGN - MAXIMUM PRIORITY */
+      
+      html, body, 
+      .portfolio-container,
+      .portfolio-public-view,
+      body.portfolio-public-view {
+        font-family: ${this.getThemeFont(theme)} !important;
+        background: ${colors.background} !important;
+        color: ${colors.text_primary} !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      
+      .portfolio-section,
+      .section,
+      section {
+        background: ${colors.surface} !important;
+        border-radius: ${this.getThemeRadius(theme)} !important;
+        padding: 2rem !important;
+        margin-bottom: 1.5rem !important;
+        box-shadow: ${this.getThemeShadow(theme)} !important;
+      }
+      
+      h1, h2, h3, h4, h5, h6,
+      .section-title {
+        color: ${colors.primary} !important;
+        font-family: ${this.getThemeFont(theme)} !important;
+        font-weight: 700 !important;
+      }
+      
+      .btn, .button, .cta-button,
+      button:not(.close) {
+        background: ${colors.primary} !important;
+        border-color: ${colors.primary} !important;
+        color: white !important;
+        border-radius: ${this.getThemeRadius(theme)} !important;
+      }
+      
+      .hero-content {
+        background: ${this.getHeroBg(theme, colors)} !important;
+        color: ${this.getHeroTextColor(theme)} !important;
+      }
+      
+      /* Force override any conflicting styles */
+      * {
+        transition: all 0.2s ease !important;
+      }
+      `;
+    },
+    
+    getColorPalette(scheme) {
+      const palettes = {
+        blue: {primary: "#1e40af", secondary: "#3b82f6", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937"},
+        green: {primary: "#065f46", secondary: "#059669", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937"},
+        purple: {primary: "#581c87", secondary: "#7c3aed", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937"}
+      };
+      return palettes[scheme] || palettes.blue;
+    },
+    
+    getThemeFont(theme) {
+      const fonts = {
+        professional: "'Inter', system-ui, sans-serif",
+        creative: "'Poppins', sans-serif", 
+        minimal: "'Source Sans Pro', sans-serif"
+      };
+      return fonts[theme] || fonts.professional;
+    },
+    
+    getThemeRadius(theme) {
+      return theme === 'minimal' ? '4px' : '8px';
+    },
+    
+    getThemeShadow(theme) {
+      const shadows = {
+        minimal: '0 1px 2px rgba(0,0,0,0.05)',
+        creative: '0 10px 30px rgba(0,0,0,0.1)',
+        professional: '0 2px 10px rgba(0,0,0,0.1)'
+      };
+      return shadows[theme] || shadows.professional;
+    },
+    
+    getHeroBg(theme, colors) {
+      return theme === 'minimal' ? colors.surface : colors.primary;
+    },
+    
+    getHeroTextColor(theme) {
+      return theme === 'minimal' ? '#1f2937' : 'white';
+    },
+    
+    forceRepaint() {
+      // Force browser to repaint
+      document.body.style.display = 'none';
+      document.body.offsetHeight; // Trigger reflow
+      document.body.style.display = '';
+    }
+  },
 
   // Portfolio Collaboration
   PortfolioCollaboration,
@@ -1118,6 +1274,150 @@ if (!document.getElementById('sortable-styles')) {
           block_id: blockId 
         });
       });
+    }
+  },
+
+  LayoutForcer = {
+    mounted() {
+      console.log("🔥 Layout Forcer mounted");
+      this.forceLayoutApplication();
+      
+      // Re-apply on design updates
+      this.handleEvent("design_complete_update", (data) => {
+        console.log("🔥 Forcing layout application:", data.layout);
+        setTimeout(() => {
+          this.forceLayoutApplication(data.layout);
+        }, 100);
+      });
+    },
+    
+    forceLayoutApplication(layout) {
+      const container = document.querySelector('.portfolio-container');
+      if (!container) {
+        console.warn("❌ Portfolio container not found");
+        return;
+      }
+      
+      // Get layout from data attribute or default
+      const currentLayout = layout || container.dataset.layout || 'dashboard';
+      
+      console.log(`🔥 Forcing ${currentLayout} layout`);
+      
+      // Remove all layout classes
+      container.classList.remove('layout-grid', 'layout-gallery', 'layout-timeline', 'layout-sidebar', 'layout-dashboard');
+      
+      // Kill any inline styles that might restrict us
+      container.style.display = '';
+      container.style.gridTemplateColumns = '';
+      container.style.columnCount = '';
+      container.style.flexDirection = '';
+      
+      // Add layout class
+      container.classList.add(`layout-${currentLayout}`);
+      
+      // FORCE the layout with JavaScript
+      switch(currentLayout) {
+        case 'grid':
+          container.style.display = 'grid';
+          container.style.gridTemplateColumns = 'repeat(auto-fit, minmax(350px, 1fr))';
+          container.style.gap = '2rem';
+          container.style.maxWidth = '1400px';
+          container.style.margin = '0 auto';
+          container.style.padding = '2rem';
+          console.log("✅ Grid layout forced");
+          break;
+          
+        case 'gallery':
+          container.style.display = 'block';
+          container.style.columnCount = '3';
+          container.style.columnGap = '2rem';
+          container.style.maxWidth = '1400px';
+          container.style.margin = '0 auto';
+          container.style.padding = '2rem';
+          console.log("✅ Gallery layout forced");
+          break;
+          
+        case 'timeline':
+          container.style.display = 'flex';
+          container.style.flexDirection = 'column';
+          container.style.maxWidth = '900px';
+          container.style.margin = '0 auto';
+          container.style.padding = '2rem';
+          container.style.position = 'relative';
+          
+          // Add timeline line if it doesn't exist
+          if (!container.querySelector('.timeline-line')) {
+            const line = document.createElement('div');
+            line.className = 'timeline-line';
+            line.style.cssText = `
+              position: absolute;
+              left: 50%;
+              top: 120px;
+              bottom: 100px;
+              width: 4px;
+              background: var(--primary-color, #1e40af);
+              transform: translateX(-50%);
+              z-index: 0;
+            `;
+            container.appendChild(line);
+          }
+          
+          // Force alternating positioning
+          const sections = container.querySelectorAll('.portfolio-section:not(:first-child), .section:not(:first-child)');
+          sections.forEach((section, index) => {
+            section.style.position = 'relative';
+            section.style.zIndex = '1';
+            section.style.width = '45%';
+            section.style.padding = '2rem';
+            section.style.marginBottom = '2rem';
+            
+            if (index % 2 === 0) {
+              // Odd sections (left side)
+              section.style.marginLeft = '0';
+              section.style.marginRight = 'auto';
+              section.style.alignSelf = 'flex-start';
+            } else {
+              // Even sections (right side)
+              section.style.marginLeft = 'auto';
+              section.style.marginRight = '0';
+              section.style.alignSelf = 'flex-end';
+            }
+          });
+          
+          console.log("✅ Timeline layout forced");
+          break;
+          
+        case 'sidebar':
+          container.style.display = 'grid';
+          container.style.gridTemplateColumns = '1fr 300px';
+          container.style.gap = '2rem';
+          container.style.maxWidth = '1200px';
+          container.style.margin = '0 auto';
+          container.style.padding = '2rem';
+          container.style.alignItems = 'start';
+          console.log("✅ Sidebar layout forced");
+          break;
+          
+        default:
+          container.style.display = 'block';
+          container.style.maxWidth = '1200px';
+          container.style.margin = '0 auto';
+          container.style.padding = '2rem';
+          console.log("✅ Dashboard layout forced");
+      }
+      
+      // Force repaint
+      container.style.transform = 'translateZ(0)';
+      setTimeout(() => {
+        container.style.transform = '';
+      }, 1);
+    },
+    
+    updated() {
+      // Re-apply layout after any updates
+      setTimeout(() => {
+        this.forceLayoutApplication();
+      }, 50);
     }
   },
 
@@ -1583,8 +1883,7 @@ if (!document.getElementById('sortable-styles')) {
   // Color picker enhancements
   ColorPickerLive = {
     mounted() {
-      console.log("🎨 Live Color Picker mounted");
-      this.setupColorPicker();
+      console.log("🎨 Color Picker mounted (simplified)");
     },
     
     setupColorPicker() {
@@ -1976,96 +2275,48 @@ if (!document.getElementById('sortable-styles')) {
     }
   };
 
-// Add this to your Phoenix LiveView hooks
-window.addEventListener("phx:apply_portfolio_design", (e) => {
-  console.log("🎨 Applying portfolio design:", e.detail);
+window.addEventListener("phx:force_design_override", (e) => {
+  console.log("🎨 FORCE DESIGN OVERRIDE:", e.detail);
   
-  // Remove any existing dynamic design styles
-  const existingStyle = document.getElementById('dynamic-portfolio-design');
-  if (existingStyle) {
-    existingStyle.remove();
-  }
+  // Remove ALL existing portfolio design styles
+  document.querySelectorAll('[id*="portfolio"], [id*="dynamic"], [id*="design"]').forEach(el => {
+    if (el.tagName === 'STYLE') el.remove();
+  });
   
-  // Inject new CSS
+  // Inject the CSS with MAXIMUM priority
   if (e.detail.css) {
     const style = document.createElement('style');
-    style.id = 'dynamic-portfolio-design';
-    style.innerHTML = e.detail.css;
-    document.head.appendChild(style);
-  }
-  
-  // Update body classes for theme/layout
-  document.body.className = document.body.className.replace(/portfolio-theme-\w+/g, '');
-  document.body.className = document.body.className.replace(/portfolio-layout-\w+/g, '');
-  document.body.classList.add(`portfolio-theme-${e.detail.theme}`);
-  document.body.classList.add(`portfolio-layout-${e.detail.layout}`);
-  
-  console.log("✅ Design applied successfully");
-});
-
-window.addEventListener("phx:inject_design_css", (e) => {
-  console.log("🎨 Injecting design CSS");
-  
-  const existingStyle = document.getElementById('dynamic-portfolio-design');
-  if (existingStyle) {
-    existingStyle.remove();
-  }
-  
-  if (e.detail.css) {
-    const style = document.createElement('style');
-    style.id = 'dynamic-portfolio-design';
-    style.innerHTML = e.detail.css;
-    document.head.appendChild(style);
-  }
-});
-
-// Enhanced design application
-window.addEventListener("phx:apply_design_update", (e) => {
-  console.log("🎨 Applying portfolio design:", e.detail);
-  
-  // Remove any existing dynamic design styles
-  document.querySelectorAll('#dynamic-portfolio-design, [id*="portfolio-design"]').forEach(el => el.remove());
-  
-  // Inject new CSS with high priority
-  if (e.detail.css) {
-    const style = document.createElement('style');
-    style.id = 'dynamic-portfolio-design';
+    style.id = 'portfolio-force-override';
     style.innerHTML = e.detail.css;
     
-    // Insert at the very end of head to ensure highest priority
+    // Insert at the VERY END to ensure highest priority
     document.head.appendChild(style);
+    console.log("✅ Force override CSS applied");
+  }
+  
+  // Force a repaint
+  document.body.style.transform = 'translateZ(0)';
+  setTimeout(() => {
+    document.body.style.transform = '';
+  }, 1);
+});
+
+window.addEventListener("phx:force_layout", (e) => {
+  console.log("🔥 Force layout event received:", e.detail);
+  
+  const container = document.querySelector('.portfolio-container');
+  if (container && e.detail.layout) {
+    // Set data attribute for the layout forcer
+    container.dataset.layout = e.detail.layout;
     
-    // Also try to inject into iframe if it exists
-    const iframe = document.getElementById('portfolio-preview-iframe');
-    if (iframe) {
-      try {
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-        if (iframeDoc) {
-          // Remove existing
-          const existingStyle = iframeDoc.getElementById('dynamic-portfolio-design');
-          if (existingStyle) existingStyle.remove();
-          
-          // Add new
-          const iframeStyle = iframeDoc.createElement('style');
-          iframeStyle.id = 'dynamic-portfolio-design';
-          iframeStyle.innerHTML = e.detail.css;
-          iframeDoc.head.appendChild(iframeStyle);
-          
-          console.log("✅ CSS injected into iframe");
-        }
-      } catch (e) {
-        console.log("Cross-origin iframe, will refresh instead");
-      }
+    // Trigger layout application
+    if (window.Hooks && window.Hooks.LayoutForcer) {
+      const forcer = {
+        forceLayoutApplication: window.Hooks.LayoutForcer.forceLayoutApplication
+      };
+      forcer.forceLayoutApplication(e.detail.layout);
     }
   }
-  
-  // Update body classes
-  document.body.className = document.body.className.replace(/portfolio-theme-\w+|portfolio-layout-\w+/g, '');
-  document.body.classList.add(`portfolio-theme-${e.detail.theme}`);
-  document.body.classList.add(`portfolio-layout-${e.detail.layout}`);
-  document.body.classList.add('portfolio-view');
-  
-  console.log("✅ Design applied successfully");
 });
 
 
@@ -2113,6 +2364,7 @@ const LivePreviewManager = {
 // Add to your existing hooks object
 window.Hooks = window.Hooks || {};
 window.Hooks.LivePreviewManager = LivePreviewManager;
+window.Hooks.CSSPriorityManager = CSSPriorityManager;
 
 // LiveSocket configuration
 let liveSocket = new LiveSocket("/live", Socket, {
@@ -2319,6 +2571,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       });
     });
+  });
+
+  document.addEventListener('DOMContentLoaded', function() {
+    console.log("🔥 DOM loaded, checking for layout restrictions");
+    
+    // Check for any CSS that might be restricting our layouts
+    const computedStyle = window.getComputedStyle(document.body);
+    const bodyMaxWidth = computedStyle.maxWidth;
+    const bodyWidth = computedStyle.width;
+    
+    console.log("📊 Body CSS:", {
+      maxWidth: bodyMaxWidth,
+      width: bodyWidth,
+      display: computedStyle.display
+    });
+    
+    // Check container
+    const container = document.querySelector('.portfolio-container');
+    if (container) {
+      const containerStyle = window.getComputedStyle(container);
+      console.log("📊 Container CSS:", {
+        display: containerStyle.display,
+        gridTemplateColumns: containerStyle.gridTemplateColumns,
+        columnCount: containerStyle.columnCount,
+        maxWidth: containerStyle.maxWidth,
+        width: containerStyle.width
+      });
+      
+      // If grid layout should be active but isn't showing
+      if (container.classList.contains('layout-grid') && containerStyle.display !== 'grid') {
+        console.log("🔥 Grid layout detected but not applied, forcing...");
+        container.style.display = 'grid';
+        container.style.gridTemplateColumns = 'repeat(auto-fit, minmax(350px, 1fr))';
+      }
+    }
   });
 
   // Add to your LiveView hooks object
