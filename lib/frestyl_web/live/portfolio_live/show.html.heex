@@ -129,7 +129,7 @@
                 
                 <!-- Section Content -->
                 <div class="px-8 py-8">
-                  <%= render_section_content_safe(section) %>
+                  <%= raw(EnhancedContentRenderer.render_enhanced_section_content(section, @color_scheme)) %>
                 </div>
               </section>
             <% end %>

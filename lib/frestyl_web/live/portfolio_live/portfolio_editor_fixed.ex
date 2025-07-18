@@ -15,6 +15,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditorFixed do
   alias Frestyl.Portfolios
   alias Frestyl.Accounts
   alias Phoenix.PubSub
+  alias FrestylWeb.PortfolioLive.Components.EnhancedContentRenderer
 
   # ============================================================================
   # MOUNT - Clean and Simple
@@ -54,10 +55,10 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditorFixed do
         |> assign(:show_add_section_modal, false)
         |> assign(:selected_section_type, nil)
         # FIX: Add preview-specific assigns
-        |> assign(:show_live_preview, true)
+
         |> assign(:preview_token, generate_preview_token(portfolio.id))
         |> assign(:preview_mobile_view, false)
-        |> assign(:preview_device, "desktop")
+
         |> assign(:show_media_modal, false)
         |> assign(:media_target_section_id, nil)
         |> assign(:media_target_section, nil)
@@ -4081,7 +4082,7 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditorFixed do
   # EVENT HANDLERS - Clean and Working
   # ============================================================================
 
-  @impl true
+    @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     IO.puts("🔥 DEBUG: Switching to tab: #{tab}")
     IO.puts("🔥 DEBUG: Current active_tab: #{socket.assigns.active_tab}")

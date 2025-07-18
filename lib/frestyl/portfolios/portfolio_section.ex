@@ -23,7 +23,7 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       :timeline,
       :narrative,
       :journey,
-      :video_hero  # NEW: Video-specific hero block
+      :video_intro  # NEW: Video-specific hero block
     ]
     field :content, :map
     field :position, :integer

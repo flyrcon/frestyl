@@ -1,5 +1,4 @@
 # lib/frestyl_web/live/portfolio_live/show.ex
-# FIXED VERSION - Renders portfolios with dynamic card layout support
 
 defmodule FrestylWeb.PortfolioLive.Show do
   use FrestylWeb, :live_view
@@ -13,6 +12,14 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   alias FrestylWeb.PortfolioLive.{PorfolioEditorFixed}
   alias Frestyl.ResumeExporter
+
+  alias FrestylWeb.PortfolioLive.Components.{
+    EnhancedContentRenderer,
+    EnhancedLayoutRenderer,
+    EnhancedHeroRenderer,
+    ThemeConsistencyManager,
+    EnhancedSectionCards
+  }
 
 
   @impl true
@@ -76,17 +83,93 @@ defmodule FrestylWeb.PortfolioLive.Show do
     # Extract intro video if present
     {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(sections)
 
-    is_dynamic = Map.get(portfolio.customization || %{}, "use_dynamic_layout", false)
+    # ENHANCED: Extract theme settings for enhanced components
+    theme = portfolio.theme || "professional"
+    customization = portfolio.customization || %{}
+    layout_type = Map.get(customization, "layout", "standard")
+    color_scheme = Map.get(customization, "color_scheme", "blue")
 
-    # Basic assignments WITHOUT custom_css (will be set by mount functions)
+    # ENHANCED: Generate complete theme CSS using our enhanced system
+    complete_css = try do
+      # Build theme settings structure expected by ThemeConsistencyManager
+      theme_settings = %{
+        theme: theme,
+        layout: layout_type,
+        color_scheme: color_scheme,
+        customization: customization,
+        portfolio: portfolio,
+        # ADD THE MISSING COLORS KEY:
+        colors: %{
+          primary: Map.get(customization, "primary_color", "#7c3aed"),
+          secondary: Map.get(customization, "secondary_color", "#ec4899"),
+          accent: Map.get(customization, "accent_color", "#f59e0b"),
+          background: "#ffffff",
+          text: "#1f2937"
+        },
+        # ADD ADDITIONAL REQUIRED KEYS:
+        theme_config: %{
+          typography: %{
+            font_family: "Inter, system-ui, sans-serif",
+            heading_weight: "font-semibold",
+            body_weight: "font-normal"
+          },
+          spacing: %{
+            section_gap: "space-y-16",
+            card_padding: "p-6"
+          },
+          borders: %{
+            radius: "rounded-xl",
+            card_border: "border border-gray-200"
+          },
+          # ADD THE MISSING SHADOWS:
+          shadows: %{
+            card: "shadow-lg",
+            hover: "hover:shadow-xl",
+            subtle: "shadow-sm"
+          },
+          # ADD ANIMATIONS TOO (likely needed):
+          animations: %{
+            transition: "transition-all duration-300",
+            hover_scale: "hover:scale-[1.02]",
+            button_transition: "transition-colors duration-200"
+          }
+        },
+        layout_config: %{
+          container_max_width: "max-w-4xl",
+          grid_columns: "single-column",
+          card_height: "auto",
+          section_spacing: "space-y-16"
+        },
+        color_config: %{
+          primary: Map.get(customization, "primary_color", "#7c3aed"),
+          secondary: Map.get(customization, "secondary_color", "#ec4899"),
+          accent: Map.get(customization, "accent_color", "#f59e0b"),
+          name: get_color_scheme_name(color_scheme),
+          css_class_prefix: color_scheme
+        }
+      }
+
+      ThemeConsistencyManager.generate_complete_theme_css(theme_settings)
+    rescue
+      error ->
+        IO.puts("⚠️ Theme CSS generation failed: #{inspect(error)}")
+        # Fallback to basic CSS generation
+        generate_basic_portfolio_css(portfolio)
+    end
+
+    # Basic assignments with enhanced theme data
     socket = socket
     |> assign(:page_title, portfolio.title)
     |> assign(:portfolio, portfolio)
     |> assign(:owner, get_portfolio_owner_safe(portfolio))
     |> assign(:sections, filtered_sections)
     |> assign(:all_sections, sections)
-    |> assign(:customization, portfolio.customization || %{})
-    |> assign(:is_dynamic_layout, is_dynamic)
+    |> assign(:customization, customization)
+    |> assign(:theme, theme)
+    |> assign(:layout_type, layout_type)
+    |> assign(:color_scheme, color_scheme)
+    |> assign(:complete_theme_css, complete_css)
+    |> assign(:custom_css, complete_css)  # Backwards compatibility
     |> assign(:intro_video, intro_video)
     |> assign(:intro_video_section, intro_video)
     |> assign(:has_intro_video, intro_video != nil)
@@ -126,11 +209,8 @@ defmodule FrestylWeb.PortfolioLive.Show do
         {:ok, portfolio} ->
           case mount_portfolio(portfolio, socket) do
             {:ok, updated_socket} ->
-              # Generate CSS once and assign it
-              custom_css = generate_portfolio_css(portfolio)
               {:ok, updated_socket
-              |> assign(:view_type, :public)
-              |> assign(:custom_css, custom_css)}
+              |> assign(:view_type, :public)}
             error -> error
           end
         {:error, :not_found} ->
@@ -185,7 +265,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
         case mount_portfolio(portfolio, socket) do
           {:ok, updated_socket} ->
             {:ok, assign(updated_socket, :view_type, :preview)}
-            |> assign(:custom_css, generate_portfolio_css(portfolio))
           error -> error
         end
 
@@ -215,7 +294,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
           case mount_portfolio(portfolio, socket) do
             {:ok, updated_socket} ->
               {:ok, assign(updated_socket, :view_type, :authenticated)}
-              |> assign(:custom_css, generate_portfolio_css(portfolio))
             error -> error
           end
         else
@@ -476,6 +554,18 @@ end
     }
   end
 
+  defp get_color_scheme_name(scheme) do
+    case scheme do
+      "blue" -> "Ocean Blue"
+      "green" -> "Forest Green"
+      "purple" -> "Royal Purple"
+      "red" -> "Warm Red"
+      "orange" -> "Sunset Orange"
+      "teal" -> "Modern Teal"
+      _ -> "Ocean Blue"
+    end
+  end
+
   defp extract_intro_video_and_filter_sections(sections) do
     intro_video_section = Enum.find(sections, fn section ->
       section.title == "Video Introduction" ||
@@ -530,17 +620,26 @@ end
     try do
       current_user = Map.get(socket.assigns, :current_user, nil)
 
-      ip_address = get_connect_info(socket, :peer_data)
-                  |> Map.get(:address, {127, 0, 0, 1})
-                  |> :inet.ntoa()
-                  |> to_string()
+      # SAFER: Handle nil peer_data
+      peer_data = get_connect_info(socket, :peer_data)
+      ip_address = case peer_data do
+        %{address: address} when address != nil ->
+          :inet.ntoa(address) |> to_string()
+        _ ->
+          "127.0.0.1"  # Default fallback
+      end
+
       user_agent = get_connect_info(socket, :user_agent) || ""
+
+      # SAFER: Handle nil connect_params
+      connect_params = get_connect_params(socket)
+      referrer = if is_map(connect_params), do: Map.get(connect_params, "ref"), else: nil
 
       visit_attrs = %{
         portfolio_id: portfolio.id,
         ip_address: ip_address,
         user_agent: user_agent,
-        referrer: get_connect_params(socket)["ref"]
+        referrer: referrer
       }
 
       visit_attrs = if current_user do
@@ -782,14 +881,14 @@ end
     {:noreply, socket}
   end
 
-  @impl true
+ @impl true
   def render(assigns) do
     ~H"""
     <!DOCTYPE html>
     <html lang="en" class="scroll-smooth">
       <head>
         <%= render_seo_meta(assigns) %>
-        <style id="portfolio-server-css"><%= raw(@custom_css || "") %></style>
+        <style id="portfolio-server-css"><%= raw(@complete_theme_css || @custom_css || "") %></style>
         <style id="portfolio-base-styles">
           .portfolio-section {
             scroll-margin-top: 2rem;
@@ -884,23 +983,7 @@ end
 
         <!-- Portfolio Content -->
         <div class="portfolio-container min-h-screen">
-          <%= if Map.get(assigns, :is_dynamic_layout, false) do %>
-            <%= if function_exported?(FrestylWeb.PortfolioLive.Components.DynamicCardLayoutManager, :__live__, 0) do %>
-              <.live_component
-                module={FrestylWeb.PortfolioLive.Components.DynamicCardLayoutManager}
-                id={"public-renderer-#{@portfolio.id}"}
-                portfolio={@portfolio}
-                sections={Map.get(assigns, :sections, [])}
-                layout_type={Map.get(assigns, :layout_type, :traditional)}
-                show_edit_controls={false}
-              />
-            <% else %>
-              <!-- Fallback if DynamicCardLayoutManager doesn't exist -->
-              <%= render_traditional_public_view(assigns) %>
-            <% end %>
-          <% else %>
-            <%= render_traditional_public_view(assigns) %>
-          <% end %>
+          <%= render_traditional_public_view(assigns) %>
         </div>
 
         <!-- Floating Action Buttons -->
@@ -977,45 +1060,6 @@ end
     <script type="application/ld+json">
       <%= raw(generate_json_ld(@portfolio)) %>
     </script>
-    """
-  end
-
-  defp render_seo_meta(assigns) do
-    ~H"""
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="csrf-token" content={get_csrf_token()} />
-
-    <!-- SEO Meta Tags -->
-    <title><%= Map.get(assigns, :seo_title) || Map.get(assigns, :page_title) || "Portfolio" %></title>
-    <meta name="description" content={Map.get(assigns, :seo_description) || "Professional portfolio"} />
-
-    <%= if Map.get(assigns, :canonical_url) do %>
-      <link rel="canonical" href={@canonical_url} />
-    <% end %>
-
-    <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content={Map.get(assigns, :seo_title) || Map.get(assigns, :page_title) || "Portfolio"} />
-    <meta property="og:description" content={Map.get(assigns, :seo_description) || "Professional portfolio"} />
-
-    <%= if Map.get(assigns, :seo_image) do %>
-      <meta property="og:image" content={@seo_image} />
-    <% end %>
-
-    <%= if Map.get(assigns, :canonical_url) do %>
-      <meta property="og:url" content={@canonical_url} />
-    <% end %>
-
-    <meta property="og:type" content="profile" />
-
-    <!-- Twitter Card Meta Tags -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={Map.get(assigns, :seo_title) || Map.get(assigns, :page_title) || "Portfolio"} />
-    <meta name="twitter:description" content={Map.get(assigns, :seo_description) || "Professional portfolio"} />
-
-    <%= if Map.get(assigns, :seo_image) do %>
-      <meta name="twitter:image" content={@seo_image} />
-    <% end %>
     """
   end
 
@@ -1171,12 +1215,155 @@ end
 
   defp render_section_content_safe(section) do
     try do
-      content = Map.get(section, :content, %{})
-      # Add your existing section rendering logic here
-      raw("<p>#{Map.get(section, :title, "Section content")}</p>")
+      # Get color scheme from socket assigns if available, fallback to blue
+      color_scheme = "blue"  # Default fallback
+
+      # Try to use EnhancedContentRenderer, fall back to basic rendering
+      enhanced_content = try do
+        EnhancedContentRenderer.render_enhanced_section_content(section, color_scheme)
+      rescue
+        _ ->
+          # Fallback to basic rendering if enhanced component fails
+          render_basic_section_content(section)
+      end
+
+      # Return as safe HTML
+      raw(enhanced_content)
     rescue
       _ ->
+        # Ultimate fallback for any errors
         raw("<p>Content loading...</p>")
+    end
+  end
+
+
+defp generate_portfolio_css(portfolio) when is_map(portfolio) do
+  # Extract theme settings from portfolio
+  customization = portfolio.customization || %{}
+  theme = portfolio.theme || "professional"
+  layout = Map.get(customization, "layout", "standard")
+  color_scheme = Map.get(customization, "color_scheme", "blue")
+
+  # Build theme settings structure for ThemeConsistencyManager
+  theme_settings = %{
+    theme: theme,
+    layout: layout,
+    color_scheme: color_scheme,
+    customization: customization,
+    portfolio: portfolio
+  }
+
+  try do
+    ThemeConsistencyManager.generate_complete_theme_css(theme_settings)
+  rescue
+    error ->
+      IO.puts("⚠️ ThemeConsistencyManager failed: #{inspect(error)}")
+      generate_basic_portfolio_css(portfolio)
+  end
+end
+
+  defp generate_portfolio_css(customization) when is_map(customization) do
+    # Legacy support for when only customization is passed
+    theme = Map.get(customization, "theme", "professional")
+    layout = Map.get(customization, "layout", "standard")
+    color_scheme = Map.get(customization, "color_scheme", "blue")
+
+    # Create minimal portfolio structure for ThemeConsistencyManager
+    portfolio = %{
+      theme: theme,
+      customization: customization,
+      title: "Portfolio",
+      description: ""
+    }
+
+    theme_settings = %{
+      theme: theme,
+      layout: layout,
+      color_scheme: color_scheme,
+      customization: customization,
+      portfolio: portfolio
+    }
+
+    try do
+      ThemeConsistencyManager.generate_complete_theme_css(theme_settings)
+    rescue
+      error ->
+        IO.puts("⚠️ ThemeConsistencyManager failed: #{inspect(error)}")
+        generate_basic_portfolio_css(portfolio)
+    end
+  end
+
+  defp generate_portfolio_css(portfolio, sections \\ []) do
+    # Extract theme settings
+    customization = portfolio.customization || %{}
+    theme = portfolio.theme || "professional"
+    layout = Map.get(customization, "layout", "standard")
+    color_scheme = Map.get(customization, "color_scheme", "blue")
+
+    # Enhanced: Apply complete theme consistency with sections
+    try do
+      {_enhanced_assigns, complete_css, _theme_settings} =
+        ThemeConsistencyManager.apply_theme_to_all_components(portfolio, sections, %{})
+
+      complete_css
+    rescue
+      error ->
+        IO.puts("⚠️ Complete theme application failed: #{inspect(error)}")
+
+        # Fallback: Try basic CSS generation
+        theme_settings = %{
+          theme: theme,
+          layout: layout,
+          color_scheme: color_scheme,
+          customization: customization,
+          portfolio: portfolio
+        }
+
+        try do
+          ThemeConsistencyManager.generate_complete_theme_css(theme_settings)
+        rescue
+          _error2 ->
+            generate_basic_portfolio_css(portfolio)
+        end
+    end
+  end
+
+  defp render_basic_section_content(section) do
+    content = Map.get(section, :content, %{})
+
+    case section.section_type do
+      "experience" ->
+        jobs = Map.get(content, "jobs", [])
+        if length(jobs) > 0 do
+          job_html = Enum.map(jobs, fn job ->
+            title = Map.get(job, "title", "Position")
+            company = Map.get(job, "company", "Company")
+            "<div style='margin-bottom: 1rem;'><strong>#{title}</strong> at #{company}</div>"
+          end) |> Enum.join("")
+          "<div>#{job_html}</div>"
+        else
+          "<p>Work experience information</p>"
+        end
+
+      "skills" ->
+        skills = Map.get(content, "skills", [])
+        if length(skills) > 0 do
+          skill_html = Enum.map(skills, fn skill ->
+            skill_name = if is_map(skill), do: Map.get(skill, "name", skill), else: skill
+            "<span style='display: inline-block; background: #e5e7eb; padding: 0.25rem 0.5rem; margin: 0.25rem; border-radius: 0.25rem;'>#{skill_name}</span>"
+          end) |> Enum.join("")
+          "<div>#{skill_html}</div>"
+        else
+          "<p>Skills and expertise</p>"
+        end
+
+      _ ->
+        # Generic content rendering
+        main_content = Map.get(content, "main_content") ||
+                      Map.get(content, "description") ||
+                      Map.get(content, "summary") ||
+                      "Section content"
+        "<p>#{main_content}</p>"
     end
   end
 
@@ -1253,457 +1440,28 @@ end
     {:noreply, socket}
   end
 
-  defp render_hero_section_content(content) do
-    try do
-      headline = get_safe_text(content, "headline")
-      tagline = get_safe_text(content, "tagline")
-      main_content = get_safe_content(content, "main_content")
-      cta_text = get_safe_text(content, "cta_text")
-      cta_link = get_safe_text(content, "cta_link")
-      show_social = Map.get(content, "show_social", false)
-      social_links = Map.get(content, "social_links", %{})
-
-      hero_html = """
-      <div class="hero-content text-center py-8">
-        #{if String.length(headline) > 0, do: "<h1 class='text-4xl font-bold text-gray-900 mb-4'>#{headline}</h1>", else: ""}
-        #{if String.length(tagline) > 0, do: "<p class='text-xl text-blue-600 font-medium mb-6'>#{tagline}</p>", else: ""}
-        #{if String.length(main_content) > 0, do: "<div class='text-gray-700 mb-8 max-w-2xl mx-auto'>#{main_content}</div>", else: ""}
-        #{if String.length(cta_text) > 0 and String.length(cta_link) > 0, do: "<a href='#{cta_link}' class='inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors'>#{cta_text}</a>", else: ""}
-        #{if show_social, do: render_social_links_safe(social_links), else: ""}
-      </div>
-      """
-
-      raw(hero_html)
-    rescue
-      error ->
-        IO.puts("❌ Error in render_hero_section_content: #{inspect(error)}")
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Hero content is being processed...</p>
-        </div>
-        """)
-    end
-  end
-
-  defp render_experience_section_content(content) do
-    try do
-      # Try multiple possible keys for jobs data
-      jobs = Map.get(content, "jobs", [])
-            |> case do
-              [] -> Map.get(content, :jobs, [])
-              jobs when is_list(jobs) -> jobs
-              _ -> []
-            end
-
-      if length(jobs) > 0 do
-        jobs_html = jobs
-        |> Enum.map(fn job ->
-          # Handle both string and atom keys, multiple possible field names
-          title = get_job_field(job, ["title", "job_title", "position"])
-          company = get_job_field(job, ["company", "company_name", "employer"])
-          start_date = get_job_field(job, ["start_date", "startDate", "from"])
-          end_date = get_job_field(job, ["end_date", "endDate", "to"])
-          current = get_job_boolean(job, ["current", "is_current", "present"])
-          description = get_job_field(job, ["description", "responsibilities", "details", "summary"])
-
-          # Format date range
-          date_range = cond do
-            current -> "#{start_date} - Present"
-            String.length(end_date) > 0 -> "#{start_date} - #{end_date}"
-            String.length(start_date) > 0 -> "#{start_date} - Present"
-            true -> ""
-          end
-
-          """
-          <div class="experience-item mb-8 pb-8 border-b border-gray-200 last:border-b-0">
-            <div class="flex flex-col md:flex-row md:items-start md:justify-between mb-4">
-              <div>
-                <h3 class="text-xl font-semibold text-gray-900">#{title}</h3>
-                <p class="text-lg text-blue-600 font-medium">#{company}</p>
-              </div>
-              #{if String.length(date_range) > 0, do: "<div class='text-sm text-gray-500 md:text-right mt-2 md:mt-0'>#{date_range}</div>", else: ""}
-            </div>
-            #{if String.length(description) > 0, do: "<div class='text-gray-700'>#{description}</div>", else: ""}
-          </div>
-          """
-        end)
-        |> Enum.join("")
-
-        raw("""
-        <div class="experience-content">
-          #{jobs_html}
-        </div>
-        """)
-      else
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Work experience will be displayed here.</p>
-        </div>
-        """)
-      end
-    rescue
-      error ->
-        IO.puts("❌ Error in render_experience_section_content: #{inspect(error)}")
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Experience content is being processed...</p>
-        </div>
-        """)
-    end
-  end
-
-  defp render_skills_section_content(content) do
-    try do
-      # Try multiple possible keys for skills data
-      skills = Map.get(content, "skills", [])
-              |> case do
-                [] -> Map.get(content, :skills, [])
-                skills when is_list(skills) -> skills
-                _ -> []
-              end
-
-      if length(skills) > 0 do
-        skills_html = skills
-        |> Enum.group_by(fn skill ->
-          category = get_skill_field(skill, ["category", "skill_category", "type"])
-          if String.length(category) > 0, do: category, else: "General"
-        end)
-        |> Enum.map(fn {category, category_skills} ->
-          skills_list = category_skills
-          |> Enum.map(fn skill ->
-            name = get_skill_field(skill, ["name", "skill_name", "title"])
-            level = get_skill_field(skill, ["level", "proficiency", "expertise"])
-
-            level_class = case String.downcase(level) do
-              l when l in ["beginner", "basic", "novice"] -> "bg-yellow-100 text-yellow-800"
-              l when l in ["intermediate", "proficient", "good"] -> "bg-blue-100 text-blue-800"
-              l when l in ["advanced", "excellent", "strong"] -> "bg-green-100 text-green-800"
-              l when l in ["expert", "master", "exceptional"] -> "bg-purple-100 text-purple-800"
-              _ -> "bg-gray-100 text-gray-800"
-            end
-
-            if String.length(name) > 0 do
-              """
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium #{level_class} mr-2 mb-2">
-                #{name}
-              </span>
-              """
-            else
-              ""
-            end
-          end)
-          |> Enum.reject(&(&1 == ""))
-          |> Enum.join("")
-
-          if String.length(skills_list) > 0 do
-            """
-            <div class="skill-category mb-6">
-              <h4 class="text-lg font-semibold text-gray-900 mb-3">#{category}</h4>
-              <div class="flex flex-wrap">
-                #{skills_list}
-              </div>
-            </div>
-            """
-          else
-            ""
-          end
-        end)
-        |> Enum.reject(&(&1 == ""))
-        |> Enum.join("")
-
-        if String.length(skills_html) > 0 do
-          raw("""
-          <div class="skills-content">
-            #{skills_html}
-          </div>
-          """)
-        else
-          raw("""
-          <div class="text-center py-8 text-gray-500">
-            <p>Skills and expertise will be displayed here.</p>
-          </div>
-          """)
-        end
-      else
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Skills and expertise will be displayed here.</p>
-        </div>
-        """)
-      end
-    rescue
-      error ->
-        IO.puts("❌ Error in render_skills_section_content: #{inspect(error)}")
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Skills content is being processed...</p>
-        </div>
-        """)
-    end
-  end
-
-  defp render_projects_section_content(content) do
-    try do
-      # Try multiple possible keys for projects data
-      projects = Map.get(content, "projects", [])
-                |> case do
-                  [] -> Map.get(content, :projects, [])
-                  projects when is_list(projects) -> projects
-                  _ -> []
-                end
-
-      if length(projects) > 0 do
-        projects_html = projects
-        |> Enum.map(fn project ->
-          title = get_project_field(project, ["title", "name", "project_name"])
-          description = get_project_field(project, ["description", "summary", "details"])
-          demo_url = get_project_field(project, ["demo_url", "url", "link", "demo_link"])
-          github_url = get_project_field(project, ["github_url", "code_url", "repository", "repo"])
-          technologies = get_project_technologies(project, ["technologies", "tech", "stack", "tools"])
-          year = get_project_field(project, ["year", "date", "created"])
-          status = get_project_field(project, ["status", "state"])
-
-          status_class = case String.downcase(status) do
-            s when s in ["completed", "done", "finished"] -> "bg-green-100 text-green-800"
-            s when s in ["in-progress", "ongoing", "active"] -> "bg-yellow-100 text-yellow-800"
-            s when s in ["concept", "idea", "planned"] -> "bg-blue-100 text-blue-800"
-            _ -> "bg-gray-100 text-gray-800"
-          end
-
-          tech_tags = if length(technologies) > 0 do
-            technologies
-            |> Enum.take(5)
-            |> Enum.map(fn tech ->
-              safe_tech = get_safe_text_from_value(tech)
-              if String.length(safe_tech) > 0 do
-                """
-                <span class="inline-block px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded mr-1 mb-1">
-                  #{safe_tech}
-                </span>
-                """
-              else
-                ""
-              end
-            end)
-            |> Enum.join("")
-          else
-            ""
-          end
-
-          links_html = [
-            if(String.length(demo_url) > 0, do: "<a href='#{demo_url}' target='_blank' class='inline-flex items-center px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 mr-2'>View Demo</a>", else: ""),
-            if(String.length(github_url) > 0, do: "<a href='#{github_url}' target='_blank' class='inline-flex items-center px-3 py-1 bg-gray-800 text-white text-sm rounded hover:bg-gray-900'>View Code</a>", else: "")
-          ] |> Enum.reject(&(&1 == "")) |> Enum.join("")
-
-          """
-          <div class="project-item bg-white rounded-lg border border-gray-200 p-6 mb-6">
-            <div class="flex items-start justify-between mb-4">
-              <div>
-                <h3 class="text-xl font-semibold text-gray-900">#{title}</h3>
-                <div class="flex items-center space-x-2 mt-2">
-                  #{if String.length(status) > 0, do: "<span class='px-2 py-1 text-xs font-medium rounded #{status_class}'>#{String.capitalize(status)}</span>", else: ""}
-                  #{if String.length(year) > 0, do: "<span class='text-sm text-gray-500'>#{year}</span>", else: ""}
-                </div>
-              </div>
-            </div>
-            #{if String.length(description) > 0, do: "<p class='text-gray-700 mb-4'>#{description}</p>", else: ""}
-            #{if String.length(tech_tags) > 0, do: "<div class='mb-4'>#{tech_tags}</div>", else: ""}
-            #{if String.length(links_html) > 0, do: "<div class='flex items-center space-x-2'>#{links_html}</div>", else: ""}
-          </div>
-          """
-        end)
-        |> Enum.join("")
-
-        raw("""
-        <div class="projects-content">
-          #{projects_html}
-        </div>
-        """)
-      else
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Projects and portfolio work will be displayed here.</p>
-        </div>
-        """)
-      end
-    rescue
-      error ->
-        IO.puts("❌ Error in render_projects_section_content: #{inspect(error)}")
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Projects content is being processed...</p>
-        </div>
-        """)
-    end
-  end
-
-  defp render_contact_section_content(content) do
-    main_content = safe_html_content(Map.get(content, "main_content", ""))
-    email = safe_text_content(Map.get(content, "email", ""))
-    phone = safe_text_content(Map.get(content, "phone", ""))
-    location = safe_text_content(Map.get(content, "location", ""))
-    website = safe_text_content(Map.get(content, "website", ""))
-    show_social = Map.get(content, "show_social", false)
-    social_links = Map.get(content, "social_links", %{})
-
-    contact_info = [
-      if(email != "", do: "<div class='flex items-center mb-3'><span class='text-blue-600 mr-3'>📧</span><a href='mailto:#{email}' class='text-blue-600 hover:text-blue-800'>#{email}</a></div>", else: ""),
-      if(phone != "", do: "<div class='flex items-center mb-3'><span class='text-blue-600 mr-3'>📱</span><a href='tel:#{phone}' class='text-blue-600 hover:text-blue-800'>#{phone}</a></div>", else: ""),
-      if(location != "", do: "<div class='flex items-center mb-3'><span class='text-blue-600 mr-3'>📍</span><span class='text-gray-700'>#{location}</span></div>", else: ""),
-      if(website != "", do: "<div class='flex items-center mb-3'><span class='text-blue-600 mr-3'>🌐</span><a href='#{website}' target='_blank' class='text-blue-600 hover:text-blue-800'>#{website}</a></div>", else: "")
-    ] |> Enum.reject(&(&1 == "")) |> Enum.join("")
-
-    Phoenix.HTML.raw("""
-      <div class="contact-content">
-        #{if main_content != "", do: "<div class='text-gray-700 mb-6 text-center'>#{main_content}</div>", else: ""}
-        #{if contact_info != "", do: "<div class='bg-gray-50 rounded-lg p-6 mb-6'>#{contact_info}</div>", else: ""}
-        #{if show_social, do: render_social_links_safe(social_links), else: ""}
-      </div>
-    """)
-  end
-
-  defp render_about_section_content(content) do
-    try do
-      main_content = get_safe_content(content, "main_content")
-      subtitle = get_safe_text(content, "subtitle")
-      show_stats = Map.get(content, "show_stats", false)
-      stats = Map.get(content, "stats", %{})
-
-      stats_html = if show_stats and map_size(stats) > 0 do
-        stats_items = stats
-        |> Enum.map(fn {key, value} ->
-          safe_value = get_safe_text_from_value(value)
-          if String.length(safe_value) > 0 do
-            label = key |> to_string() |> String.replace("_", " ") |> String.capitalize()
-            """
-            <div class="text-center">
-              <div class="text-2xl font-bold text-blue-600">#{safe_value}</div>
-              <div class="text-sm text-gray-600">#{html_escape(label)}</div>
-            </div>
-            """
-          else
-            ""
-          end
-        end)
-        |> Enum.reject(&(&1 == ""))
-        |> Enum.join("")
-
-        if String.length(stats_items) > 0 do
-          """
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 rounded-lg p-6 mt-6">
-            #{stats_items}
-          </div>
-          """
-        else
-          ""
-        end
-      else
-        ""
-      end
-
-      about_html = """
-      <div class="about-content">
-        #{if String.length(subtitle) > 0, do: "<p class='text-lg text-blue-600 font-medium mb-4'>#{subtitle}</p>", else: ""}
-        #{if String.length(main_content) > 0, do: "<div class='text-gray-700 leading-relaxed'>#{main_content}</div>", else: ""}
-        #{stats_html}
-      </div>
-      """
-
-      raw(about_html)
-    rescue
-      error ->
-        IO.puts("❌ Error in render_about_section_content: #{inspect(error)}")
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>About content is being processed...</p>
-        </div>
-        """)
-    end
-  end
-
-
-  defp render_education_section_content(content) do
-    education = Map.get(content, "education", [])
-
-    if length(education) > 0 do
-      education_html = education
-      |> Enum.map(fn edu ->
-        degree = Map.get(edu, "degree", "")
-        school = Map.get(edu, "school", "")
-        year = Map.get(edu, "year", "")
-        description = Map.get(edu, "description", "")
-
-        """
-        <div class="education-item mb-6 pb-6 border-b border-gray-200 last:border-b-0">
-          <div class="flex flex-col md:flex-row md:items-start md:justify-between mb-2">
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900">#{Phoenix.HTML.html_escape(degree)}</h3>
-              <p class="text-blue-600 font-medium">#{Phoenix.HTML.html_escape(school)}</p>
-            </div>
-            #{if year != "", do: "<div class='text-sm text-gray-500 md:text-right mt-1 md:mt-0'>#{Phoenix.HTML.html_escape(year)}</div>", else: ""}
-          </div>
-          #{if description != "", do: "<p class='text-gray-700'>#{Phoenix.HTML.html_escape(description)}</p>", else: ""}
-        </div>
-        """
-      end)
-      |> Enum.join("")
-
-      Phoenix.HTML.raw("""
-        <div class="education-content">
-          #{education_html}
-        </div>
-      """)
-    else
-      Phoenix.HTML.raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Educational background will be displayed here.</p>
-        </div>
-      """)
-    end
-  end
-
-  defp render_custom_section_content(content) do
-    main_content = Map.get(content, "main_content", "")
-    section_subtype = Map.get(content, "section_subtype", "text")
-
-    Phoenix.HTML.raw("""
-      <div class="custom-content">
-        #{if main_content != "", do: "<div class='text-gray-700'>#{Phoenix.HTML.html_escape(main_content)}</div>", else: "<div class='text-center py-8 text-gray-500'><p>Custom content will be displayed here.</p></div>"}
-      </div>
-    """)
-  end
-
-  defp generate_portfolio_css(portfolio) do
+  defp generate_basic_portfolio_css(portfolio) do
     customization = portfolio.customization || %{}
-    theme = Map.get(customization, "theme", "professional")
-    layout = Map.get(customization, "layout", "dashboard")
-    color_scheme = Map.get(customization, "color_scheme", "blue")
+    theme = portfolio.theme || "professional"
 
-    colors = get_show_color_palette(color_scheme)
-    template_class = get_show_template_class(theme, layout)
+    primary_color = Map.get(customization, "primary_color", "#1e40af")
+    secondary_color = Map.get(customization, "secondary_color", "#64748b")
 
     """
-    <style id="portfolio-show-css" data-template="#{template_class}">
-    /* Portfolio Show CSS - Simplified */
+    <style id="basic-portfolio-css">
     :root {
-      --portfolio-primary: #{colors.primary};
-      --portfolio-secondary: #{colors.secondary};
-      --portfolio-accent: #{colors.accent};
-      --portfolio-background: #{colors.background};
-      --portfolio-text: #{colors.text_primary};
+      --primary-color: #{primary_color};
+      --secondary-color: #{secondary_color};
     }
 
-    .#{template_class} {
+    .portfolio-container {
       font-family: 'Inter', system-ui, sans-serif;
-      background-color: var(--portfolio-background);
-      color: var(--portfolio-text);
+      background-color: #fafafa;
+      min-height: 100vh;
+      padding: 2rem;
     }
 
-    .#{template_class} .portfolio-sections {
-      #{get_show_layout_styles(layout)}
-    }
-
-    .#{template_class} .portfolio-section {
+    .portfolio-section {
       background: white;
       padding: 2rem;
       margin-bottom: 1.5rem;
@@ -1711,214 +1469,26 @@ end
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
 
-    .#{template_class} .hero-section {
-      background: var(--portfolio-primary);
+    .section-title {
+      color: var(--primary-color);
+      font-size: 1.5rem;
+      font-weight: bold;
+      margin-bottom: 1rem;
+    }
+
+    .hero-section {
+      background: var(--primary-color);
       color: white;
       text-align: center;
       padding: 4rem 2rem;
       margin-bottom: 2rem;
       border-radius: 12px;
     }
-
-    /* Theme-specific styles */
-    #{get_show_theme_styles(theme, colors)}
     </style>
     """
   end
 
-  defp get_show_color_palette(scheme) do
-    case scheme do
-      "blue" -> %{
-        primary: "#1e40af",
-        secondary: "#3b82f6",
-        accent: "#60a5fa",
-        background: "#fafafa",
-        text_primary: "#1f2937"
-      }
-      "green" -> %{
-        primary: "#065f46",
-        secondary: "#059669",
-        accent: "#34d399",
-        background: "#f0fdf4",
-        text_primary: "#064e3b"
-      }
-      "purple" -> %{
-        primary: "#581c87",
-        secondary: "#7c3aed",
-        accent: "#a78bfa",
-        background: "#faf5ff",
-        text_primary: "#581c87"
-      }
-      _ -> %{
-        primary: "#1e40af",
-        secondary: "#3b82f6",
-        accent: "#60a5fa",
-        background: "#fafafa",
-        text_primary: "#1f2937"
-      }
-    end
-  end
 
-  defp get_show_template_class(theme, layout) do
-    "template-#{theme}-#{layout}"
-  end
-
-  defp get_show_layout_styles(layout) do
-    case layout do
-      "dashboard" -> """
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-        gap: 2rem;
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 2rem;
-      """
-      "grid" -> """
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 1.5rem;
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 2rem;
-      """
-      "timeline" -> """
-        display: flex;
-        flex-direction: column;
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 2rem;
-        gap: 3rem;
-      """
-      "magazine" -> """
-        column-count: 2;
-        column-gap: 2rem;
-        max-width: 1000px;
-        margin: 0 auto;
-        padding: 2rem;
-      """
-      "minimal" -> """
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 4rem 2rem;
-      """
-      _ -> """
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 2rem;
-      """
-    end
-  end
-
-  defp get_show_theme_styles(theme, colors) do
-    case theme do
-      "creative" -> """
-        .template-creative-dashboard .portfolio-section:nth-child(odd) {
-          transform: rotate(-1deg);
-          border-left: 5px solid #{colors.accent};
-        }
-        .template-creative-dashboard .portfolio-section:nth-child(even) {
-          transform: rotate(1deg);
-          border-right: 5px solid #{colors.accent};
-        }
-      """
-      "minimal" -> """
-        .template-minimal-dashboard .portfolio-section {
-          box-shadow: none;
-          border: 2px solid #{colors.primary};
-          background: white;
-        }
-      """
-      "modern" -> """
-        .template-modern-dashboard .portfolio-section {
-          border-top: 4px solid #{colors.primary};
-          box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-        }
-      """
-      _ -> ""
-    end
-  end
-
-  defp render_generic_section_content(content) do
-    try do
-      main_content = get_safe_content(content, "main_content")
-
-      if String.length(main_content) > 0 do
-        raw("""
-        <div class="generic-content text-gray-700">
-          #{main_content}
-        </div>
-        """)
-      else
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Content will be displayed here when added.</p>
-        </div>
-        """)
-      end
-    rescue
-      error ->
-        IO.puts("❌ Error in render_generic_section_content: #{inspect(error)}")
-        raw("""
-        <div class="text-center py-8 text-gray-500">
-          <p>Content is being processed...</p>
-        </div>
-        """)
-    end
-  end
-
-  defp render_social_links_safe(social_links) when is_map(social_links) do
-    try do
-      if map_size(social_links) > 0 do
-        links_html = social_links
-        |> Enum.filter(fn {_, url} ->
-          safe_url = get_safe_text_from_value(url)
-          String.length(safe_url) > 0
-        end)
-        |> Enum.map(fn {platform, url} ->
-          safe_platform = get_safe_text_from_value(platform)
-          safe_url = get_safe_text_from_value(url)
-
-          icon = case safe_platform do
-            "linkedin" -> "💼"
-            "github" -> "👨‍💻"
-            "twitter" -> "🐦"
-            "instagram" -> "📸"
-            "facebook" -> "👥"
-            "youtube" -> "📺"
-            "website" -> "🌐"
-            "email" -> "📧"
-            _ -> "🔗"
-          end
-
-          """
-          <a href="#{safe_url}" target="_blank" class="inline-flex items-center justify-center w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors mr-2 mb-2" title="#{String.capitalize(safe_platform)}">
-            <span class="text-lg">#{icon}</span>
-          </a>
-          """
-        end)
-        |> Enum.join("")
-
-        if String.length(links_html) > 0 do
-          """
-          <div class="social-links mt-6 text-center">
-            <h4 class="text-lg font-medium text-gray-900 mb-4">Connect with me</h4>
-            <div class="flex justify-center flex-wrap">
-              #{links_html}
-            </div>
-          </div>
-          """
-        else
-          ""
-        end
-      else
-        ""
-      end
-    rescue
-      _ -> ""
-    end
-  end
-
-  defp render_social_links_safe(_), do: ""
 
   defp safe_capitalize(value) when is_atom(value) do
     value |> Atom.to_string() |> String.capitalize()
@@ -1946,673 +1516,77 @@ end
     }
   end
 
-  # ============================================================================
-  # LAYOUT RENDERING FUNCTIONS
-  # ============================================================================
 
-  defp render_traditional_layout(assigns) do
-    ~H"""
-    <div class="traditional-layout">
-      <!-- Always show edit button for owner at top -->
-      <%= if Map.get(assigns, :current_user) && Map.get(assigns.current_user, :id) == Map.get(@portfolio, :user_id) do %>
-        <div class="owner-actions" style="text-align: center; margin-bottom: 2rem;">
-          <.link navigate={"/portfolios/#{@portfolio.id}/edit"}
-                class="btn-primary">
-            Edit Portfolio
-          </.link>
-        </div>
-      <% end %>
 
-      <%= if length(@sections) > 0 do %>
-        <%= for section <- @sections do %>
-          <%= if Map.get(section, :visible, true) do %>
-            <div class={["portfolio-section", "section-#{Map.get(section, :section_type, "generic")}"]}
-                data-section-id={Map.get(section, :id)}>
-              <%= render_portfolio_section(section, assigns) %>
-            </div>
-          <% end %>
-        <% end %>
-      <% else %>
-        <!-- Empty state (without edit button since it's moved above) -->
-        <div class="empty-portfolio">
-          <div class="empty-content">
-            <svg class="empty-icon" width="64" height="64" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-            <h3>Portfolio Under Construction</h3>
-            <p>This portfolio is being set up. Check back soon!</p>
-          </div>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_portfolio_section(section, assigns) do
-    assigns = assign(assigns, :section, section)
-
-    ~H"""
-    <div class="section-content">
-      <%= if @section.title do %>
-        <h2 class="section-title"><%= @section.title %></h2>
-      <% end %>
-
-      <%= case @section.section_type do %>
-        <% "intro" -> %>
-          <%= render_intro_section(@section, assigns) %>
-        <% "experience" -> %>
-          <%= render_experience_section(@section, assigns) %>
-        <% "skills" -> %>
-          <%= render_skills_section(@section, assigns) %>
-        <% "projects" -> %>
-          <%= render_projects_section(@section, assigns) %>
-        <% "contact" -> %>
-          <%= render_contact_section(@section, assigns) %>
-        <% _ -> %>
-          <%= render_generic_section(@section, assigns) %>
-      <% end %>
-    </div>
-    """
-  end
-
-  # ============================================================================
-  # CARD BLOCK RENDERERS
-  # ============================================================================
-
-  defp render_intro_card_block(block, assigns) do
-    content = block.content_data || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="intro-card">
-      <%= if @content["title"] do %>
-        <h3 class="card-title"><%= @content["title"] %></h3>
-      <% end %>
-      <%= if @content["description"] do %>
-        <p class="card-description"><%= @content["description"] %></p>
-      <% end %>
-      <%= if @content["image_url"] do %>
-        <img src={@content["image_url"]} alt="Profile" class="card-image" />
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_experience_card_block(block, assigns) do
-    content = block.content_data || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="experience-card">
-      <%= if @content["company"] do %>
-        <h4 class="company-name"><%= @content["company"] %></h4>
-      <% end %>
-      <%= if @content["position"] do %>
-        <p class="position-title"><%= @content["position"] %></p>
-      <% end %>
-      <%= if @content["duration"] do %>
-        <p class="duration"><%= @content["duration"] %></p>
-      <% end %>
-      <%= if @content["description"] do %>
-        <p class="description"><%= @content["description"] %></p>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_skills_card_block(block, assigns) do
-    content = block.content_data || %{}
-    skills = content["skills"] || []
-    assigns = assign(assigns, :skills, skills)
-
-    ~H"""
-    <div class="skills-card">
-      <h4 class="card-title">Skills</h4>
-      <div class="skills-list">
-        <%= for skill <- @skills do %>
-          <span class="skill-tag"><%= skill %></span>
-        <% end %>
-      </div>
-    </div>
-    """
-  end
-
-  defp render_projects_card_block(block, assigns) do
-    content = block.content_data || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="projects-card">
-      <%= if @content["title"] do %>
-        <h4 class="project-title"><%= @content["title"] %></h4>
-      <% end %>
-      <%= if @content["description"] do %>
-        <p class="project-description"><%= @content["description"] %></p>
-      <% end %>
-      <%= if @content["technologies"] do %>
-        <div class="technologies">
-          <%= for tech <- @content["technologies"] do %>
-            <span class="tech-tag"><%= tech %></span>
-          <% end %>
-        </div>
-      <% end %>
-      <%= if @content["link"] do %>
-        <a href={@content["link"]} class="project-link" target="_blank">View Project</a>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_contact_card_block(block, assigns) do
-    content = block.content_data || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="contact-card">
-      <h4 class="card-title">Contact</h4>
-      <%= if @content["email"] do %>
-        <p class="contact-item">
-          <span class="contact-label">Email:</span>
-          <a href={"mailto:#{@content["email"]}"} class="contact-link"><%= @content["email"] %></a>
-        </p>
-      <% end %>
-      <%= if @content["phone"] do %>
-        <p class="contact-item">
-          <span class="contact-label">Phone:</span>
-          <a href={"tel:#{@content["phone"]}"} class="contact-link"><%= @content["phone"] %></a>
-        </p>
-      <% end %>
-      <%= if @content["linkedin"] do %>
-        <p class="contact-item">
-          <span class="contact-label">LinkedIn:</span>
-          <a href={@content["linkedin"]} class="contact-link" target="_blank">Profile</a>
-        </p>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_generic_card_block(block, assigns) do
-    content = block.content_data || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="generic-card">
-      <%= if @content["title"] do %>
-        <h4 class="card-title"><%= @content["title"] %></h4>
-      <% end %>
-      <%= if @content["content"] do %>
-        <div class="card-content"><%= raw(@content["content"]) %></div>
-      <% end %>
-    </div>
-    """
-  end
 
   # ============================================================================
   # TRADITIONAL SECTION RENDERERS
   # ============================================================================
 
-  defp render_intro_section(section, assigns) do
-    content = section.content || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="intro-section">
-      <%= if @content["main_content"] do %>
-        <div class="intro-content"><%= raw(@content["main_content"]) %></div>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_experience_section(section, assigns) do
-    content = section.content || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="experience-section">
-      <%= if @content["main_content"] do %>
-        <div class="experience-content"><%= raw(@content["main_content"]) %></div>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_skills_section(section, assigns) do
-    content = section.content || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="skills-section">
-      <%= if @content["main_content"] do %>
-        <div class="skills-content"><%= raw(@content["main_content"]) %></div>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_projects_section(section, assigns) do
-    content = section.content || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="projects-section">
-      <%= if @content["main_content"] do %>
-        <div class="projects-content"><%= raw(@content["main_content"]) %></div>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_contact_section(section, assigns) do
-    content = section.content || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="contact-section">
-      <%= if @content["main_content"] do %>
-        <div class="contact-content"><%= raw(@content["main_content"]) %></div>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_generic_section(section, assigns) do
-    content = section.content || %{}
-    assigns = assign(assigns, :content, content)
-
-    ~H"""
-    <div class="generic-section">
-      <%= if @content["main_content"] do %>
-        <div class="section-content"><%= raw(@content["main_content"]) %></div>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp render_service_provider_layout(assigns) do
-    ~H"""
-    <div class="service-provider-layout">
-      <!-- Hero Section with Service Focus -->
-      <section class="hero-section py-20" style={"background: linear-gradient(135deg, #{@brand_colors.primary} 0%, #{@brand_colors.secondary} 100%)"}>
-        <div class="container mx-auto px-6 text-center">
-          <h1 class="text-5xl font-bold text-white mb-6"><%= @portfolio.title %></h1>
-          <p class="text-xl text-white/90 mb-8 max-w-2xl mx-auto"><%= @portfolio.description %></p>
-
-          <!-- Service CTAs -->
-          <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <button class="px-8 py-3 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
-              Book Consultation
-            </button>
-            <button class="px-8 py-3 border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-gray-900 transition-colors">
-              View Services
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Services Grid -->
-      <section class="services-section py-16 bg-gray-50">
-        <div class="container mx-auto px-6">
-          <h2 class="text-3xl font-bold text-center mb-12">Services</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <%= for section <- filter_sections_by_type(@sections, ["projects", "services", "skills"]) do %>
-              <div class="service-card bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow">
-                <h3 class="text-xl font-semibold mb-4" style={"color: #{@brand_colors.primary}"}><%= section.title %></h3>
-                <p class="text-gray-600 mb-4"><%= get_section_excerpt(section) %></p>
-                <button class="text-sm font-medium hover:underline" style={"color: #{@brand_colors.accent}"}>
-                  Learn More →
-                </button>
-              </div>
-            <% end %>
-          </div>
-        </div>
-      </section>
-
-      <!-- Trust Building: Testimonials + Pricing -->
-      <section class="trust-section py-16">
-        <div class="container mx-auto px-6">
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
-            <!-- Testimonials -->
-            <div class="lg:col-span-2">
-              <h2 class="text-3xl font-bold mb-8">Client Testimonials</h2>
-              <div class="space-y-6">
-                <%= for section <- filter_sections_by_type(@sections, ["testimonial"]) do %>
-                  <div class="testimonial-card bg-white p-6 rounded-xl border border-gray-200">
-                    <p class="text-gray-700 mb-4 italic">"<%= get_section_excerpt(section) %>"</p>
-                    <div class="flex items-center">
-                      <div class="w-12 h-12 rounded-full mr-4" style={"background: #{@brand_colors.primary}"}></div>
-                      <div>
-                        <h4 class="font-semibold"><%= section.title %></h4>
-                      </div>
-                    </div>
-                  </div>
-                <% end %>
-              </div>
-            </div>
-
-            <!-- Pricing -->
-            <div class="lg:col-span-1">
-              <h2 class="text-3xl font-bold mb-8">Pricing</h2>
-              <div class="pricing-card bg-white p-6 rounded-xl border-2" style={"border-color: #{@brand_colors.accent}"}>
-                <h3 class="text-xl font-semibold mb-4">Consultation</h3>
-                <div class="text-4xl font-bold mb-4" style={"color: #{@brand_colors.primary}"}>$150<span class="text-lg text-gray-600">/hour</span></div>
-                <ul class="space-y-2 mb-6">
-                  <li class="flex items-center"><span class="w-2 h-2 rounded-full mr-3" style={"background: #{@brand_colors.accent}"}></span>Expert consultation</li>
-                  <li class="flex items-center"><span class="w-2 h-2 rounded-full mr-3" style={"background: #{@brand_colors.accent}"}></span>Action plan included</li>
-                  <li class="flex items-center"><span class="w-2 h-2 rounded-full mr-3" style={"background: #{@brand_colors.accent}"}></span>Follow-up support</li>
-                </ul>
-                <button class="w-full py-3 rounded-lg font-semibold text-white transition-colors" style={"background: #{@brand_colors.primary}"}>
-                  Book Now
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-    """
-  end
-
-  defp render_creative_showcase_layout(assigns) do
-    ~H"""
-    <div class="creative-showcase-layout">
-      <!-- Visual Hero -->
-      <section class="hero-section min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-orange-600 relative overflow-hidden">
-        <div class="absolute inset-0 bg-black/20"></div>
-        <div class="relative z-10 container mx-auto px-6 flex items-center min-h-screen">
-          <div class="max-w-3xl">
-            <h1 class="text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight"><%= @portfolio.title %></h1>
-            <p class="text-2xl text-white/90 mb-8"><%= @portfolio.description %></p>
-            <div class="flex gap-4">
-              <button class="px-8 py-4 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
-                View Portfolio
-              </button>
-              <button class="px-8 py-4 border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-gray-900 transition-colors">
-                Commission Work
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Portfolio Masonry Grid -->
-      <section class="portfolio-section py-20">
-        <div class="container mx-auto px-6">
-          <h2 class="text-4xl font-bold text-center mb-16">Recent Work</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <%= for section <- filter_sections_by_type(@sections, ["projects", "featured_project", "media_showcase"]) do %>
-              <div class="portfolio-item group cursor-pointer">
-                <div class="aspect-square bg-gradient-to-br rounded-2xl overflow-hidden" style={"background: linear-gradient(135deg, #{@brand_colors.primary} 0%, #{@brand_colors.accent} 100%)"}>
-                  <div class="w-full h-full flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-                    <div class="text-center text-white p-6">
-                      <h3 class="text-xl font-bold mb-2"><%= section.title %></h3>
-                      <p class="text-white/80 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <%= get_section_excerpt(section) %>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        </div>
-      </section>
-    </div>
-    """
-  end
-
-  defp render_content_creator_layout(assigns) do
-    ~H"""
-    <div class="content-creator-layout">
-      <!-- Streaming Hero -->
-      <section class="hero-section py-20 bg-gradient-to-br from-purple-600 via-pink-600 to-orange-500">
-        <div class="container mx-auto px-6 text-center">
-          <h1 class="text-5xl font-bold text-white mb-6"><%= @portfolio.title %></h1>
-          <p class="text-xl text-white/90 mb-8 max-w-2xl mx-auto"><%= @portfolio.description %></p>
-
-          <!-- Creator CTAs -->
-          <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <button class="px-8 py-3 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
-              Subscribe
-            </button>
-            <button class="px-8 py-3 border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-gray-900 transition-colors">
-              Collaborate
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Content Metrics -->
-      <section class="metrics-section py-16 bg-gray-50">
-        <div class="container mx-auto px-6">
-          <h2 class="text-3xl font-bold text-center mb-12">Creator Stats</h2>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div class="metric-card text-center p-6 bg-white rounded-xl shadow-lg">
-              <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>100K+</div>
-              <div class="text-gray-600">Followers</div>
-            </div>
-            <div class="metric-card text-center p-6 bg-white rounded-xl shadow-lg">
-              <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>1M+</div>
-              <div class="text-gray-600">Views</div>
-            </div>
-            <div class="metric-card text-center p-6 bg-white rounded-xl shadow-lg">
-              <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>500+</div>
-              <div class="text-gray-600">Videos</div>
-            </div>
-            <div class="metric-card text-center p-6 bg-white rounded-xl shadow-lg">
-              <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>98%</div>
-              <div class="text-gray-600">Positive Rating</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Content Showcase -->
-      <section class="content-section py-16">
-        <div class="container mx-auto px-6">
-          <h2 class="text-3xl font-bold text-center mb-12">Latest Content</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <%= for section <- filter_sections_by_type(@sections, ["projects", "media_showcase"]) do %>
-              <div class="content-card bg-white rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow">
-                <div class="aspect-video bg-gradient-to-br rounded-t-xl" style={"background: linear-gradient(135deg, #{@brand_colors.primary} 0%, #{@brand_colors.accent} 100%)"}>
-                  <div class="w-full h-full flex items-center justify-center">
-                    <div class="text-white text-center">
-                      <h3 class="text-lg font-bold"><%= section.title %></h3>
-                    </div>
-                  </div>
-                </div>
-                <div class="p-6">
-                  <p class="text-gray-600 mb-4"><%= get_section_excerpt(section) %></p>
-                  <button class="text-sm font-medium hover:underline" style={"color: #{@brand_colors.accent}"}>
-                    Watch Now →
-                  </button>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        </div>
-      </section>
-    </div>
-    """
-  end
-
-  defp render_corporate_executive_layout(assigns) do
-    ~H"""
-    <div class="corporate-executive-layout">
-      <!-- Executive Hero -->
-      <section class="hero-section py-20 bg-gradient-to-br from-slate-900 to-blue-900">
-        <div class="container mx-auto px-6">
-          <div class="max-w-4xl mx-auto text-center">
-            <h1 class="text-5xl font-bold text-white mb-6"><%= @portfolio.title %></h1>
-            <p class="text-xl text-white/90 mb-8"><%= @portfolio.description %></p>
-
-            <!-- Executive CTAs -->
-            <div class="flex flex-col sm:flex-row gap-4 justify-center">
-              <button class="px-8 py-3 bg-white text-gray-900 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
-                Schedule Meeting
-              </button>
-              <button class="px-8 py-3 border-2 border-white text-white rounded-lg font-semibold hover:bg-white hover:text-gray-900 transition-colors">
-                Download Resume
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Executive Summary -->
-      <section class="summary-section py-16 bg-white">
-        <div class="container mx-auto px-6">
-          <div class="max-w-4xl mx-auto">
-            <h2 class="text-3xl font-bold text-center mb-12">Executive Summary</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div class="stat-card text-center p-6">
-                <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>15+</div>
-                <div class="text-gray-600">Years Experience</div>
-              </div>
-              <div class="stat-card text-center p-6">
-                <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>$50M+</div>
-                <div class="text-gray-600">Revenue Generated</div>
-              </div>
-              <div class="stat-card text-center p-6">
-                <div class="text-4xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}>200+</div>
-                <div class="text-gray-600">Team Members Led</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Leadership Experience -->
-      <section class="experience-section py-16 bg-gray-50">
-        <div class="container mx-auto px-6">
-          <h2 class="text-3xl font-bold text-center mb-12">Leadership Experience</h2>
-          <div class="max-w-4xl mx-auto space-y-8">
-            <%= for section <- filter_sections_by_type(@sections, ["experience", "achievements"]) do %>
-              <div class="experience-card bg-white p-8 rounded-xl shadow-lg">
-                <div class="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 class="text-xl font-bold mb-2" style={"color: #{@brand_colors.primary}"}><%= section.title %></h3>
-                    <p class="text-gray-600"><%= get_section_excerpt(section) %></p>
-                  </div>
-                  <div class="text-right">
-                    <div class="text-sm text-gray-500">2020 - Present</div>
-                  </div>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded text-sm">Strategy</span>
-                  <span class="px-3 py-1 bg-green-100 text-green-800 rounded text-sm">Growth</span>
-                  <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded text-sm">Leadership</span>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        </div>
-      </section>
-    </div>
-    """
-  end
-
-  defp render_technical_expert_layout(assigns) do
-    ~H"""
-    <div class="technical-expert-layout bg-gray-900 text-white">
-      <!-- Terminal-Style Hero -->
-      <section class="hero-section py-20 bg-gradient-to-br from-gray-900 to-gray-800">
-        <div class="container mx-auto px-6">
-          <div class="max-w-4xl">
-            <div class="font-mono text-green-400 mb-4">~/$ whoami</div>
-            <h1 class="text-5xl font-bold mb-6"><%= @portfolio.title %></h1>
-            <div class="font-mono text-green-400 mb-4">~/$ cat about.txt</div>
-            <p class="text-xl text-gray-300 mb-8"><%= @portfolio.description %></p>
-            <div class="font-mono text-green-400 mb-6">~/$ ls services/</div>
-            <div class="flex gap-4">
-              <button class="px-6 py-3 bg-green-600 text-white rounded font-semibold hover:bg-green-700 transition-colors">
-                ./hire_me.sh
-              </button>
-              <button class="px-6 py-3 border border-green-600 text-green-400 rounded font-semibold hover:bg-green-600 hover:text-white transition-colors">
-                cat portfolio.md
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Skills Matrix -->
-      <section class="skills-section py-16 bg-gray-800">
-        <div class="container mx-auto px-6">
-          <h2 class="text-3xl font-bold mb-12 text-center">Technical Expertise</h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <%= for section <- filter_sections_by_type(@sections, ["skills", "experience"]) do %>
-              <div class="skill-card bg-gray-700 p-6 rounded-lg border border-gray-600">
-                <h3 class="text-lg font-semibold mb-4 text-green-400"><%= section.title %></h3>
-                <div class="space-y-2">
-                  <div class="flex justify-between text-sm">
-                    <span>Proficiency</span>
-                    <span>90%</span>
-                  </div>
-                  <div class="w-full bg-gray-600 rounded-full h-2">
-                    <div class="bg-green-500 h-2 rounded-full w-[90%]"></div>
-                  </div>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        </div>
-      </section>
-
-      <!-- Project Deep Dive -->
-      <section class="projects-section py-16 bg-gray-900">
-        <div class="container mx-auto px-6">
-          <h2 class="text-3xl font-bold mb-12 text-center">Featured Projects</h2>
-          <div class="space-y-8">
-            <%= for section <- filter_sections_by_type(@sections, ["projects", "featured_project"]) do %>
-              <div class="project-card bg-gray-800 p-8 rounded-xl border border-gray-700">
-                <h3 class="text-2xl font-bold mb-4 text-green-400"><%= section.title %></h3>
-                <p class="text-gray-300 mb-6"><%= get_section_excerpt(section) %></p>
-                <div class="flex flex-wrap gap-2 mb-6">
-                  <span class="px-3 py-1 bg-green-600 text-white rounded text-sm">React</span>
-                  <span class="px-3 py-1 bg-blue-600 text-white rounded text-sm">Node.js</span>
-                  <span class="px-3 py-1 bg-purple-600 text-white rounded text-sm">PostgreSQL</span>
-                </div>
-                <div class="flex gap-4">
-                  <button class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors">
-                    View Code
-                  </button>
-                  <button class="px-4 py-2 border border-green-600 text-green-400 rounded hover:bg-green-600 hover:text-white transition-colors">
-                    Live Demo
-                  </button>
-                </div>
-              </div>
-            <% end %>
-          </div>
-        </div>
-      </section>
-    </div>
-    """
-  end
 
   defp render_traditional_public_view(assigns) do
-    ~H"""
-    <%= if length(@sections || []) > 0 do %>
-      <%= for section <- (@sections || []) do %>
-        <%= if Map.get(section, :visible, true) do %>
-          <div class="section">
-            <h2 class="section-title"><%= section.title %></h2>
-            <div class="section-content">
-              <%= render_section_content_safe(section) %>
-            </div>
-          </div>
-        <% end %>
-      <% end %>
-    <% else %>
-      <div class="section text-center">
-        <h2 class="section-title">Portfolio Under Construction</h2>
-        <p class="section-content">This portfolio is being set up. Check back soon!</p>
-      </div>
-    <% end %>
-    """
+    # Extract theme settings with fallbacks
+    theme = Map.get(assigns, :theme, "professional")
+    layout_type = Map.get(assigns, :layout_type, "standard")
+    color_scheme = Map.get(assigns, :color_scheme, "blue")
+    portfolio = assigns.portfolio
+    sections = Map.get(assigns, :sections, [])
+
+    # Try to use EnhancedLayoutRenderer, fall back to basic layout
+    enhanced_html = try do
+      EnhancedLayoutRenderer.render_portfolio_layout(
+        portfolio,
+        sections,
+        layout_type,
+        color_scheme,
+        theme
+      )
+    rescue
+      error ->
+        IO.puts("⚠️ Enhanced layout rendering failed: #{inspect(error)}")
+        # Fallback to basic layout
+        render_basic_portfolio_layout(assigns)
+    end
+
+    raw(enhanced_html)
   end
 
+    defp render_basic_portfolio_layout(assigns) do
+    sections = Map.get(assigns, :sections, [])
+
+    """
+    <div class="basic-portfolio-layout">
+      <!-- Basic Hero -->
+      <header class="hero-section">
+        <h1>#{assigns.portfolio.title}</h1>
+        <p>#{assigns.portfolio.description || ""}</p>
+      </header>
+
+      <!-- Basic Sections -->
+      <main class="portfolio-sections">
+        #{if length(sections) > 0 do
+          Enum.map(sections, fn section ->
+            if Map.get(section, :visible, true) do
+              "<section class='portfolio-section'>
+                <h2 class='section-title'>#{section.title}</h2>
+                <div class='section-content'>
+                  #{render_basic_section_content(section)}
+                </div>
+              </section>"
+            else
+              ""
+            end
+          end) |> Enum.join("")
+        else
+          "<div class='empty-portfolio'>
+            <h3>Portfolio Under Construction</h3>
+            <p>This portfolio is being set up. Check back soon!</p>
+          </div>"
+        end}
+      </main>
+    </div>
+    """
+  end
 
   defp get_zone_css_class(zone_name) do
     case zone_name do
@@ -2627,174 +1601,12 @@ end
     end
   end
 
-  defp render_content_block_public(block, assigns) do
-    block_type = block.block_type
-    content = block.content_data
-    assigns = assign(assigns, :block, block) |> assign(:content, content)
-
-    ~H"""
-    <%= case block_type do %>
-      <% :hero_card -> %>
-        <div class="hero-card text-center py-16 px-6">
-          <h1 class="text-5xl font-bold mb-6" style="color: var(--primary-color);">
-            <%= @content.title %>
-          </h1>
-          <%= if @content.subtitle && @content.subtitle != "" do %>
-            <p class="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-              <%= @content.subtitle %>
-            </p>
-          <% end %>
-          <%= if @content.content && @content.content != "" do %>
-            <p class="text-lg text-gray-700 mb-8 max-w-4xl mx-auto">
-              <%= @content.content %>
-            </p>
-          <% end %>
-          <%= if @content.video_url do %>
-            <div class="max-w-md mx-auto mb-8">
-              <video controls class="w-full rounded-lg shadow-lg" style="aspect-ratio: 4/5;">
-                <source src={@content.video_url} type="video/webm">
-                Your browser does not support the video tag.
-              </video>
-            </div>
-          <% end %>
-        </div>
-
-      <% :about_card -> %>
-        <div class="about-card bg-white rounded-lg shadow-sm border p-8 mb-8">
-          <h2 class="text-3xl font-bold mb-6" style="color: var(--primary-color);">
-            <%= @content.title %>
-          </h2>
-          <%= if @content.subtitle && @content.subtitle != "" do %>
-            <p class="text-xl text-gray-600 mb-4">
-              <%= @content.subtitle %>
-            </p>
-          <% end %>
-          <%= if @content.content && @content.content != "" do %>
-            <div class="text-gray-700 leading-relaxed">
-              <%= raw(String.replace(@content.content, "\n", "<br>")) %>
-            </div>
-          <% end %>
-        </div>
-
-      <% :experience_card -> %>
-        <div class="experience-card bg-white rounded-lg shadow-sm border p-8 mb-8">
-          <h2 class="text-3xl font-bold mb-6" style="color: var(--primary-color);">
-            <%= @content.title %>
-          </h2>
-          <%= if @content.jobs && length(@content.jobs) > 0 do %>
-            <div class="space-y-6">
-              <%= for job <- @content.jobs do %>
-                <div class="border-l-4 pl-6" style="border-color: var(--accent-color);">
-                  <h3 class="text-xl font-semibold text-gray-900">
-                    <%= Map.get(job, "title", "Position") %>
-                  </h3>
-                  <p class="text-lg text-gray-700 mb-2">
-                    <%= Map.get(job, "company", "Company") %>
-                  </p>
-                  <p class="text-gray-600 mb-3">
-                    <%= Map.get(job, "start_date", "") %>
-                    <%= if Map.get(job, "current", false), do: " - Present", else: " - #{Map.get(job, "end_date", "")}" %>
-                  </p>
-                  <%= if Map.get(job, "description") do %>
-                    <p class="text-gray-700 mb-4">
-                      <%= String.slice(Map.get(job, "description", ""), 0, 300) %>
-                      <%= if String.length(Map.get(job, "description", "")) > 300, do: "..." %>
-                    </p>
-                  <% end %>
-                  <%= if Map.get(job, "responsibilities") && length(Map.get(job, "responsibilities", [])) > 0 do %>
-                    <ul class="list-disc list-inside space-y-1 text-gray-700">
-                      <%= for responsibility <- Enum.take(Map.get(job, "responsibilities", []), 3) do %>
-                        <li><%= responsibility %></li>
-                      <% end %>
-                    </ul>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
-          <% else %>
-            <p class="text-gray-700"><%= @content.content || @content.description %></p>
-          <% end %>
-        </div>
-
-      <% :achievement_card -> %>
-        <div class="achievement-card bg-white rounded-lg shadow-sm border p-8 mb-8">
-          <h2 class="text-3xl font-bold mb-6" style="color: var(--primary-color);">
-            <%= @content.title %>
-          </h2>
-          <%= if @content.content && @content.content != "" do %>
-            <div class="text-gray-700 leading-relaxed mb-6">
-              <%= raw(String.replace(@content.content, "\n", "<br>")) %>
-            </div>
-          <% end %>
-          <%= if @content.achievements && length(@content.achievements) > 0 do %>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <%= for achievement <- @content.achievements do %>
-                <div class="bg-gray-50 rounded-lg p-4 border-l-4" style="border-color: var(--accent-color);">
-                  <h3 class="font-semibold text-gray-900">
-                    <%= Map.get(achievement, "title", "Achievement") %>
-                  </h3>
-                  <%= if Map.get(achievement, "description") do %>
-                    <p class="text-gray-700 mt-2">
-                      <%= Map.get(achievement, "description") %>
-                    </p>
-                  <% end %>
-                  <%= if Map.get(achievement, "date") do %>
-                    <p class="text-sm text-gray-500 mt-2">
-                      <%= Map.get(achievement, "date") %>
-                    </p>
-                  <% end %>
-                </div>
-              <% end %>
-            </div>
-          <% end %>
-          <%= if @content.awards && length(@content.awards) > 0 do %>
-            <div class="mt-6">
-              <h3 class="text-xl font-semibold mb-4" style="color: var(--accent-color);">Awards</h3>
-              <div class="space-y-3">
-                <%= for award <- @content.awards do %>
-                  <div class="flex items-center">
-                    <div class="w-3 h-3 rounded-full mr-3" style="background-color: var(--accent-color);"></div>
-                    <span class="text-gray-700"><%= award %></span>
-                  </div>
-                <% end %>
-              </div>
-            </div>
-          <% end %>
-        </div>
-
-      <% _ -> %>
-        <div class="content-card bg-white rounded-lg shadow-sm border p-6 mb-6">
-          <h2 class="text-2xl font-bold mb-4" style="color: var(--primary-color);">
-            <%= @content.title %>
-          </h2>
-          <div class="text-gray-700">
-            <%= if @content.content && @content.content != "" do %>
-              <%= raw(String.replace(@content.content, "\n", "<br>")) %>
-            <% else %>
-              <p>Section type: <%= @content.section_type || "unknown" %></p>
-              <p>Available data: <%= inspect(Map.keys(@content)) %></p>
-            <% end %>
-          </div>
-        </div>
-    <% end %>
-    """
-  end
 
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
 
-  defp render_portfolio_layout(assigns) do
-    # Use the customization layout setting
-    layout = assigns.portfolio_layout
 
-    case layout do
-      "dashboard" -> render_dashboard_layout(assigns)
-      "gallery" -> render_gallery_layout(assigns)
-      "minimal" -> render_minimal_layout(assigns)
-      _ -> render_minimal_layout(assigns)  # fallback
-    end
-  end
 
   defp filter_sections_by_type(sections, types) do
     Enum.filter(sections, fn section ->
@@ -2891,35 +1703,6 @@ end
     end) || "/images/default-portfolio-preview.jpg"
   end
 
-  defp determine_layout_type_safe(portfolio) do
-    try do
-      # Try to use Dynamic Card Layout system if available
-      if Code.ensure_loaded?(DynamicCardLayoutManager) do
-        DynamicCardLayoutManager.determine_layout_type(portfolio)
-      else
-        {:traditional, get_template_config(portfolio.theme || "professional")}
-      end
-    rescue
-      _ ->
-        {:traditional, get_template_config(portfolio.theme || "professional")}
-    end
-  end
-
-  defp load_dynamic_layout_zones_safe(portfolio_id) do
-    try do
-      # Try to load from database or create default zones
-      %{
-        hero: [],
-        main_content: [],
-        sidebar: [],
-        footer: []
-      }
-    rescue
-      _ ->
-        IO.puts("⚠️ Could not load dynamic layout zones for portfolio #{portfolio_id}")
-        %{}
-    end
-  end
 
   defp get_section_badge_class(section_type) do
     case safe_capitalize(section_type) do
@@ -3069,87 +1852,6 @@ end
     end
   end
 
-  defp get_safe_content(content_map, key) when is_map(content_map) do
-    try do
-      value = Map.get(content_map, key, "")
-      extract_safe_html(value)
-    rescue
-      _ -> ""
-    end
-  end
-
-  defp get_safe_content(_, _), do: ""
-
-  # Ultra-safe text getter that always escapes
-  defp get_safe_text(content_map, key) when is_map(content_map) do
-    try do
-      value = Map.get(content_map, key, "")
-      extract_safe_text(value)
-    rescue
-      _ -> ""
-    end
-  end
-
-  defp get_safe_text(_, _), do: ""
-
-  # Ultra-safe value converter
-  defp get_safe_text_from_value(value) do
-    try do
-      extract_safe_text(value)
-    rescue
-      _ -> ""
-    end
-  end
-
-  defp extract_safe_html(value) do
-    case value do
-      {:safe, html_content} when is_binary(html_content) ->
-        html_content
-      content when is_binary(content) ->
-        html_escape(content) |> safe_to_string()
-      nil ->
-        ""
-      _ ->
-        value |> to_string() |> html_escape() |> safe_to_string()
-    end
-  end
-
-  # Extract safe text content (always escaped)
-  defp extract_safe_text(value) do
-    case value do
-      {:safe, html_content} when is_binary(html_content) ->
-        html_content |> strip_html_basic() |> html_escape() |> safe_to_string()
-      content when is_binary(content) ->
-        html_escape(content) |> safe_to_string()
-      nil ->
-        ""
-      _ ->
-        value |> to_string() |> html_escape() |> safe_to_string()
-    end
-  end
-
-
-
-  defp get_template_config(theme) do
-    try do
-      case PortfolioTemplates.get_template_config(theme || "professional") do
-        config when is_map(config) -> config
-        _ -> get_default_template_config()
-      end
-    rescue
-      _ -> get_default_template_config()
-    end
-  end
-
-  defp get_default_template_config do
-    %{
-      "primary_color" => "#1e40af",
-      "secondary_color" => "#64748b",
-      "accent_color" => "#f59e0b",
-      "layout" => "traditional"
-    }
-  end
-
   defp generate_design_tokens(portfolio) do
     customization = Map.get(portfolio, :customization, %{})
 
@@ -3217,18 +1919,6 @@ end
     }
     """
   end
-
-  defp portfolio_layout_class(portfolio) do
-    layout = Map.get(portfolio, :layout, "traditional")
-
-    case layout do
-      "dynamic_card" -> "layout-dynamic-card"
-      "professional_cards" -> "layout-professional-cards"
-      "creative_cards" -> "layout-creative-cards"
-      _ -> "layout-traditional"
-    end
-  end
-
 
   defp determine_section_zone(section) do
     case section.section_type do
@@ -3331,80 +2021,6 @@ end
   end
 
 
-  defp get_enhanced_hero_styles(theme, colors) do
-    case theme do
-      "creative" ->
-        "background: linear-gradient(135deg, #{colors.primary}, #{colors.accent}) !important; color: white !important;"
-      "minimal" ->
-        "background: #{colors.surface} !important; color: #{colors.text_primary} !important; border: 2px solid #{colors.primary} !important;"
-      "modern" ->
-        "background: linear-gradient(45deg, #{colors.primary}15, #{colors.accent}15) !important; color: #{colors.text_primary} !important; border-left: 6px solid #{colors.primary} !important;"
-      _ ->
-        "background: #{colors.primary} !important; color: white !important;"
-    end
-  end
-
-  defp get_theme_specific_overrides(theme, colors) do
-    case theme do
-      "creative" -> """
-        .portfolio-section:nth-child(odd) {
-          transform: rotate(-0.5deg) !important;
-          border-left: 6px solid #{colors.accent} !important;
-        }
-        .portfolio-section:nth-child(even) {
-          transform: rotate(0.5deg) !important;
-          border-right: 6px solid #{colors.accent} !important;
-        }
-      """
-      "minimal" -> """
-        .portfolio-section {
-          box-shadow: none !important;
-          border: 2px solid #{colors.primary} !important;
-        }
-      """
-      "modern" -> """
-        .portfolio-section {
-          border-top: 4px solid #{colors.primary} !important;
-          box-shadow: 0 20px 40px rgba(0,0,0,0.1) !important;
-        }
-      """
-      _ -> ""
-    end
-  end
-
-  defp get_theme_padding(theme) do
-    case theme do
-      "creative" -> "2.5rem"
-      "minimal" -> "1.5rem"
-      "modern" -> "2rem"
-      _ -> "2rem"
-    end
-  end
-
-  defp get_theme_weight(theme) do
-    case theme do
-      "creative" -> "800"
-      "minimal" -> "300"
-      "modern" -> "600"
-      _ -> "700"
-    end
-  end
-
-  defp get_theme_border(theme, colors) do
-    case theme do
-      "creative" -> "4px solid #{colors.secondary}"
-      "minimal" -> "2px solid #{colors.primary}"
-      "modern" -> "1px solid rgba(0,0,0,0.1)"
-      _ -> "1px solid rgba(0,0,0,0.05)"
-    end
-  end
-
-  defp get_hero_text_color(theme) do
-    case theme do
-      "minimal" -> "#1f2937"
-      _ -> "white"
-    end
-  end
 
   defp get_color_palette(scheme) do
     case scheme do
@@ -3422,78 +2038,6 @@ end
         %{primary: "#0f766e", secondary: "#14b8a6", accent: "#5eead4", background: "#f0fdfa", surface: "#ffffff", text_primary: "#134e4a", text_secondary: "#6b7280"}
       _ ->
         %{primary: "#1e40af", secondary: "#3b82f6", accent: "#60a5fa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
-    end
-  end
-
-  defp get_theme_font(theme) do
-    case theme do
-      "professional" -> "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-      "creative" -> "'Poppins', 'Helvetica Neue', Arial, sans-serif"
-      "minimal" -> "'Source Sans Pro', 'Helvetica Neue', Arial, sans-serif"
-      "modern" -> "'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
-      _ -> "system-ui, -apple-system, sans-serif"
-    end
-  end
-
-  defp get_theme_radius(theme) do
-    case theme do
-      "creative" -> "15px"
-      "minimal" -> "4px"
-      "modern" -> "10px"
-      _ -> "8px"
-    end
-  end
-
-  defp get_theme_shadow(theme) do
-    case theme do
-      "creative" -> "0 10px 30px rgba(0,0,0,0.1)"
-      "minimal" -> "0 1px 2px rgba(0,0,0,0.05)"
-      "modern" -> "0 8px 20px rgba(0,0,0,0.1)"
-      _ -> "0 2px 10px rgba(0,0,0,0.1)"
-    end
-  end
-
-  defp get_hero_bg(theme, colors) do
-    case theme do
-      "creative" -> "linear-gradient(135deg, #{colors.primary}, #{colors.accent})"
-      "minimal" -> colors.surface
-      "modern" -> "linear-gradient(45deg, #{colors.primary}15, #{colors.accent}15)"
-      _ -> colors.primary
-    end
-  end
-
-  defp get_layout_css(layout) do
-    case layout do
-      "grid" -> """
-        .portfolio-container .portfolio-section {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 1.5rem;
-        }
-      """
-      "timeline" -> """
-        .portfolio-container {
-          max-width: 900px;
-          margin: 0 auto;
-        }
-      """
-      _ -> ""
-    end
-  end
-
-  defp get_theme_css(theme, colors) do
-    case theme do
-      "creative" -> """
-        .portfolio-section {
-          border-left: 5px solid #{colors.accent} !important;
-        }
-      """
-      "minimal" -> """
-        .portfolio-section {
-          border: 2px solid #{colors.primary} !important;
-        }
-      """
-      _ -> ""
     end
   end
 
@@ -3554,18 +2098,6 @@ end
   defp find_portfolio_media(_portfolio, _media_id), do: nil
   defp send_portfolio_contact_message(_portfolio, _params), do: {:ok, :sent}
 
-  # Layout rendering functions
-  defp render_portfolio_layout(assigns) do
-    # Use the customization layout setting
-    layout = assigns[:portfolio_layout] || "minimal"
-
-    case layout do
-      "dashboard" -> render_dashboard_layout(assigns)
-      "gallery" -> render_gallery_layout(assigns)
-      "minimal" -> render_minimal_layout(assigns)
-      _ -> render_minimal_layout(assigns)  # fallback
-    end
-  end
 
 
   # Safe value extraction function
@@ -3592,209 +2124,34 @@ end
     end)
   end
 
-  defp render_portfolio_with_template(assigns, template_class) do
-    assigns = assign(assigns, :template_class, template_class)
-
-    ~H"""
-    <div class={["portfolio-content", template_class]}>
-      <!-- Hero Section - Enhanced with Video Support -->
-      <%= render_enhanced_hero_section(assigns) %>
-
-      <!-- Portfolio Sections with Layout Structure -->
-      <div class="portfolio-sections">
-        <%= for section <- filter_non_hero_sections(@sections) do %>
-          <%= if Map.get(section, :visible, true) do %>
-            <section class="portfolio-section">
-              <h2 class="section-title"><%= section.title %></h2>
-              <div class="section-content">
-                <%= render_section_content_safe(section) %>
-              </div>
-            </section>
-          <% end %>
-        <% end %>
-      </div>
-
-      <!-- Video Modal for Hero Videos -->
-      <%= if Map.get(assigns, :show_video_modal, false) && Map.get(assigns, :intro_video) do %>
-        <%= render_video_modal(assigns) %>
-      <% end %>
-    </div>
-    """
-  end
-
   defp render_enhanced_hero_section(assigns) do
-    # Check for intro video first
-    intro_video = Map.get(assigns, :intro_video) || Map.get(assigns, :intro_video_section)
-    has_intro_video = intro_video != nil
+    portfolio = assigns.portfolio
+    sections = Map.get(assigns, :sections, [])
+    color_scheme = Map.get(assigns, :color_scheme, "blue")
 
-    # Get hero section from regular sections
-    hero_section = Enum.find(Map.get(assigns, :sections, []), &(&1.section_type == "hero"))
+    # Use EnhancedHeroRenderer for complete hero section rendering
+    enhanced_hero_html = EnhancedHeroRenderer.render_enhanced_hero(portfolio, sections, color_scheme)
 
-    assigns = assigns
-    |> assign(:intro_video, intro_video)
-    |> assign(:has_intro_video, has_intro_video)
-    |> assign(:hero_section, hero_section)
-
-    ~H"""
-    <%= cond do %>
-      <% @has_intro_video -> %>
-        <!-- Video-Enhanced Hero -->
-        <%= render_video_enhanced_hero(assigns) %>
-      <% @hero_section -> %>
-        <!-- Standard Hero Section -->
-        <%= render_standard_hero(assigns) %>
-      <% true -> %>
-        <!-- Portfolio Header Fallback -->
-        <%= render_portfolio_header(assigns) %>
-    <% end %>
-    """
-  end
-
-  defp render_video_enhanced_hero(assigns) do
-    video_url = get_video_url_safe(assigns.intro_video)
-    video_content = get_video_content_safe(assigns.intro_video)
-
-    assigns = assigns
-    |> assign(:video_url, video_url)
-    |> assign(:video_content, video_content)
-
-    ~H"""
-    <section class={["hero-section", "video-enhanced-hero", @template_class]}>
-      <div class="hero-container">
-        <!-- Video Introduction Area -->
-        <div class="video-intro-area">
-          <%= if @video_url do %>
-            <div class="video-container">
-              <div class="video-wrapper">
-                <video
-                  controls
-                  poster={Map.get(@video_content, "thumbnail", "")}
-                  class="intro-video">
-                  <source src={@video_url} type="video/mp4">
-                  <source src={@video_url} type="video/webm">
-                  Your browser does not support the video tag.
-                </video>
-              </div>
-
-              <!-- Video Info Overlay -->
-              <div class="video-info-overlay">
-                <h1 class="hero-title"><%= @portfolio.title %></h1>
-                <p class="hero-subtitle"><%= @portfolio.description %></p>
-
-                <!-- Video Details -->
-                <div class="video-details">
-                  <span class="video-title">
-                    <%= Map.get(@video_content, "title", "Personal Introduction") %>
-                  </span>
-                  <%= if Map.get(@video_content, "duration") do %>
-                    <span class="video-duration">
-                      <%= format_video_duration(Map.get(@video_content, "duration")) %>
-                    </span>
-                  <% end %>
-                </div>
-              </div>
-            </div>
-          <% else %>
-            <!-- Fallback when video URL is missing -->
-            <div class="hero-content-fallback">
-              <h1 class="hero-title"><%= @portfolio.title %></h1>
-              <p class="hero-subtitle"><%= @portfolio.description %></p>
-              <div class="video-placeholder">
-                <svg class="video-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.01M15 10h1.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <p>Video introduction will appear here</p>
-              </div>
-            </div>
-          <% end %>
-        </div>
-      </div>
-    </section>
-    """
-  end
-
-  defp render_standard_hero(assigns) do
-    hero_content = get_section_content_map(assigns.hero_section)
-
-    assigns = assign(assigns, :hero_content, hero_content)
-
-    ~H"""
-    <section class={["hero-section", "standard-hero", @template_class]}>
-      <div class="hero-container">
-        <div class="hero-content">
-          <h1 class="hero-title">
-            <%= Map.get(@hero_content, "headline", @hero_section.title) %>
-          </h1>
-
-          <%= if Map.get(@hero_content, "tagline") do %>
-            <p class="hero-tagline">
-              <%= Map.get(@hero_content, "tagline") %>
-            </p>
-          <% end %>
-
-          <%= if Map.get(@hero_content, "main_content") do %>
-            <div class="hero-description">
-              <%= raw(Map.get(@hero_content, "main_content")) %>
-            </div>
-          <% end %>
-
-          <!-- CTA Buttons -->
-          <%= if Map.get(@hero_content, "cta_text") && Map.get(@hero_content, "cta_link") do %>
-            <div class="hero-actions">
-              <a href={Map.get(@hero_content, "cta_link")} class="hero-cta-button">
-                <%= Map.get(@hero_content, "cta_text") %>
-              </a>
-            </div>
-          <% end %>
-
-          <!-- Social Links -->
-          <%= if Map.get(@hero_content, "show_social") do %>
-            <%= render_hero_social_links(Map.get(@hero_content, "social_links", %{})) %>
-          <% end %>
-        </div>
-      </div>
-    </section>
-    """
-  end
-
-  defp render_portfolio_header(assigns) do
-    ~H"""
-    <header class={["portfolio-header", @template_class]}>
-      <div class="header-container">
-        <h1 class="portfolio-title"><%= @portfolio.title %></h1>
-        <%= if @portfolio.description do %>
-          <p class="portfolio-description"><%= @portfolio.description %></p>
-        <% end %>
-      </div>
-    </header>
-    """
-  end
-
-  defp render_video_modal(assigns) do
-    ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 backdrop-blur-sm"
-        phx-click="hide_video_modal">
-      <div class="relative max-w-6xl w-full mx-4 max-h-[90vh]" phx-click-away="hide_video_modal">
-        <!-- Close button -->
-        <button phx-click="hide_video_modal"
-                class="absolute -top-12 right-0 text-white hover:text-gray-300 z-10">
-          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
-
-        <!-- Video player -->
-        <video controls autoplay class="w-full h-auto rounded-xl shadow-2xl">
-          <source src={get_video_url_safe(@intro_video)} type="video/mp4">
-          <source src={get_video_url_safe(@intro_video)} type="video/webm">
-          Your browser does not support the video tag.
-        </video>
-      </div>
-    </div>
-    """
+    raw(enhanced_hero_html)
   end
 
   defp render_dashboard_layout(assigns) do
+    sections = Map.get(assigns, :sections, [])
+    theme_settings = Map.get(assigns, :theme_settings, %{})
+
+    # Create card configuration from theme settings
+    card_config = %{
+      color_scheme: Map.get(assigns, :color_scheme, "blue"),
+      theme: Map.get(assigns, :theme, "professional")
+    }
+
+    # Render sections using enhanced section cards
+    section_cards = sections
+    |> Enum.map(fn section ->
+      EnhancedSectionCards.render_section_card(section, card_config, "dashboard")
+    end)
+    |> Enum.join("\n")
+
     ~H"""
     <div class="min-h-screen bg-gray-50">
       <!-- Dashboard Header -->
@@ -3805,84 +2162,31 @@ end
         </div>
       </header>
 
-      <!-- Dashboard Content -->
+      <!-- Enhanced Dashboard Content -->
       <main class="max-w-7xl mx-auto px-6 py-8">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div class="lg:col-span-2 space-y-8">
-            <%= for section <- @sections do %>
-              <section class="bg-white rounded-xl shadow-sm border p-6">
-                <h2 class="text-xl font-semibold text-gray-900 mb-4"><%= section.title %></h2>
-                <div class="prose max-w-none">
-                  <%= render_section_content_safe(section) %>
-                </div>
-              </section>
-            <% end %>
+            <%= raw(section_cards) %>
           </div>
           <div class="space-y-6">
             <div class="bg-white rounded-xl shadow-sm border p-6">
-              <h3 class="font-semibold text-gray-900 mb-4">Info</h3>
+              <h3 class="font-semibold text-gray-900 mb-4">Portfolio Info</h3>
               <div class="space-y-3 text-sm">
                 <div class="flex justify-between">
                   <span class="text-gray-600">Sections:</span>
                   <span class="font-medium"><%= length(@sections) %></span>
                 </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-600">Theme:</span>
+                  <span class="font-medium"><%= String.capitalize(@theme) %></span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-600">Layout:</span>
+                  <span class="font-medium"><%= String.capitalize(@layout_type) %></span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </main>
-    </div>
-    """
-  end
-
-  defp render_gallery_layout(assigns) do
-    ~H"""
-    <div class="min-h-screen bg-white">
-      <!-- Gallery Header -->
-      <header class="py-16 px-6 text-center">
-        <h1 class="text-4xl font-bold text-gray-900 mb-4"><%= @portfolio.title %></h1>
-        <p class="text-xl text-gray-600"><%= @portfolio.description %></p>
-      </header>
-
-      <!-- Gallery Content -->
-      <main class="px-6 py-8">
-        <div class="max-w-6xl mx-auto">
-          <div class="columns-1 md:columns-2 lg:columns-3 gap-8 space-y-8">
-            <%= for section <- @sections do %>
-              <section class="break-inside-avoid bg-gray-50 rounded-lg p-6 mb-8">
-                <h2 class="text-lg font-semibold text-gray-900 mb-3"><%= section.title %></h2>
-                <div class="text-gray-700">
-                  <%= render_section_content_safe(section) %>
-                </div>
-              </section>
-            <% end %>
-          </div>
-        </div>
-      </main>
-    </div>
-    """
-  end
-
-  defp render_minimal_layout(assigns) do
-    ~H"""
-    <div class="min-h-screen bg-white">
-      <!-- Minimal Header -->
-      <header class="py-16 px-6 text-center border-b">
-        <h1 class="text-4xl lg:text-6xl font-light text-gray-900 mb-4"><%= @portfolio.title %></h1>
-        <p class="text-xl text-gray-600 max-w-2xl mx-auto"><%= @portfolio.description %></p>
-      </header>
-
-      <!-- Minimal Content -->
-      <main class="max-w-4xl mx-auto px-6 py-16">
-        <div class="space-y-16">
-          <%= for section <- @sections do %>
-            <section class="border-b border-gray-100 pb-16 last:border-b-0">
-              <h2 class="text-2xl font-light text-gray-900 mb-8"><%= section.title %></h2>
-              <div class="prose prose-lg max-w-none text-gray-700">
-                <%= render_section_content_safe(section) %>
-              </div>
-            </section>
-          <% end %>
         </div>
       </main>
     </div>
@@ -4083,43 +2387,7 @@ end
 
   defp format_video_duration(_), do: "0:00"
 
-  # Render hero social links
-  defp render_hero_social_links(social_links) when is_map(social_links) do
-    social_items = social_links
-    |> Enum.filter(fn {_, url} -> url && url != "" end)
-    |> Enum.map(fn {platform, url} ->
-      {platform, url, get_social_icon(platform)}
-    end)
 
-    assigns = %{social_items: social_items}
-
-    ~H"""
-    <%= if length(@social_items) > 0 do %>
-      <div class="hero-social-links">
-        <%= for {platform, url, icon} <- @social_items do %>
-          <a href={url} target="_blank" rel="noopener" class="social-link" title={String.capitalize(platform)}>
-            <%= icon %>
-          </a>
-        <% end %>
-      </div>
-    <% end %>
-    """
-  end
-
-  defp render_hero_social_links(_), do: ""
-
-  # Get social platform icons
-  defp get_social_icon(platform) do
-    case String.downcase(to_string(platform)) do
-      "linkedin" -> "💼"
-      "github" -> "👨‍💻"
-      "twitter" -> "🐦"
-      "instagram" -> "📸"
-      "website" -> "🌐"
-      "email" -> "📧"
-      _ -> "🔗"
-    end
-  end
 
 
   defp organize_content_into_layout_zones(content_blocks, portfolio) do
@@ -4241,89 +2509,6 @@ end
     end
   end
 
-  defp get_job_field(job, possible_keys) when is_map(job) do
-    possible_keys
-    |> Enum.reduce_while("", fn key, acc ->
-      value = case Map.get(job, key) do
-        nil -> Map.get(job, String.to_atom(key), "")
-        val -> val
-      end
-      safe_value = get_safe_text_from_value(value)
-      if String.length(safe_value) > 0, do: {:halt, safe_value}, else: {:cont, acc}
-    end)
-  end
-
-  defp get_job_field(_, _), do: ""
-
-  # Get job boolean field
-  defp get_job_boolean(job, possible_keys) when is_map(job) do
-    possible_keys
-    |> Enum.reduce_while(false, fn key, acc ->
-      value = case Map.get(job, key) do
-        nil -> Map.get(job, String.to_atom(key), false)
-        val -> val
-      end
-      case value do
-        true -> {:halt, true}
-        "true" -> {:halt, true}
-        _ -> {:cont, acc}
-      end
-    end)
-  end
-
-  defp get_job_boolean(_, _), do: false
-
-  # Get skill field with multiple possible keys
-  defp get_skill_field(skill, possible_keys) when is_map(skill) do
-    possible_keys
-    |> Enum.reduce_while("", fn key, acc ->
-      value = case Map.get(skill, key) do
-        nil -> Map.get(skill, String.to_atom(key), "")
-        val -> val
-      end
-      safe_value = get_safe_text_from_value(value)
-      if String.length(safe_value) > 0, do: {:halt, safe_value}, else: {:cont, acc}
-    end)
-  end
-
-  defp get_skill_field(_, _), do: ""
-
-  # Get project field with multiple possible keys
-  defp get_project_field(project, possible_keys) when is_map(project) do
-    possible_keys
-    |> Enum.reduce_while("", fn key, acc ->
-      value = case Map.get(project, key) do
-        nil -> Map.get(project, String.to_atom(key), "")
-        val -> val
-      end
-      safe_value = get_safe_text_from_value(value)
-      if String.length(safe_value) > 0, do: {:halt, safe_value}, else: {:cont, acc}
-    end)
-  end
-
-  defp get_project_field(_, _), do: ""
-
-  # Get project technologies (handle arrays)
-  defp get_project_technologies(project, possible_keys) when is_map(project) do
-    possible_keys
-    |> Enum.reduce_while([], fn key, acc ->
-      value = case Map.get(project, key) do
-        nil -> Map.get(project, String.to_atom(key), [])
-        val -> val
-      end
-
-      technologies = case value do
-        list when is_list(list) -> list
-        string when is_binary(string) ->
-          string |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
-        _ -> []
-      end
-
-      if length(technologies) > 0, do: {:halt, technologies}, else: {:cont, acc}
-    end)
-  end
-
-  defp get_project_technologies(_, _), do: []
 
   defp extract_highlights_from_section(_section), do: []
 
@@ -4377,19 +2562,6 @@ end
     end
   end
 
-  defp safe_html_content(content) do
-    case content do
-      {:safe, html_content} when is_binary(html_content) ->
-        html_content
-      content when is_binary(content) ->
-        Phoenix.HTML.html_escape(content)
-      nil ->
-        ""
-      _ ->
-        content |> to_string() |> Phoenix.HTML.html_escape()
-    end
-  end
-
   defp safe_to_string({:safe, content}), do: content
   defp safe_to_string(content) when is_binary(content), do: content
   defp safe_to_string(content), do: to_string(content)
@@ -4416,33 +2588,4 @@ end
       _ -> "Section"
     end
   end
-
-  defp safe_text_content(content) do
-    case content do
-      {:safe, html_content} when is_binary(html_content) ->
-        # Strip HTML tags and escape
-        html_content |> strip_html_tags() |> Phoenix.HTML.html_escape()
-      content when is_binary(content) ->
-        Phoenix.HTML.html_escape(content)
-      nil ->
-        ""
-      _ ->
-        content |> to_string() |> Phoenix.HTML.html_escape()
-    end
-  end
-
-  defp strip_html_tags(html) when is_binary(html) do
-    html
-    |> String.replace(~r/<[^>]*>/, "")
-    |> String.replace(~r/&nbsp;/, " ")
-    |> String.replace(~r/&amp;/, "&")
-    |> String.replace(~r/&lt;/, "<")
-    |> String.replace(~r/&gt;/, ">")
-    |> String.replace(~r/&quot;/, "\"")
-    |> String.replace(~r/&#39;/, "'")
-    |> String.trim()
-  end
-
-  defp strip_html_tags(content), do: to_string(content)
-
 end

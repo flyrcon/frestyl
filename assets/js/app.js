@@ -8,6 +8,7 @@ import topbar from "../vendor/topbar"
 import { PublicPortfolioRenderer } from "./hooks/public_portfolio_renderer"
 import { DesignSettings } from "./hooks/design_settings"
 
+import "./section_modals.js"
 
 // Import Video Capture Hook
 import VideoCapture from "./hooks/video_capture"
@@ -862,9 +863,10 @@ let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("
 let Hooks = {
   // Video Recording
   VideoPlayer,
-  VideoCapture,
  ...PortfolioEditorFixedHooks,
   FileUpload,
+  VideoCapture: VideoCapture,
+  VideoRecorder: VideoCapture,  
 
   PublicPortfolioRenderer,
   DesignSettings,
