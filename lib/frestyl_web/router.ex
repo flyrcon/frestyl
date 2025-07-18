@@ -170,9 +170,6 @@ defmodule FrestylWeb.Router do
     live "/hub", PortfolioHubLiveEnhanced, :index
     live "/hub/:section", PortfolioHubLiveEnhanced, :section
 
-
-
-
       # Studio routes
     live "/studio", StudioLive.Index, :index
     live "/studio/:slug", StudioLive.Show, :show
@@ -184,6 +181,24 @@ defmodule FrestylWeb.Router do
     live "/lab/story-engine", LabLive.StoryEngine, :index
     live "/lab/templates", LabLive.Templates, :index
     live "/lab/experiments", LabLive.Experiments, :index
+
+
+    # Main calendar interface
+    live "/calendar", CalendarLive, :index
+    live "/calendar/:view", CalendarLive, :index
+
+    # Calendar management
+    live "/calendar/event/:id", CalendarEventLive, :show
+    live "/calendar/event/:id/edit", CalendarEventLive, :edit
+    live "/calendar/events/new", CalendarEventLive, :new
+
+    # Calendar integrations
+    live "/calendar/integrations", CalendarIntegrationsLive, :index
+    live "/calendar/integrations/new", CalendarIntegrationsLive, :new
+
+    # Calendar settings
+    live "/calendar/settings", CalendarSettingsLive, :index
+
 
     # Portfolio dashboard route
     get "/portfolios/dashboard", PortfolioController, :dashboard
@@ -202,10 +217,9 @@ defmodule FrestylWeb.Router do
 
     # Generic routes LAST
     live "/portfolios/:id", PortfolioLive.Show, :show
-    live "/portfolios/:id/edit-legacy", PortfolioLive.Edit, :edit
-    live "/portfolios/:id/edit_dynamic", PortfolioLive.DynamicCardPortfolioEditor, :edit
-    live "/portfolios/:id/edit_fixed", PortfolioLive.PortfolioEditorFixed, :edit
-    live "/portfolios/:id/edit", PortfolioLive.PortfolioEditor, :edit
+    live "/portfolios/:id/edit_legacy", PortfolioLive.PortfolioEditor, :edit
+    live "/portfolios/:id/edit", PortfolioLive.PortfolioEditorFixed, :edit
+
     live "/portfolios/:id/enhance/:type", PortfolioLive.PortfolioEditor, :enhance
 
     live "/portfolios/:id/settings", PortfolioLive.Settings, :settings
@@ -534,10 +548,41 @@ defmodule FrestylWeb.Router do
     resources "/admin/metrics", AdminMetricsController, only: [:index]
   end
 
+    # API routes for calendar webhooks and sync
+  scope "/api/calendar", FrestylWeb.API do
+    pipe_through :api
+
+    # Webhook endpoints for external calendar providers
+    post "/webhooks/google", CalendarWebhookController, :google_webhook
+    post "/webhooks/microsoft", CalendarWebhookController, :microsoft_webhook
+
+    # Calendar sync endpoints
+    post "/sync/:integration_id", CalendarSyncController, :sync_calendar
+    get "/sync/:integration_id/status", CalendarSyncController, :sync_status
+  end
+
   scope "/api/webhooks", FrestylWeb do
    pipe_through :api
 
    post "/stripe", StripeWebhookController, :handle
+  end
+
+
+  # OAuth routes for calendar integrations
+  scope "/auth", FrestylWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    # Google Calendar OAuth
+    get "/google/calendar", CalendarOAuthController, :google_authorize
+    get "/google/calendar/callback", CalendarOAuthController, :google_callback
+
+    # Microsoft/Outlook OAuth
+    get "/microsoft/calendar", CalendarOAuthController, :microsoft_authorize
+    get "/microsoft/calendar/callback", CalendarOAuthController, :microsoft_callback
+
+    # Apple Calendar (if supported)
+    get "/apple/calendar", CalendarOAuthController, :apple_authorize
+    get "/apple/calendar/callback", CalendarOAuthController, :apple_callback
   end
 
     # ADD: Portfolio download routes (protected)

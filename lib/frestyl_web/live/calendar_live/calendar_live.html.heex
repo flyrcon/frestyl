@@ -1,0 +1,293 @@
+# lib/frestyl_web/live/calendar_live.html.heex
+<div class="min-h-screen bg-gray-50">
+  <!-- Calendar Header -->
+  <div class="bg-white border-b border-gray-200 px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center space-x-4">
+        <h1 class="text-2xl font-bold text-gray-900">Calendar</h1>
+        
+        <!-- Date Navigation -->
+        <div class="flex items-center space-x-2">
+          <button phx-click="navigate_date" phx-value-direction="prev"
+                  class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          
+          <h2 class="text-lg font-semibold text-gray-700 min-w-[200px] text-center">
+            <%= format_date_header(@current_date, @current_view) %>
+          </h2>
+          
+          <button phx-click="navigate_date" phx-value-direction="next"
+                  class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Today Button -->
+        <button phx-click="navigate_date" phx-value-direction="today"
+                class="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+          Today
+        </button>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <!-- View Toggle -->
+        <div class="flex bg-gray-100 rounded-lg p-1">
+          <%= for view <- ["month", "week", "day", "list"] do %>
+            <button phx-click="change_view" phx-value-view={view}
+                    class={[
+                      "px-3 py-1 text-sm font-medium rounded-md transition-colors",
+                      if(@current_view == view, do: "bg-white text-gray-900 shadow-sm", else: "text-gray-500 hover:text-gray-700")
+                    ]}>
+              <%= String.capitalize(view) %>
+            </button>
+          <% end %>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center space-x-2">
+          <!-- Refresh -->
+          <button phx-click="refresh_calendar"
+                  class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </button>
+
+          <!-- Create Event (if permitted) -->
+          <%= if @calendar_permissions.can_create do %>
+            <button phx-click="create_event"
+                    class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              New Event
+            </button>
+          <% else %>
+            <div class="relative group">
+              <button disabled
+                      class="inline-flex items-center px-4 py-2 bg-gray-300 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                New Event
+              </button>
+              <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-sm text-white bg-gray-900 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                Upgrade to Creator to create events
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex">
+    <!-- Sidebar -->
+    <div class="w-80 bg-white border-r border-gray-200 p-6">
+      <!-- Calendar Integrations -->
+      <div class="mb-8">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Calendar Integrations</h3>
+        
+        <%= if length(@integrations) > 0 do %>
+          <div class="space-y-2">
+            <%= for integration <- @integrations do %>
+              <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div class="flex items-center">
+                  <div class={[
+                    "w-3 h-3 rounded-full mr-3",
+                    if(integration.sync_enabled, do: "bg-green-500", else: "bg-gray-400")
+                  ]}></div>
+                  <div>
+                    <p class="text-sm font-medium text-gray-900"><%= integration.calendar_name %></p>
+                    <p class="text-xs text-gray-500"><%= String.capitalize(integration.provider) %></p>
+                  </div>
+                </div>
+                <button class="text-gray-400 hover:text-gray-600">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  </svg>
+                </button>
+              </div>
+            <% end %>
+          </div>
+        <% else %>
+          <div class="text-center py-4">
+            <svg class="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            <p class="text-sm text-gray-500 mb-3">No calendar integrations</p>
+            
+            <%= if @calendar_permissions.can_integrate do %>
+              <div class="space-y-2">
+                <button phx-click="setup_integration" phx-value-provider="google"
+                        class="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  <img src="/images/google-calendar.png" alt="Google" class="w-4 h-4 mr-2">
+                  Connect Google Calendar
+                </button>
+                <button phx-click="setup_integration" phx-value-provider="outlook"
+                        class="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  <img src="/images/outlook.png" alt="Outlook" class="w-4 h-4 mr-2">
+                  Connect Outlook
+                </button>
+              </div>
+            <% else %>
+              <p class="text-xs text-gray-400">Upgrade to Creator to connect external calendars</p>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Event Filters -->
+      <div class="mb-8">
+        <h3 class="text-sm font-semibold text-gray-900 mb-4">Event Types</h3>
+        <div class="space-y-2">
+          <%= for event_type <- @filter_options[:event_types] do %>
+            <label class="flex items-center">
+              <input type="checkbox" 
+                     phx-click="toggle_filter"
+                     phx-value-filter="event_type"
+                     phx-value-value={event_type.value}
+                     checked={event_type.value in Map.get(@active_filters, "event_types", [])}
+                     class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+              <span class="ml-3 text-sm text-gray-700">
+                <%= event_type.icon %> <%= event_type.label %>
+              </span>
+            </label>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Quick Stats (for paid tiers) -->
+      <%= if @calendar_permissions.can_see_analytics do %>
+        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
+          <h3 class="text-sm font-semibold text-gray-900 mb-3">This Month</h3>
+          <div class="space-y-2">
+            <div class="flex justify-between">
+              <span class="text-sm text-gray-600">Total Events</span>
+              <span class="text-sm font-semibold text-gray-900"><%= length(@events) %></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm text-gray-600">Bookings</span>
+              <span class="text-sm font-semibold text-gray-900">
+                <%= Enum.count(@events, &(&1.event_type == "service_booking")) %>
+              </span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sm text-gray-600">Broadcasts</span>
+              <span class="text-sm font-semibold text-gray-900">
+                <%= Enum.count(@events, &(&1.event_type == "broadcast")) %>
+              </span>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+
+    <!-- Main Calendar Area -->
+    <div class="flex-1 p-6">
+      <%= if @loading do %>
+        <div class="flex items-center justify-center h-64">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      <% else %>
+        <%= case @current_view do %>
+          <% "month" -> %>
+            <.month_view events={@events} current_date={@current_date} />
+          <% "week" -> %>
+            <.week_view events={@events} current_date={@current_date} />
+          <% "day" -> %>
+            <.day_view events={@events} current_date={@current_date} />
+          <% "list" -> %>
+            <.list_view events={@events} current_date={@current_date} />
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <!-- Event Modal -->
+  <%= if @show_event_modal and @selected_event do %>
+    <.event_modal event={@selected_event} permissions={@calendar_permissions} />
+  <% end %>
+
+  <!-- Create Event Modal -->
+  <%= if @show_create_modal do %>
+    <.create_event_modal permissions={@calendar_permissions} />
+  <% end %>
+</div>
+
+<!-- Calendar View Components -->
+<div class="hidden">
+  <!-- Month View Component -->
+  <div class="month-view">
+    <div class="grid grid-cols-7 gap-0 border border-gray-200 rounded-lg overflow-hidden">
+      <!-- Day Headers -->
+      <%= for day <- ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] do %>
+        <div class="bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-700 text-center border-r border-gray-200 last:border-r-0">
+          <%= day %>
+        </div>
+      <% end %>
+      
+      <!-- Calendar Days -->
+      <%= for week <- get_calendar_weeks(@current_date) do %>
+        <%= for day <- week do %>
+          <div class={[
+            "min-h-[120px] p-2 border-r border-b border-gray-200 last:border-r-0",
+            if(Date.month(day) != Date.month(@current_date), do: "bg-gray-50", else: "bg-white"),
+            if(day == Date.utc_today(), do: "bg-blue-50")
+          ]}>
+            <div class={[
+              "text-sm font-medium mb-2",
+              if(day == Date.utc_today(), do: "text-blue-600", else: "text-gray-900")
+            ]}>
+              <%= day.day %>
+            </div>
+            
+            <!-- Events for this day -->
+            <%= for event <- get_events_for_day(@events, day) do %>
+              <div phx-click="edit_event" phx-value-id={event.id}
+                   class={[
+                     "text-xs px-2 py-1 rounded mb-1 cursor-pointer truncate",
+                     get_event_color_class(event.event_type)
+                   ]}>
+                <%= event.title %>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+</div>
+
+<!-- Helper Functions (these would be in a separate helper module) -->
+<script>
+  // Calendar helper functions would go here
+  function formatDateHeader(date, view) {
+    // Implementation for date header formatting
+  }
+  
+  function getCalendarWeeks(date) {
+    // Implementation for getting calendar weeks
+  }
+  
+  function getEventsForDay(events, date) {
+    // Implementation for filtering events by day
+  }
+  
+  function getEventColorClass(eventType) {
+    const colors = {
+      'service_booking': 'bg-green-100 text-green-800',
+      'broadcast': 'bg-purple-100 text-purple-800', 
+      'channel_event': 'bg-blue-100 text-blue-800',
+      'collaboration': 'bg-yellow-100 text-yellow-800',
+      'personal': 'bg-gray-100 text-gray-800'
+    };
+    return colors[eventType] || 'bg-gray-100 text-gray-800';
+  }
+</script>

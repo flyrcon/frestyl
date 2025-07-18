@@ -1719,7 +1719,6 @@ end
     end
   end
 
-  # Helper function to format section type names
   defp format_section_type(section_type) do
     case safe_capitalize(section_type) do
       "Hero" -> "Hero Section"
@@ -2193,128 +2192,7 @@ end
     """
   end
 
-  defp convert_section_to_content_blocks(section, position) do
-    base_block = %{
-      id: section.id,
-      portfolio_id: section.portfolio_id,
-      section_id: section.id,
-      position: position,
-      created_at: section.inserted_at || DateTime.utc_now(),
-      updated_at: section.updated_at || DateTime.utc_now()
-    }
 
-    case section.section_type do
-      "hero" ->
-        [Map.merge(base_block, %{
-          block_type: :hero_card,
-          content_data: %{
-            title: section.title,
-            subtitle: section.content,
-            background_image: get_section_media_url(section, :background),
-            call_to_action: extract_cta_from_section(section)
-          }
-        })]
-
-      "about" ->
-        [Map.merge(base_block, %{
-          block_type: :about_card,
-          content_data: %{
-            title: section.title,
-            content: section.content,
-            profile_image: get_section_media_url(section, :profile),
-            highlights: extract_highlights_from_section(section)
-          }
-        })]
-
-      "skills" ->
-        skills = extract_skills_from_section(section)
-        Enum.with_index(skills, fn skill, idx ->
-          Map.merge(base_block, %{
-            id: "#{section.id}_skill_#{idx}",
-            block_type: :skill_card,
-            position: position + (idx * 0.1),
-            content_data: %{
-              name: skill.name,
-              proficiency: skill.level,
-              category: skill.category,
-              description: skill.description
-            }
-          })
-        end)
-
-      "portfolio" ->
-        projects = extract_projects_from_section(section)
-        Enum.with_index(projects, fn project, idx ->
-          Map.merge(base_block, %{
-            id: "#{section.id}_project_#{idx}",
-            block_type: :project_card,
-            position: position + (idx * 0.1),
-            content_data: %{
-              title: project.title,
-              description: project.description,
-              image_url: project.image_url,
-              project_url: project.url,
-              technologies: project.technologies || []
-            }
-          })
-        end)
-
-      "services" ->
-        services = extract_services_from_section(section)
-        Enum.with_index(services, fn service, idx ->
-          Map.merge(base_block, %{
-            id: "#{section.id}_service_#{idx}",
-            block_type: :service_card,
-            position: position + (idx * 0.1),
-            content_data: %{
-              title: service.title,
-              description: service.description,
-              price: service.price,
-              features: service.features || [],
-              booking_enabled: service.booking_enabled || false
-            }
-          })
-        end)
-
-      "testimonials" ->
-        testimonials = extract_testimonials_from_section(section)
-        Enum.with_index(testimonials, fn testimonial, idx ->
-          Map.merge(base_block, %{
-            id: "#{section.id}_testimonial_#{idx}",
-            block_type: :testimonial_card,
-            position: position + (idx * 0.1),
-            content_data: %{
-              content: testimonial.content,
-              author: testimonial.author,
-              title: testimonial.title,
-              avatar_url: testimonial.avatar_url,
-              rating: testimonial.rating
-            }
-          })
-        end)
-
-      "contact" ->
-        [Map.merge(base_block, %{
-          block_type: :contact_card,
-          content_data: %{
-            title: section.title,
-            content: section.content,
-            contact_methods: extract_contact_methods_from_section(section),
-            show_form: true
-          }
-        })]
-
-      _ ->
-        # Default text block for any other section type
-        [Map.merge(base_block, %{
-          block_type: :text_card,
-          content_data: %{
-            title: section.title,
-            content: section.content
-          }
-        })]
-    end
-  end
 
   defp has_hero_section?(sections) do
     Enum.any?(sections, &(&1.section_type == "hero"))
@@ -2388,19 +2266,6 @@ end
   defp format_video_duration(_), do: "0:00"
 
 
-
-
-  defp organize_content_into_layout_zones(content_blocks, portfolio) do
-    layout_category = determine_portfolio_category(portfolio)
-    base_zones = get_base_zones_for_category(layout_category)
-
-    Enum.reduce(content_blocks, base_zones, fn block, zones ->
-      zone_name = determine_zone_for_block(block.block_type, layout_category)
-      current_blocks = Map.get(zones, zone_name, [])
-      Map.put(zones, zone_name, current_blocks ++ [block])
-    end)
-  end
-
   defp determine_portfolio_category(portfolio) do
     customization = portfolio.customization || %{}
     layout = Map.get(customization, "layout", portfolio.theme)
@@ -2470,16 +2335,7 @@ end
     portfolio.user_id == current_user.id
   end
 
-  # Helper functions for section data extraction
-  defp determine_layout_category(portfolio) do
-    case portfolio.theme do
-      theme when theme in ["professional_service", "consultant", "freelancer"] -> :service_provider
-      theme when theme in ["creative", "designer", "artist", "photographer"] -> :creative_showcase
-      theme when theme in ["developer", "engineer", "tech", "technical"] -> :technical_expert
-      theme when theme in ["creator", "influencer", "content", "media"] -> :content_creator
-      _ -> :corporate_executive
-    end
-  end
+
 
   defp filter_blocks_by_type(content_blocks, types) do
     Enum.filter(content_blocks, fn block ->

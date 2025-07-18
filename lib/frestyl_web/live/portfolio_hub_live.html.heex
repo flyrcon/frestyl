@@ -143,6 +143,19 @@
           <% else %>
             <%= render_locked_section_content(assigns, "creator_lab") %>
           <% end %>
+
+        <% "calendar" -> %>
+          <%= if is_section_available?(@hub_config, "calendar") do %>
+            <.live_component 
+              module={FrestylWeb.PortfolioHubLive.CalendarSectionComponent}
+              id="calendar_section"
+              user={@user}
+              account={@account}
+              user_tier={@user_tier}
+              calendar_data={@calendar_data} />
+          <% else %>
+            <%= render_locked_section_content(assigns, "calendar") %>
+          <% end %>
           
         <% "service_dashboard" -> %>
           <%= if is_section_available?(@hub_config, "service_dashboard") do %>

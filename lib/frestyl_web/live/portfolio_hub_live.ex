@@ -6,7 +6,8 @@ defmodule FrestylWeb.PortfolioHubLive do
   import Phoenix.LiveView.Helpers
   import Phoenix.Component
 
-  alias Frestyl.{Accounts, Portfolios, Channels, Billing, Lab, Features, Analytics, Studio, Services, Revenue, Sessions}
+  alias Frestyl.{Accounts, Calendar, Portfolios, Channels, Billing, Lab, Features, Analytics, Studio, Services, Revenue, Sessions}
+  alias Frestyl.Features.TierManager
   alias Frestyl.Studio.PortfolioCollaborationManager
   alias FrestylWeb.PortfolioHubLive.{Helpers, EnhancementEngine, Components}
 
@@ -18,8 +19,9 @@ defmodule FrestylWeb.PortfolioHubLive do
     IO.puts("=== USER LOADED ===")
 
     accounts = Accounts.list_user_accounts(user.id)
-    current_account = List.first(accounts) || %{subscription_tier: "personal"}
-    account = current_account  # Keep existing variable for backward compatibility
+    current_account = List.first(accounts) || user  # Use user as fallback
+    account = current_account
+    user_tier = TierManager.get_user_tier(user)
 
     # ============================================================================
     # CORE DATA LOADING (Existing functionality maintained)
@@ -35,6 +37,8 @@ defmodule FrestylWeb.PortfolioHubLive do
     overview = safe_get_user_overview(user.id)
     recent_activity = get_enhanced_activity_feed(user.id)
     collaboration_requests = Helpers.get_collaboration_requests(user.id)
+
+    calendar_data = load_calendar_data(user, account)
 
     # Onboarding state (existing)
     is_first_visit = check_first_visit(user, params)
@@ -77,6 +81,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:limits, limits)
       |> assign(:hub_config, hub_config)
       |> assign(:quick_actions, get_quick_actions(socket.assigns.current_user))
+      |> assign(:user_tier, user_tier)
 
       # ======== PORTFOLIO STUDIO SECTION ========
       |> assign(:portfolios, portfolios)
@@ -198,6 +203,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:mobile_section, "portfolio") # ADD THIS LINE
       |> assign(:mobile_sidebar_open, false)  # ADD THIS LINE (if needed)
       |> assign(:discovery_active_tab, "recommendations")
+      |> assign(:calendar_data, calendar_data)
       |> assign(:active_section, determine_default_section(account.subscription_tier))
 
     {:ok, socket}
@@ -531,6 +537,69 @@ defmodule FrestylWeb.PortfolioHubLive do
     new_section = if current_section == section, do: nil, else: section
 
     {:noreply, assign(socket, :active_collaboration_section, new_section)}
+  end
+
+    @impl true
+  def handle_params(%{"section" => section} = params, _url, socket) do
+    # Handle calendar section navigation
+    socket = case section do
+      "calendar" ->
+        calendar_data = load_calendar_data(socket.assigns.user, socket.assigns.account)
+        assign(socket, :calendar_data, calendar_data)
+      _ ->
+        socket
+    end
+
+    {:noreply, assign(socket, :active_section, section)}
+  end
+
+  def handle_params(_params, _url, socket) do
+    {:noreply, socket}
+  end
+
+    # ============================================================================
+  # CALENDAR EVENT HANDLERS
+  # ============================================================================
+
+  @impl true
+  def handle_event("switch_to_calendar", _params, socket) do
+    {:noreply, push_patch(socket, to: ~p"/hub?section=calendar")}
+  end
+
+  @impl true
+  def handle_event("create_calendar_event", params, socket) do
+    if socket.assigns.calendar_data.permissions.can_create do
+      # Delegate to calendar creation logic
+      send_update(CalendarSectionComponent,
+        id: "calendar_section",
+        action: :create_event,
+        params: params
+      )
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Upgrade to Creator to create calendar events")}
+    end
+  end
+
+  @impl true
+  def handle_event("quick_calendar_action", %{"action" => action} = params, socket) do
+    case action do
+      "view_today" ->
+        today_events = get_today_events(socket.assigns.user, socket.assigns.account)
+        {:noreply, assign(socket, :today_events, today_events)}
+
+      "sync_calendars" ->
+        if socket.assigns.calendar_data.permissions.can_integrate do
+          # Trigger calendar sync
+          Calendar.sync_user_calendars(socket.assigns.user.id)
+          {:noreply, put_flash(socket, :info, "Calendar sync initiated")}
+        else
+          {:noreply, put_flash(socket, :error, "Upgrade to Creator for calendar sync")}
+        end
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
 
@@ -982,99 +1051,108 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-  defp get_story_lab_templates("personal") do
-    [
-      %{
-        id: "personal_journey",
-        name: "Personal Journey",
-        description: "Tell your life story with chapters and audio",
-        icon: "📖",
-        estimated_time: "30 minutes",
-        features: ["Basic chapters", "Audio recording", "Simple timeline"]
-      },
-      %{
-        id: "simple_portfolio",
-        name: "Story Portfolio",
-        description: "Portfolio with narrative structure",
-        icon: "💼",
-        estimated_time: "45 minutes",
-        features: ["Project stories", "Work narrative", "Basic media"]
-      },
-      %{
-        id: "basic_lyrics",
-        name: "Lyrics & Audio",
-        description: "Simple lyrics with audio sync",
-        icon: "🎵",
-        estimated_time: "20 minutes",
-        features: ["Lyrics editor", "Audio sync", "Basic recording"]
-      }
-    ]
+  defp get_story_lab_templates(tier) do
+    normalized_tier = TierManager.normalize_tier(tier)
+
+    case normalized_tier do
+      "personal" ->
+        [
+          %{
+            id: "personal_journey",
+            name: "Personal Journey",
+            description: "Tell your life story with chapters and audio",
+            icon: "📖",
+            estimated_time: "30 minutes",
+            features: ["Basic chapters", "Audio recording", "Simple timeline"]
+          },
+          %{
+            id: "simple_portfolio",
+            name: "Story Portfolio",
+            description: "Portfolio with narrative structure",
+            icon: "💼",
+            estimated_time: "45 minutes",
+            features: ["Project stories", "Work narrative", "Basic media"]
+          },
+          %{
+            id: "basic_lyrics",
+            name: "Lyrics & Audio",
+            description: "Simple lyrics with audio sync",
+            icon: "🎵",
+            estimated_time: "20 minutes",
+            features: ["Lyrics editor", "Audio sync", "Basic recording"]
+          }
+        ]
+
+      tier when tier in ["creator", "professional", "enterprise"] ->
+        get_story_lab_templates("personal") ++ [
+          %{
+            id: "hero_journey",
+            name: "Hero's Journey",
+            description: "Advanced narrative with multimedia",
+            icon: "🚀",
+            estimated_time: "2 hours",
+            features: ["Advanced templates", "Beat detection", "Collaboration"],
+            requires_tier: "creator"
+          },
+          %{
+            id: "case_study",
+            name: "Interactive Case Study",
+            description: "Problem-solution with demos",
+            icon: "🔬",
+            estimated_time: "90 minutes",
+            features: ["Interactive elements", "Video embedding", "Analytics"],
+            requires_tier: "creator"
+          },
+          %{
+            id: "audiobook",
+            name: "Audiobook Production",
+            description: "Professional audiobook with script sync",
+            icon: "🎙️",
+            estimated_time: "3+ hours",
+            features: ["Teleprompter", "Advanced audio", "Chapter management"],
+            requires_tier: "creator"
+          }
+        ]
+    end
   end
 
-  defp get_story_lab_templates(tier) when tier in ["creator", "professional", "enterprise"] do
-    get_story_lab_templates("personal") ++ [
-      %{
-        id: "hero_journey",
-        name: "Hero's Journey",
-        description: "Advanced narrative with multimedia",
-        icon: "🚀",
-        estimated_time: "2 hours",
-        features: ["Advanced templates", "Beat detection", "Collaboration"],
-        requires_tier: "creator"
-      },
-      %{
-        id: "case_study",
-        name: "Interactive Case Study",
-        description: "Problem-solution with demos",
-        icon: "🔬",
-        estimated_time: "90 minutes",
-        features: ["Interactive elements", "Video embedding", "Analytics"],
-        requires_tier: "creator"
-      },
-      %{
-        id: "audiobook",
-        name: "Audiobook Production",
-        description: "Professional audiobook with script sync",
-        icon: "🎙️",
-        estimated_time: "3+ hours",
-        features: ["Teleprompter", "Advanced audio", "Chapter management"],
-        requires_tier: "creator"
-      }
-    ]
+  defp get_story_tier_limits(tier) do
+    normalized_tier = TierManager.normalize_tier(tier)
+
+    case normalized_tier do
+      "personal" ->
+        %{
+          max_stories: 2,
+          max_chapters_per_story: 5,
+          recording_minutes_limit: 30,
+          beat_detection_enabled: false,
+          teleprompter_mode: false,
+          collaboration_enabled: false,
+          advanced_templates: false,
+          ai_suggestions: false,
+          unlimited_storage: false
+        }
+
+      tier when tier in ["creator", "professional", "enterprise"] ->
+        %{
+          max_stories: if(tier == "creator", do: 10, else: -1),
+          max_chapters_per_story: 50,
+          recording_minutes_limit: -1,  # Unlimited
+          beat_detection_enabled: true,
+          teleprompter_mode: true,
+          collaboration_enabled: true,
+          advanced_templates: true,
+          ai_suggestions: true,
+          unlimited_storage: true
+        }
+    end
   end
 
-  defp get_story_tier_limits("personal") do
-    %{
-      max_stories: 2,
-      max_chapters_per_story: 5,
-      recording_minutes_limit: 30,
-      beat_detection_enabled: false,
-      teleprompter_mode: false,
-      collaboration_enabled: false,
-      advanced_templates: false,
-      ai_suggestions: false,
-      unlimited_storage: false
-    }
-  end
-
-  defp get_story_tier_limits(tier) when tier in ["creator", "professional", "enterprise"] do
-    %{
-      max_stories: if(tier == "creator", do: 10, else: -1),
-      max_chapters_per_story: 50,
-      recording_minutes_limit: -1,  # Unlimited
-      beat_detection_enabled: true,
-      teleprompter_mode: true,
-      collaboration_enabled: true,
-      advanced_templates: true,
-      ai_suggestions: true,
-      unlimited_storage: true
-    }
-  end
-
-  # Safe data loading functions
   defp safe_get_user_stories(user_id, tier) do
     try do
-      limit = case tier do
+      normalized_tier = TierManager.normalize_tier(tier)
+
+      limit = case normalized_tier do
         "personal" -> 2
         "creator" -> 10
         _ -> -1
@@ -1530,51 +1608,53 @@ defmodule FrestylWeb.PortfolioHubLive do
   # HUB CONFIGURATION BASED ON SUBSCRIPTION TIER
   # ============================================================================
 
+  defp configure_hub_for_subscription_fixed(tier) when is_atom(tier) do
+    configure_hub_for_subscription_fixed(to_string(tier))
+  end
+
   defp configure_hub_for_subscription_fixed(tier) do
-    # Always show all 8 sections in navigation (added story_lab)
+    # Always show all 9 sections in navigation
     all_sections = [
       "portfolio_studio",
-      "story_lab",        # NEW - Story Lab section
+      "story_lab",
       "analytics",
       "collaboration_hub",
       "community_channels",
       "creator_lab",
       "service_dashboard",
-      "revenue_center"
+      "revenue_center",
+      "calendar"
     ]
 
     # Define primary and secondary sections for navigation structure
     {primary_sections, secondary_sections} = case tier do
       "personal" ->
-        {["portfolio_studio", "story_lab"],  # Story Lab prominent for Personal users
+        {["portfolio_studio", "story_lab", "calendar"],
         ["analytics", "collaboration_hub", "community_channels", "creator_lab", "service_dashboard", "revenue_center"]}
 
       "creator" ->
-        {["portfolio_studio", "story_lab", "analytics", "collaboration_hub", "creator_lab"],
+        {["portfolio_studio", "story_lab", "calendar", "analytics", "collaboration_hub", "creator_lab"],
         ["community_channels", "service_dashboard", "revenue_center"]}
 
       "professional" ->
-        {["portfolio_studio", "story_lab", "analytics", "collaboration_hub", "service_dashboard", "revenue_center"],
+        {["portfolio_studio", "story_lab", "calendar", "analytics", "collaboration_hub", "service_dashboard", "revenue_center"],
         ["community_channels", "creator_lab"]}
 
       "enterprise" ->
         {all_sections, []}
 
       _ ->
-        {["portfolio_studio", "story_lab"],
+        {["portfolio_studio", "story_lab", "calendar"],
         ["analytics", "collaboration_hub", "community_channels", "creator_lab", "service_dashboard", "revenue_center"]}
     end
 
     case tier do
       "personal" ->
         %{
-          # Navigation structure
           primary_sections: primary_sections,
           secondary_sections: secondary_sections,
           all_sections: all_sections,
-
-          # Section states
-          available_sections: ["portfolio_studio", "story_lab", "collaboration_hub", "community_channels"],
+          available_sections: ["portfolio_studio", "story_lab", "collaboration_hub", "community_channels", "calendar"],
           locked_sections: ["analytics", "creator_lab", "service_dashboard", "revenue_center"],
           upgrade_prompts: %{
             "analytics" => %{tier: "creator", message: "Upgrade to Creator to access detailed analytics"},
@@ -1582,12 +1662,10 @@ defmodule FrestylWeb.PortfolioHubLive do
             "service_dashboard" => %{tier: "creator", message: "Manage bookings and services with Creator tier"},
             "revenue_center" => %{tier: "professional", message: "Track revenue and earnings with Professional tier"}
           },
-
-          # Limits and features
           max_portfolios: 3,
-          max_stories: 2,  # NEW - Story limits
+          max_stories: 2,
           collaboration_limits: %{max_active: 2},
-          story_lab_limits: %{  # NEW - Story Lab specific limits
+          story_lab_limits: %{
             max_stories: 2,
             max_chapters_per_story: 5,
             recording_minutes_limit: 30,
@@ -1599,33 +1677,72 @@ defmodule FrestylWeb.PortfolioHubLive do
 
       "creator" ->
         %{
-          # Navigation structure
           primary_sections: primary_sections,
           secondary_sections: secondary_sections,
           all_sections: all_sections,
-
-          # Section states
-          available_sections: ["portfolio_studio", "story_lab", "analytics", "collaboration_hub", "community_channels", "creator_lab", "service_dashboard"],
+          available_sections: ["portfolio_studio", "story_lab", "analytics", "collaboration_hub", "community_channels", "calendar", "creator_lab", "service_dashboard"],
           locked_sections: ["revenue_center"],
           upgrade_prompts: %{
             "revenue_center" => %{tier: "professional", message: "Advanced revenue tracking requires Professional tier"}
           },
-
-          # Limits and features
           max_portfolios: 10,
-          max_stories: 10,  # NEW - Story limits
+          max_stories: 10,
           collaboration_limits: %{max_active: 10},
-          story_lab_limits: %{  # NEW - Full Story Lab access
+          story_lab_limits: %{
             max_stories: 10,
             max_chapters_per_story: 50,
-            recording_minutes_limit: -1,  # Unlimited
+            recording_minutes_limit: -1,
             templates_available: "all",
             advanced_features: true
           },
           feature_focus: "service_offering"
         }
 
-      # Similar updates for "professional" and "enterprise" tiers...
+      "professional" ->
+        %{
+          primary_sections: primary_sections,
+          secondary_sections: secondary_sections,
+          all_sections: all_sections,
+          available_sections: all_sections,
+          locked_sections: [],
+          upgrade_prompts: %{},
+          max_portfolios: -1,
+          max_stories: -1,
+          collaboration_limits: %{max_active: -1},
+          story_lab_limits: %{
+            max_stories: -1,
+            max_chapters_per_story: -1,
+            recording_minutes_limit: -1,
+            templates_available: "all",
+            advanced_features: true
+          },
+          feature_focus: "revenue_optimization"
+        }
+
+      "enterprise" ->
+        %{
+          primary_sections: primary_sections,
+          secondary_sections: secondary_sections,
+          all_sections: all_sections,
+          available_sections: all_sections,
+          locked_sections: [],
+          upgrade_prompts: %{},
+          max_portfolios: -1,
+          max_stories: -1,
+          collaboration_limits: %{max_active: -1},
+          story_lab_limits: %{
+            max_stories: -1,
+            max_chapters_per_story: -1,
+            recording_minutes_limit: -1,
+            templates_available: "all",
+            advanced_features: true
+          },
+          feature_focus: "team_management",
+          enterprise_features: ["white_label", "api_access", "custom_domains"]
+        }
+
+      _ ->
+        configure_hub_for_subscription_fixed("personal")
     end
   end
 
@@ -1882,6 +1999,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       "collaboration_hub" -> "🤝"
       "community_channels" -> "💬"
       "creator_lab" -> "🧪"
+      "calendar" -> "📅"
       "service_dashboard" -> "⚡"
       "revenue_center" -> "💰"
       _ -> "📁"
@@ -2493,6 +2611,16 @@ defmodule FrestylWeb.PortfolioHubLive do
       true ->
         {:noreply, put_flash(socket, :error, "Unable to access #{humanize_section_name(section)}")}
     end
+  end
+
+  def handle_event("switch_section", %{"section" => "calendar"}, socket) do
+    # Refresh calendar data when switching to calendar tab
+    calendar_data = load_calendar_data(socket.assigns.user, socket.assigns.account)
+
+    {:noreply,
+    socket
+    |> assign(:active_section, "calendar")
+    |> assign(:calendar_data, calendar_data)}
   end
 
   # Mobile Menu Toggle
@@ -3556,15 +3684,6 @@ defmodule FrestylWeb.PortfolioHubLive do
 
       true ->
         "text-gray-700 hover:bg-gray-50"
-    end
-  end
-
-  defp get_tab_tooltip(hub_config, section) do
-    if is_section_locked?(hub_config, section) do
-      upgrade_info = get_upgrade_prompt_for_section(hub_config, section)
-      "Upgrade to #{String.capitalize(upgrade_info.tier)} required"
-    else
-      nil
     end
   end
 
@@ -6407,6 +6526,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       "collaboration_hub" -> "Collaboration Hub"
       "community_channels" -> "Community Channels"
       "creator_lab" -> "Creator Lab"
+      "calendar" -> "Calendar"
       "service_dashboard" -> "Service Dashboard"
       "revenue_center" -> "Revenue Center"
       _ -> String.replace(section, "_", " ") |> String.split(" ") |> Enum.map(&String.capitalize/1) |> Enum.join(" ")
@@ -7978,6 +8098,118 @@ defmodule FrestylWeb.PortfolioHubLive do
     |> Map.put("max_viewers", limits.max_viewers_per_broadcast)
     |> Map.put("max_duration_minutes", limits.max_duration_minutes)
     |> Map.put("recording_enabled", limits.recording_enabled)
+  end
+
+
+    # ============================================================================
+  # CALENDAR DATA LOADING
+  # ============================================================================
+
+  defp load_calendar_data(user, account) do
+    tier = TierManager.get_user_tier(user)
+    permissions = get_calendar_permissions(tier)
+
+    # Get upcoming events (next 7 days)
+    {start_date, end_date} = {Date.utc_today(), Date.add(Date.utc_today(), 7)}
+    upcoming_events = Calendar.get_user_visible_events(user, account,
+      start_date: start_date,
+      end_date: end_date
+    )
+
+    # Get today's events
+    today_events = Calendar.get_user_visible_events(user, account,
+      start_date: Date.utc_today(),
+      end_date: Date.utc_today()
+    )
+
+    # Get calendar integrations
+    integrations = Calendar.get_user_integrations(user.id)
+
+    # Get quick stats
+    stats = get_calendar_stats(upcoming_events, permissions)
+
+    %{
+      permissions: permissions,
+      upcoming_events: upcoming_events,
+      today_events: today_events,
+      integrations: integrations,
+      stats: stats,
+      sync_status: get_sync_status(integrations)
+    }
+  end
+
+  defp get_calendar_permissions(tier) do
+    case tier do
+      "personal" ->
+        %{
+          can_create: false,
+          can_integrate: false,
+          can_see_analytics: false,
+          tier_name: "Personal",
+          upgrade_message: "Upgrade to Creator to create and manage calendar events"
+        }
+
+      "creator" ->
+        %{
+          can_create: true,
+          can_integrate: true,
+          can_see_analytics: true,
+          tier_name: "Creator",
+          upgrade_message: nil
+        }
+
+      tier when tier in ["professional", "enterprise"] ->
+        %{
+          can_create: true,
+          can_integrate: true,
+          can_see_analytics: true,
+          tier_name: String.capitalize(tier),
+          upgrade_message: nil
+        }
+    end
+  end
+
+  defp get_calendar_stats(events, permissions) do
+    if permissions.can_see_analytics do
+      %{
+        total_upcoming: length(events),
+        bookings_count: Enum.count(events, &(&1.event_type == "service_booking")),
+        broadcasts_count: Enum.count(events, &(&1.event_type == "broadcast")),
+        channel_events_count: Enum.count(events, &(&1.event_type == "channel_event"))
+      }
+    else
+      %{
+        total_upcoming: length(events),
+        visible_note: "Limited to channel events you belong to"
+      }
+    end
+  end
+
+  defp get_sync_status(integrations) do
+    if length(integrations) == 0 do
+      %{status: :no_integrations, message: "No calendar integrations"}
+    else
+      synced_count = Enum.count(integrations, &(&1.sync_enabled))
+      failed_count = Enum.count(integrations, fn i ->
+        length(i.sync_errors || []) > 0
+      end)
+
+      cond do
+        failed_count > 0 ->
+          %{status: :partial_sync, message: "#{failed_count} integration(s) need attention"}
+        synced_count == length(integrations) ->
+          %{status: :synced, message: "All calendars synced"}
+        true ->
+          %{status: :partial_sync, message: "#{synced_count}/#{length(integrations)} calendars synced"}
+      end
+    end
+  end
+
+  defp get_today_events(user, account) do
+    Calendar.get_user_visible_events(user, account,
+      start_date: Date.utc_today(),
+      end_date: Date.utc_today()
+    )
   end
 
   # ============================================================================

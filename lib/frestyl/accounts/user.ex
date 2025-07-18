@@ -29,12 +29,12 @@ defmodule Frestyl.Accounts.User do
     field :privacy_settings, :map, default: %{}
     field :timezone, :string
     field :preferences, :map, default: %{}
-    field :subscription_tier, :string
     field :website, :string
     field :social_links, :map, default: %{}
     field :last_active_at, :utc_datetime
     field :status, :string, default: "active"
     field :primary_account_type, Ecto.Enum, values: [:personal, :professional, :enterprise]
+    field :subscription_tier, Ecto.Enum, values: [:personal, :creator, :professional, :enterprise]
     field :onboarding_completed, :boolean, default: false
 
 
@@ -58,7 +58,7 @@ defmodule Frestyl.Accounts.User do
   @doc false
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [:name, :email, :primary_account_type, :username, :display_name, :bio, :avatar_url, :full_name, :website, :social_links, :timezone, :preferences, :privacy_settings, :onboarding_completed])
+    |> cast(attrs, [:name, :email, :primary_account_type, :username, :display_name, :bio, :avatar_url, :full_name, :website, :social_links, :timezone, :preferences, :privacy_settings, :onboarding_completed, :subscription_tier, :primary_account_type])
     |> validate_required([:email, :primary_account_type])
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/, message: "must have the @ sign and no spaces")
     |> validate_length(:email, max: 160)
@@ -223,6 +223,12 @@ defmodule Frestyl.Accounts.User do
       |> Map.put(to_string(key), value)
 
     {:ok, %{user | preferences: new_prefs}}
+  end
+
+  def subscription_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:subscription_tier])
+    |> validate_inclusion(:subscription_tier, [:personal, :creator, :professional, :enterprise])
   end
 
   # Role and permission helpers

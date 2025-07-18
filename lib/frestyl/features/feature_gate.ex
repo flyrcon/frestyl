@@ -44,6 +44,46 @@ defmodule Frestyl.Features.FeatureGate do
       {:collaborator_invite, count} ->
         check_collaborator_limit(limits, current_usage, count)
 
+      :calendar_view ->
+        # Everyone can view calendar - but content is filtered by tier
+        true
+
+      :calendar_create_event ->
+        check_calendar_create_access(user_tier, current_usage)
+
+      :calendar_edit_event ->
+        check_calendar_edit_access(user_tier, context)
+
+      :calendar_delete_event ->
+        check_calendar_delete_access(user_tier, context)
+
+      :calendar_external_integration ->
+        check_calendar_integration_access(user_tier, current_usage)
+
+      :calendar_sync ->
+        TierManager.feature_available?(user_tier, :calendar_sync)
+
+      :calendar_analytics ->
+        TierManager.feature_available?(user_tier, :calendar_analytics)
+
+      {:calendar_attendee_limit, count} ->
+        check_calendar_attendee_limit(user_tier, count)
+
+      {:calendar_event_visibility, visibility} ->
+        check_calendar_visibility_access(user_tier, visibility)
+
+      {:calendar_integration_count, count} ->
+        check_calendar_integration_limit(user_tier, count)
+
+      :calendar_recurring_events ->
+        check_calendar_recurring_access(user_tier)
+
+      :calendar_booking_payments ->
+        check_calendar_payment_access(user_tier)
+
+      :calendar_meeting_links ->
+        check_calendar_meeting_access(user_tier)
+
       :service_booking ->
         TierManager.feature_available?(user_tier, :service_booking)
 
@@ -259,6 +299,141 @@ defmodule Frestyl.Features.FeatureGate do
   end
 
   # ============================================================================
+  # CALENDAR FEATURE CHECKS
+  # ============================================================================
+
+  defp check_calendar_create_access(user_tier, current_usage) do
+    case user_tier do
+      "personal" ->
+        # Free tier cannot create events
+        false
+
+      "creator" ->
+        # Creator can create events with limits
+        monthly_events = Map.get(current_usage, :monthly_calendar_events, 0)
+        monthly_events < 50 # 50 events per month
+
+      tier when tier in ["professional", "enterprise"] ->
+        # Unlimited event creation
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp check_calendar_edit_access(user_tier, context) do
+    event = Map.get(context, :event)
+    user_id = Map.get(context, :user_id)
+
+    case user_tier do
+      "personal" ->
+        # Can only edit channel events they're organizer of
+        event && event.creator_id == user_id && event.event_type == "channel_event"
+
+      "creator" ->
+        # Can edit own events and events in their account
+        event && (event.creator_id == user_id || is_account_member?(event, user_id))
+
+      tier when tier in ["professional", "enterprise"] ->
+        # Can edit events in their account or events they organize
+        event && (event.creator_id == user_id || is_account_admin?(event, user_id))
+
+      _ ->
+        false
+    end
+  end
+
+  defp check_calendar_delete_access(user_tier, context) do
+    event = Map.get(context, :event)
+    user_id = Map.get(context, :user_id)
+
+    case user_tier do
+      "personal" ->
+        # Cannot delete events (read-only for free tier)
+        false
+
+      "creator" ->
+        # Can only delete own events
+        event && event.creator_id == user_id
+
+      tier when tier in ["professional", "enterprise"] ->
+        # Can delete own events or account events if admin
+        event && (event.creator_id == user_id || is_account_admin?(event, user_id))
+
+      _ ->
+        false
+    end
+  end
+
+  defp check_calendar_integration_access(user_tier, current_usage) do
+    case user_tier do
+      "personal" ->
+        false
+
+      "creator" ->
+        # Up to 3 integrations
+        integration_count = Map.get(current_usage, :calendar_integrations, 0)
+        integration_count < 3
+
+      tier when tier in ["professional", "enterprise"] ->
+        # Unlimited integrations
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp check_calendar_attendee_limit(user_tier, attendee_count) do
+    limits = get_calendar_limits(user_tier)
+    max_attendees = Map.get(limits, :max_attendees_per_event, 0)
+
+    case max_attendees do
+      :unlimited -> true
+      0 -> false
+      limit -> attendee_count <= limit
+    end
+  end
+
+  defp check_calendar_visibility_access(user_tier, visibility) do
+    allowed_visibilities = get_calendar_visibility_options(user_tier)
+    visibility in allowed_visibilities
+  end
+
+  defp check_calendar_integration_limit(user_tier, count) do
+    limits = get_calendar_limits(user_tier)
+    max_integrations = Map.get(limits, :max_integrations, 0)
+
+    case max_integrations do
+      :unlimited -> true
+      0 -> false
+      limit -> count <= limit
+    end
+  end
+
+  defp check_calendar_recurring_access(user_tier) do
+    case user_tier do
+      "personal" -> false
+      _ -> true
+    end
+  end
+
+  defp check_calendar_payment_access(user_tier) do
+    case user_tier do
+      "personal" -> false
+      _ -> true
+    end
+  end
+
+  defp check_calendar_meeting_access(user_tier) do
+    case user_tier do
+      "personal" -> false
+      _ -> true
+    end
+  end
+
+  # ============================================================================
   # Helper Functions
   # ============================================================================
 
@@ -399,7 +574,9 @@ defmodule Frestyl.Features.FeatureGate do
       storage_used_gb: 0,
       video_minutes_used: 0,
       collaboration_time: 0,
-      active_collaborators: 0
+      active_collaborators: 0,
+      monthly_calendar_events: 0,
+      calendar_integrations: 0
     }
   end
 
@@ -706,6 +883,70 @@ defmodule Frestyl.Features.FeatureGate do
   end
 
   # ============================================================================
+  # CALENDAR LIMITS CONFIGURATION
+  # ============================================================================
+
+  defp get_calendar_limits(user_tier) do
+    case user_tier do
+      "personal" ->
+        %{
+          max_events_per_month: 0,
+          max_attendees_per_event: 0,
+          max_integrations: 0,
+          can_create_paid_events: false,
+          can_set_meeting_links: false,
+          can_create_recurring: false,
+          allowed_event_types: ["channel_event"],
+          allowed_visibilities: ["channel"]
+        }
+
+      "creator" ->
+        %{
+          max_events_per_month: 50,
+          max_attendees_per_event: 25,
+          max_integrations: 3,
+          can_create_paid_events: true,
+          can_set_meeting_links: true,
+          can_create_recurring: true,
+          allowed_event_types: ["personal", "service_booking", "broadcast", "channel_event"],
+          allowed_visibilities: ["private", "channel", "account"]
+        }
+
+      "professional" ->
+        %{
+          max_events_per_month: :unlimited,
+          max_attendees_per_event: 100,
+          max_integrations: :unlimited,
+          can_create_paid_events: true,
+          can_set_meeting_links: true,
+          can_create_recurring: true,
+          allowed_event_types: ["personal", "service_booking", "broadcast", "channel_event", "collaboration"],
+          allowed_visibilities: ["private", "channel", "account", "public"]
+        }
+
+      "enterprise" ->
+        %{
+          max_events_per_month: :unlimited,
+          max_attendees_per_event: :unlimited,
+          max_integrations: :unlimited,
+          can_create_paid_events: true,
+          can_set_meeting_links: true,
+          can_create_recurring: true,
+          allowed_event_types: ["personal", "service_booking", "broadcast", "channel_event", "collaboration"],
+          allowed_visibilities: ["private", "channel", "account", "public"]
+        }
+
+      _ ->
+        get_calendar_limits("personal")
+    end
+  end
+
+  defp get_calendar_visibility_options(user_tier) do
+    limits = get_calendar_limits(user_tier)
+    Map.get(limits, :allowed_visibilities, ["channel"])
+  end
+
+  # ============================================================================
   # Helper Functions
   # ============================================================================
 
@@ -801,5 +1042,160 @@ defmodule Frestyl.Features.FeatureGate do
       0
     end
   end
+
+  defp is_account_member?(_event, _user_id) do
+    # Check if user is a member of the account that owns the event
+    # This would integrate with your existing account membership system
+    false # Placeholder implementation
+  end
+
+  defp is_account_admin?(_event, _user_id) do
+    # Check if user is an admin of the account that owns the event
+    # This would integrate with your existing account permissions system
+    false # Placeholder implementation
+  end
+
+    # ============================================================================
+  # USAGE TRACKING FOR CALENDAR FEATURES
+  # ============================================================================
+
+  def track_calendar_usage(account, usage_type, amount \\ 1, metadata \\ %{}) do
+    UsageTracker.track_usage(account, usage_type, amount, metadata)
+  end
+
+  def get_calendar_usage_status(account, feature) do
+    user_tier = TierManager.get_account_tier(account)
+    limits = get_calendar_limits(user_tier)
+    current_usage = get_current_usage(account)
+
+    case feature do
+      :monthly_events ->
+        max_events = Map.get(limits, :max_events_per_month, 0)
+        used_events = Map.get(current_usage, :monthly_calendar_events, 0)
+
+        %{
+          used: used_events,
+          limit: max_events,
+          percentage: calculate_usage_percentage(used_events, max_events),
+          can_create_more: can_create_more_events?(used_events, max_events)
+        }
+
+      :integrations ->
+        max_integrations = Map.get(limits, :max_integrations, 0)
+        used_integrations = Map.get(current_usage, :calendar_integrations, 0)
+
+        %{
+          used: used_integrations,
+          limit: max_integrations,
+          percentage: calculate_usage_percentage(used_integrations, max_integrations),
+          can_add_more: can_add_more_integrations?(used_integrations, max_integrations)
+        }
+
+      _ ->
+        %{used: 0, limit: 0, percentage: 0, can_use: false}
+    end
+  end
+
+  defp calculate_usage_percentage(used, :unlimited), do: 0
+  defp calculate_usage_percentage(used, limit) when limit > 0 do
+    min(round(used / limit * 100), 100)
+  end
+  defp calculate_usage_percentage(_, _), do: 100
+
+  defp can_create_more_events?(used, :unlimited), do: true
+  defp can_create_more_events?(used, limit) when is_integer(limit) do
+    used < limit
+  end
+  defp can_create_more_events?(_, _), do: false
+
+  defp can_add_more_integrations?(used, :unlimited), do: true
+  defp can_add_more_integrations?(used, limit) when is_integer(limit) do
+    used < limit
+  end
+  defp can_add_more_integrations?(_, _), do: false
+
+  # ============================================================================
+  # CALENDAR FEATURE UPGRADE SUGGESTIONS
+  # ============================================================================
+
+  def get_calendar_upgrade_suggestion(current_tier, failed_feature) do
+    current_normalized = TierManager.normalize_tier(current_tier)
+
+    case {current_normalized, failed_feature} do
+      {"personal", :calendar_create_event} ->
+        %{
+          suggested_tier: "creator",
+          title: "Upgrade to Creator",
+          reason: "Create and manage calendar events with Creator tier",
+          benefits: [
+            "Create up to 50 events per month",
+            "Service booking integration",
+            "External calendar sync",
+            "Meeting link generation"
+          ],
+          price: "$19/month"
+        }
+
+      {"personal", :calendar_external_integration} ->
+        %{
+          suggested_tier: "creator",
+          title: "Unlock Calendar Sync",
+          reason: "Connect external calendars with Creator tier",
+          benefits: [
+            "Google Calendar integration",
+            "Outlook Calendar sync",
+            "Automatic event sync",
+            "Up to 3 calendar connections"
+          ],
+          price: "$19/month"
+        }
+
+      {"creator", :calendar_unlimited_events} ->
+        %{
+          suggested_tier: "professional",
+          title: "Go Unlimited",
+          reason: "Professional tier offers unlimited calendar events",
+          benefits: [
+            "Unlimited calendar events",
+            "Up to 100 attendees per event",
+            "Advanced calendar analytics",
+            "Public event visibility"
+          ],
+          price: "$49/month"
+        }
+
+      {"creator", :calendar_advanced_features} ->
+        %{
+          suggested_tier: "professional",
+          title: "Advanced Calendar Features",
+          reason: "Professional tier includes advanced calendar management",
+          benefits: [
+            "Unlimited external integrations",
+            "Advanced attendee management",
+            "Calendar analytics dashboard",
+            "Custom meeting room booking"
+          ],
+          price: "$49/month"
+        }
+
+      {_, :calendar_white_label} ->
+        %{
+          suggested_tier: "enterprise",
+          title: "Enterprise Calendar",
+          reason: "White-label calendar features available with Enterprise",
+          benefits: [
+            "Branded calendar interface",
+            "Unlimited everything",
+            "Advanced security controls",
+            "Dedicated support"
+          ],
+          price: "Contact Sales"
+        }
+
+      _ ->
+        nil
+    end
+  end
+
 
 end
