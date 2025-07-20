@@ -185,6 +185,10 @@ defmodule Frestyl.Channels do
   @doc """
   Gets a channel by slug.
   """
+    def get_channel_by_slug(slug) do
+    Repo.get_by(Channel, slug: slug)
+  end
+
   def get_channel_by_slug(nil), do: nil
   def get_channel_by_slug(slug) when is_binary(slug) do
     Repo.get_by(Channel, slug: slug)
@@ -248,6 +252,44 @@ defmodule Frestyl.Channels do
     end
   end
 
+  def find_popular_channels_by_genre(genre, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 5)
+
+    # Query channels tagged with specific genre, ordered by activity/member count
+    Channel
+    |> where([c], fragment("? @> ?", c.metadata, ^%{"genres" => [genre]}))
+    |> where([c], c.visibility in ["public", "unlisted"])
+    |> order_by([c], desc: c.member_count)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  def get_popular_channels(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 10)
+
+    Channel
+    |> where([c], c.visibility == "public")
+    |> where([c],
+      is_nil(c.metadata) or
+      not fragment("? @> ?", c.metadata, ^%{"is_official" => true})
+    ) # Handle NULL metadata properly
+    |> order_by([c], desc: c.inserted_at)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  def ensure_user_in_frestyl_official(user_id) do
+    case get_channel_by_slug("frestyl-official") do
+      nil -> {:error, "Frestyl Official channel not found"}
+      channel ->
+        if user_member?(user_id, channel.id) do
+          {:ok, :already_member}
+        else
+          join_channel(channel.id, user_id)
+        end
+    end
+  end
+
   # Helper function for slug generation (same as in schema)
   defp slugify(name) do
     name
@@ -262,7 +304,7 @@ defmodule Frestyl.Channels do
   Creates a channel with automatic slug generation and conflict resolution.
   """
   def create_channel(attrs \\ %{}, %User{} = user) do
-    attrs_with_owner = Map.put(attrs, :user_id, user.id)
+    attrs_with_owner = Map.put(attrs, :owner_id, user.id)
 
     # Handle slug conflicts by trying different variations
     attrs_with_slug = ensure_unique_slug_in_attrs(attrs_with_owner)
@@ -423,7 +465,7 @@ defmodule Frestyl.Channels do
         where: cm.channel_id == ^channel.id and
                cm.user_id == ^user.id and
                cm.role in ["admin", "owner"] # Assuming 'owner' is a valid role
-    ) || (channel.user_id == user.id) # Also check if the user is the channel's owner (user_id field)
+    ) || (channel.owner_id == user.id) # Also check if the user is the channel's owner (user_id field)
   end
 
   @doc """

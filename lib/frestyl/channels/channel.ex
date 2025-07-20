@@ -19,6 +19,7 @@ defmodule Frestyl.Channels.Channel do
     field :funding_deadline, :date
     field :icon_url, :string
     field :transparency_level, :string, default: "basic" # "basic", "detailed", "full"
+    field :metadata, :map, default: %{}
 
     # Customization Fields (NEWLY ADDED)
     field :hero_image_url, :string
@@ -35,7 +36,7 @@ defmodule Frestyl.Channels.Channel do
     field :active_presentation_media_id, :integer
     field :active_performance_media_id, :integer
 
-    belongs_to :user, Frestyl.Accounts.User # This is the owner of the channel
+    belongs_to :owner, Frestyl.Accounts.User, foreign_key: :owner_id # This uses owner_id
     belongs_to :archived_by, Frestyl.Accounts.User
 
     # Associations for active media (NEWLY ADDED, if you want to preload the actual media items)
@@ -56,7 +57,7 @@ defmodule Frestyl.Channels.Channel do
   def changeset(channel, attrs) do
     channel
     |> cast(attrs, [
-      :name, :description, :visibility, :archived, :archived_at, :archived_by_id, :user_id, # Add :user_id here
+      :name, :slug, :description, :visibility, :archived, :archived_at, :archived_by_id, :owner_id, # Add :user_id here
       :fundraising_enabled, :enable_transparency_mode, :funding_goal,
       :current_funding, :funding_deadline, :transparency_level,
       # New fields:
@@ -64,7 +65,7 @@ defmodule Frestyl.Channels.Channel do
       :auto_detect_type, :social_links, :featured_content,
       :active_branding_media_id, :active_presentation_media_id, :active_performance_media_id
     ])
-    |> validate_required([:name])
+    |> validate_required([:name, :slug, :owner_id])
     |> validate_length(:name, min: 1, max: 100)
     |> validate_length(:description, max: 500)
     |> validate_inclusion(:visibility, ["public", "private", "invite_only"])
@@ -74,9 +75,9 @@ defmodule Frestyl.Channels.Channel do
       portfolio_voice_over portfolio_writing portfolio_music portfolio_design
       portfolio_quarterly_update portfolio_feedback portfolio_collaboration
     )a)
-    |> Ecto.Changeset.cast_embedding(:color_scheme, with: &color_scheme_changeset/2) # Validate color_scheme map
-    |> Ecto.Changeset.cast_embedding(:social_links, with: &social_links_changeset/2) # Validate social_links map
-    |> Ecto.Changeset.cast_embeds(:featured_content, with: &featured_content_changeset/2) # Validate featured_content array of maps
+    #|> Ecto.Changeset.cast_embed(:color_scheme, with: &color_scheme_changeset/2) # Validate color_scheme map
+    #|> Ecto.Changeset.cast_embedding(:social_links, with: &social_links_changeset/2) # Validate social_links map
+    #|> Ecto.Changeset.cast_embeds(:featured_content, with: &featured_content_changeset/2) # Validate featured_content array of maps
     |> validate_funding_fields()
     |> validate_archived_fields()
     |> validate_inclusion(:channel_type, ~w(
@@ -377,55 +378,6 @@ defmodule Frestyl.Channels.Channel do
         can_invite_external_collaborators: false
       }
     end
-  end
-
-  def create_portfolio_enhancement_channel(portfolio, enhancement_type, user) do
-    channel_attrs = %{
-      name: generate_enhancement_channel_name(portfolio, enhancement_type),
-      description: generate_enhancement_description(enhancement_type),
-      channel_type: "portfolio_#{enhancement_type}",
-      visibility: "private",
-      user_id: user.id,
-      featured_content: [%{
-        "type" => "portfolio",
-        "id" => portfolio.id,
-        "enhancement_type" => enhancement_type,
-        "started_at" => DateTime.utc_now()
-      }],
-      # Portfolio-specific metadata
-      metadata: %{
-        portfolio_id: portfolio.id,
-        enhancement_type: enhancement_type,
-        quality_score_at_start: calculate_portfolio_quality_score(portfolio),
-        expected_duration: get_enhancement_duration(enhancement_type),
-        milestone_targets: get_enhancement_milestones(enhancement_type)
-      }
-    }
-
-    create_channel(channel_attrs)
-  end
-
-  def update_enhancement_progress(channel, progress_data) do
-    current_metadata = channel.metadata || %{}
-
-    updated_metadata = Map.merge(current_metadata, %{
-      progress_percentage: progress_data.percentage,
-      milestones_completed: progress_data.milestones,
-      last_activity: DateTime.utc_now(),
-      collaborator_contributions: progress_data.contributions
-    })
-
-    # Check for completion triggers
-    cond do
-      progress_data.percentage >= 100 ->
-        trigger_enhancement_completion(channel, progress_data)
-      progress_data.percentage >= 75 ->
-        suggest_final_polish(channel)
-      true ->
-        :ok
-    end
-
-    update_channel(channel, %{metadata: updated_metadata})
   end
 
     @doc """

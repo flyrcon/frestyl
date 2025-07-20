@@ -135,11 +135,12 @@ defmodule Frestyl.Portfolios do
     end
   end
 
-  def list_user_portfolios_with_sections(user_id) do
-    Portfolio
-    |> where([p], p.user_id == ^user_id)
-    |> preload([:sections])
-    |> order_by([p], desc: p.updated_at)
+  def list_user_portfolios(user_id) do
+    from(p in Portfolio,
+      where: p.user_id == ^user_id,
+      preload: [:user],
+      order_by: [desc: p.updated_at]
+    )
     |> Repo.all()
   end
 

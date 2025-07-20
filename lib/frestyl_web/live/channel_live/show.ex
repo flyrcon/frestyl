@@ -711,6 +711,71 @@ defmodule FrestylWeb.ChannelLive.Show do
     end)
   end
 
+  defp get_activity_path(channel, activity) do
+    case activity.session_type do
+      "broadcast" -> ~p"/channels/#{channel.slug}/broadcasts/#{activity.id}"
+      _ -> ~p"/channels/#{channel.slug}/sessions/#{activity.id}"
+    end
+  end
+
+  defp get_member_display_name(member) do
+    case member do
+      %{user: %{name: name}} when not is_nil(name) -> name
+      %{user: %{username: username}} when not is_nil(username) -> username
+      %{user: %{full_name: full_name}} when not is_nil(full_name) -> full_name
+      %{user: %{email: email}} when not is_nil(email) ->
+        String.split(email, "@") |> List.first()
+      _ -> "Anonymous"
+    end
+  end
+
+  defp get_channel_header_color(channel) do
+  if is_official_channel?(channel) do
+    # Future: channel.customization.header_color || default
+    "bg-gradient-to-br from-blue-600 to-indigo-600"
+  else
+    # Future: channel.color_scheme || channel.customization.primary_color
+    case rem(channel.id, 6) do
+      0 -> "bg-gradient-to-br from-gray-600 to-slate-700"
+      1 -> "bg-gradient-to-br from-blue-600 to-cyan-700"
+      2 -> "bg-gradient-to-br from-pink-600 to-purple-700"
+      3 -> "bg-gradient-to-br from-green-600 to-emerald-700"
+      4 -> "bg-gradient-to-br from-purple-600 to-violet-700"
+      5 -> "bg-gradient-to-br from-orange-600 to-amber-700"
+    end
+  end
+  end
+
+  defp get_activity_icon_color(activity) do
+  case activity.session_type do
+    "broadcast" -> "bg-gradient-to-br from-red-500 to-pink-600"
+    _ -> "bg-gradient-to-br from-blue-500 to-cyan-600"
+  end
+  end
+
+  defp is_official_channel?(channel) when is_map(channel) do
+  Map.get(channel.metadata || %{}, "is_official") == true
+  end
+  defp is_official_channel?(_), do: false
+
+  defp format_time_ago(datetime) when is_nil(datetime), do: "Never"
+  defp format_time_ago(%DateTime{} = datetime) do
+  diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
+
+  cond do
+    diff < 60 -> "just now"
+    diff < 3600 -> "#{div(diff, 60)}m ago"
+    diff < 86400 -> "#{div(diff, 3600)}h ago"
+    diff < 2592000 -> "#{div(diff, 86400)}d ago"
+    true -> "#{div(diff, 2592000)}mo ago"
+  end
+  end
+  defp format_time_ago(%NaiveDateTime{} = naive_datetime) do
+  datetime = DateTime.from_naive!(naive_datetime, "Etc/UTC")
+  format_time_ago(datetime)
+  end
+  defp format_time_ago(_), do: "Unknown"
+
   # NEW: Customization event handlers
   @impl true
   def handle_event("toggle_customization_panel", _, socket) do

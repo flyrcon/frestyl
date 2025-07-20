@@ -1,577 +1,414 @@
 <!-- Navigation -->
 <.nav current_user={@current_user} active_tab={:channels} />
 
-<!-- Overlay -->
-<div id="mobile-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"></div>
-
-<!-- Main Content -->
-<div class="pt-16 min-h-screen">
+<div class="pt-16 min-h-screen bg-gray-50">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="grid grid-cols-12 gap-6">
       
       <!-- Left Sidebar -->
       <aside class="hidden lg:block col-span-3 space-y-6">
         <!-- Channel Stats -->
-        <div class="bg-white rounded-xl p-6 shadow-md">
-          <h3 class="font-bold text-lg text-gray-900 mb-6">Channel Activity</h3>
-          <div class="space-y-4">
+        <div class="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 class="font-bold text-lg text-gray-900 mb-4">Channel Activity</h3>
+          <div class="space-y-3">
             <div class="flex items-center justify-between">
               <span class="text-gray-600 font-medium text-sm">My Channels</span>
-              <span class="font-mono font-bold text-gray-900 text-lg"><%= length(@user_channels) %></span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-gray-600 font-medium text-sm">Total Members</span>
-              <span class="font-mono font-bold text-gray-900 text-lg">156</span>
+              <span class="font-mono font-bold text-gray-900"><%= length(@user_channels) %></span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-gray-600 font-medium text-sm">Active Today</span>
-              <span class="font-mono font-bold text-gray-900 text-lg">24</span>
+              <span class="font-mono font-bold text-gray-900"><%= count_active_channels(@user_channels) %></span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-gray-600 font-medium text-sm">New Messages</span>
-              <span class="font-mono font-bold text-gray-900 text-lg">12</span>
+              <span class="text-gray-600 font-medium text-sm">Unread</span>
+              <span class="font-mono font-bold text-gray-900"><%= total_unread_count(@user_channels) %></span>
             </div>
+          </div>
+        </div>
+
+        <!-- View Controls -->
+        <div class="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 class="font-bold text-lg text-gray-900 mb-4">View Options</h3>
+          
+          <!-- Layout Toggle -->
+          <div class="space-y-3 mb-4">
+            <label class="text-sm font-medium text-gray-700">Layout</label>
+            <div class="flex rounded-lg bg-gray-100 p-1">
+              <button 
+                phx-click="change_view" 
+                phx-value-view="list"
+                class={[
+                  "flex-1 flex items-center justify-center px-3 py-2 text-sm rounded-md transition-all",
+                  if(@view_mode == "list", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600 hover:text-gray-900")
+                ]}>
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                </svg>
+                List
+              </button>
+              <button 
+                phx-click="change_view" 
+                phx-value-view="cards"
+                class={[
+                  "flex-1 flex items-center justify-center px-3 py-2 text-sm rounded-md transition-all",
+                  if(@view_mode == "cards", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600 hover:text-gray-900")
+                ]}>
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                </svg>
+                Cards
+              </button>
+            </div>
+          </div>
+
+          <!-- Sort Options -->
+          <div class="space-y-3">
+            <label class="text-sm font-medium text-gray-700">Sort by</label>
+            <select 
+              phx-change="change_sort" 
+              name="sort_by"
+              class="w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+              <option value="pinned" selected={@sort_by == "pinned"}>Pinned First</option>
+              <option value="name" selected={@sort_by == "name"}>Name A-Z</option>
+              <option value="members" selected={@sort_by == "members"}>Most Members</option>
+              <option value="activity" selected={@sort_by == "activity"}>Most Active</option>
+              <option value="recent" selected={@sort_by == "recent"}>Recently Updated</option>
+              <option value="joined" selected={@sort_by == "joined"}>Recently Joined</option>
+            </select>
           </div>
         </div>
 
         <!-- Quick Actions -->
-        <div class="bg-white rounded-xl p-6 shadow-md">
-          <h3 class="font-bold text-lg text-gray-900 mb-6">Quick Actions</h3>
+        <div class="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 class="font-bold text-lg text-gray-900 mb-4">Quick Actions</h3>
           <div class="space-y-3">
-            <%= live_patch to: ~p"/channels/new", class: "w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl group" do %>
-              <svg class="w-5 h-5 text-gray-600 group-hover:text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            <.link navigate={~p"/channels/new"} class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl group">
+              <svg class="w-5 h-5 text-gray-600 group-hover:text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
               </svg>
-              <div class="text-left">
-                <div class="font-semibold text-gray-900 text-sm">Create Channel</div>
-                <div class="text-xs text-gray-500">Start a new community</div>
-              </div>
-            <% end %>
+              <span class="font-medium text-gray-700 group-hover:text-indigo-600">Create Channel</span>
+            </.link>
             
             <.link navigate={~p"/channels/browse"} class="w-full flex items-center space-x-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl group">
-              <svg class="w-5 h-5 text-gray-600 group-hover:text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <svg class="w-5 h-5 text-gray-600 group-hover:text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
               </svg>
-              <div class="text-left">
-                <div class="font-semibold text-gray-900 text-sm">Browse All</div>
-                <div class="text-xs text-gray-500">Discover new channels</div>
-              </div>
+              <span class="font-medium text-gray-700 group-hover:text-indigo-600">Browse Channels</span>
             </.link>
-          </div>
-        </div>
-
-        <!-- Trending Topics -->
-        <div class="bg-white rounded-xl shadow-md overflow-hidden">
-          <div class="bg-gradient-to-r from-yellow-500 to-orange-500 p-4">
-            <h3 class="font-bold text-white text-lg">Trending Topics</h3>
-          </div>
-          <div class="p-6">
-            <div class="space-y-3">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-bold text-gray-900">#lofi-beats</span>
-                <span class="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full">Hot</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-bold text-gray-900">#digital-art</span>
-                <span class="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">+12</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-bold text-gray-900">#collaboration</span>
-                <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">New</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-bold text-gray-900">#feedback</span>
-                <span class="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-bold rounded-full">Active</span>
-              </div>
-            </div>
           </div>
         </div>
       </aside>
 
-      <!-- Main Content Area -->
-      <main class="lg:col-span-9 col-span-12 space-y-6">
-        <!-- Hero Section -->
-        <div class="bg-white rounded-xl p-6 shadow-md">
-          <div class="flex flex-col sm:flex-row sm:items-start justify-between mb-6 space-y-4 sm:space-y-0">
+      <!-- Main Content -->
+      <main class="col-span-12 lg:col-span-9 space-y-6">
+        
+        <!-- Header -->
+        <div class="bg-white rounded-xl p-6 shadow-sm border">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4">
             <div>
-              <h1 class="text-2xl sm:text-3xl font-black text-gray-900 mb-2">
-                My Channels
-              </h1>
-              <p class="text-gray-600">Connect and collaborate with creators in your community</p>
+              <h1 class="text-2xl font-bold text-gray-900">My Channels</h1>
+              <p class="text-gray-600 mt-1">Connect and collaborate with creators in your communities</p>
             </div>
-            <div class="flex flex-wrap gap-2">
-              <%= live_patch to: ~p"/channels/new", class: "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm" do %>
+            <div class="flex space-x-3 mt-4 sm:mt-0">
+              <!-- Mobile View Toggle -->
+              <div class="flex lg:hidden rounded-lg bg-gray-100 p-1">
+                <button 
+                  phx-click="change_view" 
+                  phx-value-view="list"
+                  class={[
+                    "px-3 py-2 text-sm rounded-md transition-all",
+                    if(@view_mode == "list", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600")
+                  ]}>
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                  </svg>
+                </button>
+                <button 
+                  phx-click="change_view" 
+                  phx-value-view="cards"
+                  class={[
+                    "px-3 py-2 text-sm rounded-md transition-all",
+                    if(@view_mode == "cards", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600")
+                  ]}>
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                  </svg>
+                </button>
+              </div>
+              
+              <.link navigate={~p"/channels/new"} class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium">
                 <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                 </svg>
                 Create Channel
-              <% end %>
-              <.link navigate={~p"/channels/browse"} class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-semibold text-sm">
-                <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                </svg>
-                Browse All
               </.link>
             </div>
           </div>
-
-          <!-- Search -->
-          <div class="mb-6">
-            <form phx-submit="search" class="flex gap-4">
-              <div class="flex-1 relative">
-                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <input
-                  type="text"
-                  name="search"
-                  value={@search || ""}
-                  placeholder="Search channels..."
-                  class="block w-full pl-12 pr-4 py-3 bg-gray-50 border-0 rounded-xl text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-pink-600/20 focus:bg-white transition-all duration-200"
-                />
-              </div>
-              <button type="submit" class="px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 text-white font-bold rounded-xl hover:from-pink-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg">
-                Search
-              </button>
-            </form>
-          </div>
-
-          <!-- Stats Grid -->
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
-              <span class="absolute top-3 right-3 bg-green-100 text-green-600 text-xs font-bold px-2 py-1 rounded-full">Active</span>
-              <div class="flex items-center mt-6">
-                <svg class="w-5 h-5 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                </svg>
-                <div>
-                  <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">My Channels</h3>
-                  <p class="text-xl font-bold text-gray-900"><%= length(@user_channels) %></p>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
-              <span class="absolute top-3 right-3 bg-blue-100 text-blue-600 text-xs font-bold px-2 py-1 rounded-full">+5 New</span>
-              <div class="flex items-center mt-6">
-                <svg class="w-5 h-5 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 616 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                </svg>
-                <div>
-                  <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Members</h3>
-                  <p class="text-xl font-bold text-gray-900">156</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
-              <div class="absolute top-3 right-3 text-xs font-mono text-gray-600 font-bold">Today</div>
-              <div class="flex items-center mt-6">
-                <svg class="w-5 h-5 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                </svg>
-                <div>
-                  <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Messages</h3>
-                  <p class="text-xl font-bold text-gray-900">24</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-gray-50 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
-              <div class="absolute top-3 right-3 text-xs font-mono text-gray-600 font-bold">This Week</div>
-              <div class="flex items-center mt-6">
-                <svg class="w-5 h-5 text-gray-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
-                </svg>
-                <div>
-                  <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Invites</h3>
-                  <p class="text-xl font-bold text-gray-900">8</p>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
-        <!-- Content Grid -->
-        <div class="space-y-6 lg:grid lg:grid-cols-12 lg:gap-6 lg:space-y-0">
-          <!-- My Channels Section -->
-          <div class="lg:col-span-8 bg-white rounded-xl shadow-md overflow-hidden">
-            <div class="p-6">
-              <div class="flex items-start justify-between mb-6">
-                <h2 class="text-2xl font-black text-gray-900">My Channels</h2>
-                <%= live_patch to: ~p"/channels/new", class: "text-purple-600 hover:text-purple-700 font-semibold text-sm flex items-center group" do %>
-                  Create New
-                  <svg class="ml-2 h-4 w-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                  </svg>
-                <% end %>
-              </div>
+        <!-- My Channels -->
+        <%= if @view_mode == "list" do %>
+          <!-- List View -->
+          <div class="bg-white rounded-xl shadow-sm border">
+            <div class="p-6 border-b border-gray-200">
+              <h2 class="text-xl font-bold text-gray-900">Your Channels</h2>
+              <p class="text-gray-600 mt-1">Channels you're part of, with Frestyl Official always included</p>
+            </div>
 
-              <%= if Enum.empty?(@user_channels) do %>
-                <div class="text-center py-12 bg-gray-50 rounded-xl">
-                  <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <h3 class="mt-4 text-lg font-semibold text-gray-900">No channels yet</h3>
-                  <p class="mt-2 text-gray-600">Create your first channel to start collaborating</p>
-                  <div class="mt-6">
-                    <%= live_patch to: ~p"/channels/new", class: "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm" do %>
-                      Create Channel
-                    <% end %>
+            <div class="divide-y divide-gray-200">
+              <%= for {channel, member_count} <- sort_channels(@user_channels, @sort_by) do %>
+                <div class="p-6 hover:bg-gray-50 transition-all">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                      <!-- Channel Icon -->
+                      <div class={[
+                        "w-12 h-12 rounded-xl flex items-center justify-center",
+                        get_channel_icon_style(channel)
+                      ]}>
+                        <%= if is_official_channel?(channel) do %>
+                          <span class="text-white font-bold text-lg">F</span>
+                          <!-- Official Badge -->
+                          <div class="absolute -top-1 -right-1 w-5 h-5 bg-yellow-400 rounded-full border-2 border-white flex items-center justify-center">
+                            <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                            </svg>
+                          </div>
+                        <% else %>
+                          <span class="text-white font-bold">#</span>
+                        <% end %>
+                      </div>
+
+                      <!-- Channel Info -->
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center space-x-2">
+                          <h3 class="font-semibold text-gray-900"><%= channel.name %></h3>
+                          <%= if is_official_channel?(channel) do %>
+                            <span class="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full">Official</span>
+                          <% end %>
+                          <%= if get_channel_unread_count(channel) > 0 do %>
+                            <span class="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded-full">
+                              <%= get_channel_unread_count(channel) %>
+                            </span>
+                          <% end %>
+                        </div>
+                        <p class="text-sm text-gray-600 mt-1 line-clamp-2"><%= channel.description %></p>
+                        <div class="flex items-center space-x-4 mt-2">
+                          <span class="text-xs text-gray-500">
+                            <%= member_count %> members
+                          </span>
+                          <span class="text-xs font-medium text-green-600">
+                            <%= get_channel_activity_status(channel) %>
+                          </span>
+                          <span class="text-xs text-gray-500">
+                            Last activity: <%= format_time_ago(channel.updated_at) %>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Channel Actions -->
+                    <div class="flex items-center space-x-3">
+                      <.link 
+                        navigate={~p"/channels/#{channel.slug || channel.id}"} 
+                        class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium text-sm">
+                        <%= if is_official_channel?(channel), do: "Discover", else: "View" %>
+                      </.link>
+                      
+                      <%= unless is_official_channel?(channel) do %>
+                        <button 
+                          phx-click="leave_channel" 
+                          phx-value-channel_id={channel.id}
+                          phx-confirm="Are you sure you want to leave this channel?"
+                          class="text-gray-400 hover:text-red-600 p-2">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                          </svg>
+                        </button>
+                      <% end %>
+                    </div>
                   </div>
                 </div>
-              <% else %>
-                <div class="space-y-4">
-                  <%= for {channel, member_count} <- @user_channels do %>
-                    <%= live_redirect to: ~p"/channels/#{channel.id}", class: "block group" do %>
-                      <div class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative border border-gray-200 hover:border-purple-300">
-                        <div class="h-1 bg-gradient-to-r from-cyan-600 to-blue-600"></div>
-                        <div class="p-4">
-                          <div class="flex items-start justify-between">
-                            <div class="flex-1">
-                              <div class="flex items-center mb-2">
-                                <h3 class="text-lg font-black text-gray-900 group-hover:text-cyan-600 transition-colors mr-3">
-                                  <%= channel.name %>
-                                </h3>
-                                <span class="px-2 py-1 bg-green-100 text-green-600 text-xs font-bold rounded-full">
-                                  <%= String.capitalize(channel.visibility || "public") %>
-                                </span>
-                                <!-- Add archived badge -->
-                                <%= if channel.archived do %>
-                                  <span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-bold rounded-full ml-2">
-                                    Archived
-                                  </span>
-                                <% end %>
-                              </div>
-                              <%= if channel.description do %>
-                                <p class="text-gray-600 text-sm mb-3 leading-relaxed">
-                                  <%= channel.description %>
-                                </p>
-                              <% end %>
-                              <div class="flex items-center text-sm text-gray-500">
-                                <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                                </svg>
-                                <%= member_count || 0 %> members
-                                <span class="mx-2">•</span>
-                                <div class={[
-                                  "w-2 h-2 rounded-full mr-1",
-                                  if(channel.archived, do: "bg-gray-400", else: "bg-green-500")
-                                ]}></div>
-                                <%= if channel.archived, do: "Archived", else: "Active now" %>
-                              </div>
-                            </div>
-                            <div class="ml-4 flex-shrink-0">
-                              <%= if channel.icon_url do %>
-                                <img src={channel.icon_url} class="h-12 w-12 rounded-lg object-cover" alt={channel.name} />
-                              <% else %>
-                                <div class={[
-                                  "h-12 w-12 rounded-lg flex items-center justify-center text-white font-bold",
-                                  if(channel.archived, 
-                                    do: "bg-gradient-to-br from-gray-400 to-gray-500", 
-                                    else: "bg-gradient-to-br from-cyan-600 to-blue-600")
-                                ]}>
-                                  <%= String.first(channel.name) %>
-                                </div>
-                              <% end %>
-                            </div>
-                          </div>
+              <% end %>
+            </div>
+          </div>
+        <% else %>
+          <!-- Card View -->
+          <div class="space-y-6">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xl font-bold text-gray-900">Your Channels</h2>
+              <span class="text-sm text-gray-600"><%= length(@user_channels) %> channels</span>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <%= for {channel, member_count} <- sort_channels(@user_channels, @sort_by) do %>
+                <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden">
+                  <!-- Card Header -->
+                  <div class={[
+                    "relative p-6 border-b border-gray-100",
+                    get_channel_header_style(channel)
+                  ]}>
+                    <!-- Official Badge -->
+                    <%= if is_official_channel?(channel) do %>
+                      <div class="absolute top-4 right-4">
+                        <div class="w-6 h-6 bg-amber-400 rounded-full border-2 border-white flex items-center justify-center shadow-sm">
+                          <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                          </svg>
                         </div>
                       </div>
                     <% end %>
-                  <% end %>
+
+                    <!-- Unread Count -->
+                    <%= if get_channel_unread_count(channel) > 0 do %>
+                      <div class="absolute top-4 left-4">
+                        <span class="px-2 py-1 bg-red-500 text-white text-xs font-bold rounded-full shadow-sm">
+                          <%= get_channel_unread_count(channel) %>
+                        </span>
+                      </div>
+                    <% end %>
+
+                    <!-- Channel Icon -->
+                    <div class="flex items-center justify-center mb-4">
+                      <div class={[
+                        "w-12 h-12 rounded-xl flex items-center justify-center shadow-sm",
+                        get_channel_icon_style(channel)
+                      ]}>
+                        <%= if is_official_channel?(channel) do %>
+                          <span class="text-white font-bold text-lg">F</span>
+                        <% else %>
+                          <span class="text-white font-bold text-lg">#</span>
+                        <% end %>
+                      </div>
+                    </div>
+
+                    <!-- Channel Title -->
+                    <div class="text-center">
+                      <h3 class="font-bold text-gray-900 text-lg mb-1 line-clamp-1"><%= channel.name %></h3>
+                      <%= if is_official_channel?(channel) do %>
+                        <span class="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                          Official
+                        </span>
+                      <% end %>
+                    </div>
+                  </div>
+
+                  <!-- Card Content -->
+                  <div class="p-6">
+                    <!-- Description -->
+                    <p class="text-sm text-gray-600 line-clamp-2 leading-relaxed mb-4"><%= channel.description %></p>
+
+                    <!-- Stats Grid -->
+                    <div class="grid grid-cols-3 gap-4 mb-6">
+                      <!-- Members -->
+                      <div class="text-center">
+                        <div class="text-lg font-bold text-gray-900"><%= member_count %></div>
+                        <div class="text-xs text-gray-500">Members</div>
+                      </div>
+                      
+                      <!-- Activity Status -->
+                      <div class="text-center">
+                        <div class={[
+                          "text-xs font-medium uppercase tracking-wide",
+                          case get_channel_activity_status(channel) do
+                            "Active" -> "text-green-600"
+                            "Recent" -> "text-yellow-600"
+                            _ -> "text-gray-500"
+                          end
+                        ]}>
+                          <%= get_channel_activity_status(channel) %>
+                        </div>
+                        <div class="text-xs text-gray-500">Status</div>
+                      </div>
+
+                      <!-- Last Activity -->
+                      <div class="text-center">
+                        <div class="text-xs font-medium text-gray-700">
+                          <%= format_time_ago(channel.updated_at) %>
+                        </div>
+                        <div class="text-xs text-gray-500">Activity</div>
+                      </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex space-x-2">
+                      <.link 
+                        navigate={~p"/channels/#{channel.slug || channel.id}"} 
+                        class="flex-1 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg font-medium text-sm text-center transition-colors">
+                        <%= if is_official_channel?(channel), do: "Discover", else: "View" %>
+                      </.link>
+                      
+                      <%= unless is_official_channel?(channel) do %>
+                        <button 
+                          phx-click="leave_channel" 
+                          phx-value-channel_id={channel.id}
+                          phx-confirm="Are you sure you want to leave this channel?"
+                          class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                          </svg>
+                        </button>
+                      <% end %>
+                    </div>
+                  </div>
                 </div>
               <% end %>
             </div>
           </div>
+        <% end %>
 
-          <!-- Discover Channels -->
-          <div class="lg:col-span-4 space-y-4">
-            <!-- Public Channels -->
-            <div class="bg-white rounded-xl shadow-md p-4">
-              <h4 class="font-black text-gray-900 text-sm mb-3">Discover Public Channels</h4>
-              <%= if Enum.empty?(@public_channels) do %>
-                <div class="text-center py-6">
-                  <svg class="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <p class="mt-2 text-xs text-gray-500">No public channels found</p>
-                </div>
-              <% else %>
-                <div class="space-y-3">
-                  <%= for {channel, member_count} <- Enum.take(@public_channels, 3) do %>
-                    <div class="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
-                      <%= if channel.icon_url do %>
-                        <img src={channel.icon_url} class="w-8 h-8 rounded-lg object-cover" alt={channel.name} />
-                      <% else %>
-                        <span class="w-8 h-8 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center text-xs font-bold text-white">
-                          <%= String.first(channel.name) %>
-                        </span>
-                      <% end %>
-                      <div class="flex-1">
-                        <h5 class="font-bold text-gray-900 text-xs"><%= channel.name %></h5>
-                        <p class="text-xs text-gray-500"><%= member_count || 0 %> members</p>
-                      </div>
-                      <button 
-                        phx-click="join_channel" 
-                        phx-value-id={channel.id}
-                        class="text-purple-600 hover:text-indigo-600 text-xs font-semibold"
-                      >
-                        Join
-                      </button>
-                    </div>
-                  <% end %>
-                </div>
-                <%= if length(@public_channels) > 3 do %>
-                  <div class="mt-4 text-center">
-                    <.link navigate={~p"/channels/browse"} class="text-purple-600 hover:text-purple-700 text-xs font-semibold">
-                      View All →
-                    </.link>
-                  </div>
+        <!-- Channel Recommendations -->
+        <%= if assigns[:channel_recommendations] && @channel_recommendations != [] do %>
+          <div class="bg-white rounded-xl shadow-sm border">
+            <div class="p-6 border-b border-gray-200">
+              <h2 class="text-xl font-bold text-gray-900">Recommended for You</h2>
+              <p class="text-gray-600 mt-1">
+                <%= if assigns[:user_interests] && @user_interests do %>
+                  Based on your interests in <%= Enum.join(Enum.take(@user_interests.genres || [], 3), ", ") %>
+                <% else %>
+                  Popular channels you might enjoy
                 <% end %>
-              <% end %>
+              </p>
             </div>
 
-            <!-- Channel Categories -->
-            <div class="bg-white rounded-xl shadow-md p-4">
-              <h4 class="font-black text-gray-900 text-sm mb-3">Popular Categories</h4>
-              <div class="space-y-2">
-                <.link navigate={~p"/channels/browse?category=music"} class="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div class="flex items-center">
-                    <span class="w-6 h-6 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center mr-3">
-                      🎵
-                    </span>
-                    <span class="text-xs font-semibold text-gray-900">Music</span>
-                  </div>
-                  <span class="text-xs text-gray-500">24 channels</span>
-                </.link>
-
-                <.link navigate={~p"/channels/browse?category=art"} class="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div class="flex items-center">
-                    <span class="w-6 h-6 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center mr-3">
-                      🎨
-                    </span>
-                    <span class="text-xs font-semibold text-gray-900">Digital Art</span>
-                  </div>
-                  <span class="text-xs text-gray-500">18 channels</span>
-                </.link>
-
-                <.link navigate={~p"/channels/browse?category=video"} class="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div class="flex items-center">
-                    <span class="w-6 h-6 bg-gradient-to-r from-pink-600 to-purple-600 rounded-lg flex items-center justify-center mr-3">
-                      🎬
-                    </span>
-                    <span class="text-xs font-semibold text-gray-900">Film & Video</span>
-                  </div>
-                  <span class="text-xs text-gray-500">12 channels</span>
-                </.link>
-
-                <.link navigate={~p"/channels/browse?category=writing"} class="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div class="flex items-center">
-                    <span class="w-6 h-6 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-lg flex items-center justify-center mr-3">
-                      ✍️
-                    </span>
-                    <span class="text-xs font-semibold text-gray-900">Writing</span>
-                  </div>
-                  <span class="text-xs text-gray-500">8 channels</span>
-                </.link>
-              </div>
-            </div>
-
-            <!-- Recommendations -->
-            <div class="bg-white rounded-xl shadow-md overflow-hidden">
-              <div class="bg-gradient-to-r from-pink-600 to-purple-600 p-4">
-                <div class="flex items-center">
-                  <div class="w-8 h-8 bg-white bg-opacity-20 rounded-lg flex items-center justify-center mr-3">
-                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                    </svg>
-                  </div>
-                  <h4 class="font-black text-white text-sm">Suggested</h4>
-                </div>
-              </div>
-              <div class="p-4">
-                <p class="text-gray-600 text-xs mb-4 leading-relaxed">
-                  Based on your interests and activity
-                </p>
-                
-                <div class="space-y-3">
-                  <div class="p-3 bg-gray-50 rounded-xl">
-                    <h5 class="font-bold text-gray-900 text-xs mb-1">Beat Makers Unite</h5>
-                    <p class="text-xs text-gray-500 mb-2">Share and collaborate on beats</p>
-                    <button class="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white font-semibold py-1 rounded-lg text-xs">
-                      Join Channel
+            <div class="divide-y divide-gray-200">
+              <%= for channel <- @channel_recommendations do %>
+                <div class="p-6 hover:bg-gray-50 transition-all">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                      <div class="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
+                        <span class="text-white font-bold text-sm">#</span>
+                      </div>
+                      <div>
+                        <h3 class="font-semibold text-gray-900"><%= channel.name %></h3>
+                        <p class="text-sm text-gray-600 mt-1"><%= channel.description %></p>
+                        <div class="flex items-center space-x-3 mt-2">
+                          <span class="text-xs text-gray-500"><%= Map.get(channel, :member_count, 0) %> members</span>
+                          <%= if Map.get(channel, :growth_rate) do %>
+                            <span class="text-xs text-green-600 font-medium"><%= channel.growth_rate %></span>
+                          <% end %>
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      phx-click="join_channel" 
+                      phx-value-channel_id={channel.id}
+                      class="bg-gray-100 hover:bg-indigo-100 hover:text-indigo-700 text-gray-700 px-4 py-2 rounded-lg font-medium text-sm transition-all">
+                      Join
                     </button>
                   </div>
                 </div>
-              </div>
+              <% end %>
+            </div>
+
+            <div class="p-6 border-t border-gray-200 text-center">
+              <.link navigate={~p"/channels/browse"} class="text-indigo-600 hover:text-indigo-700 font-medium">
+                Browse all channels →
+              </.link>
             </div>
           </div>
-        </div>
+        <% end %>
 
-        <!-- Featured Channels Section -->
-        <div class="bg-white rounded-xl shadow-md overflow-hidden">
-          <div class="p-6">
-            <h2 class="text-2xl font-black text-gray-900 mb-6">Featured Channels</h2>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <!-- Lo-Fi Producers -->
-              <div class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative border border-gray-200 hover:border-yellow-300">
-                <div class="absolute top-3 left-3 bg-yellow-100 text-yellow-600 text-xs font-bold px-3 py-1 rounded-full">
-                  Featured
-                </div>
-                <span class="absolute top-3 right-3 bg-green-100 text-green-600 text-xs font-bold px-2 py-1 rounded-full">Live</span>
-                <div class="h-1 bg-gradient-to-r from-yellow-500 to-orange-500"></div>
-                <div class="p-4 pt-12">
-                  <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-base font-black text-gray-900 hover:text-yellow-600 transition-colors">
-                      Lo-Fi Producers Network
-                    </h3>
-                    <span class="text-lg">🎶</span>
-                  </div>
-                  <div class="flex items-center text-gray-500 text-sm mb-3">
-                    <svg class="h-3 w-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 616 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                    </svg>
-                    156 members
-                  </div>
-                  <p class="text-gray-600 text-xs leading-relaxed mb-3">
-                    Connect with lo-fi producers and share your chill beats.
-                  </p>
-                  <button class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold py-2 rounded-lg text-xs">
-                    Join Channel
-                  </button>
-                </div>
-              </div>
-
-              <!-- Digital Art Showcase -->
-              <div class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative border border-gray-200 hover:border-purple-300">
-                <div class="absolute top-3 left-3 bg-purple-100 text-purple-600 text-xs font-bold px-3 py-1 rounded-full">
-                  Curated
-                </div>
-                <div class="h-1 bg-gradient-to-r from-purple-600 to-indigo-600"></div>
-                <div class="p-4 pt-12">
-                  <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-base font-black text-gray-900 hover:text-purple-600 transition-colors">
-                      Digital Art Showcase
-                    </h3>
-                    <span class="text-lg">✨</span>
-                  </div>
-                  <div class="flex items-center text-gray-500 text-sm mb-3">
-                    <svg class="h-3 w-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 616 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                    </svg>
-                    89 members
-                  </div>
-                  <p class="text-gray-600 text-xs leading-relaxed mb-3">
-                    Premium community for digital artists with portfolio reviews.
-                  </p>
-                  <button class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold py-2 rounded-lg text-xs">
-                    Request Access
-                  </button>
-                </div>
-              </div>
-
-              <!-- Indie Game Devs -->
-              <div class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative border border-gray-200 hover:border-cyan-300">
-                <div class="absolute top-3 left-3 bg-red-100 text-red-600 text-xs font-bold px-3 py-1 rounded-full">
-                  Hot
-                </div>
-                <div class="h-1 bg-gradient-to-r from-cyan-600 to-blue-600"></div>
-                <div class="p-4 pt-12">
-                  <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-base font-black text-gray-900 hover:text-cyan-600 transition-colors">
-                      Indie Game Developers
-                    </h3>
-                    <span class="text-lg">🎮</span>
-                  </div>
-                  <div class="flex items-center text-gray-500 text-sm mb-3">
-                    <svg class="h-3 w-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 616 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                    </svg>
-                    243 members
-                  </div>
-                  <p class="text-gray-600 text-xs leading-relaxed mb-3">
-                    Share projects, get feedback, find collaborators.
-                  </p>
-                  <button class="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-semibold py-2 rounded-lg text-xs">
-                    Join Channel
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </main>
     </div>
   </div>
 </div>
-
-<script>
-  // Setup functionality
-  document.addEventListener('DOMContentLoaded', function() {
-    setupMobileSidebar();
-    setupUserMenu();
-    setupSearch();
-  });
-
-  // Mobile sidebar functionality
-  function setupMobileSidebar() {
-    const button = document.getElementById('mobile-menu-button');
-    const sidebar = document.getElementById('mobile-sidebar');
-    const overlay = document.getElementById('mobile-overlay');
-    
-    if (button && sidebar && overlay) {
-      button.addEventListener('click', function() {
-        sidebar.classList.remove('-translate-x-full');
-        overlay.classList.remove('hidden');
-      });
-
-      overlay.addEventListener('click', function() {
-        sidebar.classList.add('-translate-x-full');
-        overlay.classList.add('hidden');
-      });
-    }
-  }
-
-  // User menu functionality
-  function setupUserMenu() {
-    const button = document.getElementById('user-menu-button');
-    const menu = document.getElementById('user-menu');
-    
-    if (button && menu) {
-      button.addEventListener('click', function() {
-        menu.classList.toggle('hidden');
-      });
-
-      document.addEventListener('click', function(event) {
-        if (!button.contains(event.target) && !menu.contains(event.target)) {
-          menu.classList.add('hidden');
-        }
-      });
-    }
-  }
-
-  // Search functionality
-  function setupSearch() {
-    const toggle = document.getElementById('search-toggle');
-    const input = document.getElementById('search-input');
-    
-    if (toggle && input) {
-      toggle.addEventListener('click', function() {
-        input.classList.toggle('hidden');
-        if (!input.classList.contains('hidden')) {
-          input.focus();
-        }
-      });
-
-      document.addEventListener('click', function(event) {
-        if (!toggle.contains(event.target) && !input.contains(event.target)) {
-          input.classList.add('hidden');
-        }
-      });
-    }
-  }
-</script>

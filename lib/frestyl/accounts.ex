@@ -34,6 +34,19 @@ defmodule Frestyl.Accounts do
     end)
   end
 
+  def complete_onboarding(user) do
+    Multi.new()
+    |> Multi.update(:user, User.changeset(user, %{onboarding_completed: true}))
+    |> Multi.run(:auto_join_official, fn _repo, %{user: user} ->
+      Channels.ensure_user_in_frestyl_official(user.id)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{user: updated_user}} -> {:ok, updated_user}
+      {:error, _operation, changeset, _changes} -> {:error, changeset}
+    end
+  end
+
   def list_user_accounts(user_id) do
     from(a in Account,
       join: m in AccountMembership,
@@ -77,8 +90,6 @@ defmodule Frestyl.Accounts do
         {:error, :invalid_credentials}
     end
   end
-
-  # In lib/frestyl/accounts.ex
 
   def list_users do
     Repo.all(User)
@@ -288,7 +299,6 @@ defmodule Frestyl.Accounts do
     token
   end
 
-  # Add to lib/frestyl/accounts.ex
 
   @doc """
   Lists active sessions for a user.

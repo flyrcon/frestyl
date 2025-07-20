@@ -1065,4 +1065,488 @@ defmodule Frestyl.Content do
     {before, after_blocks} = Enum.split(blocks, position)
     before ++ [new_block] ++ after_blocks
   end
+
+    @doc """
+  Gets featured collaborations for Frestyl Official discovery feed.
+  """
+  def get_featured_collaborations(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 5)
+
+    # Mock data - replace with actual collaboration tracking
+    [
+      %{
+        id: 1,
+        title: "Music Video Collaboration",
+        description: "Indie artist seeking videographer for music video project",
+        type: "Creative Partnership",
+        emoji: "🎬",
+        participants_count: 3,
+        created_at: DateTime.utc_now(),
+        genres: ["music_audio", "video_film"],
+        collaboration_type: "co_creation"
+      },
+      %{
+        id: 2,
+        title: "React App Development",
+        description: "Frontend developer looking for backend partner",
+        type: "Technical Collaboration",
+        emoji: "💻",
+        participants_count: 2,
+        created_at: DateTime.add(DateTime.utc_now(), -3600, :second),
+        genres: ["tech_development"],
+        collaboration_type: "pair_programming"
+      },
+      %{
+        id: 3,
+        title: "Podcast Co-hosting",
+        description: "Marketing podcast seeks co-host with business expertise",
+        type: "Content Collaboration",
+        emoji: "🎙️",
+        participants_count: 5,
+        created_at: DateTime.add(DateTime.utc_now(), -7200, :second),
+        genres: ["business_finance", "writing_content"],
+        collaboration_type: "co_creation"
+      },
+      %{
+        id: 4,
+        title: "Children's Book Illustration",
+        description: "Author seeking illustrator for picture book series",
+        type: "Creative Partnership",
+        emoji: "📚",
+        participants_count: 2,
+        created_at: DateTime.add(DateTime.utc_now(), -10800, :second),
+        genres: ["writing_content", "visual_arts"],
+        collaboration_type: "co_creation"
+      },
+      %{
+        id: 5,
+        title: "Language Exchange Circle",
+        description: "Spanish-English conversation practice group",
+        type: "Learning Partnership",
+        emoji: "🗣️",
+        participants_count: 8,
+        created_at: DateTime.add(DateTime.utc_now(), -14400, :second),
+        genres: ["languages_communication"],
+        collaboration_type: "language_exchange"
+      }
+    ]
+    |> Enum.take(limit)
+  end
+
+  @doc """
+  Gets channel spotlights for discovery feed.
+  """
+  def get_channel_spotlights(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 3)
+
+    # Mock data - replace with actual channel analytics
+    [
+      %{
+        id: 1,
+        name: "UI/UX Designers Hub",
+        description: "Community for user experience and interface designers",
+        member_count: "2.1k",
+        activity_level: "high",
+        growth_rate: "+15% this week",
+        genres: ["visual_arts", "tech_development"],
+        featured_reason: "Most active design community"
+      },
+      %{
+        id: 2,
+        name: "JavaScript Learners",
+        description: "Learn JavaScript through collaboration and peer support",
+        member_count: "4.7k",
+        activity_level: "very_high",
+        growth_rate: "+22% this week",
+        genres: ["tech_development"],
+        featured_reason: "Excellent beginner support"
+      },
+      %{
+        id: 3,
+        name: "Indie Music Producers",
+        description: "Independent musicians collaborating and sharing techniques",
+        member_count: "1.8k",
+        activity_level: "high",
+        growth_rate: "+18% this week",
+        genres: ["music_audio"],
+        featured_reason: "High-quality collaborations"
+      },
+      %{
+        id: 4,
+        name: "Food Photography Masters",
+        description: "Culinary artists perfecting food photography and styling",
+        member_count: "956",
+        activity_level: "moderate",
+        growth_rate: "+12% this week",
+        genres: ["food_culinary", "visual_arts"],
+        featured_reason: "Stunning portfolio showcases"
+      },
+      %{
+        id: 5,
+        name: "Startup Founders Circle",
+        description: "Entrepreneurs sharing insights and building together",
+        member_count: "3.2k",
+        activity_level: "high",
+        growth_rate: "+25% this week",
+        genres: ["business_finance"],
+        featured_reason: "High-value networking"
+      }
+    ]
+    |> Enum.take(limit)
+  end
+
+  @doc """
+  Gets latest platform news for Frestyl Official.
+  """
+  def get_latest_platform_news(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 3)
+
+    # Mock data - replace with actual CMS/news system
+    [
+      %{
+        id: 1,
+        title: "New Collaboration Tools Released",
+        summary: "Real-time editing and video chat now available in all channels",
+        published_at: DateTime.add(DateTime.utc_now(), -86400, :second),
+        type: "feature_release",
+        author: "Frestyl Team",
+        read_time: "2 min read"
+      },
+      %{
+        id: 2,
+        title: "Community Challenge: #30DaysOfCreativity",
+        summary: "Join thousands of creators in our month-long creative challenge",
+        published_at: DateTime.add(DateTime.utc_now(), -172800, :second),
+        type: "community_event",
+        author: "Community Team",
+        read_time: "3 min read"
+      },
+      %{
+        id: 3,
+        title: "Genre-Based Channel Discovery Now Live",
+        summary: "Find channels and collaborators based on your interests and skills",
+        published_at: DateTime.add(DateTime.utc_now(), -259200, :second),
+        type: "feature_release",
+        author: "Product Team",
+        read_time: "4 min read"
+      },
+      %{
+        id: 4,
+        title: "Creator Spotlight: Sarah's Design Journey",
+        summary: "How one designer built a community of 500+ collaborators",
+        published_at: DateTime.add(DateTime.utc_now(), -345600, :second),
+        type: "creator_spotlight",
+        author: "Editorial Team",
+        read_time: "5 min read"
+      }
+    ]
+    |> Enum.take(limit)
+  end
+
+  @doc """
+  Gets trending projects for discovery feed.
+  """
+  def get_trending_projects(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 6)
+
+    # Mock data - replace with actual portfolio/project analytics
+    [
+      %{
+        id: 1,
+        title: "Minimalist Portfolio Design",
+        description: "Clean, modern portfolio showcasing UX design work",
+        thumbnail_url: "https://via.placeholder.com/300x200",
+        creator: %{name: "Sarah Chen", avatar_url: "https://via.placeholder.com/40x40"},
+        views_count: "1.2k",
+        likes_count: 89,
+        created_at: DateTime.utc_now(),
+        genres: ["visual_arts"],
+        collaboration_opportunities: ["design_review", "portfolio_feedback"]
+      },
+      %{
+        id: 2,
+        title: "AI-Powered Music Generator",
+        description: "Machine learning project that creates original melodies",
+        thumbnail_url: "https://via.placeholder.com/300x200",
+        creator: %{name: "Marcus Johnson", avatar_url: "https://via.placeholder.com/40x40"},
+        views_count: "3.4k",
+        likes_count: 156,
+        created_at: DateTime.add(DateTime.utc_now(), -3600, :second),
+        genres: ["tech_development", "music_audio"],
+        collaboration_opportunities: ["code_review", "music_collaboration"]
+      },
+      %{
+        id: 3,
+        title: "Sustainable Living Blog",
+        description: "Weekly posts about zero-waste lifestyle and eco-friendly tips",
+        thumbnail_url: "https://via.placeholder.com/300x200",
+        creator: %{name: "Emma Rodriguez", avatar_url: "https://via.placeholder.com/40x40"},
+        views_count: "2.8k",
+        likes_count: 203,
+        created_at: DateTime.add(DateTime.utc_now(), -7200, :second),
+        genres: ["writing_content", "sustainability_environment"],
+        collaboration_opportunities: ["co_writing", "guest_posting"]
+      },
+      %{
+        id: 4,
+        title: "Indie Game Development Showcase",
+        description: "2D platformer built with Unity, looking for feedback",
+        thumbnail_url: "https://via.placeholder.com/300x200",
+        creator: %{name: "Alex Kim", avatar_url: "https://via.placeholder.com/40x40"},
+        views_count: "956",
+        likes_count: 67,
+        created_at: DateTime.add(DateTime.utc_now(), -10800, :second),
+        genres: ["gaming_interactive", "tech_development"],
+        collaboration_opportunities: ["game_testing", "art_collaboration"]
+      },
+      %{
+        id: 5,
+        title: "Culinary Adventures Series",
+        description: "Exploring international cuisines with detailed recipe guides",
+        thumbnail_url: "https://via.placeholder.com/300x200",
+        creator: %{name: "Chef Maria Santos", avatar_url: "https://via.placeholder.com/40x40"},
+        views_count: "1.7k",
+        likes_count: 134,
+        created_at: DateTime.add(DateTime.utc_now(), -14400, :second),
+        genres: ["food_culinary", "writing_content"],
+        collaboration_opportunities: ["recipe_exchange", "cooking_videos"]
+      },
+      %{
+        id: 6,
+        title: "Language Learning App Prototype",
+        description: "React Native app for Spanish conversation practice",
+        thumbnail_url: "https://via.placeholder.com/300x200",
+        creator: %{name: "David Wilson", avatar_url: "https://via.placeholder.com/40x40"},
+        views_count: "1.1k",
+        likes_count: 78,
+        created_at: DateTime.add(DateTime.utc_now(), -18000, :second),
+        genres: ["tech_development", "languages_communication"],
+        collaboration_opportunities: ["app_testing", "language_exchange"]
+      }
+    ]
+    |> Enum.take(limit)
+  end
+
+  @doc """
+  Gets popular learning content for discovery feed.
+  """
+  def get_popular_learning_content(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 4)
+
+    # Mock data - replace with actual learning content tracking
+    [
+      %{
+        id: 1,
+        title: "Figma to React: Complete Workflow",
+        description: "Learn how to convert designs into working React components",
+        difficulty_level: "Intermediate",
+        duration: "2 hours",
+        type: "workshop",
+        instructor: "Design Systems Team",
+        participants_count: 89,
+        rating: 4.8,
+        genres: ["visual_arts", "tech_development"]
+      },
+      %{
+        id: 2,
+        title: "Music Theory for Producers",
+        description: "Essential music theory concepts for electronic music production",
+        difficulty_level: "Beginner",
+        duration: "1.5 hours",
+        type: "course",
+        instructor: "Producer Collective",
+        participants_count: 156,
+        rating: 4.6,
+        genres: ["music_audio"]
+      },
+      %{
+        id: 3,
+        title: "Entrepreneurship Basics",
+        description: "Fundamentals of starting and growing a business",
+        difficulty_level: "Beginner",
+        duration: "3 hours",
+        type: "course",
+        instructor: "Startup Mentors",
+        participants_count: 203,
+        rating: 4.7,
+        genres: ["business_finance"]
+      },
+      %{
+        id: 4,
+        title: "Food Photography Masterclass",
+        description: "Professional techniques for shooting and editing food photos",
+        difficulty_level: "Intermediate",
+        duration: "2.5 hours",
+        type: "masterclass",
+        instructor: "Culinary Photographers",
+        participants_count: 67,
+        rating: 4.9,
+        genres: ["food_culinary", "visual_arts"]
+      },
+      %{
+        id: 5,
+        title: "Spanish Conversation Bootcamp",
+        description: "Intensive speaking practice for intermediate learners",
+        difficulty_level: "Intermediate",
+        duration: "4 weeks",
+        type: "bootcamp",
+        instructor: "Language Exchange Hub",
+        participants_count: 124,
+        rating: 4.5,
+        genres: ["languages_communication"]
+      }
+    ]
+    |> Enum.take(limit)
+  end
+
+  @doc """
+  Gets active community challenges for discovery feed.
+  """
+  def get_active_community_challenges(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 3)
+
+    # Mock data - replace with actual challenge system
+    [
+      %{
+        id: 1,
+        title: "#30DaysOfCode",
+        description: "Code something new every day for 30 days",
+        participants_count: 892,
+        days_remaining: 12,
+        type: "coding_challenge",
+        prize: "Featured portfolio spotlight",
+        difficulty: "All levels",
+        genres: ["tech_development"]
+      },
+      %{
+        id: 2,
+        title: "Logo Design Sprint",
+        description: "Design 5 logos in 5 days with daily feedback",
+        participants_count: 234,
+        days_remaining: 3,
+        type: "design_challenge",
+        prize: "Design mentorship session",
+        difficulty: "Intermediate",
+        genres: ["visual_arts"]
+      },
+      %{
+        id: 3,
+        title: "Recipe Remix Challenge",
+        description: "Recreate classic dishes with a modern twist",
+        participants_count: 167,
+        days_remaining: 8,
+        type: "culinary_challenge",
+        prize: "Cookbook feature",
+        difficulty: "All levels",
+        genres: ["food_culinary"]
+      },
+      %{
+        id: 4,
+        title: "Micro-Fiction Marathon",
+        description: "Write a complete story in under 100 words daily",
+        participants_count: 445,
+        days_remaining: 15,
+        type: "writing_challenge",
+        prize: "Writing workshop access",
+        difficulty: "All levels",
+        genres: ["writing_content"]
+      }
+    ]
+    |> Enum.take(limit)
+  end
+
+  @doc """
+  Tracks user dismissal of discovery content for better recommendations.
+  """
+  def track_user_dismissal(user_id, item_id, item_type) do
+    # Track user dismissals to improve recommendations
+    # This would typically go to an analytics system or database
+
+    dismissal_data = %{
+      user_id: user_id,
+      item_id: item_id,
+      item_type: item_type,
+      dismissed_at: DateTime.utc_now(),
+      reason: "user_dismissed" # Could be expanded to capture reasons
+    }
+
+    # For now, just log it - replace with actual tracking system
+    require Logger
+    Logger.info("User #{user_id} dismissed #{item_type} #{item_id}")
+
+    # Could store in database table:
+    # %UserDismissal{}
+    # |> UserDismissal.changeset(dismissal_data)
+    # |> Repo.insert()
+
+    :ok
+  end
+
+  @doc """
+  Gets personalized content based on user's genre interests.
+  """
+  def get_personalized_discovery_content(user_interests, opts \\ []) do
+    if user_interests && user_interests.genres do
+      # Filter content by user's selected genres
+      %{
+        featured_collaborations: filter_by_genres(get_featured_collaborations(), user_interests.genres),
+        channel_spotlights: filter_by_genres(get_channel_spotlights(), user_interests.genres),
+        platform_news: get_latest_platform_news(opts), # News is universal
+        trending_projects: filter_by_genres(get_trending_projects(), user_interests.genres),
+        learning_opportunities: filter_by_genres(get_popular_learning_content(), user_interests.genres),
+        community_challenges: filter_by_genres(get_active_community_challenges(), user_interests.genres)
+      }
+    else
+      # Default content for users without interests
+      %{
+        featured_collaborations: get_featured_collaborations(opts),
+        channel_spotlights: get_channel_spotlights(opts),
+        platform_news: get_latest_platform_news(opts),
+        trending_projects: get_trending_projects(opts),
+        learning_opportunities: get_popular_learning_content(opts),
+        community_challenges: get_active_community_challenges(opts)
+      }
+    end
+  end
+
+  @doc """
+  Filters content items by matching genres.
+  """
+  defp filter_by_genres(content_items, user_genres) do
+    content_items
+    |> Enum.filter(fn item ->
+      item_genres = Map.get(item, :genres, [])
+      # Show item if any of its genres match user's interests
+      Enum.any?(item_genres, &(&1 in user_genres))
+    end)
+    |> case do
+      [] -> Enum.take(content_items, 2) # If no matches, show some default content
+      filtered -> filtered
+    end
+  end
+
+  @doc """
+  Gets discovery content with enhanced metadata for analytics.
+  """
+  def get_discovery_content_with_analytics(user_id, user_interests \\ nil) do
+    content = get_personalized_discovery_content(user_interests)
+
+    # Add analytics metadata
+    %{
+      content: content,
+      analytics: %{
+        user_id: user_id,
+        generated_at: DateTime.utc_now(),
+        personalization_applied: !is_nil(user_interests),
+        content_counts: %{
+          collaborations: length(content.featured_collaborations),
+          channels: length(content.channel_spotlights),
+          news: length(content.platform_news),
+          projects: length(content.trending_projects),
+          learning: length(content.learning_opportunities),
+          challenges: length(content.community_challenges)
+        }
+      }
+    }
+  end
 end
