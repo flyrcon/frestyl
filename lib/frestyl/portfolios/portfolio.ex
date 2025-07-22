@@ -149,7 +149,8 @@ defmodule Frestyl.Portfolios.Portfolio do
       :contact_info, :access_request_settings, :expires_at,
       :approval_required, :require_approval, :theme, :custom_css,
       :user_id, :allow_resume_export, :resume_template, :resume_config,
-      :customization
+      :customization, :story_type, :estimated_read_time, :monetization_settings,
+      :audio_settings
     ])
     |> validate_required([:title, :slug])
     |> validate_length(:title, min: 3, max: 100)
@@ -164,7 +165,12 @@ defmodule Frestyl.Portfolios.Portfolio do
     |> validate_contact_info()
   end
 
-  # 🔥 NEW: Privacy settings validation
+  def customization_changeset(portfolio, attrs) do
+    portfolio
+    |> cast(attrs, [:customization])
+    |> validate_required([])
+  end
+
   defp validate_privacy_settings(changeset) do
     case get_change(changeset, :privacy_settings) do
       nil -> changeset

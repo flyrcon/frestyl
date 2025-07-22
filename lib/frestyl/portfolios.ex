@@ -399,6 +399,47 @@ defmodule Frestyl.Portfolios do
     update_section(section, %{content: updated_content})
   end
 
+  def update_section_positions(section_ids, portfolio_id) do
+    import Ecto.Query
+
+    try do
+      Ecto.Multi.new()
+      |> Ecto.Multi.run(:update_positions, fn repo, _changes ->
+        # Get existing sections
+        existing_sections = from(s in PortfolioSection,
+          where: s.portfolio_id == ^portfolio_id,
+          order_by: [asc: s.position]
+        ) |> repo.all()
+
+        # Update positions
+        updated_sections = section_ids
+        |> Enum.with_index()
+        |> Enum.map(fn {section_id, new_position} ->
+          section = Enum.find(existing_sections, &(&1.id == section_id))
+          if section do
+            case repo.update(Ecto.Changeset.change(section, position: new_position)) do
+              {:ok, updated_section} -> updated_section
+              {:error, _} -> section
+            end
+          end
+        end)
+        |> Enum.reject(&is_nil/1)
+
+        {:ok, updated_sections}
+      end)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{update_positions: updated_sections}} ->
+          {:ok, updated_sections}
+        {:error, _, reason, _} ->
+          {:error, reason}
+      end
+    rescue
+      error ->
+        {:error, Exception.message(error)}
+    end
+  end
+
   def refresh_social_section_data(portfolio_id) do
     with social_section when not is_nil(social_section) <- get_social_section(portfolio_id),
          integrations <- Social.list_portfolio_social_integrations(portfolio_id) do
@@ -1016,7 +1057,7 @@ defmodule Frestyl.Portfolios do
 
   def get_portfolio_by_slug_with_sections_simple(_), do: {:error, :invalid_slug}
 
-  def get_portfolio_by_share_token_simple(token) do
+def get_portfolio_by_share_token_simple(token) do
     IO.puts("🔥 LOADING SHARED PORTFOLIO: #{token}")
 
     query = from s in PortfolioShare,
@@ -1026,7 +1067,6 @@ defmodule Frestyl.Portfolios do
         portfolio: [
           :user,
           portfolio_sections: [portfolio_media: []],
-          # 🔥 NEW: Include social integrations in shares
           social_integrations: [:social_posts]
         ]
       ]
@@ -1041,6 +1081,9 @@ defmodule Frestyl.Portfolios do
         IO.puts("🔥 SHARED PORTFOLIO FOUND: #{portfolio.title}")
         IO.puts("🔥 RAW SECTIONS COUNT: #{length(portfolio.portfolio_sections)}")
 
+        # Transform sections once
+        transformed_sections = transform_sections_for_display(portfolio.portfolio_sections)
+
         normalized_portfolio = %{
           id: portfolio.id,
           title: portfolio.title,
@@ -1049,14 +1092,19 @@ defmodule Frestyl.Portfolios do
           theme: portfolio.theme,
           customization: portfolio.customization,
           visibility: portfolio.visibility,
-          # 🔥 NEW: Include privacy and social settings
           privacy_settings: portfolio.privacy_settings,
           social_integration: portfolio.social_integration,
           contact_info: portfolio.contact_info,
           inserted_at: portfolio.inserted_at,
           updated_at: portfolio.updated_at,
           user: portfolio.user,
-          sections: transform_sections_for_display(portfolio.portfolio_sections),
+          sections: transformed_sections, # Use the transformed sections
+          # 🔥 ADD THESE MISSING KEYS:
+          visible_sections: Enum.filter(transformed_sections, & &1.visible),
+          visible_non_hero_sections: transformed_sections
+                                     |> Enum.filter(& &1.visible)
+                                     |> Enum.reject(&(&1.section_type == :hero)),
+          hero_section: Enum.find(transformed_sections, &(&1.section_type == :hero && &1.visible)),
           # 🔥 NEW: Include transformed social integrations
           social_integrations: transform_social_integrations(portfolio.social_integrations || [])
         }
@@ -1150,29 +1198,20 @@ defmodule Frestyl.Portfolios do
   @doc """
   Create a new portfolio section
   """
-  def create_portfolio_section(attrs) do
-    try do
-      %PortfolioSection{}
-      |> PortfolioSection.changeset(attrs)
-      |> Repo.insert()
-    rescue
-      e ->
-        Logger.error("Error creating portfolio section: #{inspect(e)}")
-        {:error, "Database error: #{Exception.message(e)}"}
-    end
+  def create_portfolio_section(portfolio_id, section_params) do
+    %PortfolioSection{}
+    |> PortfolioSection.changeset(Map.put(section_params, :portfolio_id, portfolio_id))
+    |> Repo.insert()
   end
 
-  @doc """
-  Delete a portfolio section
-  """
+  def update_portfolio_section(section, section_params) do
+    section
+    |> PortfolioSection.changeset(section_params)
+    |> Repo.update()
+  end
+
   def delete_portfolio_section(section) do
-    try do
-      Repo.delete(section)
-    rescue
-      e ->
-        Logger.error("Error deleting portfolio section: #{inspect(e)}")
-        {:error, "Database error: #{Exception.message(e)}"}
-    end
+    Repo.delete(section)
   end
 
   @doc """
@@ -1244,9 +1283,23 @@ defmodule Frestyl.Portfolios do
 
   defp remove_recursive_legacy_backup(value), do: value
 
-  @doc """
-  SAFE UPDATE: Update portfolio customization without creating recursive backups
-  """
+
+  def update_portfolio_customization(portfolio, customization_params) do
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.merge(current_customization, customization_params)
+
+    portfolio
+    |> Portfolio.changeset(%{customization: updated_customization})
+    |> Repo.update()
+  end
+
+  def update_portfolio_seo_settings(portfolio, seo_params) do
+    portfolio
+    |> Portfolio.changeset(seo_params)
+    |> Repo.update()
+  end
+
+
   def safe_update_portfolio_customization(portfolio, new_customization) do
     # Clean any existing legacy backups from new customization
     clean_customization = remove_recursive_legacy_backup(new_customization)
@@ -1263,6 +1316,23 @@ defmodule Frestyl.Portfolios do
     portfolio
     |> Portfolio.changeset(%{customization: safe_customization})
     |> Repo.update()
+  end
+
+  def update_portfolio_customization_by_id(portfolio_id, customization_params) when is_integer(portfolio_id) do
+    IO.puts("🔥 UPDATE CUSTOMIZATION BY ID: #{portfolio_id} - #{inspect(customization_params)}")
+
+    case get_portfolio(portfolio_id) do
+      nil ->
+        {:error, "Portfolio not found"}
+
+      portfolio ->
+        current_customization = portfolio.customization || %{}
+        updated_customization = Map.merge(current_customization, customization_params)
+
+        portfolio
+        |> Portfolio.changeset(%{customization: updated_customization})
+        |> Repo.update()
+    end
   end
 
   defp should_create_backup?(old_customization, new_customization) do
@@ -1533,7 +1603,11 @@ defmodule Frestyl.Portfolios do
       end
 
       # 🔥 Transform media files to expected format
-      media_files = transform_media_files_for_display(section.portfolio_media || [])
+      media_files = case section.portfolio_media do
+        %Ecto.Association.NotLoaded{} -> []
+        media when is_list(media) -> transform_media_files_for_display(media)
+        _ -> []
+      end
 
       transformed = %{
         id: section.id,
@@ -1682,14 +1756,6 @@ defmodule Frestyl.Portfolios do
   end
   def get_video_thumbnail(_), do: "/images/video-thumbnail.jpg"
 
-  # Portfolio CRUD operations (keeping existing functions)
-  def list_user_portfolios(user_id) do
-    Portfolio
-    |> where([p], p.user_id == ^user_id)
-    |> order_by([p], desc: p.updated_at)
-    |> Repo.all()
-  end
-
   def get_portfolio!(id), do: Repo.get!(Portfolio, id)
 
   def get_portfolio_by_slug!(user_id, slug) do
@@ -1727,46 +1793,34 @@ defmodule Frestyl.Portfolios do
     end
   end
 
-  def get_portfolio!(id) when is_integer(id) do
-    Portfolio |> Repo.get!(id)
-  end
-
   @doc """
   Get portfolio with preloaded sections
   """
-  def get_portfolio_with_sections(id) do
-    case get_portfolio(id) do
-      nil -> nil
+  def get_portfolio_with_sections(portfolio_id) do
+    IO.puts("🔥 get_portfolio_with_sections called with ID: #{portfolio_id}")
+
+    case Repo.get(Portfolio, portfolio_id) do
+      nil ->
+        {:error, :not_found}
+
       portfolio ->
-        portfolio
-        |> Repo.preload([
-          :user,
-          sections: [
-            :content_blocks,
-            :portfolio_media
-          ]
-        ])
+        sections = list_portfolio_sections(portfolio_id)
+        IO.puts("🔥 Found #{length(sections)} sections")
+
+        portfolio_map = portfolio
+        |> Map.from_struct()
+        |> Map.put(:sections, sections)
+        |> Map.put(:visible_sections, Enum.filter(sections, & &1.visible))
+        |> Map.put(:visible_non_hero_sections,
+            sections |> Enum.filter(& &1.visible) |> Enum.reject(&(&1.section_type == :hero)))
+        |> Map.put(:hero_section,
+            Enum.find(sections, &(&1.section_type == :hero && &1.visible)))
+
+        IO.puts("🔥 Final portfolio keys: #{inspect(Map.keys(portfolio_map))}")
+        IO.puts("🔥 RETURNING: {:ok, portfolio_with_sections}")
+
+        {:ok, portfolio_map}
     end
-  end
-
-  @doc """
-  Get portfolio by slug (safe version)
-  """
-  def get_portfolio_by_slug(slug) when is_binary(slug) do
-    Portfolio
-    |> where([p], p.slug == ^slug)
-    |> Repo.one()
-  end
-
-  def get_portfolio_by_slug(_), do: nil
-
-  @doc """
-  Get portfolio by slug (unsafe version)
-  """
-  def get_portfolio_by_slug!(slug) when is_binary(slug) do
-    Portfolio
-    |> where([p], p.slug == ^slug)
-    |> Repo.one!()
   end
 
   @doc """
@@ -1798,6 +1852,17 @@ defmodule Frestyl.Portfolios do
   rescue
     _ -> 0
   end
+
+    @doc """
+  Get portfolio by slug (safe version)
+  """
+  def get_portfolio_by_slug(slug) when is_binary(slug) do
+    Portfolio
+    |> where([p], p.slug == ^slug)
+    |> Repo.one()
+  end
+
+  def get_portfolio_by_slug(_), do: nil
 
   @doc """
   Get portfolio limits for a user based on subscription
@@ -1944,10 +2009,6 @@ defmodule Frestyl.Portfolios do
 
   def get_share_by_token!(token) do
     Repo.get_by!(PortfolioShare, token: token)
-  end
-
-  def get_share_by_token(token) do
-    Repo.get_by(PortfolioShare, token: token)
   end
 
   def create_share(attrs \\ %{}) do
@@ -2327,7 +2388,7 @@ defmodule Frestyl.Portfolios do
     end
   end
 
-    defp safely_count_all_visits(portfolios) do
+  defp safely_count_all_visits(portfolios) do
     # Replace with your actual visit counting logic
     # For now, return 0 to prevent errors
     portfolios
@@ -3054,26 +3115,6 @@ defmodule Frestyl.Portfolios do
 
   defp normalize_datetime(_), do: {:error, :invalid_type}
 
-  @doc """
-  Enhanced relative time formatting with safe DateTime handling
-  """
-  def safe_format_relative_time(datetime) when is_nil(datetime), do: "Unknown time"
-
-  def safe_format_relative_time(datetime) do
-    try do
-      current_time = DateTime.utc_now()
-
-      case normalize_datetime(datetime) do
-        {:ok, nil} -> "Unknown time"
-        {:ok, valid_dt} ->
-          diff = safe_datetime_diff(current_time, valid_dt, :second)
-          format_time_difference(diff, valid_dt)
-        {:error, _} -> "Unknown time"
-      end
-    rescue
-      _ -> "Unknown time"
-    end
-  end
 
   defp format_time_difference(diff_seconds, datetime) when is_integer(diff_seconds) do
     cond do

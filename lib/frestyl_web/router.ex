@@ -207,7 +207,16 @@ defmodule FrestylWeb.Router do
     live "/portfolios", PortfolioLive.Index, :index
 
     # In router.ex, add this route:
-    live "/live_preview/:id/:preview_token", PortfolioLive.LivePreview
+    #live "/portfolios/:id/preview/:preview_token", PortfolioLive.PortfolioPreviewLive, :preview
+    #live "/portfolios/:id/:preview", PortfolioLive.PortfolioPreviewLive, :editor_preview
+
+    # Editor preview iframe
+    #live "/portfolios/:id/editor_preview", PortfolioLive.PortfolioPreviewLive, :preview
+
+    # Mobile preview
+    #live "/portfolios/:id/mobile_preview", PortfolioLive.PortfolioPreviewLive, :mobile_preview
+
+
 
     # Portfolio CRUD operations - SPECIFIC ROUTES FIRST
     live "/portfolios/new", PortfolioLive.New, :new
@@ -217,8 +226,9 @@ defmodule FrestylWeb.Router do
 
     # Generic routes LAST
     live "/portfolios/:id", PortfolioLive.Show, :show
-    live "/portfolios/:id/edit_legacy", PortfolioLive.PortfolioEditor, :edit
-    live "/portfolios/:id/edit", PortfolioLive.PortfolioEditorFixed, :edit
+    live "/portfolios/:id/edit", PortfolioLive.PortfolioEditorUnified, :edit
+
+    live "/portfolios/:id/preview", PortfolioLive.PortfolioPreviewLive, :preview
 
     live "/portfolios/:id/enhance/:type", PortfolioLive.PortfolioEditor, :enhance
 

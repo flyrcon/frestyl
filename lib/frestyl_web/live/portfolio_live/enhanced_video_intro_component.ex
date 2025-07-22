@@ -153,40 +153,50 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     end
   end
 
+
   # ============================================================================
   # EVENT HANDLERS - CAMERA AND RECORDING
   # ============================================================================
 
   @impl true
   def handle_event("camera_ready", params, socket) do
-    socket =
-      socket
-      |> assign(:camera_ready, true)
-      |> assign(:camera_status, "ready")
-      |> assign(:error_message, nil)
+    component_id = "video-intro-recorder-modal-#{socket.assigns.portfolio.id}"
+    IO.puts("🔥 Camera ready for component: #{component_id}")
+
+    # Forward to the video component with correct ID
+    send_update(FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent,
+      id: component_id,
+      camera_status: :ready)
 
     {:noreply, socket}
   end
 
   @impl true
   def handle_event("camera_error", params, socket) do
-    error_message = Map.get(params, "message", "Camera error")
-    error_type = Map.get(params, "error", "unknown")
+    component_id = "video-intro-recorder-modal-#{socket.assigns.portfolio.id}"
+    error = Map.get(params, "error", "Unknown camera error")
+    IO.puts("❌ Camera error for component #{component_id}: #{error}")
 
-    camera_status = case error_type do
-      "NotAllowedError" -> "permission_denied"
-      "NotFoundError" -> "no_camera"
-      "NotReadableError" -> "camera_busy"
-      _ -> "error"
-    end
+    # Forward to the video component with correct ID
+    send_update(FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent,
+      id: component_id,
+      camera_status: :error,
+      error_message: error)
 
-    socket =
-      socket
-      |> assign(:camera_ready, false)
-      |> assign(:camera_status, camera_status)
-      |> assign(:error_message, error_message)
+    {:noreply, socket
+    |> put_flash(:error, "Camera access failed: #{error}")}
+  end
 
-    {:noreply, socket}
+  @impl true
+  def handle_event("start_recording", _params, socket) do
+    IO.puts("🔥 Starting video recording")
+    {:noreply, assign(socket, :recording_state, :recording)}
+  end
+
+  @impl true
+  def handle_event("stop_recording", _params, socket) do
+    IO.puts("🔥 Stopping video recording")
+    {:noreply, assign(socket, :recording_state, :processing)}
   end
 
   @impl true
@@ -567,6 +577,14 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
       _ -> "/uploads/videos/#{Path.basename(file_path)}"
     end
   end
+
+  defp format_recording_time(duration_seconds) when is_integer(duration_seconds) do
+    minutes = div(duration_seconds, 60)
+    seconds = rem(duration_seconds, 60)
+    "#{String.pad_leading(to_string(minutes), 2, "0")}:#{String.pad_leading(to_string(seconds), 2, "0")}"
+  end
+
+  defp format_recording_time(_), do: "00:00"
 
   # ============================================================================
   # RENDER FUNCTIONS
@@ -959,14 +977,15 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         <% end %>
 
         <!-- FIXED: Video Element with proper hook registration -->
-        <video id={"camera-preview-#{@id}"}
+        <video
+              id={"camera-preview-#{@id}"}
               class="w-full h-full object-cover"
               autoplay
               muted
               playsinline
               phx-hook="VideoCapture"
               data-component-id={@id}
-              data-recording-state={@recording_state}>
+              data-portfolio-id={@portfolio.id}>
         </video>
 
         <!-- Camera Error State -->
@@ -1067,23 +1086,30 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     <div class="space-y-6">
       <!-- Recording Preview -->
       <div class="relative bg-gray-900 rounded-xl overflow-hidden" style="aspect-ratio: 16/9;">
-        <video id="camera-preview"
-              class="w-full h-full object-cover"
-              autoplay
-              muted
-              playsinline>
+        <video
+          id={"camera-preview-#{@id}"}
+          class="w-full h-full object-cover"
+          autoplay
+          muted
+          playsinline
+          phx-hook="VideoCapture"
+          data-component-id={@id}>
         </video>
 
         <!-- Recording Indicator -->
+        <%= if @recording_state == :recording do %>
         <div class="absolute top-4 left-4 flex items-center space-x-2">
           <div class="w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
           <span class="text-white font-medium">REC</span>
         </div>
+        <% end %>
 
         <!-- Recording Timer -->
-        <div class="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-lg font-mono">
-          <%= format_time(@recording_time) %>
-        </div>
+        <%= if @recording_state in [:recording, :paused] do %>
+          <div class="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-lg text-sm font-mono">
+            <%= format_recording_time(@recording_duration) %>
+          </div>
+        <% end %>
 
         <!-- Progress Bar -->
         <div class="absolute bottom-0 left-0 right-0 h-2 bg-black bg-opacity-30">
@@ -1094,13 +1120,33 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
 
       <!-- Recording Controls -->
       <div class="flex items-center justify-center space-x-4">
-        <button phx-click="stop_recording" phx-target={@myself}
-                class="px-8 py-4 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors flex items-center space-x-2">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10h6v4H9z"/>
-          </svg>
-          <span>Stop Recording</span>
+        <%= if @recording_state == :ready do %>
+          <button
+            phx-click="start_recording"
+            phx-target={@myself}
+            class="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+            <svg class="w-5 h-5 mr-2 inline" fill="currentColor" viewBox="0 0 20 20">
+              <circle cx="10" cy="10" r="8"/>
+            </svg>
+            Start Recording
+          </button>
+        <% else %>
+          <button
+            phx-click="stop_recording"
+            phx-target={@myself}
+            class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+            <svg class="w-5 h-5 mr-2 inline" fill="currentColor" viewBox="0 0 20 20">
+              <rect x="6" y="6" width="8" height="8"/>
+            </svg>
+            Stop Recording
+          </button>
+        <% end %>
+
+        <button
+          phx-click="close_modal"
+          phx-target={@myself}
+          class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-3 rounded-lg font-medium transition-colors">
+          Cancel
         </button>
       </div>
 
@@ -1338,12 +1384,6 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   @impl true
   def handle_event("cancel_recording", _params, socket) do
     send(self(), {:close_video_intro_modal, %{}})
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("stop_recording", _params, socket) do
-    socket = assign(socket, :recording_state, :preview)
     {:noreply, socket}
   end
 

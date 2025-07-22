@@ -519,15 +519,31 @@ defmodule FrestylWeb.PortfolioHubLive do
     end)
   end
 
-  # Helper Functions - Data Loading (Account-scoped)
   defp load_account_portfolios(account) do
     try do
-      case Portfolios.list_account_portfolios(account.id) do
-        portfolios when is_list(portfolios) -> portfolios
-        _ -> []
+      # Fallback to user portfolios if account portfolios don't exist yet
+      case account do
+        %{id: 0} -> []  # Mock account
+        account ->
+          # Try account-based portfolios first, fallback to user portfolios
+          case Portfolios.list_account_portfolios(account.id) do
+            portfolios when is_list(portfolios) -> portfolios
+            _ ->
+              # Fallback to user portfolios
+              case Portfolios.list_user_portfolios(account.owner_id) do
+                portfolios when is_list(portfolios) -> portfolios
+                _ -> []
+              end
+          end
       end
     rescue
-      _ -> []
+      _ ->
+        # Final fallback - try user portfolios
+        try do
+          Portfolios.list_user_portfolios(account.owner_id || account.id)
+        rescue
+          _ -> []
+        end
     end
   end
 
@@ -543,7 +559,15 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   defp load_user_channels(user_id) do
     try do
-      Channels.list_user_channels(user_id)
+      channels = Channels.list_user_channels(user_id)
+      # Ensure channels have proper structure
+      Enum.map(channels || [], fn
+        %{} = channel -> channel
+        channel when is_map(channel) ->
+          Map.put_new(channel, :id, Map.get(channel, "id"))
+        _ -> nil
+      end)
+      |> Enum.filter(& &1)
     rescue
       _ -> []
     end

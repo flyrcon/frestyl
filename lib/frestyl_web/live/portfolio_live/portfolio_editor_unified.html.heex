@@ -1,0 +1,268 @@
+<!-- lib/frestyl_web/live/portfolio_live/portfolio_editor_unified.html.heex -->
+<!-- FIXED VERSION - Defensive portfolio field access -->
+
+<!-- Navigation -->
+<.nav current_user={@current_user} active_tab={:portfolio_editor} />
+
+<div class="pt-16 min-h-screen bg-gray-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    
+    <!-- Editor Header -->
+    <div class="bg-white rounded-xl shadow-sm border mb-6">
+      <div class="p-6 border-b border-gray-200">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-bold text-gray-900 flex items-center">
+              <div class="w-8 h-8 bg-gradient-to-br from-gray-900 to-gray-700 rounded-lg flex items-center justify-center mr-3">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+              </div>
+              Editing: <%= portfolio_title %>
+            </h1>
+            <p class="text-gray-600 mt-1">Create and customize your portfolio sections</p>
+          </div>
+          
+          <div class="flex items-center space-x-3 mt-4 sm:mt-0">
+            <!-- Preview Toggle -->
+            <button 
+              phx-click="toggle_preview"
+              class={[
+                "flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                if(Map.get(assigns, :preview_mode) == :split, do: "bg-blue-100 text-blue-700", else: "bg-gray-100 text-gray-700 hover:bg-gray-200")
+              ]}>
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+              <%= if Map.get(assigns, :preview_mode) == :split, do: "Hide Preview", else: "Show Preview" %>
+            </button>
+            
+            <!-- Save Status -->
+            <div class="flex items-center text-sm text-gray-600">
+              <div class="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
+              <span>Auto-saved <%= if Map.has_key?(assigns, :last_saved), do: time_ago(@last_saved), else: "recently" %></span>
+            </div>
+            
+            <!-- View Live -->
+            <%= if portfolio_slug && String.length(portfolio_slug) > 0 do %>
+              <.link 
+                navigate={~p"/p/#{portfolio_slug}"} 
+                target="_blank"
+                class="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg font-medium">
+                <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+                View Live
+              </.link>
+            <% else %>
+              <span class="bg-gray-400 text-white px-4 py-2 rounded-lg font-medium cursor-not-allowed">
+                View Live (Slug Missing)
+              </span>
+            <% end %>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Tab Navigation -->
+      <nav class="flex space-x-8 px-6">
+        <button 
+          phx-click="switch_tab" 
+          phx-value-tab="sections"
+          class={[
+            "py-4 text-sm font-medium border-b-2 transition-colors",
+            if(Map.get(assigns, :active_tab, "sections") == "sections", do: "border-gray-900 text-gray-900", else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
+          ]}>
+          Sections
+        </button>
+        <button 
+          phx-click="switch_tab" 
+          phx-value-tab="design"
+          class={[
+            "py-4 text-sm font-medium border-b-2 transition-colors",
+            if(Map.get(assigns, :active_tab, "sections") == "design", do: "border-gray-900 text-gray-900", else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
+          ]}>
+          Design
+        </button>
+        <button 
+          phx-click="switch_tab" 
+          phx-value-tab="settings"
+          class={[
+            "py-4 text-sm font-medium border-b-2 transition-colors",
+            if(Map.get(assigns, :active_tab, "sections") == "settings", do: "border-gray-900 text-gray-900", else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
+          ]}>
+          Settings
+        </button>
+      </nav>
+    </div>
+
+    <div class={[
+      "grid gap-6",
+      if(Map.get(assigns, :preview_mode) == :split, do: "grid-cols-12", else: "grid-cols-1")
+    ]}>
+      
+      <!-- Editor Panel -->
+      <div class={[
+        if(Map.get(assigns, :preview_mode) == :split, do: "col-span-7", else: "col-span-12")
+      ]}>
+        
+        <%= case Map.get(assigns, :active_tab, "sections") do %>
+          <% "sections" -> %>
+            <%= if function_exported?(__MODULE__, :render_sections_tab, 1) do %>
+              <%= render_sections_tab(assigns) %>
+            <% else %>
+              <div class="bg-white rounded-xl shadow-sm border p-6">
+                <p class="text-gray-600">Sections tab content loading...</p>
+              </div>
+            <% end %>
+          <% "design" -> %>
+            <%= if function_exported?(__MODULE__, :render_design_tab, 1) do %>
+              <%= render_design_tab(assigns) %>
+            <% else %>
+              <div class="bg-white rounded-xl shadow-sm border p-6">
+                <p class="text-gray-600">Design tab content loading...</p>
+              </div>
+            <% end %>
+          <% "settings" -> %>
+            <%= if function_exported?(__MODULE__, :render_settings_tab, 1) do %>
+              <%= render_settings_tab(assigns) %>
+            <% else %>
+              <div class="bg-white rounded-xl shadow-sm border p-6">
+                <p class="text-gray-600">Settings tab content loading...</p>
+              </div>
+            <% end %>
+        <% end %>
+        
+      </div>
+      
+      <!-- Preview Panel -->
+      <%= if Map.get(assigns, :preview_mode) == :split do %>
+        <div class="col-span-5">
+          <div class="bg-white rounded-xl shadow-sm border overflow-hidden sticky top-8">
+            <div class="p-4 bg-gray-50 border-b border-gray-200">
+              <div class="flex items-center justify-between">
+                <h3 class="font-medium text-gray-900">Live Preview</h3>
+                <div class="flex items-center space-x-2">
+                  <button class="p-1 text-gray-400 hover:text-gray-600 rounded">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="h-96 overflow-y-auto">
+              <%= if portfolio_id > 0 do %>
+                <iframe 
+                  src={~p"/portfolios/#{portfolio_id}/preview"} 
+                  class="w-full h-full border-0"
+                  style="transform: scale(0.8); transform-origin: top left; width: 125%; height: 125%;">
+                </iframe>
+              <% else %>
+                <div class="flex items-center justify-center h-full text-gray-500">
+                  <p>Preview not available</p>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      <% end %>
+      
+    </div>
+  </div>
+</div>
+
+<!-- Section Edit Modal -->
+<%= if Map.get(assigns, :show_section_modal, false) and Map.get(assigns, :editing_section) do %>
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-8 mx-auto p-5 border max-w-4xl shadow-lg rounded-xl bg-white mb-8">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between p-6 border-b border-gray-200">
+        <div>
+          <h3 class="text-xl font-bold text-gray-900 flex items-center">
+            <%= if function_exported?(__MODULE__, :get_section_icon, 1) do %>
+              <%= raw(get_section_icon(@editing_section.section_type)) %>
+            <% end %>
+            <span class="ml-3">
+              Edit <%= if function_exported?(__MODULE__, :format_section_type, 1) do %>
+                <%= format_section_type(@editing_section.section_type) %>
+              <% else %>
+                <%= @editing_section.section_type %>
+              <% end %> Section
+            </span>
+          </h3>
+          <p class="text-gray-600 mt-1">Configure your section content and settings</p>
+        </div>
+        <button 
+          phx-click="close_section_modal"
+          class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      
+      <!-- Modal Content -->
+      <div class="p-6 max-h-[70vh] overflow-y-auto">
+        <form phx-submit="save_section" class="space-y-6">
+          <input type="hidden" name="section_id" value={@editing_section.id} />
+          
+          <!-- Section Title -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Section Title</label>
+            <input 
+              type="text" 
+              name="title" 
+              value={Map.get(@editing_section, :title, "")}
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
+              placeholder="Enter section title" />
+          </div>
+          
+          <!-- Dynamic Content Fields Based on Section Type -->
+          <%= if function_exported?(__MODULE__, :render_section_form_fields, 2) do %>
+            <%= render_section_form_fields(assigns, @editing_section) %>
+          <% else %>
+            <div class="p-4 bg-gray-50 rounded-lg">
+              <p class="text-gray-600">Section form fields will be available soon.</p>
+            </div>
+          <% end %>
+          
+          <!-- Visibility Toggle -->
+          <div class="flex items-center">
+            <input 
+              type="checkbox" 
+              id="visible" 
+              name="visible" 
+              value="true"
+              checked={Map.get(@editing_section, :visible, true)}
+              class="h-4 w-4 text-gray-600 focus:ring-gray-500 border-gray-300 rounded">
+            <label for="visible" class="ml-2 block text-sm text-gray-900">
+              Show this section in portfolio
+            </label>
+          </div>
+          
+          <div class="flex items-center justify-between pt-6 border-t border-gray-200">
+            <div class="text-sm text-gray-600">
+              💡 Changes are saved automatically
+            </div>
+            <div class="flex items-center space-x-3">
+              <button 
+                type="button" 
+                phx-click="close_section_modal"
+                class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button 
+                type="submit"
+                class="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+      
+    </div>
+  </div>
+<% end %>
