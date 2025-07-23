@@ -54,6 +54,13 @@ defmodule Frestyl.Application do
       end)
     end
 
+    # Initialize ETS tables for content campaigns Phase 2
+    :ets.new(:improvement_periods, [:set, :public, :named_table])
+    :ets.new(:peer_review_requests, [:set, :public, :named_table])
+    :ets.new(:campaign_sessions, [:set, :public, :named_table])
+    :ets.new(:live_campaign_metrics, [:set, :public, :named_table])
+    :ets.new(:quality_gates_status, [:set, :public, :named_table])
+
     opts = [strategy: :one_for_one, name: Frestyl.Supervisor]
     Supervisor.start_link(children, opts)
   end

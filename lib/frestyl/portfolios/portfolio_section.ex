@@ -23,7 +23,8 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       :timeline,
       :narrative,
       :journey,
-      :video_hero  # NEW: Video-specific hero block
+      :video_hero,
+      :collaborations
     ]
     field :content, :map
     field :position, :integer
@@ -443,6 +444,18 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       "max_articles" => 12,
       "sort_by" => "published_date", # published_date, engagement, revenue
       "include_draft_metrics" => false
+    }
+  end
+
+  def default_content_for_type(:collaborations) do
+    %{
+      "title" => "Collaborations",
+      "description" => "Showcasing successful collaborative projects and partnerships",
+      "display_format" => "cards", # cards, list, timeline
+      "show_revenue_metrics" => true,
+      "show_contribution_details" => true,
+      "featured_collaboration" => nil,
+      "collaborations" => []
     }
   end
 

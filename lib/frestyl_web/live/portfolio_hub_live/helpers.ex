@@ -63,10 +63,12 @@ defmodule FrestylWeb.PortfolioHubLive.Helpers do
     @doc """
   Humanizes a snake_case section name for display in the UI.
   """
+
   def humanize_section_name(section) do
     case section do
       "portfolio_studio" -> "Portfolio Studio"
       "collaboration_hub" -> "Collaboration Hub"
+      "content_campaigns" -> "Content Campaigns"  # <-- ADD THIS
       "community_channels" -> "Community Channels"
       "creator_lab" -> "Creator Lab"
       "service_dashboard" -> "Service Dashboard"
@@ -1299,6 +1301,88 @@ defmodule FrestylWeb.PortfolioHubLive.Helpers do
   end
 
   def calculate_growth_percentage(_, _), do: 0
+
+
+@doc """
+Gets content campaigns overview for dashboard.
+"""
+def get_campaigns_overview(user_id) do
+  campaigns = Frestyl.DataCampaigns.list_user_campaigns(user_id)
+
+  %{
+    total_campaigns: length(campaigns),
+    active_campaigns: Enum.count(campaigns, &(&1.status in [:active, :open])),
+    completed_campaigns: Enum.count(campaigns, &(&1.status == :completed)),
+    total_revenue: calculate_user_campaign_revenue(campaigns, user_id),
+    recent_activity: get_recent_campaign_activity(user_id)
+  }
+end
+
+@doc """
+Gets campaign contribution summary for a user.
+"""
+def get_user_contribution_summary(campaign, user_id) do
+  tracker = Frestyl.DataCampaigns.get_campaign_tracker(campaign.id)
+
+  case tracker do
+    {:ok, tracker_data} ->
+      metrics = tracker_data.contribution_metrics
+
+      %{
+        word_count: get_in(metrics, [:word_count_by_user, user_id]) || 0,
+        media_contributions: get_in(metrics, [:media_contributions, user_id]) || 0,
+        peer_review_score: get_in(metrics, [:peer_review_scores, user_id]) || 0.0,
+        revenue_percentage: get_in(tracker_data, [:dynamic_revenue_weights, user_id]) || 0.0,
+        last_contribution: get_last_contribution_date(campaign.id, user_id)
+      }
+
+    _ ->
+      %{word_count: 0, media_contributions: 0, peer_review_score: 0.0, revenue_percentage: 0.0}
+  end
+end
+
+@doc"""
+Check s if user can access content campaigns feature.
+"""
+def can_access_content_campaigns?(account) do
+  Frestyl.Features.FeatureGate.can_access_feature?(account, :content_campaigns)
+end
+
+@doc """
+Gets campaign limits based on account tier.
+"""
+def get_content_campaign_limits(account) do
+  case account.subscription_tier do
+    :creator -> %{concurrent_campaigns: 3, max_contributors: 10, revenue_sharing: true}
+    :professional -> %{concurrent_campaigns: 10, max_contributors: 25, revenue_sharing: true}
+    :enterprise -> %{concurrent_campaigns: :unlimited, max_contributors: 50, revenue_sharing: true}
+    _ -> %{concurrent_campaigns: 1, max_contributors: 3, revenue_sharing: false}
+  end
+end
+
+# Private helper functions
+defp calculate_user_campaign_revenue(campaigns, user_id) do
+  campaigns
+  |> Enum.filter(&(&1.status == :completed))
+  |> Enum.reduce(Decimal.new("0.0"), fn campaign, acc ->
+    user_share = get_in(campaign.revenue_splits, [to_string(user_id)]) || 0.0
+    campaign_revenue = campaign.revenue_target || Decimal.new("0.0")
+
+    user_revenue = Decimal.mult(campaign_revenue, Decimal.from_float(user_share / 100))
+    Decimal.add(acc, user_revenue)
+  end)
+end
+
+defp get_recent_campaign_activity(user_id) do
+  # Implementation would get recent activity from campaign metrics
+  []
+end
+
+defp get_last_contribution_date(campaign_id, user_id) do
+  # Implementation would get last contribution timestamp
+  nil
+end
+
 
   # ============================================================================
   # PRIVATE HELPER FUNCTIONS

@@ -102,6 +102,15 @@ defmodule Frestyl.Features.FeatureGate do
       :api_access ->
         TierManager.feature_available?(user_tier, :api_access)
 
+      :content_campaigns ->
+        TierManager.feature_available?(user_tier, :content_campaigns)
+
+      :advanced_campaign_analytics ->
+        TierManager.feature_available?(user_tier, :advanced_campaign_analytics)
+
+      :custom_revenue_splits ->
+        TierManager.feature_available?(user_tier, :custom_revenue_splits)
+
       :white_label ->
         TierManager.feature_available?(user_tier, :white_label)
 
@@ -757,6 +766,42 @@ defmodule Frestyl.Features.FeatureGate do
           }
         }
 
+      :content_campaigns ->
+        %{
+          name: "Content Campaigns",
+          description: "Create and participate in collaborative content campaigns with revenue sharing",
+          tiers: %{
+            personal: false,
+            creator: true,
+            professional: true,
+            enterprise: true
+          }
+        }
+
+      :advanced_campaign_analytics ->
+        %{
+          name: "Advanced Campaign Analytics",
+          description: "Advanced analytics and reporting for content campaigns",
+          tiers: %{
+            personal: false,
+            creator: false,
+            professional: true,
+            enterprise: true
+          }
+        }
+
+      :custom_revenue_splits ->
+        %{
+          name: "Custom Revenue Splits",
+          description: "Custom revenue split configurations and contracts",
+          tiers: %{
+            personal: false,
+            creator: false,
+            professional: true,
+            enterprise: true
+          }
+        }
+
       :white_label ->
         %{
           name: "White Label",
@@ -1196,6 +1241,4 @@ defmodule Frestyl.Features.FeatureGate do
         nil
     end
   end
-
-
 end

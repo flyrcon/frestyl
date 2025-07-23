@@ -560,6 +560,31 @@ defmodule FrestylWeb.Router do
       post "/duplicate", PortfolioController, :duplicate
     end
 
+  # FREQNT Authentication middleware would go here
+  # plug :require_api_auth
+
+  # Campaign management
+  resources "/campaigns", ContentCampaignsAPI, only: [:index, :show, :create] do
+    # Contribution tracking
+    post "/contributions", ContentCampaignsAPI, :create_contribution
+
+    # Metrics and analytics
+    get "/metrics", ContentCampaignsAPI, :metrics
+    get "/analytics", ContentCampaignsAPI, :campaign_analytics
+
+    # Revenue and contracts
+    get "/revenue", ContentCampaignsAPI, :revenue
+    get "/contract", ContentCampaignsAPI, :contract
+    post "/contract/sign", ContentCampaignsAPI, :sign_contract
+  end
+
+  # Analytics overview
+  get "/analytics/campaigns", ContentCampaignsAPI, :analytics_overview
+
+  # Webhooks for external integrations
+  post "/webhooks/campaign_update", ContentCampaignsAPI, :webhook_campaign_update
+  post "/webhooks/revenue_update", ContentCampaignsAPI, :webhook_revenue_update
+
     # Portfolio sharing API
     post "/portfolios/:id/shares", ShareController, :create
     get "/portfolios/:id/shares", ShareController, :index

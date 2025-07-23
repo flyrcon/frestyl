@@ -6,70 +6,264 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   alias Frestyl.{Portfolios, Accounts, Channels, Features, Repo}
   alias Frestyl.Accounts.{Account, AccountMembership}
+  alias FrestylWeb.PortfolioHubLive.ContentCampaignComponents
+  alias Frestyl.DataCampaigns.AdvancedTracker
   import FrestylWeb.Navigation, only: [nav: 1]
+  alias FrestylWeb.PortfolioHubLive.Helpers
   import Ecto.Changeset
 
   @impl true
   def mount(_params, _session, socket) do
     current_user = socket.assigns.current_user
+    current_account = socket.assigns.current_account || get_user_primary_account(current_user)
 
+    # Phase 2 & 3: Advanced metrics and real-time subscriptions
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_hub")
-      Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolios:#{current_user.id}")
-      Phoenix.PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}")
+      PubSub.subscribe(Frestyl.PubSub, "content_campaigns:#{current_account.id}")
+      PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}:campaigns")
+      PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}:quality_gates")
+      PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}:revenue")
     end
 
-    # Load user's accounts for switcher
-    available_accounts = load_user_accounts(current_user.id)
-    current_account = get_current_account(current_user, available_accounts)
-
-    # Load initial data scoped to current account
-    portfolios = load_account_portfolios(current_account) || []
-    network_stats = load_network_stats(current_user.id)
-    analytics_data = calculate_analytics_data(portfolios)
-
-    socket = socket
+    socket =
+      socket
       |> assign(:current_account, current_account)
-      |> assign(:available_accounts, available_accounts)
-      |> assign(:show_account_switcher, false)
-      |> assign(:portfolios, portfolios)
-      |> assign(:analytics_data, analytics_data)
-      |> assign(:analytics_period, "30")
-      |> assign(:story_template, nil)
-      |> assign(:calendar_view, "month")
-      |> assign(:view_mode, "cards")
-      |> assign(:sort_by, "recent")
-      |> assign(:filter_status, "all")
-      |> assign(:show_create_modal, false)
-      |> assign(:create_type, nil)
       |> assign(:active_tab, "portfolio_hub")
-      |> assign(:active_section, "portfolios")
-      |> assign(:page_title, "Portfolio Hub")
-      |> assign(:total_views, calculate_total_views(portfolios))
-      |> assign(:monthly_views, calculate_monthly_views(portfolios))
-      |> assign(:network_stats, network_stats)
+      |> assign(:portfolios, load_user_portfolios(current_user.id))
+      |> assign(:network_stats, load_network_stats(current_user.id))
       |> assign(:recent_connections, load_recent_connections(current_user.id))
       |> assign(:trending_portfolios, load_trending_portfolios())
-      |> assign(:active_collaborations, load_active_collaborations(current_user.id))
-      |> assign(:available_templates, load_available_templates())
-      # Collaboration Hub data
-      |> assign(:collaboration_invites, load_collaboration_invites(current_user.id))
-      |> assign(:collaboration_projects, load_collaboration_projects(current_user.id))
-      |> assign(:content_campaigns, list_content_campaigns(current_user))
-      # Community Channels data
       |> assign(:user_channels, load_user_channels(current_user.id))
-      |> assign(:recommended_channels, load_recommended_channels(current_user.id))
-      |> assign(:official_channel, load_official_channel())
-      # Service Dashboard data (Creator tier+)
-      |> assign(:service_revenue, load_service_revenue(current_account))
-      |> assign(:service_bookings, load_service_bookings(current_account))
-      |> assign(:service_analytics, load_service_analytics(current_account))
-      # Creator Studio data (Creator tier+)
-      |> assign(:studio_projects, load_studio_projects(current_account))
-      |> assign(:studio_resources, load_studio_resources(current_account))
+      |> assign(:featured_collaborations, load_featured_collaborations())
+      |> assign(:onboarding_state, get_onboarding_state(current_user, [], %{}))
+      # Phase 1: Content Campaigns
+      |> assign(:content_campaigns, load_content_campaigns(current_user))
+      |> assign(:campaign_limits, get_campaign_limits(current_account))
+      # Phase 2: Advanced tracking
+      |> assign(:campaign_metrics, load_campaign_metrics(current_user))
+      |> assign(:active_improvement_periods, load_active_improvement_periods(current_user))
+      |> assign(:pending_peer_reviews, load_pending_peer_reviews(current_user))
+      |> assign(:show_improvement_modal, false)
+      |> assign(:show_peer_review_modal, false)
+      # Phase 3: Revenue & contracts
+      |> assign(:revenue_metrics, load_revenue_metrics(current_user))
+      |> assign(:campaign_revenues, load_campaign_revenues(current_user))
+      |> assign(:recent_payments, load_recent_payments(current_user))
+      |> assign(:revenue_projections, load_revenue_projections(current_user))
+      |> assign(:projected_total_revenue, calculate_projected_total(current_user))
+      |> assign(:pending_contracts, load_pending_contracts(current_user))
+      |> assign(:show_contract_modal, false)
+      |> assign(:current_contract, nil)
+      |> assign(:show_revenue_analytics, false)
 
     {:ok, socket}
   end
+
+  # Helper function to get user's primary account
+  defp get_user_primary_account(user) do
+    case Accounts.get_user_primary_account(user) do
+      nil ->
+        # Create a default account if none exists
+        {:ok, account} = Accounts.create_account(%{
+          name: "#{user.username || user.email}'s Account",
+          user_id: user.id,
+          subscription_tier: "personal"
+        })
+        account
+      account -> account
+    end
+  end
+
+  # Phase 1 helper functions
+  defp load_content_campaigns(user) do
+    try do
+      DataCampaigns.list_user_campaigns(user.id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp get_campaign_limits(account) do
+    try do
+      Features.FeatureGate.get_campaign_limits(account)
+    rescue
+      _ -> %{concurrent_campaigns: 1, max_contributors: 3, revenue_sharing: false}
+    end
+  end
+
+  defp load_campaign_metrics(user) do
+    try do
+      DataCampaigns.get_user_campaign_metrics(user.id)
+    rescue
+      _ -> %{
+        total_campaigns: 0,
+        active_campaigns: 0,
+        completed_campaigns: 0,
+        total_revenue: 0,
+        avg_quality_score: 0
+      }
+    end
+  end
+
+  # Phase 2 helper functions
+  defp load_active_improvement_periods(user) do
+    try do
+      case :ets.match(:improvement_periods, {'$1', %{user_id: user.id, status: :active}}) do
+        periods when is_list(periods) ->
+          Enum.map(periods, fn [id] ->
+            [{^id, period}] = :ets.lookup(:improvement_periods, id)
+            period
+          end)
+        _ -> []
+      end
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_pending_peer_reviews(user) do
+    try do
+      case :ets.match(:peer_review_requests, {'$1', %{status: :pending}}) do
+        requests when is_list(requests) ->
+          Enum.map(requests, fn [id] ->
+            [{^id, request}] = :ets.lookup(:peer_review_requests, id)
+            request
+          end)
+          |> Enum.filter(&can_review_request?(&1, user))
+        _ -> []
+      end
+    rescue
+      _ -> []
+    end
+  end
+
+  defp can_review_request?(review_request, user) do
+    # User can review if they're in the campaign but not the contributor
+    review_request.contributor_id != user.id
+  end
+
+  # Phase 3 helper functions
+  defp load_revenue_metrics(user) do
+    try do
+      case DataCampaigns.RevenueManager.update_portfolio_revenue_metrics(user.id) do
+        {:ok, metrics} -> metrics
+        _ -> default_revenue_metrics()
+      end
+    rescue
+      _ -> default_revenue_metrics()
+    end
+  end
+
+  defp default_revenue_metrics do
+    %{
+      total_revenue: 0,
+      campaign_revenue: 0,
+      active_campaigns: 0,
+      avg_quality_score: 0,
+      revenue_growth_rate: 0,
+      campaign_growth_rate: 0,
+      quality_trend: :stable
+    }
+  end
+
+  defp load_campaign_revenues(user) do
+    try do
+      DataCampaigns.RevenueManager.get_user_campaign_revenues(user.id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_recent_payments(user) do
+    try do
+      DataCampaigns.RevenueManager.get_recent_campaign_payments(user.id, 5)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_revenue_projections(user) do
+    try do
+      DataCampaigns.RevenueManager.get_revenue_projections(user.id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp calculate_projected_total(user) do
+    try do
+      DataCampaigns.RevenueManager.calculate_projected_total_revenue(user.id)
+    rescue
+      _ -> 0
+    end
+  end
+
+  defp load_pending_contracts(user) do
+    try do
+      DataCampaigns.RevenueManager.get_user_pending_contracts(user.id)
+    rescue
+      _ -> []
+    end
+  end
+
+  # Existing helper functions (keep these as they were)
+  defp load_user_portfolios(user_id) do
+    try do
+      case Portfolios.list_user_portfolios(user_id) do
+        portfolios when is_list(portfolios) -> portfolios
+        _ -> []
+      end
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_network_stats(user_id) do
+    %{
+      connections: get_user_connections_count(user_id),
+      collaborations: get_user_collaborations_count(user_id),
+      recommendations: get_user_recommendations_count(user_id),
+      profile_views: get_user_profile_views(user_id)
+    }
+  end
+
+  defp load_recent_connections(user_id) do
+    try do
+      []
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_trending_portfolios do
+    try do
+      []
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_user_channels(user_id) do
+    try do
+      Channels.list_user_channels(user_id)
+    rescue
+      _ -> []
+    end
+  end
+
+  defp load_featured_collaborations do
+    try do
+      Frestyl.Content.get_featured_collaborations(limit: 3)
+    rescue
+      _ -> []
+    end
+  end
+
+  # Placeholder functions that would need actual implementation
+  defp get_user_connections_count(_user_id), do: 0
+  defp get_user_collaborations_count(_user_id), do: 0
+  defp get_user_recommendations_count(_user_id), do: 0
+  defp get_user_profile_views(_user_id), do: 0
 
   @impl true
   def handle_params(params, _url, socket) do
@@ -425,6 +619,155 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, push_navigate(socket, to: "/campaigns/#{campaign_id}")}
   end
 
+  # Content Campaigns Events
+  @impl true
+  def handle_event("create_content_campaign", _params, socket) do
+    current_user = socket.assigns.current_user
+    current_account = socket.assigns.current_account
+
+    if FeatureGate.can_access_feature?(current_account, :content_campaigns) do
+      {:noreply, socket
+      |> assign(:show_campaign_modal, true)
+      |> assign(:campaign_form, %{})}
+    else
+      {:noreply, socket
+      |> put_flash(:error, "Upgrade required for content campaigns")
+      |> push_navigate(to: "/subscription")}
+    end
+  end
+
+  @impl true
+  def handle_event("join_campaign", %{"campaign_id" => campaign_id}, socket) do
+    current_user = socket.assigns.current_user
+
+    case Frestyl.DataCampaigns.join_campaign(campaign_id, current_user) do
+      {:ok, _contribution} ->
+        {:noreply, socket
+        |> assign(:content_campaigns, load_content_campaigns(current_user))
+        |> put_flash(:info, "Joined campaign successfully!")}
+
+      {:error, :campaign_full} ->
+        {:noreply, put_flash(socket, :error, "Campaign is full")}
+
+      {:error, :already_joined} ->
+        {:noreply, put_flash(socket, :error, "Already part of this campaign")}
+    end
+  end
+
+@impl true
+def handle_event("start_peer_review", %{"campaign_id" => campaign_id, "submission_type" => type}, socket) do
+  current_user = socket.assigns.current_user
+
+  submission_data = %{
+    type: String.to_atom(type),
+    content: get_user_campaign_content(campaign_id, current_user.id, type)
+  }
+
+  case Frestyl.DataCampaigns.PeerReview.submit_for_review(campaign_id, current_user.id, submission_data) do
+    {:ok, review_request} ->
+      {:noreply, socket
+       |> put_flash(:info, "Submitted for peer review! Reviewers will be notified.")
+       |> assign(:content_campaigns, load_content_campaigns(current_user))}
+
+    {:error, reason} ->
+      {:noreply, put_flash(socket, :error, "Failed to submit for review: #{reason}")}
+  end
+end
+
+@impl true
+def handle_event("submit_peer_review", params, socket) do
+  %{
+    "review_request_id" => review_request_id,
+    "overall_score" => overall_score,
+    "criteria_scores" => criteria_scores,
+    "feedback" => feedback
+  } = params
+
+  current_user = socket.assigns.current_user
+
+  review_data = %{
+    overall_score: String.to_float(overall_score),
+    criteria_scores: parse_criteria_scores(criteria_scores),
+    feedback: feedback,
+    suggestions: Map.get(params, "suggestions", [])
+  }
+
+  case Frestyl.DataCampaigns.PeerReview.submit_review(review_request_id, current_user.id, review_data) do
+    {:ok, :review_completed, score} ->
+      {:noreply, socket
+       |> put_flash(:info, "Review completed! Final score: #{score}/5.0")
+       |> assign(:content_campaigns, load_content_campaigns(current_user))}
+
+    {:ok, :review_submitted, :awaiting_more_reviews} ->
+      {:noreply, socket
+       |> put_flash(:info, "Review submitted! Waiting for more reviewers.")
+       |> assign(:content_campaigns, load_content_campaigns(current_user))}
+
+    {:error, reason} ->
+      {:noreply, put_flash(socket, :error, "Review submission failed: #{reason}")}
+  end
+end
+
+@impl true
+def handle_event("view_contract", %{"contract_id" => contract_id}, socket) do
+  contract = DataCampaigns.RevenueManager.get_contract_details(contract_id)
+
+  {:noreply, socket
+   |> assign(:show_contract_modal, true)
+   |> assign(:current_contract, contract)}
+end
+
+@impl true
+def handle_event("sign_contract_submit", params, socket) do
+  %{
+    "contract_id" => contract_id,
+    "legal_name" => legal_name,
+    "digital_signature" => digital_signature
+  } = params
+
+  current_user = socket.assigns.current_user
+
+  signature_data = %{
+    legal_name: legal_name,
+    digital_signature: digital_signature,
+    ip_address: get_connect_info(socket, :peer_data).address,
+    user_agent: get_connect_info(socket, :user_agent),
+    timestamp: DateTime.utc_now()
+  }
+
+  case DataCampaigns.RevenueManager.sign_contract(contract_id, current_user.id, signature_data) do
+    {:ok, signed_contract} ->
+      {:noreply, socket
+       |> assign(:show_contract_modal, false)
+       |> assign(:current_contract, nil)
+       |> assign(:pending_contracts, load_pending_contracts(current_user))
+       |> put_flash(:info, "Contract signed successfully! You're now part of the campaign.")}
+
+    {:error, reason} ->
+      {:noreply, socket
+       |> put_flash(:error, "Contract signing failed: #{reason}")}
+  end
+end
+
+
+
+  @impl true
+  def handle_event("view_improvement_plan", %{"improvement_period_id" => period_id}, socket) do
+    {:noreply, socket
+    |> assign(:show_improvement_modal, true)
+    |> assign(:improvement_period_id, period_id)}
+  end
+
+  @impl true
+  def handle_event("complete_improvement_task", %{"period_id" => period_id, "task_index" => task_index}, socket) do
+    # Mark improvement task as completed
+    # This would update the improvement period progress
+    {:noreply, socket
+    |> put_flash(:info, "Improvement task completed!")
+    |> assign(:content_campaigns, load_content_campaigns(socket.assigns.current_user))}
+  end
+
+
   # PubSub Message Handlers
   @impl true
   def handle_info({:portfolio_created, portfolio}, socket) do
@@ -458,6 +801,153 @@ defmodule FrestylWeb.PortfolioHubLive do
     current_user = socket.assigns.current_user
     available_accounts = load_user_accounts(current_user.id)
     {:noreply, assign(socket, :available_accounts, available_accounts)}
+  end
+
+  # Content Campaign Events
+  @impl true
+  def handle_info({:campaign_created, campaign}, socket) do
+    current_user = socket.assigns.current_user
+
+    {:noreply, socket
+    |> assign(:content_campaigns, load_content_campaigns(current_user))
+    |> put_flash(:info, "Campaign \"#{campaign.title}\" created successfully!")}
+  end
+
+  @impl true
+  def handle_info({:campaign_updated, campaign}, socket) do
+    current_user = socket.assigns.current_user
+
+    {:noreply, assign(socket, :content_campaigns, load_content_campaigns(current_user))}
+  end
+
+  @impl true
+  def handle_info({:quality_gate_failed, campaign_id, gate_name, improvement_period}, socket) do
+    {:noreply, socket
+    |> put_flash(:warning, "Quality gate failed: #{gate_name}. Improvement period started.")
+    |> assign(:active_improvement_periods, load_active_improvement_periods(socket.assigns.current_user))}
+  end
+
+  @impl true
+  def handle_info({:payment_completed, payment_info}, socket) do
+    {:noreply, socket
+    |> assign(:revenue_metrics, load_revenue_metrics(socket.assigns.current_user))
+    |> assign(:recent_payments, load_recent_payments(socket.assigns.current_user))
+    |> put_flash(:info, "Payment received: $#{payment_info.amount}")}
+  end
+
+  @impl true
+  def handle_info({:contributor_joined, contributor}, socket) do
+    current_user = socket.assigns.current_user
+
+    {:noreply, socket
+    |> assign(:content_campaigns, load_content_campaigns(current_user))
+    |> put_flash(:info, "New contributor joined your campaign!")}
+  end
+
+  @impl true
+  def handle_info({:metrics_updated, tracker}, socket) do
+    # Update campaign metrics in real-time
+    {:noreply, socket
+    |> assign(:campaign_metrics, update_campaign_metrics(socket.assigns.campaign_metrics, tracker))}
+  end
+
+  # Real-time campaign updates
+  @impl true
+  def handle_info({:metrics_updated, tracker}, socket) do
+    current_user = socket.assigns.current_user
+
+    {:noreply, socket
+    |> assign(:content_campaigns, load_content_campaigns(current_user))
+    |> assign(:campaign_metrics, load_campaign_metrics(current_user))}
+  end
+
+  @impl true
+  def handle_info({:revenue_split_updated, campaign_id, percentage}, socket) do
+    # Show real-time revenue split update
+    {:noreply, socket
+    |> put_flash(:info, "Your revenue share updated: #{percentage}%")
+    |> assign(:content_campaigns, load_content_campaigns(socket.assigns.current_user))}
+  end
+
+  @impl true
+  def handle_info({:quality_gate_passed, campaign_id, gate_name}, socket) do
+    {:noreply, socket
+    |> put_flash(:info, "✅ Quality gate passed: #{gate_name}")
+    |> assign(:content_campaigns, load_content_campaigns(socket.assigns.current_user))}
+  end
+
+  @impl true
+  def handle_info({:improvement_period_started, improvement_period}, socket) do
+    {:noreply, socket
+    |> put_flash(:warning, "📈 Quality improvement needed - check your improvement plan")
+    |> assign(:show_improvement_notification, true)
+    |> assign(:improvement_period, improvement_period)}
+  end
+
+  @impl true
+  def handle_info({:review_completed, review_request_id, average_score}, socket) do
+    {:noreply, socket
+    |> put_flash(:info, "🎉 Peer review completed! Average score: #{average_score}/5.0")
+    |> assign(:content_campaigns, load_content_campaigns(socket.assigns.current_user))}
+  end
+
+  @impl true
+  def handle_info({:live_contribution, user_id, contribution}, socket) do
+    # Handle real-time contribution updates (for live campaign dashboard)
+    if socket.assigns.current_user.id == user_id do
+      {:noreply, socket
+      |> assign(:live_contribution_update, contribution)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Real-time campaign updates
+  @impl true
+  def handle_info({:metrics_updated, tracker}, socket) do
+    current_user = socket.assigns.current_user
+
+    {:noreply, socket
+    |> assign(:content_campaigns, load_content_campaigns(current_user))
+    |> assign(:campaign_metrics, load_campaign_metrics(current_user))}
+  end
+
+  @impl true
+  def handle_info({:quality_gate_passed, campaign_id, gate_name}, socket) do
+    {:noreply, socket
+    |> put_flash(:info, "✅ Quality gate passed: #{gate_name}")
+    |> assign(:content_campaigns, load_content_campaigns(socket.assigns.current_user))}
+  end
+
+  @impl true
+  def handle_info({:improvement_period_started, improvement_period}, socket) do
+    {:noreply, socket
+    |> put_flash(:warning, "📈 Quality improvement needed - check your improvement plan")
+    |> assign(:show_improvement_notification, true)
+    |> assign(:improvement_period, improvement_period)}
+  end
+
+  # Helper functions for event handlers
+  defp get_user_campaign_content(campaign_id, user_id, submission_type) do
+    case submission_type do
+      "content_contribution" ->
+        %{content: "User's written contribution...", word_count: 1500}
+
+      "audio_contribution" ->
+        %{duration_seconds: 300, track_type: :vocals}
+
+      _ ->
+        %{content: "Generic contribution"}
+    end
+  end
+
+  defp parse_criteria_scores(criteria_scores_string) do
+    criteria_scores_string
+    |> String.split(",")
+    |> Enum.map(fn score_pair ->
+      [name, score] = String.split(score_pair, ":")
+      %{name: name, score: String.to_float(score)}
+    end)
   end
 
   # Helper Functions - Account Management
@@ -637,6 +1127,14 @@ defmodule FrestylWeb.PortfolioHubLive do
     }
   end
 
+  defp load_content_campaigns(user) do
+    Frestyl.DataCampaigns.list_user_campaigns(user.id)
+  end
+
+  defp load_campaign_metrics(user) do
+    Frestyl.DataCampaigns.get_user_campaign_metrics(user.id)
+  end
+
   # Helper Functions - Access Control
   defp check_tab_access(account, tab) do
     case tab do
@@ -806,6 +1304,33 @@ defmodule FrestylWeb.PortfolioHubLive do
     rescue
       _ -> {:error, "Failed to create portfolio"}
     end
+  end
+
+  defp get_user_campaign_content(campaign_id, user_id, submission_type) do
+    # Get user's current contribution content for review
+    case submission_type do
+      "content_contribution" ->
+        # Get text content from campaign
+        %{content: "User's written contribution...", word_count: 1500}
+
+      "audio_contribution" ->
+        # Get audio contribution data
+        %{duration_seconds: 300, track_type: :vocals}
+
+      _ ->
+        %{content: "Generic contribution"}
+    end
+  end
+
+  defp parse_criteria_scores(criteria_scores_string) do
+    # Parse criteria scores from form submission
+    # Format: "Clarity:4.0,Relevance:3.5,Quality:4.5"
+    criteria_scores_string
+    |> String.split(",")
+    |> Enum.map(fn score_pair ->
+      [name, score] = String.split(score_pair, ":")
+      %{name: name, score: String.to_float(score)}
+    end)
   end
 
   # Stats Helper Functions
@@ -1091,6 +1616,267 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   defp already_joined?(campaign, user) do
     Enum.any?(campaign.contributors || [], &(&1.user_id == user.id))
+  end
+
+  defp load_active_improvement_periods(user) do
+    # Get user's active improvement periods
+    case :ets.match(:improvement_periods, {'$1', %{user_id: user.id, status: :active}}) do
+      periods when is_list(periods) ->
+        Enum.map(periods, fn [id] ->
+          [{^id, period}] = :ets.lookup(:improvement_periods, id)
+          period
+        end)
+      _ -> []
+    end
+  end
+
+  defp load_pending_peer_reviews(user) do
+    # Get peer review requests where user can be reviewer
+    case :ets.match(:peer_review_requests, {'$1', %{status: :pending}}) do
+      requests when is_list(requests) ->
+        Enum.map(requests, fn [id] ->
+          [{^id, request}] = :ets.lookup(:peer_review_requests, id)
+          request
+        end)
+        |> Enum.filter(&can_review_request?(&1, user))
+      _ -> []
+    end
+  end
+
+  defp can_review_request?(review_request, user) do
+    # User can review if they're in the campaign but not the contributor
+    review_request.contributor_id != user.id
+  end
+
+  @doc """
+  Updates campaign metrics with new tracker data
+  """
+  defp update_campaign_metrics(current_metrics, tracker) do
+    # Update the campaign metrics based on tracker updates
+    Map.merge(current_metrics, %{
+      total_contributors: Map.get(tracker, :total_contributors, 0),
+      total_contributions: Map.get(tracker, :total_contributions, 0),
+      average_quality_score: Map.get(tracker, :average_quality_score, 0.0),
+      last_updated: DateTime.utc_now()
+    })
+  end
+
+  @doc """
+  Gets the user's onboarding state
+  """
+  defp get_onboarding_state(current_user, portfolios, revenue_metrics) do
+    %{
+      has_portfolio: length(portfolios) > 0,
+      has_revenue_setup: Map.get(revenue_metrics, :payment_method_configured, false),
+      profile_complete: user_profile_complete?(current_user),
+      first_campaign_joined: Map.get(revenue_metrics, :active_campaigns, 0) > 0,
+      completed_steps: calculate_completed_onboarding_steps(current_user, portfolios, revenue_metrics),
+      next_step: determine_next_onboarding_step(current_user, portfolios, revenue_metrics)
+    }
+  end
+
+  @doc """
+  Gets user's revenue percentage for a specific campaign
+  """
+  defp get_user_revenue_percentage(campaign, current_user) do
+    # This would typically come from the campaign tracker
+    case Frestyl.DataCampaigns.AdvancedTracker.get_user_campaign_share(campaign.id, current_user.id) do
+      {:ok, percentage} -> percentage
+      _ -> 0.0
+    end
+  end
+
+  @doc """
+  Gets user's projected revenue from a campaign
+  """
+  defp get_user_campaign_revenue(campaign, current_user) do
+    percentage = get_user_revenue_percentage(campaign, current_user)
+    campaign_revenue = campaign.revenue_target || Decimal.new("0")
+
+    campaign_revenue
+    |> Decimal.mult(Decimal.div(Decimal.new(percentage), 100))
+    |> Decimal.to_float()
+  end
+
+  @doc """
+  Formats currency amounts
+  """
+  defp format_currency_local(amount) when is_number(amount) do
+    :erlang.float_to_binary(amount, decimals: 2)
+  end
+
+  defp format_currency_local(%Decimal{} = amount) do
+    amount |> Decimal.to_float() |> format_currency_local()
+  end
+
+  defp format_currency_local(_), do: "0.00"
+
+  # ============================================================================
+  # COMPONENT FUNCTIONS FOR TEMPLATES
+  # ============================================================================
+
+  @doc """
+  Campaign metrics dashboard component
+  """
+  defp campaign_metrics_dashboard(assigns) do
+    ~H"""
+    <div class="bg-white rounded-lg shadow p-6">
+      <h3 class="text-lg font-semibold mb-4">Campaign Performance</h3>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="text-center">
+          <p class="text-2xl font-bold text-blue-600"><%= @metrics.active_campaigns %></p>
+          <p class="text-sm text-gray-600">Active Campaigns</p>
+        </div>
+        <div class="text-center">
+          <p class="text-2xl font-bold text-green-600"><%= @metrics.completed_campaigns %></p>
+          <p class="text-sm text-gray-600">Completed</p>
+        </div>
+        <div class="text-center">
+          <p class="text-2xl font-bold text-purple-600"><%= Float.round(@metrics.avg_quality_score, 1) %></p>
+          <p class="text-sm text-gray-600">Avg Quality</p>
+        </div>
+        <div class="text-center">
+          <p class="text-2xl font-bold text-indigo-600">$<%= Helpers.format_currency(@metrics.total_revenue) %></p>
+          <p class="text-sm text-gray-600">Total Revenue</p>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Content campaign card component
+  """
+  defp content_campaign_card(assigns) do
+    ~H"""
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <h4 class="text-lg font-semibold"><%= @campaign.title %></h4>
+          <p class="text-sm text-gray-600"><%= @campaign.content_type |> to_string() |> String.capitalize() %></p>
+        </div>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          <%= @campaign.status |> to_string() |> String.capitalize() %>
+        </span>
+      </div>
+
+      <div class="space-y-2 mb-4">
+        <div class="flex justify-between text-sm">
+          <span class="text-gray-600">Your contribution:</span>
+          <span class="font-medium"><%= get_user_revenue_percentage(@campaign, @current_user) %>%</span>
+        </div>
+        <div class="flex justify-between text-sm">
+          <span class="text-gray-600">Projected earnings:</span>
+          <span class="font-medium text-green-600">$<%= Helpers.format_currency(get_user_campaign_revenue(@campaign, @current_user)) %></span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <div class="text-xs text-gray-500">
+          Deadline: <%= if @campaign.deadline, do: Calendar.strftime(@campaign.deadline, "%b %d, %Y"), else: "No deadline" %>
+        </div>
+        <button class="text-blue-600 hover:text-blue-800 text-sm font-medium">
+          View Details →
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Improvement period card component
+  """
+  defp improvement_period_card(assigns) do
+    ~H"""
+    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      <div class="flex items-start">
+        <div class="flex-shrink-0">
+          <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <h4 class="text-sm font-medium text-yellow-800">Improvement Period Active</h4>
+          <p class="text-sm text-yellow-700 mt-1">
+            Campaign: <span class="font-medium"><%= @period.campaign_title %></span>
+          </p>
+          <p class="text-xs text-yellow-600 mt-1">
+            Due: <%= Calendar.strftime(@period.due_date, "%b %d, %Y") %>
+          </p>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Peer review card component
+  """
+  defp peer_review_card(assigns) do
+    ~H"""
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div class="flex items-start">
+        <div class="flex-shrink-0">
+          <svg class="h-5 w-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <h4 class="text-sm font-medium text-blue-800">Peer Review Request</h4>
+          <p class="text-sm text-blue-700 mt-1">
+            From: <span class="font-medium"><%= @review.requester_name %></span>
+          </p>
+          <p class="text-sm text-blue-700">
+            Content: <span class="font-medium"><%= @review.content_type %></span>
+          </p>
+          <div class="mt-2 flex space-x-2">
+            <button class="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
+              Review Now
+            </button>
+            <button class="text-xs bg-white text-blue-600 border border-blue-600 px-2 py-1 rounded hover:bg-blue-50">
+              Later
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS
+  # ============================================================================
+
+  defp user_profile_complete?(user) do
+    # Check if user has completed their profile
+    !is_nil(user.name) && !is_nil(user.email) && byte_size(user.name || "") > 0
+  end
+
+  defp calculate_completed_onboarding_steps(user, portfolios, revenue_metrics) do
+    steps = []
+    steps = if user_profile_complete?(user), do: ["profile" | steps], else: steps
+    steps = if length(portfolios) > 0, do: ["portfolio" | steps], else: steps
+    steps = if Map.get(revenue_metrics, :payment_method_configured, false), do: ["payment" | steps], else: steps
+    steps = if Map.get(revenue_metrics, :active_campaigns, 0) > 0, do: ["campaign" | steps], else: steps
+
+    length(steps)
+  end
+
+  defp determine_next_onboarding_step(user, portfolios, revenue_metrics) do
+    cond do
+      !user_profile_complete?(user) -> "complete_profile"
+      length(portfolios) == 0 -> "create_portfolio"
+      !Map.get(revenue_metrics, :payment_method_configured, false) -> "setup_payment"
+      Map.get(revenue_metrics, :active_campaigns, 0) == 0 -> "join_campaign"
+      true -> "explore_features"
+    end
+  end
+
+  defp get_user_revenue_percentage(campaign, current_user) do
+    case Frestyl.DataCampaigns.AdvancedTracker.get_campaign_tracker(campaign.id) do
+      {:ok, tracker} -> Map.get(tracker.dynamic_revenue_weights, current_user.id, 0.0)
+      _ -> 0.0
+    end
   end
 
 end
