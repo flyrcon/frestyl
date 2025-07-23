@@ -199,6 +199,11 @@ defmodule FrestylWeb.Router do
     # Calendar settings
     live "/calendar/settings", CalendarSettingsLive, :index
 
+    # Collaboration campaigns
+    live "/campaigns", CollaborationHubLive.ContentCampaigns, :index
+    live "/campaigns/:id", CampaignDetailLive, :show
+    live "/content/analytics", ContentAnalyticsLive, :index
+
 
     # Portfolio dashboard route
     get "/portfolios/dashboard", PortfolioController, :dashboard
@@ -517,6 +522,30 @@ defmodule FrestylWeb.Router do
     resources "/profiles", ProfileController, only: [:index, :show]
     resources "/channels", ChannelController, only: [:index, :show]
     get "/content/media/public", MediaController, :public
+  end
+
+  scope "/api/v1", FrestylWeb.API do
+    pipe_through [:api]
+
+    resources "/content", ContentController, only: [:index, :show, :create, :update] do
+      post "/publish", ContentController, :publish_to_platforms
+      get "/syndication", ContentController, :syndication_status
+      get "/metrics", ContentController, :content_metrics
+      get "/collaborators", ContentController, :collaboration_data
+    end
+
+    resources "/campaigns", CampaignController, only: [:index, :show, :create, :update] do
+      post "/join", CampaignController, :join_campaign
+      delete "/leave", CampaignController, :leave_campaign
+      get "/contributions", CampaignController, :contribution_summary
+    end
+
+    post "/webhooks/platform_metrics", WebhookController, :handle_metrics
+
+    resources "/syndication", SyndicationController, only: [:index, :show] do
+      post "/retry", SyndicationController, :retry_failed
+      get "/metrics", SyndicationController, :platform_metrics
+    end
   end
 
   # API: Auth + 2FA

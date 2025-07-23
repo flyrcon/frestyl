@@ -432,6 +432,20 @@ defmodule Frestyl.Portfolios.PortfolioSection do
     }
   end
 
+  def default_content_for_type(:published_articles) do
+    %{
+      "headline" => "Published Articles",
+      "subtitle" => "My thought leadership and collaborative writing",
+      "display_style" => "grid", # grid, list, featured
+      "show_metrics" => true,
+      "show_collaboration_details" => false,
+      "platform_filter" => [], # Show all platforms by default
+      "max_articles" => 12,
+      "sort_by" => "published_date", # published_date, engagement, revenue
+      "include_draft_metrics" => false
+    }
+  end
+
   def default_content_for_type(_), do: %{}
 
   # Validation for content structure based on section type

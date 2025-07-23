@@ -153,6 +153,18 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     end
   end
 
+  @impl true
+  def update(%{camera_status: :ready} = _assigns, socket) do
+    IO.puts("🔥 Video component: Camera ready, transitioning to ready state")
+    {:ok, socket
+    |> assign(:camera_ready, true)
+    |> assign(:recording_state, :ready)}
+  end
+
+  @impl true
+  def update(assigns, socket) do
+    {:ok, assign(socket, assigns)}
+  end
 
   # ============================================================================
   # EVENT HANDLERS - CAMERA AND RECORDING

@@ -1066,6 +1066,55 @@ defmodule Frestyl.Content do
     before ++ [new_block] ++ after_blocks
   end
 
+  def list_published_content(account, filters \\ %{}) do
+    from(d in Document,
+      join: s in Syndication, on: s.document_id == d.id,
+      where: s.account_id == ^account.id and s.syndication_status == "published",
+      order_by: [desc: s.syndicated_at],
+      preload: [:sections, syndications: s]
+    )
+    |> apply_content_filters(filters)
+    |> Repo.all()
+  end
+
+  def get_published_content(document_id, account) do
+    from(d in Document,
+      join: s in Syndication, on: s.document_id == d.id,
+      where: d.id == ^document_id and s.account_id == ^account.id,
+      preload: [:sections, syndications: s]
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      document -> {:ok, document}
+    end
+  end
+
+  def get_document_for_collaboration(document_id, account) do
+    from(d in Document,
+      join: s in Syndication, on: s.document_id == d.id,
+      where: d.id == ^document_id and s.account_id == ^account.id,
+      preload: [:sections, :collaboration_campaign],
+      distinct: d.id
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      document -> {:ok, document}
+    end
+  end
+
+  defp apply_content_filters(query, filters) when map_size(filters) == 0, do: query
+  defp apply_content_filters(query, filters) do
+    Enum.reduce(filters, query, fn {key, value}, acc ->
+      case key do
+        :status -> where(acc, [d], d.publish_status == ^value)
+        :platform -> where(acc, [d, s], s.platform == ^value)
+        _ -> acc
+      end
+    end)
+  end
+
     @doc """
   Gets featured collaborations for Frestyl Official discovery feed.
   """

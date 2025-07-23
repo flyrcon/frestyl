@@ -55,6 +55,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       # Collaboration Hub data
       |> assign(:collaboration_invites, load_collaboration_invites(current_user.id))
       |> assign(:collaboration_projects, load_collaboration_projects(current_user.id))
+      |> assign(:content_campaigns, list_content_campaigns(current_user))
       # Community Channels data
       |> assign(:user_channels, load_user_channels(current_user.id))
       |> assign(:recommended_channels, load_recommended_channels(current_user.id))
@@ -409,6 +410,19 @@ defmodule FrestylWeb.PortfolioHubLive do
      socket
      |> assign(:show_create_modal, true)
      |> assign(:create_type, type)}
+  end
+
+  def handle_event("show_create_modal", %{"type" => "content_campaign"}, socket) do
+    {:noreply, assign(socket, :show_content_campaign_modal, true)}
+  end
+
+  def handle_event("join_campaign", %{"campaign_id" => campaign_id}, socket) do
+    # Implement campaign joining logic
+    {:noreply, socket |> put_flash(:info, "Joined campaign successfully!")}
+  end
+
+  def handle_event("view_campaign", %{"campaign_id" => campaign_id}, socket) do
+    {:noreply, push_navigate(socket, to: "/campaigns/#{campaign_id}")}
   end
 
   # PubSub Message Handlers
@@ -1058,6 +1072,25 @@ defmodule FrestylWeb.PortfolioHubLive do
       :team -> "M12 2l3.09 6.26L22 9l-5 4.74L18.18 22 12 18.27 5.82 22 7 13.74 2 9l6.91-.74L12 2z"
       _ -> "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
     end
+  end
+
+  defp list_content_campaigns(user) do
+    # For now, return empty list - implement when backend is ready
+    []
+  end
+
+  defp get_campaign_limit(user) do
+    case Frestyl.Features.TierManager.get_account_tier(user) do
+      "personal" -> 1
+      "creator" -> 3
+      "professional" -> 10
+      "enterprise" -> "∞"
+      _ -> 1
+    end
+  end
+
+  defp already_joined?(campaign, user) do
+    Enum.any?(campaign.contributors || [], &(&1.user_id == user.id))
   end
 
 end

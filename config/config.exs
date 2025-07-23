@@ -20,6 +20,16 @@ config :frestyl,
 config :frestyl,
   pdf_generator: :chromic_pdf
 
+
+config :frestyl, Oban,
+  repo: Frestyl.Repo,
+  plugins: [Oban.Plugins.Pruner],
+  queues: [
+    default: 10,
+    metrics: 5,
+    revenue: 3
+  ]
+
 # Export configuration
 config :frestyl,
   uploads_directory: "priv/static/uploads",

@@ -28,7 +28,8 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditorUnified do
     "services",
     "blog",
     "gallery",
-    "custom"
+    "custom",
+    "published_articles"
   ]
 
   @impl true
@@ -1123,6 +1124,122 @@ end
     end
   end
 
+  @impl true
+  def handle_event("view_section_details", %{"section_id" => section_id}, socket) do
+    case Enum.find(socket.assigns.sections, &(&1.id == String.to_integer(section_id))) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Section not found")}
+
+      section ->
+        {:noreply, socket
+        |> assign(:viewing_section, section)
+        |> assign(:show_section_details_modal, true)}
+    end
+  end
+
+  @impl true
+  def handle_event("toggle_section_actions", %{"section_id" => section_id}, socket) do
+    current_active = Map.get(socket.assigns, :active_section_id)
+    current_show = Map.get(socket.assigns, :show_actions, false)
+
+    if current_active == section_id && current_show do
+      # Close if clicking the same section's dropdown
+      {:noreply, socket
+      |> assign(:show_actions, false)
+      |> assign(:active_section_id, nil)}
+    else
+      # Open dropdown for this section (close others)
+      {:noreply, socket
+      |> assign(:show_actions, true)
+      |> assign(:active_section_id, section_id)}
+    end
+  end
+
+  @impl true
+  def handle_event("close_section_actions", _params, socket) do
+    {:noreply, socket
+    |> assign(:show_actions, false)
+    |> assign(:active_section_id, nil)}
+  end
+
+  # Add event handler for viewing section details in modal:
+  @impl true
+  def handle_event("view_section_details", %{"section_id" => section_id}, socket) do
+    case Enum.find(socket.assigns.sections, &(&1.id == String.to_integer(section_id))) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Section not found")}
+
+      section ->
+        {:noreply, socket
+        |> assign(:viewing_section, section)
+        |> assign(:show_section_details_modal, true)}
+    end
+  end
+
+  # Add event handler for closing section details modal:
+  @impl true
+  def handle_event("close_section_details_modal", _params, socket) do
+    {:noreply, socket
+    |> assign(:show_section_details_modal, false)
+    |> assign(:viewing_section, nil)}
+  end
+
+  @impl true
+  def handle_event("toggle_add_section_panel", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_add_section_panel, true)
+    {:noreply, assign(socket, :show_add_section_panel, !current_state)}
+  end
+
+  @impl true
+  def handle_event("close_modal_on_escape", %{"key" => "Escape"}, socket) do
+    {:noreply, socket
+    |> assign(:show_section_modal, false)
+    |> assign(:editing_section, nil)
+    |> assign(:show_video_recorder, false)
+    |> assign(:show_resume_import, false)}
+  end
+
+  # Handle any key but only act on Escape
+  @impl true
+  def handle_event("close_modal_on_escape", _params, socket) do
+    # Ignore non-Escape keys
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("start_hero_video_recording", _params, socket) do
+    {:noreply, socket
+    |> assign(:show_hero_video_recorder, true)
+    |> assign(:hero_video_mode, :recording)}
+  end
+
+  @impl true
+  def handle_event("show_hero_video_uploader", _params, socket) do
+    {:noreply, socket
+    |> assign(:show_hero_video_uploader, true)}
+  end
+
+  @impl true
+  def handle_event("remove_hero_video", _params, socket) do
+    section = socket.assigns.editing_section
+    content = section.content || %{}
+    updated_content = content
+    |> Map.delete("video_url")
+    |> Map.delete("video_duration")
+    |> Map.put("video_type", "none")
+
+    case Portfolios.update_portfolio_section(section, %{content: updated_content}) do
+      {:ok, updated_section} ->
+        {:noreply, socket
+        |> assign(:editing_section, updated_section)
+        |> put_flash(:info, "Video removed successfully")}
+
+      {:error, _} ->
+        {:noreply, socket
+        |> put_flash(:error, "Failed to remove video")}
+    end
+  end
+
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
@@ -1140,7 +1257,11 @@ end
     |> assign(:pending_customization_update, false)
     |> assign(:debounce_timer, nil)
     |> assign(:last_updated, DateTime.utc_now())
-    |> assign(:section_types, @section_types)  # FIXED: Add this line
+    |> assign(:section_types, @section_types)
+    |> assign(:show_add_section_panel, true)
+    |> assign(:show_hero_video_recorder, false)  # NEW: Hero-specific video recorder
+    |> assign(:show_hero_video_uploader, false)  # NEW: Hero-specific video uploader
+    |> assign(:hero_video_mode, nil)  # NEW: Track video mode for hero
     |> allow_upload(:resume,
       accept: ~w(.pdf .doc .docx .txt),
       max_entries: 1,
@@ -1266,6 +1387,7 @@ end
       "blog" -> "Blog"
       "gallery" -> "Gallery"
       "custom" -> "Custom Section"
+      "published_articles" -> "Published Articles"
       _ -> "New Section"
     end
   end
@@ -1299,6 +1421,17 @@ end
         "location" => "",
         "show_form" => true
       }
+      "published_articles" -> %{
+        "headline" => "Published Articles",
+        "subtitle" => "My thought leadership and collaborative writing",
+        "display_style" => "grid",
+        "show_metrics" => true,
+        "show_collaboration_details" => false,
+        "platform_filter" => [],
+        "max_articles" => 12,
+        "sort_by" => "published_date",
+        "include_draft_metrics" => false
+      }
       _ -> %{
         "content" => "Add your content here..."
       }
@@ -1321,6 +1454,7 @@ end
       "blog" -> "Blog posts and articles"
       "gallery" -> "Image gallery showcase"
       "custom" -> "Flexible custom content section"
+      "published_articles" -> "Showcase syndicated articles and collaborative content"
       _ -> "Additional portfolio content"
     end
   end
@@ -1676,6 +1810,51 @@ end
     end)
   end
 
+  defp get_section_stats(section) do
+    content = section.content || %{}
+
+    case to_string(section.section_type) do
+      "experience" ->
+        items = Map.get(content, "items", [])
+        current_jobs = Enum.count(items, &Map.get(&1, "current", false))
+        if current_jobs > 0, do: ["#{current_jobs} current position#{if current_jobs == 1, do: "", else: "s"}"], else: []
+
+      "skills" ->
+        categories = Map.get(content, "categories", [])
+        if length(categories) > 0 do
+          top_category = categories |> Enum.max_by(&length(Map.get(&1, "skills", [])), fn -> %{} end)
+          top_skills_count = Map.get(top_category, "skills", []) |> length()
+          ["Top category: #{top_skills_count} skills"]
+        else
+          []
+        end
+
+      "projects" ->
+        items = Map.get(content, "items", [])
+        with_links = Enum.count(items, fn item ->
+          Map.get(item, "demo_url", "") != "" || Map.get(item, "source_url", "") != ""
+        end)
+        if with_links > 0, do: ["#{with_links} with links"], else: []
+
+      "testimonials" ->
+        items = Map.get(content, "items", [])
+        avg_rating = if length(items) > 0 do
+          ratings = items |> Enum.map(&Map.get(&1, "rating", 5)) |> Enum.filter(&is_number/1)
+          if length(ratings) > 0 do
+            avg = Enum.sum(ratings) / length(ratings)
+            ["Avg rating: #{Float.round(avg, 1)}/5"]
+          else
+            []
+          end
+        else
+          []
+        end
+        avg_rating
+
+      _ -> []
+    end
+  end
+
   # ============================================================================
   # RENDER FUNCTIONS
   # ============================================================================
@@ -1882,7 +2061,7 @@ end
         <div class="flex justify-between items-center h-16">
           <!-- Left side - navigation links (unchanged) -->
           <div class="flex items-center space-x-4">
-            <.link navigate={~p"/portfolios"} class="inline-flex items-center text-gray-600 hover:text-gray-900 transition-colors group">
+            <.link navigate={~p"/hub"} class="inline-flex items-center text-gray-600 hover:text-gray-900 transition-colors group">
               <svg class="w-5 h-5 mr-2 group-hover:transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
               </svg>
@@ -1962,152 +2141,219 @@ end
     ~H"""
     <div class="space-y-6" id="sections-manager" phx-hook="DesignUpdater">
 
-      <!-- Add Section Button -->
-      <div class="bg-white rounded-xl shadow-sm border p-6">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h3 class="text-lg font-bold text-gray-900">Portfolio Sections</h3>
-            <p class="text-gray-600 mt-1">Add and manage sections to showcase your work</p>
-          </div>
-
-          <!-- FIXED: Properly nested button container -->
-          <div class="flex items-center space-x-3">
-            <!-- Import Resume Button -->
-            <button
-              phx-click="show_resume_import"
-              class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium flex items-center">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-              </svg>
-              Import Resume
-            </button>
-
-            <!-- Add Section Dropdown -->
-            <div class="relative">
-              <button
-                phx-click="toggle_create_dropdown"
-                class="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg font-medium flex items-center">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                </svg>
-                Add Section
-              </button>
-
-              <%= if Map.get(assigns, :show_create_dropdown, false) do %>
-                <div class="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-gray-200 py-4 z-50">
-                  <div class="px-4 pb-3 border-b border-gray-100">
-                    <h4 class="font-semibold text-gray-900">Choose Section Type</h4>
-                    <p class="text-sm text-gray-600">Select the type of content you want to add</p>
-                  </div>
-
-                  <div class="py-2">
-                    <%= for section_type <- @section_types do %>
-                      <button
-                        phx-click="create_section"
-                        phx-value-section_type={section_type}
-                        class="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
-                        <div class="w-8 h-8 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
-                          <%= raw(get_section_icon(section_type)) %>
-                        </div>
-                        <div>
-                          <div class="font-medium text-gray-900"><%= format_section_type(section_type) %></div>
-                          <div class="text-sm text-gray-600"><%= get_section_description(section_type) %></div>
-                        </div>
-                      </button>
-                    <% end %>
-                  </div>
-                </div>
-              <% end %>
+      <!-- Collapsible Add Section Container -->
+      <div class="bg-white rounded-xl shadow-sm border">
+        <!-- Collapsible Header -->
+        <div class="p-4 border-b border-gray-100">
+          <button
+            phx-click="toggle_add_section_panel"
+            class="w-full flex items-center justify-between text-left group">
+            <div>
+              <h3 class="text-lg font-bold text-gray-900 group-hover:text-gray-700 transition-colors">
+                Portfolio Sections
+              </h3>
+              <p class="text-gray-600 mt-1">Add and manage sections to showcase your work</p>
             </div>
-          </div> <!-- ADDED: This was the missing closing div -->
+
+            <!-- Collapse/Expand Indicator -->
+            <div class="flex items-center space-x-3">
+              <!-- Section Count Badge -->
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                <%= length(@sections) %> section<%= if length(@sections) != 1, do: "s", else: "" %>
+              </span>
+
+              <!-- Chevron Icon -->
+              <svg class={[
+                "w-5 h-5 text-gray-400 transition-transform duration-200",
+                if(Map.get(assigns, :show_add_section_panel, true), do: "rotate-180", else: "rotate-0")
+              ]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </div>
+          </button>
         </div>
 
-        <!-- Compact Video Management Section -->
-        <div class="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        <!-- Collapsible Content -->
+        <%= if Map.get(assigns, :show_add_section_panel, true) do %>
+          <div class="p-6" id="add-section-panel">
+            <!-- Action Buttons Row -->
+            <div class="flex flex-wrap items-center gap-3 mb-6">
+              <!-- Import Resume Button -->
+              <button
+                phx-click="show_resume_import"
+                class="inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                 </svg>
+                Import Resume
+              </button>
+
+              <!-- Add Section Dropdown -->
+              <div class="relative">
+                <button
+                  phx-click="toggle_create_dropdown"
+                  class="inline-flex items-center bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                  <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                  </svg>
+                  Add Section
+                  <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+
+                <%= if Map.get(assigns, :show_create_dropdown, false) do %>
+                  <div class="absolute left-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 py-4 z-50">
+                    <div class="px-4 pb-3 border-b border-gray-100">
+                      <h4 class="font-semibold text-gray-900">Choose Section Type</h4>
+                      <p class="text-sm text-gray-600">Select the type of content you want to add</p>
+                    </div>
+
+                    <div class="py-2 max-h-80 overflow-y-auto">
+                      <%= for section_type <- @section_types do %>
+                        <button
+                          phx-click="create_section"
+                          phx-value-section_type={section_type}
+                          class="w-full flex items-center space-x-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
+                          <div class="w-8 h-8 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
+                            <%= raw(get_section_icon(section_type)) %>
+                          </div>
+                          <div>
+                            <div class="font-medium text-gray-900"><%= format_section_type(section_type) %></div>
+                            <div class="text-sm text-gray-600"><%= get_section_description(section_type) %></div>
+                          </div>
+                        </button>
+                      <% end %>
+                    </div>
+                  </div>
+                <% end %>
               </div>
-              <div>
-                <h4 class="font-medium text-gray-900">Video Introduction</h4>
-                <%= if @video_section do %>
-                  <p class="text-sm text-gray-600">
-                    Duration: <%= format_video_duration(get_in(@video_section.content, ["duration"])) %> •
-                    <%= case Map.get(assigns, :current_user, %{}) |> Map.get(:subscription_tier, "free") do %>
-                      <% "free" -> %><span class="text-gray-500">1min max</span>
-                      <% "pro" -> %><span class="text-blue-600">2min max</span>
-                      <% "premium" -> %><span class="text-purple-600">3min max</span>
-                      <% _ -> %><span class="text-gray-500">1min max</span>
-                    <% end %>
-                  </p>
-                <% else %>
-                  <p class="text-sm text-gray-600">
-                    Add a personal video to welcome visitors •
-                    <%= case Map.get(assigns, :current_user, %{}) |> Map.get(:subscription_tier, "free") do %>
-                      <% "free" -> %><span class="text-gray-500">1min max</span>
-                      <% "pro" -> %><span class="text-blue-600">2min max</span>
-                      <% "premium" -> %><span class="text-purple-600">3min max</span>
-                      <% _ -> %><span class="text-gray-500">1min max</span>
-                    <% end %>
-                  </p>
+
+              <!-- Quick Add Common Sections -->
+              <div class="flex items-center space-x-2">
+                <span class="text-sm text-gray-500">Quick add:</span>
+                <%= for {type, label} <- [{"hero", "Hero"}, {"about", "About"}, {"experience", "Experience"}, {"projects", "Projects"}] do %>
+                  <button
+                    phx-click="create_section"
+                    phx-value-section_type={type}
+                    class="inline-flex items-center px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors">
+                    <%= label %>
+                  </button>
                 <% end %>
               </div>
             </div>
 
-            <div class="flex items-center space-x-2">
-              <%= if @video_section do %>
-                <!-- Edit/Manage Existing Video -->
-                <button
-                  phx-click="edit_video_intro"
-                  class="bg-white hover:bg-gray-50 text-purple-700 px-3 py-2 rounded-lg text-sm font-medium border border-purple-200 transition-colors inline-flex items-center">
-                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                  </svg>
-                  Update Video
-                </button>
+            <!-- Video Introduction Management -->
+            <div class="p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                  <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 class="font-medium text-gray-900">Video Introduction</h4>
+                    <%= if @video_section do %>
+                      <p class="text-sm text-gray-600">
+                        Duration: <%= format_video_duration(get_in(@video_section.content, ["duration"])) %> •
+                        <%= case Map.get(assigns, :current_user, %{}) |> Map.get(:subscription_tier, "free") do %>
+                          <% "free" -> %><span class="text-gray-500">1min max</span>
+                          <% "pro" -> %><span class="text-blue-600">2min max</span>
+                          <% "premium" -> %><span class="text-purple-600">3min max</span>
+                          <% _ -> %><span class="text-gray-500">1min max</span>
+                        <% end %>
+                      </p>
+                    <% else %>
+                      <p class="text-sm text-gray-600">
+                        Add a personal video to welcome visitors •
+                        <%= case Map.get(assigns, :current_user, %{}) |> Map.get(:subscription_tier, "free") do %>
+                          <% "free" -> %><span class="text-gray-500">1min max</span>
+                          <% "pro" -> %><span class="text-blue-600">2min max</span>
+                          <% "premium" -> %><span class="text-purple-600">3min max</span>
+                          <% _ -> %><span class="text-gray-500">1min max</span>
+                        <% end %>
+                      </p>
+                    <% end %>
+                  </div>
+                </div>
 
-                <!-- Delete Video -->
-                <button
-                  phx-click="delete_video_intro"
-                  phx-value-section_id={@video_section.id}
-                  phx-data-confirm="Are you sure you want to delete your video introduction?"
-                  class="text-red-600 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors"
-                  title="Delete video">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                  </svg>
-                </button>
-              <% else %>
-                <!-- Add New Video -->
-                <button
-                  phx-click="show_video_recorder"
-                  class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center">
-                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                  </svg>
-                  Add Video
-                </button>
+                <div class="flex items-center space-x-2">
+                  <%= if @video_section do %>
+                    <!-- Manage Existing Video -->
+                    <button
+                      phx-click="edit_video_intro"
+                      class="bg-white hover:bg-gray-50 text-purple-700 px-3 py-2 rounded-lg text-sm font-medium border border-purple-200 transition-colors inline-flex items-center">
+                      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5"/>
+                      </svg>
+                      Update
+                    </button>
+
+                    <button
+                      phx-click="delete_video_intro"
+                      phx-value-section_id={@video_section.id}
+                      phx-data-confirm="Are you sure you want to delete your video introduction?"
+                      class="text-red-600 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors"
+                      title="Delete video">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </button>
+                  <% else %>
+                    <!-- Add New Video -->
+                    <button
+                      phx-click="show_video_recorder"
+                      class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center">
+                      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                      </svg>
+                      Add Video
+                    </button>
+                  <% end %>
+                </div>
+              </div>
+
+              <!-- Video Preview (if exists) -->
+              <%= if @video_section && get_in(@video_section.content, ["video_url"]) do %>
+                <div class="mt-3 flex justify-center">
+                  <video class="w-32 h-20 object-cover rounded border" controls>
+                    <source src={get_in(@video_section.content, ["video_url"])} type="video/webm">
+                    <source src={get_in(@video_section.content, ["video_url"])} type="video/mp4">
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
               <% end %>
             </div>
           </div>
-
-          <!-- Video Preview (if exists) -->
-          <%= if @video_section && get_in(@video_section.content, ["video_url"]) do %>
-            <div class="mt-3 flex justify-center">
-              <video class="w-32 h-20 object-cover rounded border" controls>
-                <source src={get_in(@video_section.content, ["video_url"])} type="video/webm">
-                <source src={get_in(@video_section.content, ["video_url"])} type="video/mp4">
-                Your browser does not support the video tag.
-              </video>
+        <% else %>
+          <!-- Collapsed State - Show Summary -->
+          <div class="px-6 py-4 bg-gray-50 border-t border-gray-100">
+            <div class="flex items-center justify-between text-sm text-gray-600">
+              <div class="flex items-center space-x-4">
+                <span>
+                  <%= length(@sections) %> section<%= if length(@sections) != 1, do: "s", else: "" %> configured
+                </span>
+                <%= if @video_section do %>
+                  <span class="inline-flex items-center px-2 py-1 bg-purple-100 text-purple-700 rounded-full text-xs">
+                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14"/>
+                    </svg>
+                    Video intro added
+                  </span>
+                <% end %>
+              </div>
+              <button
+                phx-click="toggle_add_section_panel"
+                class="text-blue-600 hover:text-blue-700 font-medium">
+                Expand to add sections
+              </button>
             </div>
-          <% end %>
-        </div>
+          </div>
+        <% end %>
       </div>
 
-      <!-- Sections List with Sorting -->
+      <!-- Sections List -->
       <%= if length(Map.get(assigns, :sections, [])) > 0 do %>
         <div class="bg-white rounded-xl shadow-sm border p-6">
           <div class="flex items-center justify-between mb-4">
@@ -2166,6 +2412,7 @@ end
         </div>
       <% end %>
 
+      <!-- Modals remain the same as before -->
       <!-- Video Intro Modal -->
       <%= if Map.get(assigns, :show_video_recorder, false) do %>
         <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2865,6 +3112,39 @@ end
     """
   end
 
+  def render_video_recorder_modal(assigns) do
+    ~H"""
+    <%= if Map.get(assigns, :show_video_recorder, false) do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          phx-window-keydown="close_modal_on_escape"
+          phx-key="Escape">
+        <.live_component
+          module={EnhancedVideoIntroComponent}
+          id={"video-intro-recorder-modal-#{@portfolio.id}"}
+          portfolio={Map.get(assigns, :portfolio, %{})}
+          current_user={Map.get(assigns, :current_user, %{})}
+        />
+      </div>
+    <% end %>
+    """
+  end
+
+  def render_resume_import_modal(assigns) do
+    ~H"""
+    <%= if Map.get(assigns, :show_resume_import, false) do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          phx-window-keydown="close_modal_on_escape"
+          phx-key="Escape">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
+            phx-click-away="close_resume_import">
+          <!-- Resume import content here -->
+          <!-- (Keep existing content but add phx-click-away) -->
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
   def render_design_tab(assigns) do
     # Safely extract customization data
     customization = Map.get(assigns, :customization, %{})
@@ -3043,9 +3323,155 @@ end
     end
   end
 
+
   def render_section_card(assigns) do
     assigns = assign(assigns, :section_gradient, get_section_gradient(assigns.section.section_type))
     assigns = assign(assigns, :section_preview, get_section_content_preview(assigns.section))
+
+    ~H"""
+    <div class={[
+      "bg-white rounded-xl border border-gray-200 transition-all duration-300 group relative",
+      "hover:shadow-lg hover:border-gray-300",
+      "max-h-80 min-h-48 flex flex-col",  # Max height with min height, allows dashboard layout flexibility
+      unless(@section.visible, do: "opacity-75", else: "opacity-100")
+    ]}
+    style={unless(@section.visible, do: "background-color: #f9fafb;", else: "")}
+    data-section-id={@section.id}
+    id={"section-#{@section.id}"}>
+
+      <!-- Card Header - Fixed Height -->
+      <div class={[
+        "relative p-4 border-b border-gray-100 bg-gradient-to-br flex-shrink-0",
+        @section_gradient
+      ]}>
+        <div class="flex items-center space-x-3 pr-4">
+          <div class="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center">
+            <%= raw(get_section_icon(@section.section_type)) %>
+          </div>
+          <div class="flex-1 min-w-0">  <!-- Added min-w-0 for text truncation -->
+            <h3 class="font-bold text-white text-lg drop-shadow-sm truncate"><%= @section.title %></h3>
+            <div class="flex items-center space-x-2">
+              <span class="text-sm text-white/80 truncate"><%= format_section_type(@section.section_type) %></span>
+              <%= unless @section.visible do %>
+                <span class="inline-flex items-center px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full flex-shrink-0">
+                  Hidden
+                </span>
+              <% end %>
+            </div>
+          </div>
+
+          <!-- Action Icons - Original Layout (No Dropdowns) -->
+          <div class="flex items-center space-x-2 flex-shrink-0">
+            <!-- Visibility Toggle -->
+            <button
+              phx-click="toggle_section_visibility"
+              phx-value-section_id={@section.id}
+              class={[
+                "p-2 rounded-lg transition-colors",
+                if(@section.visible,
+                  do: "text-white/80 hover:text-white hover:bg-white/20",
+                  else: "text-white/60 hover:text-white/80 hover:bg-white/10")
+              ]}
+              title={if @section.visible, do: "Hide section", else: "Show section"}>
+              <%= if @section.visible do %>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+              <% else %>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L12 12m0 0l3.122 3.122m0 0L21 21"/>
+                </svg>
+              <% end %>
+            </button>
+
+            <!-- Edit -->
+            <button
+              phx-click="edit_section"
+              phx-value-section_id={@section.id}
+              class="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+              title="Edit section">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </button>
+
+            <!-- Duplicate -->
+            <button
+              phx-click="duplicate_section"
+              phx-value-section_id={@section.id}
+              class="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+              title="Duplicate section">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+            </button>
+
+            <!-- Attach Media -->
+            <button
+              phx-click="attach_section_media"
+              phx-value-section_id={@section.id}
+              class="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+              title="Attach media">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+              </svg>
+            </button>
+
+            <!-- Delete -->
+            <button
+              phx-click="delete_section"
+              phx-value-section_id={@section.id}
+              data-confirm="Are you sure you want to delete this section?"
+              class="p-2 text-red-200 hover:text-red-100 hover:bg-red-500/20 rounded-lg transition-colors"
+              title="Delete section">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrollable Card Content - Takes remaining space, respects max height -->
+      <div class="flex-1 overflow-hidden flex flex-col">
+        <div class="p-4 overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 max-h-48">
+          <!-- Section Preview with Better Formatting -->
+          <div class="text-sm text-gray-600 mb-3 leading-relaxed">
+            <%= @section_preview %>
+          </div>
+
+          <!-- Additional Content Based on Section Type -->
+          <%= render_section_card_details(@section) %>
+        </div>
+
+        <!-- Card Footer - Simplified -->
+        <div class="flex-shrink-0 px-4 py-3 bg-gray-50 border-t border-gray-100">
+          <div class="flex items-center justify-between">
+            <div class="text-xs text-gray-500">
+              Last updated: <%= time_ago(Map.get(@section, :updated_at, @section.inserted_at)) %>
+            </div>
+            <button
+              phx-click="edit_section"
+              phx-value-section_id={@section.id}
+              class="text-xs text-blue-600 hover:text-blue-700 font-medium">
+              Edit
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  def render_enhanced_section_card(assigns) do
+    section_preview = get_section_content_preview(assigns.section)
+    section_stats = get_section_stats(assigns.section)
+
+    assigns = assigns
+    |> assign(:section_preview, section_preview)
+    |> assign(:section_stats, section_stats)
+    |> assign(:section_gradient, get_section_gradient(assigns.section.section_type))
 
     ~H"""
     <div class={[
@@ -3062,7 +3488,6 @@ end
         "relative p-4 border-b border-gray-100 bg-gradient-to-br",
         @section_gradient
       ]}>
-        <!-- Section Info -->
         <div class="flex items-center space-x-3 pr-4">
           <div class="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center">
             <%= raw(get_section_icon(@section.section_type)) %>
@@ -3079,18 +3504,13 @@ end
             </div>
           </div>
 
-          <!-- All Action Icons Grouped -->
+          <!-- Action Icons (keeping existing functionality) -->
           <div class="flex items-center space-x-2">
             <!-- Visibility Toggle -->
             <button
               phx-click="toggle_section_visibility"
               phx-value-section_id={@section.id}
-              class={[
-                "p-2 rounded-lg transition-colors",
-                if(@section.visible,
-                  do: "text-white/80 hover:text-white hover:bg-white/20",
-                  else: "text-white/60 hover:text-white/80 hover:bg-white/10")
-              ]}
+              class="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
               title={if @section.visible, do: "Hide section", else: "Show section"}>
               <%= if @section.visible do %>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3152,15 +3572,136 @@ end
         </div>
       </div>
 
-      <!-- Card Content -->
+      <!-- Enhanced Card Content -->
       <div class="p-6">
-        <!-- Section Preview -->
-        <div class="text-sm text-gray-600 mb-4">
+        <!-- Type-specific section preview -->
+        <div class="text-sm text-gray-600 mb-3">
           <%= @section_preview %>
         </div>
+
+        <!-- Section statistics/metadata -->
+        <%= if @section_stats do %>
+          <div class="flex items-center space-x-4 text-xs text-gray-500">
+            <%= for stat <- @section_stats do %>
+              <span class="flex items-center space-x-1">
+                <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                <span><%= stat %></span>
+              </span>
+            <% end %>
+          </div>
+        <% end %>
       </div>
     </div>
     """
+  end
+
+  defp render_section_card_details(section) do
+    content = section.content || %{}
+
+    case to_string(section.section_type) do
+      "hero" ->
+        assigns = %{content: content}
+        ~H"""
+        <div class="space-y-2 text-xs">
+          <%= if Map.get(@content, "headline") do %>
+            <div><span class="font-medium">Headline:</span> <%= Map.get(@content, "headline") %></div>
+          <% end %>
+          <%= if Map.get(@content, "tagline") do %>
+            <div><span class="font-medium">Tagline:</span> <%= Map.get(@content, "tagline") %></div>
+          <% end %>
+          <%= if Map.get(@content, "cta_text") do %>
+            <div><span class="font-medium">CTA:</span> <%= Map.get(@content, "cta_text") %></div>
+          <% end %>
+        </div>
+        """
+
+      "experience" ->
+        items = Map.get(content, "items", [])
+        assigns = %{items: items}
+        ~H"""
+        <div class="space-y-3">
+          <%= for {item, index} <- Enum.with_index(Enum.take(@items, 2)) do %>
+            <div class="text-xs border-l-2 border-blue-200 pl-2">
+              <div class="font-medium text-gray-800"><%= Map.get(item, "title", "Position") %></div>
+              <div class="text-gray-600"><%= Map.get(item, "company", "Company") %></div>
+              <%= if Map.get(item, "current") do %>
+                <span class="inline-block px-1 py-0.5 bg-green-100 text-green-700 rounded text-xs">Current</span>
+              <% end %>
+            </div>
+          <% end %>
+          <%= if length(@items) > 2 do %>
+            <div class="text-xs text-gray-500">+ <%= length(@items) - 2 %> more positions</div>
+          <% end %>
+        </div>
+        """
+
+      "skills" ->
+        categories = Map.get(content, "categories", [])
+        assigns = %{categories: categories}
+        ~H"""
+        <div class="space-y-2">
+          <%= for {category, index} <- Enum.with_index(Enum.take(@categories, 3)) do %>
+            <div class="text-xs">
+              <div class="font-medium text-gray-800"><%= Map.get(category, "name", "Category") %></div>
+              <div class="text-gray-600">
+                <%= Map.get(category, "skills", []) |> Enum.take(3) |> Enum.join(", ") %>
+                <%= if length(Map.get(category, "skills", [])) > 3 do %>
+                  <span class="text-gray-400">+<%= length(Map.get(category, "skills", [])) - 3 %> more</span>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+          <%= if length(@categories) > 3 do %>
+            <div class="text-xs text-gray-500">+ <%= length(@categories) - 3 %> more categories</div>
+          <% end %>
+        </div>
+        """
+
+      "projects" ->
+        items = Map.get(content, "items", [])
+        assigns = %{items: items}
+        ~H"""
+        <div class="space-y-3">
+          <%= for {item, index} <- Enum.with_index(Enum.take(@items, 2)) do %>
+            <div class="text-xs border-l-2 border-purple-200 pl-2">
+              <div class="font-medium text-gray-800"><%= Map.get(item, "title", "Project") %></div>
+              <%= if Map.get(item, "technologies") do %>
+                <div class="text-gray-600 mb-1"><%= Map.get(item, "technologies") %></div>
+              <% end %>
+              <div class="flex space-x-2">
+                <%= if Map.get(item, "demo_url") && Map.get(item, "demo_url") != "" do %>
+                  <span class="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">Demo</span>
+                <% end %>
+                <%= if Map.get(item, "source_url") && Map.get(item, "source_url") != "" do %>
+                  <span class="px-1 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">Source</span>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+          <%= if length(@items) > 2 do %>
+            <div class="text-xs text-gray-500">+ <%= length(@items) - 2 %> more projects</div>
+          <% end %>
+        </div>
+        """
+
+      _ ->
+        # Default content display for other section types
+        main_content = Map.get(content, "content", Map.get(content, "main_content", ""))
+        assigns = %{main_content: main_content}
+        if main_content != "" do
+          ~H"""
+          <div class="text-xs text-gray-600 leading-relaxed">
+            <%= truncate_text(@main_content, 200) %>
+          </div>
+          """
+        else
+          ~H"""
+          <div class="text-xs text-gray-400 italic">
+            No content configured yet
+          </div>
+          """
+        end
+    end
   end
 
   def render_layout_options(assigns) do
@@ -3227,23 +3768,248 @@ end
   end
 
   defp get_section_content_preview(section) do
-    case section.content do
-      %{"main_content" => content} when is_binary(content) and content != "" ->
-        content |> String.slice(0, 120) |> truncate_text()
-      %{"content" => content} when is_binary(content) and content != "" ->
-        content |> String.slice(0, 120) |> truncate_text()
-      %{"headline" => headline} when is_binary(headline) and headline != "" ->
-        headline |> String.slice(0, 120) |> truncate_text()
-      %{"title" => title} when is_binary(title) and title != "" ->
-        title |> String.slice(0, 120) |> truncate_text()
-      %{"items" => items} when is_list(items) and length(items) > 0 ->
-        "#{length(items)} item#{if length(items) == 1, do: "", else: "s"} added"
-      %{"categories" => categories} when is_list(categories) and length(categories) > 0 ->
-        "#{length(categories)} categor#{if length(categories) == 1, do: "y", else: "ies"} added"
+    content = section.content || %{}
+
+    case to_string(section.section_type) do
+      "hero" ->
+        headline = Map.get(content, "headline", "")
+        tagline = Map.get(content, "tagline", "")
+
+        cond do
+          headline != "" && tagline != "" -> "#{headline} • #{tagline}"
+          headline != "" -> headline
+          tagline != "" -> tagline
+          true -> "No headline or tagline set"
+        end
+
+      "about" ->
+        about_content = Map.get(content, "content", "")
+        highlights = Map.get(content, "highlights", [])
+
+        cond do
+          about_content != "" -> truncate_text(about_content, 100)
+          length(highlights) > 0 -> "#{length(highlights)} highlights added"
+          true -> "No about content added"
+        end
+
+      "experience" ->
+        items = Map.get(content, "items", [])
+        if length(items) > 0 do
+          latest = List.first(items)
+          company = Map.get(latest, "company", "")
+          title = Map.get(latest, "title", "")
+
+          if company != "" && title != "" do
+            "Latest: #{title} at #{company} • #{length(items)} total"
+          else
+            "#{length(items)} work experience#{if length(items) == 1, do: "", else: "s"}"
+          end
+        else
+          "No work experience added"
+        end
+
+      "education" ->
+        items = Map.get(content, "items", [])
+        if length(items) > 0 do
+          latest = List.first(items)
+          degree = Map.get(latest, "degree", "")
+          institution = Map.get(latest, "institution", "")
+
+          if degree != "" && institution != "" do
+            "Latest: #{degree} from #{institution} • #{length(items)} total"
+          else
+            "#{length(items)} education item#{if length(items) == 1, do: "", else: "s"}"
+          end
+        else
+          "No education added"
+        end
+
+      "skills" ->
+        categories = Map.get(content, "categories", [])
+        if length(categories) > 0 do
+          total_skills = categories
+          |> Enum.map(&(Map.get(&1, "skills", []) |> length()))
+          |> Enum.sum()
+
+          "#{length(categories)} categories • #{total_skills} skills total"
+        else
+          "No skills categorized"
+        end
+
+      "projects" ->
+        items = Map.get(content, "items", [])
+        if length(items) > 0 do
+          featured = Enum.find(items, &Map.get(&1, "featured", false)) || List.first(items)
+          project_title = Map.get(featured, "title", "")
+
+          if project_title != "" do
+            "Featured: #{project_title} • #{length(items)} total"
+          else
+            "#{length(items)} project#{if length(items) == 1, do: "", else: "s"}"
+          end
+        else
+          "No projects added"
+        end
+
+      "testimonials" ->
+        items = Map.get(content, "items", [])
+        if length(items) > 0 do
+          latest = List.first(items)
+          name = Map.get(latest, "name", "")
+          company = Map.get(latest, "company", "")
+
+          if name != "" && company != "" do
+            "Latest from #{name} at #{company} • #{length(items)} total"
+          else
+            "#{length(items)} testimonial#{if length(items) == 1, do: "", else: "s"}"
+          end
+        else
+          "No testimonials added"
+        end
+
+      "contact" ->
+        email = Map.get(content, "email", "")
+        phone = Map.get(content, "phone", "")
+        location = Map.get(content, "location", "")
+        form_enabled = Map.get(content, "contact_form_enabled", false)
+
+        info_parts = [email, phone, location] |> Enum.reject(&(&1 == ""))
+        contact_info = if length(info_parts) > 0, do: Enum.join(info_parts, " • "), else: ""
+
+        form_text = if form_enabled, do: "Contact form enabled", else: ""
+
+        cond do
+          contact_info != "" && form_text != "" -> "#{contact_info} • #{form_text}"
+          contact_info != "" -> contact_info
+          form_text != "" -> form_text
+          true -> "No contact information set"
+        end
+
+      "certifications" ->
+        items = Map.get(content, "items", [])
+        if length(items) > 0 do
+          latest = List.first(items)
+          cert_name = Map.get(latest, "name", "")
+          issuer = Map.get(latest, "issuer", "")
+
+          if cert_name != "" && issuer != "" do
+            "Latest: #{cert_name} from #{issuer} • #{length(items)} total"
+          else
+            "#{length(items)} certification#{if length(items) == 1, do: "", else: "s"}"
+          end
+        else
+          "No certifications added"
+        end
+
+      "achievements" ->
+        items = Map.get(content, "items", [])
+        if length(items) > 0 do
+          latest = List.first(items)
+          achievement_title = Map.get(latest, "title", "")
+          organization = Map.get(latest, "organization", "")
+
+          if achievement_title != "" && organization != "" do
+            "Latest: #{achievement_title} from #{organization} • #{length(items)} total"
+          else
+            "#{length(items)} achievement#{if length(items) == 1, do: "", else: "s"}"
+          end
+        else
+          "No achievements added"
+        end
+
+      "services" ->
+        items = Map.get(content, "items", [])
+        if length(items) > 0 do
+          pricing_info = items
+          |> Enum.map(&Map.get(&1, "price", ""))
+          |> Enum.reject(&(&1 == ""))
+
+          if length(pricing_info) > 0 do
+            "#{length(items)} services • Pricing configured"
+          else
+            "#{length(items)} service#{if length(items) == 1, do: "", else: "s"} • No pricing"
+          end
+        else
+          "No services offered"
+        end
+
+      "blog" ->
+        items = Map.get(content, "items", [])
+        if length(items) > 0 do
+          latest = List.first(items)
+          post_title = Map.get(latest, "title", "")
+          category = Map.get(latest, "category", "")
+
+          if post_title != "" && category != "" do
+            "Latest: #{truncate_text(post_title, 30)} (#{category}) • #{length(items)} total"
+          else
+            "#{length(items)} blog post#{if length(items) == 1, do: "", else: "s"}"
+          end
+        else
+          "No blog posts added"
+        end
+
+      "gallery" ->
+        images = Map.get(content, "images", [])
+        layout_style = Map.get(content, "layout_style", "grid")
+
+        if length(images) > 0 do
+          "#{length(images)} image#{if length(images) == 1, do: "", else: "s"} • #{String.capitalize(layout_style)} layout"
+        else
+          "No images in gallery"
+        end
+
+      "custom" ->
+        custom_title = Map.get(content, "title", "")
+        layout_type = Map.get(content, "layout_type", "text")
+        custom_content = Map.get(content, "content", "")
+
+        cond do
+          custom_title != "" && custom_content != "" ->
+            "#{custom_title} • #{String.capitalize(layout_type)} layout"
+          custom_title != "" ->
+            "#{custom_title} • No content added"
+          custom_content != "" ->
+            "#{String.capitalize(layout_type)} layout • #{truncate_text(custom_content, 50)}"
+          true ->
+            "#{String.capitalize(layout_type)} layout • No content"
+        end
+
+      "published_articles" ->
+        articles_count = length(Map.get(content, "articles", []))
+        total_views = Map.get(content, "total_views", 0)
+        total_revenue = Map.get(content, "total_revenue", 0)
+
+        if articles_count > 0 do
+          metrics = []
+          metrics = if total_views > 0, do: ["#{format_number(total_views)} views" | metrics], else: metrics
+          metrics = if total_revenue > 0, do: ["$#{:erlang.float_to_binary(total_revenue, decimals: 2)} earned" | metrics], else: metrics
+
+          base_text = "#{articles_count} published article#{if articles_count == 1, do: "", else: "s"}"
+          if length(metrics) > 0, do: "#{base_text} • #{Enum.join(metrics, " • ")}", else: base_text
+        else
+          "No published articles yet"
+        end
+
       _ ->
-        "No content added yet"
+        # Fallback for unknown section types
+        main_content = Map.get(content, "content", Map.get(content, "main_content", ""))
+        if main_content != "" do
+          truncate_text(main_content, 100)
+        else
+          "No content added yet"
+        end
     end
   end
+
+  defp truncate_text(text, max_length) when is_binary(text) do
+    if String.length(text) > max_length do
+      String.slice(text, 0, max_length) <> "..."
+    else
+      text
+    end
+  end
+  defp truncate_text(_, _), do: "No content"
 
   defp truncate_text(text) when is_binary(text) do
     if String.length(text) > 100 do
@@ -3269,6 +4035,7 @@ end
       "testimonials" -> "from-cyan-500 to-blue-600"
       "contact" -> "from-green-500 to-emerald-600"
       "custom" -> "from-gray-500 to-slate-600"
+      "published_articles" -> "from-indigo-500 to-purple-600"
       _ -> "from-gray-400 to-gray-600"
     end
   end
@@ -3282,6 +4049,7 @@ end
       "skills" -> "<svg class='w-5 h-5 text-white' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M13 10V3L4 14h7v7l9-11h-7z'/></svg>"
       "projects" -> "<svg class='w-5 h-5 text-white' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'/></svg>"
       "achievements" -> "<svg class='w-5 h-5 text-white' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z'/></svg>"
+      "published_articles" -> "<svg class='w-5 h-5 text-white' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a1 1 0 01.707.293l5 5A1 1 0 0121 10v8a2 2 0 01-2 2z'/><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M9 12h6m-6 4h6'/></svg>"
       _ -> "<svg class='w-5 h-5 text-white' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'/></svg>"
     end
   end
@@ -3306,6 +4074,347 @@ end
         <p>No content added yet.</p>
       </div>
     <% end %>
+    """
+  end
+
+  def render_hero_section_modal(assigns) do
+    content = get_section_content_map(assigns.editing_section)
+    assigns = assign(assigns, :content, content)
+
+    ~H"""
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        phx-window-keydown="close_modal_on_escape"
+        phx-key="Escape">
+      <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+          phx-click-away="close_section_modal">
+        <!-- Header -->
+        <div class="flex items-center justify-between p-6 border-b border-gray-200">
+          <h3 class="text-lg font-bold text-gray-900 flex items-center">
+            <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center mr-3">
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+              </svg>
+            </div>
+            Edit Hero Section
+          </h3>
+          <button phx-click="close_section_modal" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Content -->
+        <div class="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+          <form phx-submit="save_section" class="space-y-6">
+            <input type="hidden" name="section_id" value={assigns.editing_section.id} />
+
+            <!-- Section Title -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Section Title</label>
+              <input
+                type="text"
+                name="title"
+                value={assigns.editing_section.title}
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+
+            <!-- Hero Content Fields -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Headline</label>
+                <input
+                  type="text"
+                  name="headline"
+                  value={Map.get(@content, "headline", "")}
+                  placeholder="Your Name Here"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Tagline</label>
+                <input
+                  type="text"
+                  name="tagline"
+                  value={Map.get(@content, "tagline", "")}
+                  placeholder="Professional Title"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+              <textarea
+                name="description"
+                rows="4"
+                placeholder="Brief description about yourself..."
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"><%= Map.get(@content, "description", "") %></textarea>
+            </div>
+
+            <!-- Video Introduction Section -->
+            <div class="border-t pt-6">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h4 class="text-lg font-medium text-gray-900">Video Introduction</h4>
+                  <p class="text-sm text-gray-600">Add a personal video to your hero section</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs text-gray-500">
+                    <%= case Map.get(assigns, :current_user, %{}) |> Map.get(:subscription_tier, "free") do %>
+                      <% "free" -> %>Max: 1 minute
+                      <% "pro" -> %>Max: 2 minutes
+                      <% "premium" -> %>Max: 5 minutes
+                      <% _ -> %>Max: 1 minute
+                    <% end %>
+                  </span>
+                </div>
+              </div>
+
+              <!-- Video Options -->
+              <div class="space-y-4">
+                <!-- Video Type Selection -->
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Video Type</label>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <%= for {type, label, description} <- [
+                      {"none", "No Video", "Text-only hero section"},
+                      {"background", "Background Video", "Video plays behind text"},
+                      {"introduction", "Video Introduction", "Dedicated video intro"}
+                    ] do %>
+                      <label class="relative">
+                        <input
+                          type="radio"
+                          name="video_type"
+                          value={type}
+                          checked={Map.get(@content, "video_type", "none") == type}
+                          class="sr-only peer">
+                        <div class="p-4 border-2 border-gray-200 rounded-lg cursor-pointer peer-checked:border-blue-500 peer-checked:bg-blue-50 hover:border-gray-300 transition-colors">
+                          <div class="font-medium text-gray-900"><%= label %></div>
+                          <div class="text-sm text-gray-600 mt-1"><%= description %></div>
+                        </div>
+                      </label>
+                    <% end %>
+                  </div>
+                </div>
+
+                <!-- Video Upload/Record Options (show when video type is selected) -->
+                <%= if Map.get(@content, "video_type", "none") != "none" do %>
+                  <div class="bg-gray-50 p-4 rounded-lg">
+                    <div class="flex items-center justify-between mb-3">
+                      <h5 class="font-medium text-gray-900">Video Source</h5>
+                      <%= if Map.get(@content, "video_url") do %>
+                        <span class="text-sm text-green-600 flex items-center">
+                          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                          </svg>
+                          Video configured
+                        </span>
+                      <% end %>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <!-- Record New Video -->
+                      <button
+                        type="button"
+                        phx-click="start_hero_video_recording"
+                        class="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-colors text-center group">
+                        <svg class="w-8 h-8 text-gray-400 group-hover:text-purple-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                        <div class="text-sm font-medium text-gray-900 group-hover:text-purple-900">Record Video</div>
+                        <div class="text-xs text-gray-600 group-hover:text-purple-700">Use your camera</div>
+                      </button>
+
+                      <!-- Upload Video -->
+                      <button
+                        type="button"
+                        phx-click="show_hero_video_uploader"
+                        class="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-center group">
+                        <svg class="w-8 h-8 text-gray-400 group-hover:text-blue-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                        </svg>
+                        <div class="text-sm font-medium text-gray-900 group-hover:text-blue-900">Upload Video</div>
+                        <div class="text-xs text-gray-600 group-hover:text-blue-700">From your device</div>
+                      </button>
+                    </div>
+
+                    <!-- Current Video Preview -->
+                    <%= if Map.get(@content, "video_url") do %>
+                      <div class="mt-4 p-3 bg-white rounded-lg border">
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center space-x-3">
+                            <video class="w-16 h-12 object-cover rounded" controls>
+                              <source src={Map.get(@content, "video_url")} type="video/webm">
+                              <source src={Map.get(@content, "video_url")} type="video/mp4">
+                            </video>
+                            <div>
+                              <div class="text-sm font-medium text-gray-900">Current Video</div>
+                              <div class="text-xs text-gray-600">
+                                Duration: <%= Map.get(@content, "video_duration", "Unknown") %>
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            phx-click="remove_hero_video"
+                            class="text-red-600 hover:text-red-700 text-sm">
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+
+            <!-- Call to Action -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">CTA Button Text</label>
+                <input
+                  type="text"
+                  name="cta_text"
+                  value={Map.get(@content, "cta_text", "")}
+                  placeholder="Get In Touch"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">CTA Button Link</label>
+                <input
+                  type="url"
+                  name="cta_link"
+                  value={Map.get(@content, "cta_link", "")}
+                  placeholder="https://example.com/contact"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+            </div>
+
+            <!-- Section Visibility -->
+            <div class="flex items-center">
+              <input
+                type="checkbox"
+                id="hero_section_visible"
+                name="visible"
+                value="true"
+                checked={assigns.editing_section.visible}
+                class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+              <label for="hero_section_visible" class="ml-2 block text-sm text-gray-900">
+                Show this section on portfolio
+              </label>
+            </div>
+
+            <!-- Modal Actions -->
+            <div class="flex items-center justify-end space-x-3 pt-6 border-t border-gray-200">
+              <button
+                type="button"
+                phx-click="close_section_modal"
+                class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                Save Hero Section
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+    def render_section_modal(assigns) do
+    ~H"""
+    <%= if Map.get(assigns, :show_section_modal, false) do %>
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          phx-window-keydown="close_modal_on_escape"
+          phx-key="Escape">
+        <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+            phx-click-away="close_section_modal">
+          <!-- Modal content based on section type -->
+          <%= if assigns.editing_section && assigns.editing_section.section_type == :hero do %>
+            <.render_hero_section_modal {assigns} />
+          <% else %>
+            <.render_standard_section_modal {assigns} />
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  def render_standard_section_modal(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between p-6 border-b border-gray-200">
+      <h3 class="text-lg font-bold text-gray-900">
+        Edit <%= Map.get(assigns, :editing_section, %{}) |> Map.get(:title, "Section") %>
+      </h3>
+      <button
+        phx-click="close_section_modal"
+        class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+      <%= if Map.get(assigns, :editing_section) do %>
+        <form phx-submit="save_section" class="space-y-6">
+          <input type="hidden" name="section_id" value={assigns.editing_section.id} />
+
+          <!-- Section Title -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Section Title</label>
+            <input
+              type="text"
+              name="title"
+              value={assigns.editing_section.title}
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          </div>
+
+          <!-- Section Visibility -->
+          <div class="flex items-center">
+            <input
+              type="checkbox"
+              id="section_visible"
+              name="visible"
+              value="true"
+              checked={assigns.editing_section.visible}
+              class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+            <label for="section_visible" class="ml-2 block text-sm text-gray-900">
+              Show this section on portfolio
+            </label>
+          </div>
+
+          <!-- Basic content field for now -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Content</label>
+            <textarea
+              name="content"
+              rows="8"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Add your content here..."><%= get_section_content_safe(assigns.editing_section) %></textarea>
+          </div>
+
+          <!-- Modal Actions -->
+          <div class="flex items-center justify-end space-x-3 pt-6 border-t border-gray-200">
+            <button
+              type="button"
+              phx-click="close_section_modal"
+              class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              Save Section
+            </button>
+          </div>
+        </form>
+      <% end %>
+    </div>
     """
   end
 
@@ -3844,6 +4953,75 @@ end
     """
   end
 
+  defp render_published_articles_section_form(assigns) do
+    content = get_section_content_map(assigns.editing_section)
+
+    ~H"""
+    <div class="space-y-6">
+      <!-- Section Title -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Section Title</label>
+        <input
+          type="text"
+          name="headline"
+          value={Map.get(content, "headline", "")}
+          placeholder="Published Articles"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+      </div>
+
+      <!-- Settings -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Display Style</label>
+          <select name="display_style" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            <option value="grid" selected={Map.get(content, "display_style") == "grid"}>Grid Layout</option>
+            <option value="list" selected={Map.get(content, "display_style") == "list"}>List Layout</option>
+            <option value="featured" selected={Map.get(content, "display_style") == "featured"}>Featured Layout</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Max Articles</label>
+          <input
+            type="number"
+            name="max_articles"
+            value={Map.get(content, "max_articles", 12)}
+            min="1"
+            max="50"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+        </div>
+      </div>
+
+      <!-- Toggles -->
+      <div class="space-y-3">
+        <div class="flex items-center">
+          <input
+            type="checkbox"
+            id="show_metrics"
+            name="show_metrics"
+            checked={Map.get(content, "show_metrics", true)}
+            class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+          <label for="show_metrics" class="ml-2 block text-sm text-gray-900">
+            Show article metrics (views, engagement, revenue)
+          </label>
+        </div>
+
+        <div class="flex items-center">
+          <input
+            type="checkbox"
+            id="show_collaboration_details"
+            name="show_collaboration_details"
+            checked={Map.get(content, "show_collaboration_details", false)}
+            class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+          <label for="show_collaboration_details" class="ml-2 block text-sm text-gray-900">
+            Show collaboration details and contributor percentages
+          </label>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   defp render_standard_section_form(assigns) do
     ~H"""
     <div class="space-y-4">
@@ -3942,7 +5120,199 @@ end
   end
   defp format_content_with_paragraphs(_), do: ""
 
-  # Form field renderers for different section types
+  def published_articles_section(assigns) do
+    ~H"""
+    <section class="py-12 bg-gray-50">
+      <div class="max-w-6xl mx-auto px-4">
+        <div class="text-center mb-8">
+          <h2 class="text-3xl font-bold text-gray-900 mb-4">
+            <%= @section.content["headline"] %>
+          </h2>
+          <%= if @section.content["subtitle"] do %>
+            <p class="text-lg text-gray-600 max-w-2xl mx-auto">
+              <%= @section.content["subtitle"] %>
+            </p>
+          <% end %>
+        </div>
+
+        <!-- Platform Filter -->
+        <%= if length(@available_platforms) > 1 do %>
+          <div class="flex justify-center mb-8">
+            <div class="flex space-x-2 bg-white rounded-lg p-1 border border-gray-200">
+              <button class="px-4 py-2 rounded-md bg-indigo-100 text-indigo-700 font-medium">All</button>
+              <%= for platform <- @available_platforms do %>
+                <button class="px-4 py-2 rounded-md text-gray-600 hover:bg-gray-100 transition-colors">
+                  <%= String.capitalize(platform) %>
+                </button>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Articles Grid -->
+        <div class={"grid gap-6 #{grid_class(@section.content["display_style"])}"}>
+          <%= for article <- @articles do %>
+            <article class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+              <!-- Article Header -->
+              <div class="p-6">
+                <div class="flex items-start justify-between mb-3">
+                  <h3 class="text-xl font-semibold text-gray-900 mb-2 line-clamp-2">
+                    <a href={article.external_url} target="_blank" class="hover:text-indigo-600 transition-colors">
+                      <%= article.document.title %>
+                    </a>
+                  </h3>
+                  <span class={"px-2 py-1 text-xs rounded-full #{platform_badge_class(article.platform)}"}>
+                    <%= String.capitalize(article.platform) %>
+                  </span>
+                </div>
+
+                <!-- Article Excerpt -->
+                <%= if article.document.metadata["excerpt"] do %>
+                  <p class="text-gray-600 mb-4 line-clamp-3">
+                    <%= article.document.metadata["excerpt"] %>
+                  </p>
+                <% end %>
+
+                <!-- Collaboration Info -->
+                <%= if @section.content["show_collaboration_details"] and has_collaborators?(article) do %>
+                  <div class="flex items-center space-x-4 mb-4 text-sm text-gray-500">
+                    <div class="flex items-center">
+                      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.196-2.121M9 4a3 3 0 11-6 0 3 3 0 016 0zM19 4a3 3 0 11-6 0 3 3 0 016 0zM5 20h5v-2a3 3 0 00-5.196-2.121M17 4a3 3 0 11-6 0 3 3 0 016 0z"/>
+                      </svg>
+                      <%= get_contributor_count(article) %> contributors
+                    </div>
+                    <div>Your contribution: <%= get_user_contribution_percentage(article, @current_user) %>%</div>
+                  </div>
+                <% end %>
+
+                <!-- Metrics -->
+                <%= if @section.content["show_metrics"] and article.platform_metrics do %>
+                  <div class="flex items-center justify-between text-sm">
+                    <div class="flex space-x-4 text-gray-500">
+                      <%= if article.platform_metrics["views"] do %>
+                        <span class="flex items-center">
+                          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                          </svg>
+                          <%= format_number(article.platform_metrics["views"]) %> views
+                        </span>
+                      <% end %>
+
+                      <%= if article.platform_metrics["engagement"] do %>
+                        <span class="flex items-center">
+                          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                          </svg>
+                          <%= format_number(article.platform_metrics["engagement"]) %>
+                        </span>
+                      <% end %>
+
+                      <%= if article.revenue_attribution && article.revenue_attribution > 0 do %>
+                        <span class="flex items-center text-green-600">
+                          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>
+                          </svg>
+                          $<%= :erlang.float_to_binary(Decimal.to_float(article.revenue_attribution), decimals: 2) %>
+                        </span>
+                      <% end %>
+                    </div>
+
+                    <time class="text-gray-400" datetime={article.syndicated_at}>
+                      <%= Calendar.strftime(article.syndicated_at, "%b %d, %Y") %>
+                    </time>
+                  </div>
+                <% end %>
+              </div>
+
+              <!-- Article Footer -->
+              <div class="px-6 py-3 bg-gray-50 border-t border-gray-200">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2 text-sm text-gray-500">
+                    <%= if article.document.metadata["read_time"] do %>
+                      <span><%= article.document.metadata["read_time"] %> min read</span>
+                      <span>•</span>
+                    <% end %>
+                    <span><%= count_words(article.document) %> words</span>
+                  </div>
+
+                  <div class="flex space-x-2">
+                    <a
+                      href={article.external_url}
+                      target="_blank"
+                      class="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                    >
+                      Read on <%= String.capitalize(article.platform) %>
+                      <svg class="w-3 h-3 inline ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      </svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </article>
+          <% end %>
+        </div>
+
+        <!-- Load More Button -->
+        <%= if @has_more_articles do %>
+          <div class="text-center mt-8">
+            <button class="bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-50 transition-colors">
+              Load More Articles
+            </button>
+          </div>
+        <% end %>
+      </div>
+    </section>
+    """
+  end
+
+  defp grid_class("list"), do: "space-y-6"
+  defp grid_class("featured"), do: "grid lg:grid-cols-3 gap-6"
+  defp grid_class(_), do: "grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+
+  defp platform_badge_class("medium"), do: "bg-green-100 text-green-800"
+  defp platform_badge_class("linkedin"), do: "bg-blue-100 text-blue-800"
+  defp platform_badge_class("hashnode"), do: "bg-indigo-100 text-indigo-800"
+  defp platform_badge_class(_), do: "bg-gray-100 text-gray-800"
+
+  defp has_collaborators?(article) do
+    case article.collaboration_revenue_splits do
+      nil -> false
+      splits when map_size(splits) > 1 -> true
+      _ -> false
+    end
+  end
+
+  defp get_contributor_count(article) do
+    case article.collaboration_revenue_splits do
+      nil -> 1
+      splits -> map_size(splits)
+    end
+  end
+
+  defp get_user_contribution_percentage(article, user) do
+    case article.collaboration_revenue_splits do
+      nil -> 100
+      splits -> Map.get(splits, to_string(user.id), %{})["percentage"] || 0
+    end
+  end
+
+  defp format_number(nil), do: "0"
+  defp format_number(num) when num >= 1000, do: "#{Float.round(num/1000, 1)}k"
+  defp format_number(num), do: Integer.to_string(num)
+
+  defp count_words(document) do
+    # Count words across all text blocks
+    document.blocks
+    |> Enum.filter(&(&1.block_type == :text))
+    |> Enum.map(fn block ->
+      text = get_in(block.content_data, ["text"]) || ""
+      String.split(text, ~r/\s+/) |> length()
+    end)
+    |> Enum.sum()
+  end
 
   defp render_hero_form_fields(assigns) do
     assigns = assign(assigns, :content, assigns.section.content || %{})

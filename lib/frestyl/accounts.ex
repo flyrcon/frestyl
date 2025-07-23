@@ -71,6 +71,20 @@ defmodule Frestyl.Accounts do
     |> Repo.one()
   end
 
+  def get_primary_account_for_user(user_id) do
+    # This depends on your account structure
+    # Option 1: If users have a primary_account_id field
+    from(u in User,
+      where: u.id == ^user_id,
+      preload: [:account]
+    )
+    |> Repo.one()
+    |> case do
+      %{account: account} when not is_nil(account) -> account
+      _ -> nil
+    end
+  end
+
   @doc """
   Authenticates a user by email and password.
   """

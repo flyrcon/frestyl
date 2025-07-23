@@ -34,6 +34,8 @@ defmodule Frestyl.Application do
 
       {ChromicPDF, chromic_pdf_opts()},
 
+      {Oban, Application.fetch_env!(:frestyl, Oban)},
+
       # Supervisor for WebRTC connections
       Frestyl.Streaming.ConnectionSupervisor,
       # Analytics for streaming
