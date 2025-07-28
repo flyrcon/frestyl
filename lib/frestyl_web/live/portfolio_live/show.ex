@@ -14,7 +14,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
   alias FrestylWeb.PortfolioLive.Components.{
     DynamicSectionModal,
     EnhancedSectionRenderer,
-    PortfolioLayoutEngine
+    EnhancedLayoutRenderer
   }
 
 
@@ -982,12 +982,13 @@ end
 
         <!-- USE THE NEW PORTFOLIO LAYOUT ENGINE -->
         <main class="portfolio-content">
-          <.live_component
-            module={FrestylWeb.PortfolioLive.Components.PortfolioLayoutEngine}
-            id="portfolio-layout"
-            sections={@sections}
-            customization={@customization}
-            show_actions={false} />
+          <%= raw(FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer.render_portfolio_layout(
+            @portfolio,
+            @sections,
+            @layout_type,
+            @color_scheme,
+            @theme
+          )) %>
         </main>
 
       </div>

@@ -13,10 +13,11 @@ defmodule FrestylWeb.PortfolioLive.EnhancedPortfolioEditor do
   alias Phoenix.PubSub
 
   alias FrestylWeb.PortfolioLive.Components.{
-    DynamicSectionModal,
-    EnhancedSectionRenderer,
-    PortfolioLayoutEngine
-  }
+  DynamicSectionModal,
+  EnhancedSectionRenderer,
+  EnhancedLayoutRenderer,
+  LayoutPickerComponent
+}
 
   @impl true
   def mount(%{"id" => portfolio_id}, session, socket) do
@@ -356,7 +357,7 @@ def handle_event("change_color_scheme", %{"scheme" => scheme}, socket) do
 
   customization_params = %{"color_scheme" => scheme}
 
-  case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
+  case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, customization_params) do
     {:ok, updated_portfolio} ->
       broadcast_comprehensive_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
@@ -376,7 +377,7 @@ def handle_event("change_font_style", %{"font" => font}, socket) do
 
   customization_params = %{"font_style" => font}
 
-  case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
+  case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, customization_params) do
     {:ok, updated_portfolio} ->
       broadcast_comprehensive_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
@@ -396,7 +397,7 @@ def handle_event("change_primary_color", %{"color" => color}, socket) do
 
   customization_params = %{"primary_color" => color}
 
-  case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
+  case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, customization_params) do
     {:ok, updated_portfolio} ->
       broadcast_comprehensive_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
@@ -416,7 +417,7 @@ def handle_event("change_secondary_color", %{"color" => color}, socket) do
 
   customization_params = %{"secondary_color" => color}
 
-  case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
+  case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, customization_params) do
     {:ok, updated_portfolio} ->
       broadcast_comprehensive_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
@@ -436,7 +437,7 @@ def handle_event("change_accent_color", %{"color" => color}, socket) do
 
   customization_params = %{"accent_color" => color}
 
-  case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
+  case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, customization_params) do
     {:ok, updated_portfolio} ->
       broadcast_comprehensive_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
@@ -456,7 +457,7 @@ def handle_event("change_section_spacing", %{"spacing" => spacing}, socket) do
 
   customization_params = %{"section_spacing" => spacing}
 
-  case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
+  case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, customization_params) do
     {:ok, updated_portfolio} ->
       broadcast_comprehensive_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
@@ -476,7 +477,7 @@ def handle_event("change_corner_radius", %{"radius" => radius}, socket) do
 
   customization_params = %{"corner_radius" => radius}
 
-  case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
+  case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, customization_params) do
     {:ok, updated_portfolio} ->
       broadcast_comprehensive_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
@@ -496,7 +497,7 @@ def handle_event("change_font_family", %{"font_family" => font_family}, socket) 
 
   customization_params = %{"font_family" => font_family}
 
-  case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
+  case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, customization_params) do
     {:ok, updated_portfolio} ->
       broadcast_comprehensive_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
@@ -516,7 +517,7 @@ end
 
     customization_params = %{"layout_style" => layout_style}
 
-    case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
+    case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, customization_params) do
       {:ok, updated_portfolio} ->
         broadcast_comprehensive_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
@@ -915,6 +916,55 @@ end
       "creative_modern" -> "display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; transform: rotate(0.5deg);"
       _ -> "display: flex; flex-direction: column; gap: 1rem;"
     end
+  end
+
+  @impl true
+  def handle_info({:update_portfolio_design, design_update}, socket) do
+    case Portfolios.update_portfolio_customization(socket.assigns.portfolio, design_update) do
+      {:ok, updated_portfolio} ->
+        # Broadcast the update to the preview
+        broadcast_design_update(updated_portfolio.id, design_update)
+
+        {:noreply, socket
+          |> assign(:portfolio, updated_portfolio)
+          |> put_flash(:info, "Portfolio design updated successfully!")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update portfolio design")}
+    end
+  end
+
+  defp has_legacy_customizations?(portfolio) do
+    customization = portfolio.customization || %{}
+
+    # Check if portfolio has old-style customizations that should be migrated
+    has_old_layout = Map.has_key?(customization, "layout") &&
+                    Map.get(customization, "layout") not in ["sidebar", "single", "workspace"]
+
+    has_old_theme = Map.has_key?(customization, "theme") &&
+                    !Map.get(customization, "migrated_to_new_design", false)
+
+    has_complex_customization = Map.has_key?(customization, "background_image") ||
+                              Map.has_key?(customization, "header_overlay") ||
+                              Map.has_key?(customization, "section_animations")
+
+    has_old_layout || has_old_theme || has_complex_customization
+  end
+
+  defp broadcast_design_update(portfolio_id, design_update) do
+    # Broadcast to live preview
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio_id}",
+      {:design_update, design_update}
+    )
+
+    # Broadcast to portfolio show page
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio:#{portfolio_id}",
+      {:customization_updated, design_update}
+    )
   end
 
   @impl true
@@ -1322,200 +1372,115 @@ end
   end
 
   # Design Tab Renderer
-  defp render_design_tab(assigns) do
+  def render_design_tab(assigns) do
     ~H"""
-    <div class="design-tab space-y-6">
+    <div class="space-y-6">
+      <!-- New Clean Layout Picker -->
+      <.live_component
+        module={FrestylWeb.PortfolioLive.Components.LayoutPickerComponent}
+        id="layout-picker"
+        portfolio={@portfolio}
+      />
 
-      <!-- Layout Selection -->
-      <div class="bg-white rounded-xl shadow-sm border p-6">
-        <h3 class="text-lg font-bold text-gray-900 mb-4">Layout Style</h3>
-        <p class="text-gray-600 text-sm mb-6">Choose how your sections are arranged on the page.</p>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <%= for {key, config} <- [
-            {"mobile_single", %{name: "Single Column", description: "Mobile-first single column", icon: "📱", best_for: "mobile users, simple portfolios"}},
-            {"grid_uniform", %{name: "Grid Layout", description: "Uniform grid blocks", icon: "⬜", best_for: "visual portfolios, galleries"}},
-            {"dashboard", %{name: "Dashboard", description: "Variable-sized blocks", icon: "📊", best_for: "data-heavy portfolios, analytics"}},
-            {"creative_modern", %{name: "Creative Modern", description: "Asymmetric layout", icon: "🎨", best_for: "creative professionals, designers"}}
-          ] do %>
-            <div class="layout-option">
-              <button type="button"
-                    phx-click="change_layout_style"
-                    phx-value-layout={key}
-                    class={[
-                      "w-full text-left p-4 border-2 rounded-lg cursor-pointer transition-all hover:shadow-sm",
-                      if(Map.get(@customization, "layout_style", "mobile_single") == key,
-                        do: "border-blue-500 bg-blue-50",
-                        else: "border-gray-200 hover:border-gray-300")
-                    ]}>
-                <div class="flex items-center justify-between mb-3">
-                  <div class="flex items-center">
-                    <span class="text-2xl mr-3"><%= config.icon %></span>
-                    <div>
-                      <h4 class="font-medium text-gray-900"><%= config.name %></h4>
-                      <p class="text-sm text-gray-500"><%= config.description %></p>
-                    </div>
-                  </div>
-                  <%= if Map.get(@customization, "layout_style", "mobile_single") == key do %>
-                    <div class="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                      <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                      </svg>
-                    </div>
-                  <% end %>
-                </div>
-
-                <!-- Layout Preview -->
-                <div class="layout-preview h-16 bg-gray-100 rounded border mb-3 overflow-hidden">
-                  <%= case key do %>
-                    <% "mobile_single" -> %>
-                      <div class="h-full p-2 flex flex-col space-y-1">
-                        <div class="h-2 bg-blue-300 rounded w-full"></div>
-                        <div class="h-2 bg-blue-200 rounded w-full"></div>
-                        <div class="h-2 bg-blue-200 rounded w-3/4"></div>
-                      </div>
-                    <% "grid_uniform" -> %>
-                      <div class="h-full p-2 grid grid-cols-2 gap-1">
-                        <div class="bg-green-300 rounded"></div>
-                        <div class="bg-green-300 rounded"></div>
-                        <div class="bg-green-200 rounded"></div>
-                        <div class="bg-green-200 rounded"></div>
-                      </div>
-                    <% "dashboard" -> %>
-                      <div class="h-full p-2 grid grid-cols-3 gap-1">
-                        <div class="bg-purple-300 rounded col-span-2"></div>
-                        <div class="bg-purple-200 rounded"></div>
-                        <div class="bg-purple-200 rounded"></div>
-                        <div class="bg-purple-300 rounded col-span-2"></div>
-                      </div>
-                    <% "creative_modern" -> %>
-                      <div class="h-full p-2 relative">
-                        <div class="absolute top-1 left-1 w-6 h-4 bg-pink-300 rounded transform rotate-12"></div>
-                        <div class="absolute top-2 right-1 w-5 h-3 bg-pink-200 rounded"></div>
-                        <div class="absolute bottom-1 left-2 w-8 h-3 bg-pink-300 rounded transform -rotate-6"></div>
-                        <div class="absolute bottom-2 right-2 w-4 h-4 bg-pink-200 rounded-full"></div>
-                      </div>
-                  <% end %>
-                </div>
-
-                <p class="text-xs text-gray-600">Best for: <%= config.best_for %></p>
-              </button>
+      <!-- Advanced Options (Collapsed by default) -->
+      <div class="bg-white rounded-xl shadow-sm border">
+        <button
+          class="w-full p-6 text-left focus:outline-none"
+          phx-click="toggle_advanced_options">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-lg font-bold text-gray-900 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"/>
+                </svg>
+                Advanced Options
+              </h3>
+              <p class="text-gray-600 mt-1 text-sm">Additional customization options</p>
             </div>
-          <% end %>
-        </div>
-      </div>
+            <svg class={[
+              "w-5 h-5 text-gray-400 transition-transform",
+              if(Map.get(assigns, :show_advanced_options, false), do: "rotate-180", else: "")
+            ]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </div>
+        </button>
 
-      <!-- Color Scheme -->
-      <div class="bg-white rounded-xl shadow-sm border p-6">
-        <h3 class="text-lg font-bold text-gray-900 mb-4">Color Scheme</h3>
-        <p class="text-gray-600 text-sm mb-6">Choose colors that reflect your personal brand.</p>
+        <%= if Map.get(assigns, :show_advanced_options, false) do %>
+          <div class="p-6 border-t border-gray-200 space-y-6">
+            <!-- Custom CSS -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Custom CSS</label>
+              <p class="text-xs text-gray-500 mb-3">Advanced users can add custom styling (use with caution)</p>
+              <textarea
+                name="custom_css"
+                rows="6"
+                phx-change="update_custom_css"
+                phx-debounce="1000"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 font-mono text-sm"
+                placeholder="/* Add your custom CSS here */"><%= Map.get(@portfolio.customization || %{}, "custom_css", "") %></textarea>
+            </div>
 
-        <div class="grid grid-cols-3 md:grid-cols-6 gap-3">
-          <%= for {scheme_name, colors} <- [
-            {"blue", ["#3B82F6", "#1D4ED8", "#60A5FA"]},
-            {"purple", ["#8B5CF6", "#7C3AED", "#A78BFA"]},
-            {"green", ["#10B981", "#059669", "#34D399"]},
-            {"red", ["#EF4444", "#DC2626", "#F87171"]},
-            {"orange", ["#F97316", "#EA580C", "#FB923C"]},
-            {"pink", ["#EC4899", "#DB2777", "#F472B6"]},
-            {"dark", ["#1F2937", "#111827", "#374151"]},
-            {"slate", ["#475569", "#334155", "#64748B"]},
-            {"neutral", ["#525252", "#404040", "#737373"]},
-            {"midnight", ["#0F172A", "#1E293B", "#334155"]},
-            {"charcoal", ["#18181B", "#27272A", "#3F3F46"]},
-            {"graphite", ["#171717", "#262626", "#525252"]}
-          ] do %>
-            <button phx-click="change_color_scheme"
-                    phx-value-scheme={scheme_name}
-                    class={[
-                      "color-scheme-option p-3 border-2 rounded-lg transition-all hover:shadow-sm",
-                      if(Map.get(@customization, "color_scheme", "blue") == scheme_name,
-                        do: "border-gray-800 shadow-md",
-                        else: "border-gray-200 hover:border-gray-300")
-                    ]}>
-              <div class="flex space-x-1 mb-2">
-                <%= for color <- colors do %>
-                  <div class="w-4 h-4 rounded-full" style={"background-color: #{color}"}></div>
-                <% end %>
+            <!-- SEO Settings -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Meta Title</label>
+                <input
+                  type="text"
+                  name="meta_title"
+                  value={Map.get(@portfolio.customization || %{}, "meta_title", @portfolio.title)}
+                  phx-change="update_seo_settings"
+                  phx-debounce="1000"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  placeholder="Portfolio title for search engines">
               </div>
-              <p class="text-xs font-medium text-gray-700 capitalize"><%= scheme_name %></p>
-            </button>
-          <% end %>
-        </div>
-      </div>
-
-      <!-- Typography -->
-      <div class="bg-white rounded-xl shadow-sm border p-6">
-        <h3 class="text-lg font-bold text-gray-900 mb-4">Typography</h3>
-        <p class="text-gray-600 text-sm mb-6">Select fonts that match your style.</p>
-
-        <div class="space-y-3">
-          <%= for {font_key, font_info} <- [
-            {"inter", %{name: "Inter", css_name: "Inter, system-ui, sans-serif", description: "Modern and clean, great for professional portfolios"}},
-            {"poppins", %{name: "Poppins", css_name: "Poppins, system-ui, sans-serif", description: "Friendly and approachable, perfect for creative work"}},
-            {"playfair", %{name: "Playfair Display", css_name: "Playfair Display, Georgia, serif", description: "Elegant serif font for sophisticated portfolios"}},
-            {"source_sans", %{name: "Source Sans Pro", css_name: "Source Sans Pro, system-ui, sans-serif", description: "Clean and readable, ideal for text-heavy content"}}
-          ] do %>
-            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-              <input type="radio"
-                    name="font_style"
-                    value={font_key}
-                    checked={Map.get(@customization, "font_style", "inter") == font_key}
-                    phx-click="change_font_style"
-                    phx-value-font={font_key}
-                    class="text-blue-600 focus:ring-blue-500">
-              <div class="ml-3">
-                <p class="font-medium text-gray-900" style={"font-family: #{font_info.css_name}"}>
-                  <%= font_info.name %>
-                </p>
-                <p class="text-sm text-gray-500"><%= font_info.description %></p>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Meta Description</label>
+                <textarea
+                  name="meta_description"
+                  rows="3"
+                  phx-change="update_seo_settings"
+                  phx-debounce="1000"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  placeholder="Brief description for search engines"><%= Map.get(@portfolio.customization || %{}, "meta_description", @portfolio.description) %></textarea>
               </div>
-            </label>
-          <% end %>
-        </div>
-      </div>
-
-      <!-- Spacing & Style -->
-      <div class="bg-white rounded-xl shadow-sm border p-6">
-        <h3 class="text-lg font-bold text-gray-900 mb-4">Spacing & Style</h3>
-
-        <div class="space-y-6">
-          <!-- Section Spacing -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-3">Section Spacing</label>
-            <div class="flex space-x-4">
-              <%= for spacing <- ["compact", "normal", "spacious"] do %>
-                <label class="flex items-center">
-                  <input type="radio"
-                        name="section_spacing"
-                        value={spacing}
-                        checked={Map.get(@customization, "section_spacing", "normal") == spacing}
-                        phx-click="change_section_spacing"
-                        phx-value-spacing={spacing}
-                        class="text-blue-600 focus:ring-blue-500">
-                  <span class="ml-2 text-sm text-gray-700 capitalize"><%= spacing %></span>
-                </label>
-              <% end %>
             </div>
           </div>
+        <% end %>
+      </div>
 
-          <!-- Corner Radius -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-3">Corner Style</label>
-            <div class="flex space-x-4">
-              <%= for radius <- ["sharp", "rounded", "very-rounded"] do %>
-                <label class="flex items-center">
-                  <input type="radio"
-                        name="corner_radius"
-                        value={radius}
-                        checked={Map.get(@customization, "corner_radius", "rounded") == radius}
-                        phx-click="change_corner_radius"
-                        phx-value-radius={radius}
-                        class="text-blue-600 focus:ring-blue-500">
-                  <span class="ml-2 text-sm text-gray-700 capitalize"><%= String.replace(radius, "-", " ") %></span>
-                </label>
-              <% end %>
+      <!-- Legacy Layout Warning (if user has old customizations) -->
+      <%= if has_legacy_customizations?(@portfolio) do %>
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div class="flex items-start">
+            <svg class="w-5 h-5 text-amber-400 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+            </svg>
+            <div>
+              <h4 class="font-medium text-amber-800">Legacy Design Detected</h4>
+              <p class="text-sm text-amber-700 mt-1">
+                Your portfolio has older customization settings. We recommend updating to the new design system for better performance and mobile experience.
+              </p>
+              <button
+                phx-click="migrate_to_new_design"
+                class="mt-3 text-sm font-medium text-amber-800 hover:text-amber-900 underline">
+                Migrate to New Design System →
+              </button>
             </div>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Design Preview -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-4">Live Preview</h3>
+        <div class="aspect-video bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
+          <div class="text-center text-gray-500">
+            <svg class="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            <p class="text-sm font-medium mb-1">Design Preview</p>
+            <p class="text-xs">Changes will appear here in real-time</p>
           </div>
         </div>
       </div>
@@ -1770,6 +1735,81 @@ end
     """
   end
 
+  @impl true
+  def handle_event("toggle_advanced_options", _params, socket) do
+    current_state = Map.get(socket.assigns, :show_advanced_options, false)
+    {:noreply, assign(socket, :show_advanced_options, !current_state)}
+  end
+
+  @impl true
+  def handle_event("update_custom_css", %{"custom_css" => custom_css}, socket) do
+    customization_params = %{"custom_css" => custom_css}
+
+    case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio, customization_params) do
+      {:ok, updated_portfolio} ->
+        {:noreply, socket
+          |> assign(:portfolio, updated_portfolio)
+          |> put_flash(:info, "Custom CSS updated")}
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to update custom CSS")}
+    end
+  end
+
+  @impl true
+  def handle_event("update_seo_settings", params, socket) do
+    seo_params = Map.take(params, ["meta_title", "meta_description"])
+
+    case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio, seo_params) do
+      {:ok, updated_portfolio} ->
+        {:noreply, socket
+          |> assign(:portfolio, updated_portfolio)
+          |> put_flash(:info, "SEO settings updated")}
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to update SEO settings")}
+    end
+  end
+
+  @impl true
+  def handle_event("migrate_to_new_design", _params, socket) do
+    # Migrate legacy customizations to new system
+    legacy_customization = socket.assigns.portfolio.customization || %{}
+
+    # Map old layout types to new ones
+    new_layout = case Map.get(legacy_customization, "layout") do
+      "dashboard" -> "workspace"
+      "timeline" -> "single"
+      "magazine" -> "single"
+      "minimal" -> "single"
+      _ -> "single"
+    end
+
+    # Map old color schemes
+    new_color_scheme = case Map.get(legacy_customization, "color_scheme") do
+      "blue" -> "professional"
+      "purple" -> "creative"
+      "green" -> "tech"
+      "orange" -> "warm"
+      _ -> "professional"
+    end
+
+    migration_params = %{
+      "layout_style" => new_layout,
+      "color_scheme" => new_color_scheme,
+      "typography" => "sans",
+      "migrated_to_new_design" => true,
+      "migration_date" => DateTime.utc_now() |> DateTime.to_iso8601(),
+      "legacy_backup" => Map.take(legacy_customization, ["layout", "theme", "color_scheme"])
+    }
+
+    case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio, migration_params) do
+      {:ok, updated_portfolio} ->
+        {:noreply, socket
+          |> assign(:portfolio, updated_portfolio)
+          |> put_flash(:info, "Successfully migrated to new design system!")}
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to migrate design settings")}
+    end
+  end
 
   defp find_hero_section(sections) do
     Enum.find(sections, fn section ->
@@ -2168,7 +2208,7 @@ end
         updated_customization = Map.put(socket.assigns.customization, field, value)
 
         # Try to save to database
-        case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, %{field => value}) do
+        case Portfolios.update_portfolio_customization_by_id_by_id(socket.assigns.portfolio.id, %{field => value}) do
           {:ok, updated_portfolio} ->
             IO.puts("✅ CUSTOMIZATION SAVED")
 
