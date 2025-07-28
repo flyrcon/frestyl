@@ -15,6 +15,7 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       :case_study,
       :achievements,
       :testimonial,
+      :testimonials,
       :media_showcase,
       :code_showcase,
       :contact,
@@ -24,7 +25,15 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       :narrative,
       :journey,
       :video_hero,
-      :collaborations
+      :collaborations,
+      :published_articles,
+      :certifications,
+      :services,
+      :blog,
+      :gallery,
+      :hero,
+      :about,
+      :pricing
     ]
     field :content, :map
     field :position, :integer
@@ -113,41 +122,29 @@ defmodule Frestyl.Portfolios.PortfolioSection do
 
   def default_content_for_type(:education) do
     %{
-      "education" => [
+      "description" => "Educational background and academic achievements",
+      "display_style" => "timeline",
+      "show_gpa" => false,
+      "show_coursework" => true,
+      "show_activities" => true,
+      "show_logos" => true,
+      "group_by_type" => false,
+      "items" => [
         %{
           "degree" => "Bachelor of Science",
-          "field" => "Your Field of Study",
+          "field" => "Computer Science",
           "institution" => "University Name",
-          "location" => "City, State/Country",
-          "start_date" => "Year",
-          "end_date" => "Year",
-          "status" => "Completed",
-          "gpa" => "",
-          "description" => "Relevant details about your educational experience.",
-          "relevant_coursework" => [
-            "Data Structures and Algorithms",
-            "Database Systems",
-            "Software Engineering"
-          ],
-          "activities" => [
-            "Computer Science Club Member",
-            "Dean's List (3 semesters)",
-            "Undergraduate Research Assistant"
-          ],
+          "location" => "City, State",
+          "start_date" => "2019",
+          "end_date" => "2023",
+          "gpa" => 0.0,
+          "description" => "Relevant details about educational experience",
+          "relevant_coursework" => [],
+          "activities" => [],
+          "honors" => [],
           "institution_logo" => "",
           "institution_url" => "",
-          "thesis_title" => "",
-          "advisor" => ""
-        }
-      ],
-      "certifications" => [
-        %{
-          "name" => "Certification Name",
-          "issuer" => "Issuing Organization",
-          "date_earned" => "Month Year",
-          "expiry_date" => "",
-          "credential_id" => "",
-          "verification_url" => ""
+          "ongoing" => false
         }
       ]
     }
@@ -204,6 +201,31 @@ defmodule Frestyl.Portfolios.PortfolioSection do
           "screenshots" => [],
           "team_size" => 1,
           "my_contribution" => "Led development and architecture decisions"
+        }
+      ]
+    }
+  end
+
+  def default_content_for_type(:certifications) do
+    %{
+      "description" => "Professional certifications and credentials",
+      "display_style" => "grid",
+      "show_expiry_dates" => true,
+      "show_verification" => true,
+      "show_issuer_logos" => true,
+      "group_by_issuer" => false,
+      "items" => [
+        %{
+          "name" => "Certification Name",
+          "issuer" => "Issuing Organization",
+          "date_earned" => "2023",
+          "expiry_date" => "",
+          "credential_id" => "",
+          "verification_url" => "",
+          "issuer_logo" => "",
+          "skills" => [],
+          "featured" => false,
+          "expires" => false
         }
       ]
     }
@@ -289,18 +311,31 @@ defmodule Frestyl.Portfolios.PortfolioSection do
 
   def default_content_for_type(:achievements) do
     %{
-      "achievements" => [
+      "description" => "Awards, recognition, and significant accomplishments",
+      "display_style" => "timeline",
+      "show_dates" => true,
+      "show_metrics" => true,
+      "show_media" => true,
+      "group_by_category" => false,
+      "items" => [
         %{
           "title" => "Achievement Title",
-          "description" => "Description of the achievement and its significance.",
-          "date" => "Month Year",
+          "category" => "Award",
           "organization" => "Awarding Organization",
-          "category" => "Professional", # Professional, Academic, Personal, Award
+          "date" => "2023",
+          "description" => "Description of the achievement",
+          "image_url" => "",
           "verification_url" => "",
-          "certificate_image" => ""
+          "tags" => [],
+          "featured" => false,
+          "metrics" => %{
+            "impact_number" => 0,
+            "impact_unit" => "",
+            "ranking" => "",
+            "participants" => 0
+          }
         }
-      ],
-      "categories" => ["Professional", "Academic", "Personal", "Awards", "Certifications"]
+      ]
     }
   end
 
@@ -354,29 +389,41 @@ defmodule Frestyl.Portfolios.PortfolioSection do
 
   def default_content_for_type(:code_showcase) do
     %{
-      "title" => "Code Example",
-      "description" => "Demonstration of coding skills and problem-solving approach.",
-      "language" => "JavaScript",
-      "code_snippet" => "",
-      "key_features" => [
-        "Clean, readable code structure",
-        "Efficient algorithm implementation",
-        "Comprehensive error handling"
+      "title" => "Code Examples",
+      "description" => "Demonstration of coding skills and problem-solving approach",
+      "code_examples" => [
+        %{
+          "title" => "Algorithm Implementation",
+          "language" => "javascript",
+          "code" => "// Example code here\nfunction fibonacci(n) {\n  if (n <= 1) return n;\n  return fibonacci(n - 1) + fibonacci(n - 2);\n}",
+          "explanation" => "Recursive implementation of the Fibonacci sequence",
+          "demo_url" => "",
+          "github_url" => ""
+        }
       ],
-      "explanation" => "Detailed explanation of the code logic and design decisions.",
-      "line_highlights" => [
-        %{"line" => 5, "note" => "Key algorithm implementation"},
-        %{"line" => 12, "note" => "Error handling logic"}
-      ],
-      "repository_url" => "",
-      "live_demo_url" => "",
-      "complexity_analysis" => %{
-        "time_complexity" => "O(n)",
-        "space_complexity" => "O(1)"
+      "tech_stack" => ["JavaScript", "Python", "React"],
+      "difficulty_level" => "intermediate",
+      "completion_time" => "2-3 hours",
+      "display_style" => "tabs"
+    }
+  end
+
+  def default_content_for_type(:media_showcase) do
+    %{
+      "title" => "Media Gallery",
+      "description" => "A curated collection of visual work and project demonstrations",
+      "media_categories" => %{
+        "Screenshots" => [],
+        "Demonstrations" => [],
+        "Process Documentation" => [],
+        "Final Results" => []
       },
-      "test_cases" => [
-        %{"input" => "example input", "output" => "expected output", "description" => "Basic test case"}
-      ]
+      "layout_settings" => %{
+        "gallery_type" => "masonry",
+        "items_per_row" => 3,
+        "show_captions" => true,
+        "enable_lightbox" => true
+      }
     }
   end
 
@@ -437,13 +484,32 @@ defmodule Frestyl.Portfolios.PortfolioSection do
     %{
       "headline" => "Published Articles",
       "subtitle" => "My thought leadership and collaborative writing",
-      "display_style" => "grid", # grid, list, featured
+      "description" => "A collection of articles and publications showcasing expertise and insights",
+      "display_style" => "grid",
       "show_metrics" => true,
       "show_collaboration_details" => false,
-      "platform_filter" => [], # Show all platforms by default
+      "platform_filter" => [],
       "max_articles" => 12,
-      "sort_by" => "published_date", # published_date, engagement, revenue
-      "include_draft_metrics" => false
+      "sort_by" => "published_date",
+      "include_draft_metrics" => false,
+      "articles" => [
+        %{
+          "title" => "Sample Article Title",
+          "platform" => "Medium",
+          "published_date" => "2023-06-15",
+          "url" => "",
+          "co_authors" => [],
+          "excerpt" => "Brief description of the article content...",
+          "tags" => ["Technology", "Innovation"],
+          "featured" => false,
+          "metrics" => %{
+            "views" => 0,
+            "likes" => 0,
+            "shares" => 0,
+            "comments" => 0
+          }
+        }
+      ]
     }
   end
 
@@ -456,6 +522,32 @@ defmodule Frestyl.Portfolios.PortfolioSection do
       "show_contribution_details" => true,
       "featured_collaboration" => nil,
       "collaborations" => []
+    }
+  end
+
+  def default_content_for_type(:services) do
+    %{
+      "description" => "Professional services and offerings",
+      "display_style" => "cards",
+      "show_pricing" => true,
+      "show_duration" => true,
+      "enable_booking" => false,
+      "booking_url" => "",
+      "currency" => "USD",
+      "items" => [
+        %{
+          "name" => "Service Name",
+          "description" => "Detailed description of the service",
+          "price" => 0.0,
+          "price_type" => "fixed", # fixed, hourly, project
+          "duration" => "",
+          "features" => [],
+          "deliverables" => [],
+          "booking_url" => "",
+          "featured" => false,
+          "available" => true
+        }
+      ]
     }
   end
 

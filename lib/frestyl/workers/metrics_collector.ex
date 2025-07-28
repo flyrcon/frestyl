@@ -4,25 +4,25 @@ defmodule Frestyl.Workers.MetricsCollector do
   Background job to collect metrics from syndicated platforms
   """
 
-  use Oban.Worker, queue: :metrics
+  #use Oban.Worker, queue: :metrics
 
   alias Frestyl.Content.Syndication
   alias Frestyl.HTTP.{MediumClient, LinkedInClient}
 
-  @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"syndication_id" => syndication_id}}) do
-    with {:ok, syndication} <- get_syndication(syndication_id),
-         {:ok, metrics} <- collect_platform_metrics(syndication) do
-
-      update_syndication_metrics(syndication, metrics)
-      schedule_next_collection(syndication)
-
-      :ok
-    else
-      error ->
-        {:error, error}
-    end
-  end
+#  @impl Oban.Worker
+#  def perform(%Oban.Job{args: %{"syndication_id" => syndication_id}}) do
+#    with {:ok, syndication} <- get_syndication(syndication_id),
+#         {:ok, metrics} <- collect_platform_metrics(syndication) do
+#
+#      update_syndication_metrics(syndication, metrics)
+#      schedule_next_collection(syndication)
+#
+#      :ok
+#    else
+#      error ->
+#        {:error, error}
+#    end
+#  end
 
   defp get_syndication(id) do
     case Frestyl.Repo.get(Syndication, id) do

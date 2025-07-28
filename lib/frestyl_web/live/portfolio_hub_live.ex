@@ -6,6 +6,7 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   alias Frestyl.{Portfolios, Accounts, Channels, Features, Repo}
   alias Frestyl.Accounts.{Account, AccountMembership}
+  alias Frestyl.Features.FeatureGate
   alias FrestylWeb.PortfolioHubLive.ContentCampaignComponents
   alias Frestyl.DataCampaigns.AdvancedTracker
   import FrestylWeb.Navigation, only: [nav: 1]
@@ -15,37 +16,81 @@ defmodule FrestylWeb.PortfolioHubLive do
   @impl true
   def mount(_params, _session, socket) do
     current_user = socket.assigns.current_user
-    current_account = socket.assigns.current_account || get_user_primary_account(current_user)
 
-    # Phase 2 & 3: Advanced metrics and real-time subscriptions
+    # Load user's accounts for switcher and ensure current account is set
+    available_accounts = load_user_accounts(current_user.id)
+    current_account = get_current_account(current_user, available_accounts)
+
+    # Enhanced PubSub subscriptions with all necessary channels
     if connected?(socket) do
-      PubSub.subscribe(Frestyl.PubSub, "content_campaigns:#{current_account.id}")
-      PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}:campaigns")
-      PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}:quality_gates")
-      PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}:revenue")
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_hub")
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolios:#{current_user.id}")
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}")
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "content_campaigns:#{current_account.id}")
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}:campaigns")
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}:quality_gates")
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "user:#{current_user.id}:revenue")
     end
 
-    socket =
-      socket
+    # Load initial data scoped to current account
+    portfolios = load_account_portfolios(current_account) || []
+    network_stats = load_network_stats(current_user.id)
+    analytics_data = calculate_analytics_data(portfolios)
+
+    socket = socket
       |> assign(:current_account, current_account)
+      |> assign(:available_accounts, available_accounts)
+      |> assign(:show_account_switcher, false)
+      |> assign(:portfolios, portfolios)
+      |> assign(:analytics_data, analytics_data)
+      |> assign(:analytics_period, "30")
+      |> assign(:story_template, nil)
+      |> assign(:calendar_view, "month")
+      |> assign(:view_mode, "cards")
+      |> assign(:sort_by, "recent")
+      |> assign(:filter_status, "all")
+      |> assign(:show_create_modal, false)
+      |> assign(:create_type, nil)
       |> assign(:active_tab, "portfolio_hub")
-      |> assign(:portfolios, load_user_portfolios(current_user.id))
-      |> assign(:network_stats, load_network_stats(current_user.id))
+      |> assign(:active_section, "portfolios")
+      |> assign(:page_title, "Portfolio Hub")
+      |> assign(:total_views, calculate_total_views(portfolios))
+      |> assign(:monthly_views, calculate_monthly_views(portfolios))
+      |> assign(:network_stats, network_stats)
       |> assign(:recent_connections, load_recent_connections(current_user.id))
       |> assign(:trending_portfolios, load_trending_portfolios())
+      |> assign(:active_collaborations, load_active_collaborations(current_user.id))
+      |> assign(:available_templates, load_available_templates())
+      # Collaboration Hub data
+      |> assign(:collaboration_invites, load_collaboration_invites(current_user.id))
+      |> assign(:collaboration_projects, load_collaboration_projects(current_user.id))
+      # Community Channels data
       |> assign(:user_channels, load_user_channels(current_user.id))
+      |> assign(:recommended_channels, load_recommended_channels(current_user.id))
+      |> assign(:official_channel, load_official_channel())
       |> assign(:featured_collaborations, load_featured_collaborations())
-      |> assign(:onboarding_state, get_onboarding_state(current_user, [], %{}))
+      |> assign(:channels_view_mode, "cards")
+      |> assign(:channel_search, "")
+      |> assign(:channels_sort_by, "recent")
+      |> assign(:channels_filter, "all")
+      |> assign(:open_channel_menu, nil)
+      # Service Dashboard data (Creator tier+)
+      |> assign(:service_revenue, load_service_revenue(current_account))
+      |> assign(:service_bookings, load_service_bookings(current_account))
+      |> assign(:service_analytics, load_service_analytics(current_account))
+      # Creator Studio data (Creator tier+)
+      |> assign(:studio_projects, load_studio_projects(current_account))
+      |> assign(:studio_resources, load_studio_resources(current_account))
       # Phase 1: Content Campaigns
       |> assign(:content_campaigns, load_content_campaigns(current_user))
       |> assign(:campaign_limits, get_campaign_limits(current_account))
-      # Phase 2: Advanced tracking
+      # Phase 2: Advanced tracking and quality management
       |> assign(:campaign_metrics, load_campaign_metrics(current_user))
       |> assign(:active_improvement_periods, load_active_improvement_periods(current_user))
       |> assign(:pending_peer_reviews, load_pending_peer_reviews(current_user))
       |> assign(:show_improvement_modal, false)
       |> assign(:show_peer_review_modal, false)
-      # Phase 3: Revenue & contracts
+      # Phase 3: Revenue & contracts system
       |> assign(:revenue_metrics, load_revenue_metrics(current_user))
       |> assign(:campaign_revenues, load_campaign_revenues(current_user))
       |> assign(:recent_payments, load_recent_payments(current_user))
@@ -55,6 +100,8 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:show_contract_modal, false)
       |> assign(:current_contract, nil)
       |> assign(:show_revenue_analytics, false)
+      # Enhanced onboarding with all new features
+      |> assign(:onboarding_state, get_onboarding_state(current_user, portfolios, load_revenue_metrics(current_user)))
 
     {:ok, socket}
   end
@@ -273,10 +320,16 @@ defmodule FrestylWeb.PortfolioHubLive do
 
   # Account Switching Events
   @impl true
+  def handle_event("close_account_switcher", _params, socket) do
+    {:noreply, assign(socket, :show_account_switcher, false)}
+  end
+
+  @impl true
   def handle_event("toggle_account_switcher", _params, socket) do
     {:noreply, assign(socket, :show_account_switcher, !socket.assigns.show_account_switcher)}
   end
 
+  # Update your existing switch_account handler to close the dropdown:
   @impl true
   def handle_event("switch_account", %{"account_id" => account_id}, socket) do
     current_user = socket.assigns.current_user
@@ -293,15 +346,18 @@ defmodule FrestylWeb.PortfolioHubLive do
         analytics_data = calculate_analytics_data(portfolios)
 
         {:noreply,
-         socket
-         |> assign(:current_account, account)
-         |> assign(:portfolios, portfolios)
-         |> assign(:analytics_data, analytics_data)
-         |> assign(:show_account_switcher, false)
-         |> put_flash(:info, "Switched to #{account.name}")}
+        socket
+        |> assign(:current_account, account)
+        |> assign(:portfolios, portfolios)
+        |> assign(:analytics_data, analytics_data)
+        |> assign(:show_account_switcher, false)  # This already closes it
+        |> put_flash(:info, "Switched to #{account.name}")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Could not switch accounts")}
+        {:noreply,
+        socket
+        |> assign(:show_account_switcher, false)  # Close on error too
+        |> put_flash(:error, "Could not switch accounts")}
     end
   end
 
@@ -413,6 +469,10 @@ defmodule FrestylWeb.PortfolioHubLive do
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to start session")}
     end
+  end
+
+  def handle_event("discover_official_channel", _params, socket) do
+    {:noreply, redirect(socket, to: ~p"/channels/frestyl-official")}
   end
 
   # Service Dashboard Events (Creator Tier+)
@@ -654,102 +714,100 @@ defmodule FrestylWeb.PortfolioHubLive do
     end
   end
 
-@impl true
-def handle_event("start_peer_review", %{"campaign_id" => campaign_id, "submission_type" => type}, socket) do
-  current_user = socket.assigns.current_user
+  @impl true
+  def handle_event("start_peer_review", %{"campaign_id" => campaign_id, "submission_type" => type}, socket) do
+    current_user = socket.assigns.current_user
 
-  submission_data = %{
-    type: String.to_atom(type),
-    content: get_user_campaign_content(campaign_id, current_user.id, type)
-  }
+    submission_data = %{
+      type: String.to_atom(type),
+      content: get_user_campaign_content(campaign_id, current_user.id, type)
+    }
 
-  case Frestyl.DataCampaigns.PeerReview.submit_for_review(campaign_id, current_user.id, submission_data) do
-    {:ok, review_request} ->
-      {:noreply, socket
-       |> put_flash(:info, "Submitted for peer review! Reviewers will be notified.")
-       |> assign(:content_campaigns, load_content_campaigns(current_user))}
+    case Frestyl.DataCampaigns.PeerReview.submit_for_review(campaign_id, current_user.id, submission_data) do
+      {:ok, review_request} ->
+        {:noreply, socket
+        |> put_flash(:info, "Submitted for peer review! Reviewers will be notified.")
+        |> assign(:content_campaigns, load_content_campaigns(current_user))}
 
-    {:error, reason} ->
-      {:noreply, put_flash(socket, :error, "Failed to submit for review: #{reason}")}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to submit for review: #{reason}")}
+    end
   end
-end
 
-@impl true
-def handle_event("submit_peer_review", params, socket) do
-  %{
-    "review_request_id" => review_request_id,
-    "overall_score" => overall_score,
-    "criteria_scores" => criteria_scores,
-    "feedback" => feedback
-  } = params
+  @impl true
+  def handle_event("submit_peer_review", params, socket) do
+    %{
+      "review_request_id" => review_request_id,
+      "overall_score" => overall_score,
+      "criteria_scores" => criteria_scores,
+      "feedback" => feedback
+    } = params
 
-  current_user = socket.assigns.current_user
+    current_user = socket.assigns.current_user
 
-  review_data = %{
-    overall_score: String.to_float(overall_score),
-    criteria_scores: parse_criteria_scores(criteria_scores),
-    feedback: feedback,
-    suggestions: Map.get(params, "suggestions", [])
-  }
+    review_data = %{
+      overall_score: String.to_float(overall_score),
+      criteria_scores: parse_criteria_scores(criteria_scores),
+      feedback: feedback,
+      suggestions: Map.get(params, "suggestions", [])
+    }
 
-  case Frestyl.DataCampaigns.PeerReview.submit_review(review_request_id, current_user.id, review_data) do
-    {:ok, :review_completed, score} ->
-      {:noreply, socket
-       |> put_flash(:info, "Review completed! Final score: #{score}/5.0")
-       |> assign(:content_campaigns, load_content_campaigns(current_user))}
+    case Frestyl.DataCampaigns.PeerReview.submit_review(review_request_id, current_user.id, review_data) do
+      {:ok, :review_completed, score} ->
+        {:noreply, socket
+        |> put_flash(:info, "Review completed! Final score: #{score}/5.0")
+        |> assign(:content_campaigns, load_content_campaigns(current_user))}
 
-    {:ok, :review_submitted, :awaiting_more_reviews} ->
-      {:noreply, socket
-       |> put_flash(:info, "Review submitted! Waiting for more reviewers.")
-       |> assign(:content_campaigns, load_content_campaigns(current_user))}
+      {:ok, :review_submitted, :awaiting_more_reviews} ->
+        {:noreply, socket
+        |> put_flash(:info, "Review submitted! Waiting for more reviewers.")
+        |> assign(:content_campaigns, load_content_campaigns(current_user))}
 
-    {:error, reason} ->
-      {:noreply, put_flash(socket, :error, "Review submission failed: #{reason}")}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Review submission failed: #{reason}")}
+    end
   end
-end
 
-@impl true
-def handle_event("view_contract", %{"contract_id" => contract_id}, socket) do
-  contract = DataCampaigns.RevenueManager.get_contract_details(contract_id)
+  @impl true
+  def handle_event("view_contract", %{"contract_id" => contract_id}, socket) do
+    contract = DataCampaigns.RevenueManager.get_contract_details(contract_id)
 
-  {:noreply, socket
-   |> assign(:show_contract_modal, true)
-   |> assign(:current_contract, contract)}
-end
-
-@impl true
-def handle_event("sign_contract_submit", params, socket) do
-  %{
-    "contract_id" => contract_id,
-    "legal_name" => legal_name,
-    "digital_signature" => digital_signature
-  } = params
-
-  current_user = socket.assigns.current_user
-
-  signature_data = %{
-    legal_name: legal_name,
-    digital_signature: digital_signature,
-    ip_address: get_connect_info(socket, :peer_data).address,
-    user_agent: get_connect_info(socket, :user_agent),
-    timestamp: DateTime.utc_now()
-  }
-
-  case DataCampaigns.RevenueManager.sign_contract(contract_id, current_user.id, signature_data) do
-    {:ok, signed_contract} ->
-      {:noreply, socket
-       |> assign(:show_contract_modal, false)
-       |> assign(:current_contract, nil)
-       |> assign(:pending_contracts, load_pending_contracts(current_user))
-       |> put_flash(:info, "Contract signed successfully! You're now part of the campaign.")}
-
-    {:error, reason} ->
-      {:noreply, socket
-       |> put_flash(:error, "Contract signing failed: #{reason}")}
+    {:noreply, socket
+    |> assign(:show_contract_modal, true)
+    |> assign(:current_contract, contract)}
   end
-end
 
+  @impl true
+  def handle_event("sign_contract_submit", params, socket) do
+    %{
+      "contract_id" => contract_id,
+      "legal_name" => legal_name,
+      "digital_signature" => digital_signature
+    } = params
 
+    current_user = socket.assigns.current_user
+
+    signature_data = %{
+      legal_name: legal_name,
+      digital_signature: digital_signature,
+      ip_address: get_connect_info(socket, :peer_data).address,
+      user_agent: get_connect_info(socket, :user_agent),
+      timestamp: DateTime.utc_now()
+    }
+
+    case DataCampaigns.RevenueManager.sign_contract(contract_id, current_user.id, signature_data) do
+      {:ok, signed_contract} ->
+        {:noreply, socket
+        |> assign(:show_contract_modal, false)
+        |> assign(:current_contract, nil)
+        |> assign(:pending_contracts, load_pending_contracts(current_user))
+        |> put_flash(:info, "Contract signed successfully! You're now part of the campaign.")}
+
+      {:error, reason} ->
+        {:noreply, socket
+        |> put_flash(:error, "Contract signing failed: #{reason}")}
+    end
+  end
 
   @impl true
   def handle_event("view_improvement_plan", %{"improvement_period_id" => period_id}, socket) do
@@ -765,6 +823,41 @@ end
     {:noreply, socket
     |> put_flash(:info, "Improvement task completed!")
     |> assign(:content_campaigns, load_content_campaigns(socket.assigns.current_user))}
+  end
+
+  @impl true
+  def handle_event("change_channels_view", %{"view" => view}, socket) do
+    {:noreply, assign(socket, :channels_view_mode, view)}
+  end
+
+  @impl true
+  def handle_event("search_channels", %{"search" => search_term}, socket) do
+    {:noreply, assign(socket, :channel_search, search_term)}
+  end
+
+  @impl true
+  def handle_event("change_channels_sort", %{"sort_by" => sort_by}, socket) do
+    {:noreply, assign(socket, :channels_sort_by, sort_by)}
+  end
+
+  @impl true
+  def handle_event("change_channels_filter", %{"filter" => filter}, socket) do
+    {:noreply, assign(socket, :channels_filter, filter)}
+  end
+
+  @impl true
+  def handle_event("start_channel_session", %{"channel_id" => channel_id}, socket) do
+    # Implement channel session start logic
+    {:noreply, put_flash(socket, :info, "Starting session for channel #{channel_id}")}
+  end
+
+  @impl true
+  def handle_event("toggle_channel_menu", %{"channel_id" => channel_id}, socket) do
+    # Implement channel menu toggle logic
+    current_menu = Map.get(socket.assigns, :open_channel_menu)
+    new_menu = if current_menu == channel_id, do: nil, else: channel_id
+
+    {:noreply, assign(socket, :open_channel_menu, new_menu)}
   end
 
 
@@ -1554,6 +1647,82 @@ end
       7 -> "hover:from-teal-600 hover:via-emerald-600 hover:to-green-600"
     end
   end
+
+  defp format_channel_type(channel_type) do
+    case channel_type do
+      "general" -> "General"
+      "collaboration" -> "Collab"
+      "showcase" -> "Showcase"
+      "learning" -> "Learning"
+      "feedback" -> "Feedback"
+      "networking" -> "Network"
+      _ -> "Channel"
+    end
+  end
+
+  defp filter_channels(channels, search_term, filter_type) do
+    channels
+    |> filter_by_search(search_term)
+    |> filter_by_type(filter_type)
+  end
+
+  defp filter_by_search(channels, "") do
+    channels
+  end
+
+  defp filter_by_search(channels, search_term) do
+    search_lower = String.downcase(search_term)
+
+    Enum.filter(channels, fn {channel, _count} ->
+      String.contains?(String.downcase(channel.name), search_lower) ||
+      String.contains?(String.downcase(channel.description || ""), search_lower)
+    end)
+  end
+
+  defp filter_by_type(channels, "all"), do: channels
+  defp filter_by_type(channels, "owned") do
+    current_user_id = get_current_user_id()
+    Enum.filter(channels, fn {channel, _count} ->
+      channel.owner_id == current_user_id
+    end)
+  end
+  defp filter_by_type(channels, "joined"), do: channels  # Implement based on membership logic
+  defp filter_by_type(channels, "active") do
+    Enum.filter(channels, fn {channel, _count} ->
+      channel.show_live_activity
+    end)
+  end
+
+  defp get_current_user_id do
+    # This should get the current user ID from socket assigns
+    # You'll need to implement this based on your auth system
+    nil
+  end
+
+  defp get_channel_card_gradient(channel) do
+    case rem(channel.id, 7) do
+      0 -> "from-indigo-600/90 via-purple-600/80 to-pink-600/90"
+      1 -> "from-cyan-600/90 via-blue-600/80 to-indigo-600/90"
+      2 -> "from-emerald-600/90 via-teal-600/80 to-cyan-600/90"
+      3 -> "from-orange-600/90 via-red-600/80 to-rose-600/90"
+      4 -> "from-violet-600/90 via-purple-600/80 to-indigo-600/90"
+      5 -> "from-amber-600/90 via-orange-600/80 to-red-600/90"
+      6 -> "from-lime-600/90 via-green-600/80 to-emerald-600/90"
+    end
+  end
+
+  defp get_channel_icon_gradient(channel) do
+    case rem(channel.id, 7) do
+      0 -> "from-indigo-500 to-purple-500"
+      1 -> "from-cyan-500 to-blue-500"
+      2 -> "from-emerald-500 to-teal-500"
+      3 -> "from-orange-500 to-red-500"
+      4 -> "from-violet-500 to-purple-500"
+      5 -> "from-amber-500 to-orange-500"
+      6 -> "from-lime-500 to-green-500"
+    end
+  end
+
 
   defp format_visibility(visibility) when is_atom(visibility) do
     visibility |> Atom.to_string() |> String.capitalize()

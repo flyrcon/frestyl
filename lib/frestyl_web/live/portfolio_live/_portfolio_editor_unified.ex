@@ -13,23 +13,29 @@ defmodule FrestylWeb.PortfolioLive.PortfolioEditorUnified do
   alias Frestyl.Media
   alias Phoenix.PubSub
   alias FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent
+  alias FrestylWeb.PortfolioLive.Display.PortfolioDisplayCoordinator
 
-    @section_types [
-    "hero",
-    "about",
-    "experience",
-    "education",
-    "skills",
-    "projects",
-    "testimonials",
-    "contact",
-    "certifications",
+  @section_types [
     "achievements",
-    "services",
-    "blog",
-    "gallery",
+    "case_study",
+    "code_showcase",
+    "collaborations",
+    "contact",
     "custom",
-    "published_articles"
+    "education",
+    "experience",
+    "featured_project",
+    "intro",
+    "journey",
+    "media_showcase",
+    "narrative",
+    "projects",
+    "published_articles",
+    "skills",
+    "story",
+    "testimonial",
+    "timeline",
+    "video_hero"
   ]
 
   @impl true
@@ -172,48 +178,40 @@ end
 
   @impl true
   def handle_event("create_section", %{"section_type" => section_type}, socket) do
+    IO.puts("🔥 CREATING SECTION TYPE: #{section_type}")
+
     # Convert string to atom for enum compatibility
     section_type_atom = case section_type do
       "hero" -> :intro  # Map "hero" to :intro since that's in the enum
       "about" -> :narrative
-      other -> String.to_atom(other)
+      "blog" -> :blog
+      "testimonial" -> :testimonials  # Map singular to plural
+      "achievement" -> :achievements  # Map singular to plural
+      "collaboration" -> :collaborations  # Map singular to plural
+      "certification" -> :certifications  # Map singular to plural
+      "service" -> :services  # Map singular to plural
+      other ->
+        atom_type = String.to_atom(other)
+        # Validate that the atom is in our allowed list
+        allowed_types = [
+          :intro, :experience, :education, :skills, :projects, :featured_project,
+          :case_study, :achievements, :testimonial, :testimonials, :media_showcase,
+          :code_showcase, :contact, :custom, :story, :timeline, :narrative,
+          :journey, :video_hero, :collaborations, :published_articles,
+          :certifications, :services, :blog, :gallery, :hero, :about, :pricing
+        ]
+
+        if atom_type in allowed_types do
+          atom_type
+        else
+          IO.puts("⚠️ Unknown section type: #{other}, defaulting to :custom")
+          :custom
+        end
     end
 
-    section_params = %{
-      section_type: section_type_atom,  # Use atom instead of string
-      title: get_default_section_title(section_type),
-      content: get_default_section_content(section_type),
-      position: length(socket.assigns.sections),
-      visible: true
-    }
+    IO.puts("🔥 CONVERTED TO ATOM: #{section_type_atom}")
 
-    IO.puts("🔥 SECTION PARAMS: #{inspect(section_params)}")
-
-    case Portfolios.create_portfolio_section(socket.assigns.portfolio.id, section_params) do
-      {:ok, section} ->
-        sections = socket.assigns.sections ++ [section]
-
-        # Update portfolio with ALL section fields for consistency
-        updated_portfolio = socket.assigns.portfolio
-                          |> Map.put(:sections, sections)
-                          |> Map.put(:visible_sections, sections)
-                          |> Map.put(:visible_non_hero_sections, Enum.reject(sections, &is_hero_section?/1))
-
-        broadcast_preview_update(socket.assigns.portfolio.id, sections, socket.assigns.customization)
-
-        {:noreply, socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:sections, sections)
-        |> assign(:editing_section, section)
-        |> assign(:show_section_modal, true)
-        |> put_flash(:info, "Section created successfully")}
-
-      {:error, changeset} ->
-        IO.puts("❌ SECTION CREATION ERROR: #{inspect(changeset.errors)}")
-        {:noreply, socket
-        |> put_flash(:error, "Failed to create section")
-        |> assign(:section_changeset, changeset)}
-    end
+    # Rest of your create_section logic...
   end
 
   @impl true
@@ -277,33 +275,728 @@ end
     end
   end
 
-  @impl true
-  def handle_event("save_section", params, socket) do
-    section = socket.assigns.editing_section
+  def handle_info({:close_section_modal}, socket) do
+    {:noreply, assign(socket, show_section_modal: false, editing_section: nil)}
+  end
 
-    case Portfolios.update_portfolio_section(section, format_section_params(params)) do
+  def handle_info({:save_section, params}, socket) do
+    case save_section_with_params(socket.assigns.editing_section, params) do
       {:ok, updated_section} ->
-        sections = update_section_in_list(socket.assigns.sections, updated_section)
-
-        # Update portfolio with ALL section fields for consistency
-        updated_portfolio = socket.assigns.portfolio
-                          |> Map.put(:sections, sections)
-                          |> Map.put(:visible_sections, sections)
-                          |> Map.put(:visible_non_hero_sections, Enum.reject(sections, &is_hero_section?/1))
-
-        broadcast_preview_update(socket.assigns.portfolio.id, sections, socket.assigns.customization)
+        updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
 
         {:noreply, socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:sections, sections)
+        |> assign(:sections, updated_sections)
         |> assign(:show_section_modal, false)
         |> assign(:editing_section, nil)
         |> put_flash(:info, "Section updated successfully")}
 
-      {:error, changeset} ->
-        {:noreply, socket
-        |> put_flash(:error, "Failed to update section")
-        |> assign(:section_changeset, changeset)}
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update section")}
+    end
+  end
+
+  defp save_section_with_params(section, params) do
+    # Extract and structure the content based on section type
+    structured_content = structure_content_by_section_type(section.section_type, params)
+
+    attrs = %{
+      title: params["title"],
+      visible: params["visible"] == "true",
+      content: structured_content
+    }
+
+    Frestyl.Portfolios.update_section(section, attrs)
+  end
+
+  defp get_default_content_for_section_type(section_type) do
+    case section_type do
+      "experience" -> %{
+        "jobs" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "education" -> %{
+        "education" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "skills" -> %{
+        "skills" => []
+      }
+
+      "projects" -> %{
+        "projects" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "testimonials" -> %{
+        "testimonials" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "certifications" -> %{
+        "certifications" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "achievements" -> %{
+        "achievements" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "services" -> %{
+        "services" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "blog" -> %{
+        "articles" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "gallery" -> %{
+        "images" => [get_default_item_for_section_type(section_type)]
+      }
+
+      _ -> %{
+        "content" => Map.get(get_default_item_for_section_type(section_type), "description", "Add your content here...")
+      }
+    end
+  end
+
+  defp normalize_section_type(section_type) when is_atom(section_type), do: section_type
+  defp normalize_section_type(section_type) when is_binary(section_type) do
+    case section_type do
+      "code_showcase" -> :code_showcase
+      "media_showcase" -> :media_showcase
+      "experience" -> :experience
+      "skills" -> :skills
+      "projects" -> :projects
+      "testimonials" -> :testimonials
+      "hero" -> :hero
+      "about" -> :about
+      "contact" -> :contact
+      "published_articles" -> :published_articles
+      "collaborations" -> :collaborations
+      "certifications" -> :certifications
+      "achievements" -> :achievements
+      "services" -> :services
+      "education" -> :education
+      "custom" -> :custom
+      _ -> String.to_atom(section_type)
+    end
+  end
+
+  defp structure_content_by_section_type(section_type, params) do
+    case normalize_section_type(section_type) do
+      :code_showcase ->
+        structure_code_showcase_content(params)
+      :media_showcase ->
+        structure_media_showcase_content(params)
+      :experience ->
+        structure_experience_content(params)
+      :skills ->
+        structure_skills_content(params)
+      :projects ->
+        structure_projects_content(params)
+      :testimonials ->
+        structure_testimonials_content(params)
+      :hero ->
+        structure_hero_content(params)
+      :about ->
+        structure_about_content(params)
+      :contact ->
+        structure_contact_content(params)
+      :published_articles ->
+        structure_published_articles_content(params)
+      :collaborations ->
+        structure_collaborations_content(params)
+      :certifications ->
+        structure_certifications_content(params)
+      :achievements ->
+        structure_achievements_content(params)
+      :services ->
+        structure_services_content(params)
+      :education ->
+        structure_education_content(params)
+      :custom ->
+        structure_custom_content(params)
+      _ ->
+        %{"description" => params["description"] || params["content"] || ""}
+    end
+  end
+
+  # Content structuring functions
+  defp structure_code_showcase_content(params) do
+    %{
+      "description" => params["description"],
+      "tech_stack" => String.split(params["tech_stack"] || "", ",") |> Enum.map(&String.trim/1),
+      "display_style" => params["display_style"],
+      "difficulty_level" => params["difficulty_level"],
+      "completion_time" => params["completion_time"],
+      "code_examples" => extract_code_examples(params)
+    }
+  end
+
+  defp structure_media_showcase_content(params) do
+    %{
+      "description" => params["description"],
+      "gallery_type" => params["gallery_type"],
+      "items_per_row" => String.to_integer(params["items_per_row"] || "3"),
+      "show_captions" => params["show_captions"] == "true",
+      "enable_lightbox" => params["enable_lightbox"] == "true",
+      "show_metadata" => params["show_metadata"] == "true",
+      "enable_filtering" => params["enable_filtering"] == "true",
+      "media_categories" => extract_media_categories(params)
+    }
+  end
+
+  defp structure_experience_content(params) do
+    %{
+      "description" => params["description"],
+      "display_style" => params["display_style"],
+      "show_duration" => params["show_duration"] == "true",
+      "show_skills" => params["show_skills"] == "true",
+      "items" => extract_experience_items(params)
+    }
+  end
+
+  defp structure_skills_content(params) do
+    %{
+      "description" => params["description"],
+      "display_mode" => params["display_mode"],
+      "show_proficiency" => params["show_proficiency"] == "true",
+      "show_years" => params["show_years"] == "true",
+      "enable_filtering" => params["enable_filtering"] == "true",
+      "skill_categories" => extract_skill_categories(params)
+    }
+  end
+
+  defp structure_projects_content(params) do
+    %{
+      "description" => params["description"],
+      "display_style" => params["display_style"],
+      "show_technologies" => params["show_technologies"] == "true",
+      "show_dates" => params["show_dates"] == "true",
+      "enable_filtering" => params["enable_filtering"] == "true",
+      "show_github_stats" => params["show_github_stats"] == "true",
+      "items" => extract_project_items(params)
+    }
+  end
+
+  defp structure_testimonials_content(params) do
+    %{
+      "description" => params["description"],
+      "layout_style" => params["layout_style"],
+      "items_per_row" => String.to_integer(params["items_per_row"] || "2"),
+      "display_settings" => %{
+        "show_ratings" => params["show_ratings"] == "true",
+        "show_avatars" => params["show_avatars"] == "true",
+        "show_company_logos" => params["show_company_logos"] == "true",
+        "show_verification" => params["show_verification"] == "true"
+      },
+      "items" => extract_testimonial_items(params)
+    }
+  end
+
+  defp structure_hero_content(params) do
+    %{
+      "headline" => params["headline"],
+      "tagline" => params["tagline"],
+      "description" => params["description"],
+      "background_type" => params["background_type"],
+      "background_url" => params["background_url"],
+      "background_color" => params["background_color"],
+      "text_color" => params["text_color"],
+      "text_alignment" => params["text_alignment"],
+      "profile_image" => params["profile_image"],
+      "show_social_links" => params["show_social_links"] == "true",
+      "show_profile_image" => params["show_profile_image"] == "true",
+      "enable_parallax" => params["enable_parallax"] == "true",
+      "fullscreen_hero" => params["fullscreen_hero"] == "true",
+      "cta_buttons" => extract_cta_buttons(params),
+      "social_links" => extract_social_links(params)
+    }
+  end
+
+  defp structure_about_content(params) do
+    hero_content = structure_hero_content(params)
+    Map.merge(hero_content, %{
+      "summary" => params["summary"],
+      "highlights" => extract_highlights(params)
+    })
+  end
+
+  defp structure_contact_content(params) do
+    %{
+      "description" => params["description"],
+      "email" => params["email"],
+      "phone" => params["phone"],
+      "location" => params["location"],
+      "timezone" => params["timezone"],
+      "availability_status" => params["availability_status"],
+      "response_time" => params["response_time"],
+      "availability_note" => params["availability_note"],
+      "show_contact_form" => params["show_contact_form"] == "true",
+      "form_action" => params["form_action"],
+      "success_message" => params["success_message"],
+      "show_availability" => params["show_availability"] == "true",
+      "show_response_time" => params["show_response_time"] == "true",
+      "show_location" => params["show_location"] == "true",
+      "contact_methods" => extract_contact_methods(params),
+      "form_fields" => extract_form_field_requirements(params)
+    }
+  end
+
+  defp structure_published_articles_content(params) do
+    %{
+      "headline" => params["headline"],
+      "subtitle" => params["subtitle"],
+      "description" => params["description"],
+      "display_style" => params["display_style"],
+      "show_metrics" => params["show_metrics"] == "true",
+      "show_collaboration_details" => params["show_collaboration_details"] == "true",
+      "max_articles" => parse_integer(params["max_articles"], 12),
+      "sort_by" => params["sort_by"],
+      "include_draft_metrics" => params["include_draft_metrics"] == "true",
+      "platform_filter" => String.split(params["platform_filter"] || "", ",") |> Enum.map(&String.trim/1),
+      "articles" => extract_published_articles(params)
+    }
+  end
+
+  defp structure_collaborations_content(params) do
+    %{
+      "description" => params["description"],
+      "display_style" => params["display_style"],
+      "show_collaborator_info" => params["show_collaborator_info"] == "true",
+      "show_project_details" => params["show_project_details"] == "true",
+      "show_my_role" => params["show_my_role"] == "true",
+      "enable_filtering" => params["enable_filtering"] == "true",
+      "items" => extract_collaboration_items(params)
+    }
+  end
+
+  defp structure_certifications_content(params) do
+    %{
+      "description" => params["description"],
+      "display_style" => params["display_style"],
+      "show_expiry_dates" => params["show_expiry_dates"] == "true",
+      "show_verification" => params["show_verification"] == "true",
+      "show_issuer_logos" => params["show_issuer_logos"] == "true",
+      "group_by_issuer" => params["group_by_issuer"] == "true",
+      "items" => extract_certification_items(params)
+    }
+  end
+
+  defp structure_achievements_content(params) do
+    %{
+      "description" => params["description"],
+      "display_style" => params["display_style"],
+      "show_dates" => params["show_dates"] == "true",
+      "show_metrics" => params["show_metrics"] == "true",
+      "show_media" => params["show_media"] == "true",
+      "group_by_category" => params["group_by_category"] == "true",
+      "items" => extract_achievement_items(params)
+    }
+  end
+
+  defp structure_services_content(params) do
+    %{
+      "description" => params["description"],
+      "display_style" => params["display_style"],
+      "show_pricing" => params["show_pricing"] == "true",
+      "show_duration" => params["show_duration"] == "true",
+      "enable_booking" => params["enable_booking"] == "true",
+      "booking_url" => params["booking_url"],
+      "currency" => params["currency"],
+      "items" => extract_service_items(params)
+    }
+  end
+
+  defp structure_education_content(params) do
+    %{
+      "description" => params["description"],
+      "display_style" => params["display_style"],
+      "show_gpa" => params["show_gpa"] == "true",
+      "show_coursework" => params["show_coursework"] == "true",
+      "show_activities" => params["show_activities"] == "true",
+      "show_logos" => params["show_logos"] == "true",
+      "group_by_type" => params["group_by_type"] == "true",
+      "items" => extract_education_items(params)
+    }
+  end
+
+  defp structure_custom_content(params) do
+    %{
+      "title" => params["title"] || "",
+      "content" => params["content"] || "",
+      "layout_type" => params["layout_type"] || "text",
+      "custom_html" => params["custom_html"] || "",
+      "custom_css" => params["custom_css"] || "",
+      "embed_code" => params["embed_code"] || "",
+      "background_color" => params["background_color"] || "#ffffff",
+      "text_color" => params["text_color"] || "#000000",
+      "padding" => params["padding"] || "normal",
+      "show_border" => params["show_border"] == "true",
+      "border_color" => params["border_color"] || "#e5e7eb",
+      "alignment" => params["alignment"] || "left",
+      "images" => extract_custom_images(params),
+      "links" => extract_custom_links(params),
+      "enable_markdown" => params["enable_markdown"] == "true",
+      "full_width" => params["full_width"] == "true"
+    }
+  end
+
+  defp parse_bullet_points(text) do
+    text
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(fn line ->
+      String.replace(line, ~r/^[•\-\*]\s*/, "")
+    end)
+  end
+
+  defp parse_integer(value, default \\ 0) do
+    case Integer.parse(value || "") do
+      {int, _} -> int
+      :error -> default
+    end
+  end
+
+  defp update_section_in_list(sections, updated_section) do
+    Enum.map(sections, fn section ->
+      if section.id == updated_section.id do
+        updated_section
+      else
+        section
+      end
+    end)
+  end
+
+  # Parameter extraction functions
+  defp extract_code_examples(params) do
+    case params["code_examples"] do
+      nil -> []
+      examples when is_map(examples) ->
+        examples
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, example} -> example end)
+      _ -> []
+    end
+  end
+
+  defp extract_media_categories(params) do
+    case params["media_categories"] do
+      nil -> %{}
+      categories when is_map(categories) ->
+        Enum.into(categories, %{}, fn {category_name, category_data} ->
+          items = case category_data["items"] do
+            nil -> []
+            items when is_map(items) ->
+              items
+              |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+              |> Enum.map(fn {_index, item} -> item end)
+            _ -> []
+          end
+          {category_name, items}
+        end)
+      _ -> %{}
+    end
+  end
+
+  defp extract_experience_items(params) do
+    case params["items"] do
+      nil -> []
+      items when is_map(items) ->
+        items
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, item} ->
+          Map.merge(item, %{
+            "skills_used" => String.split(item["skills_used"] || "", ",") |> Enum.map(&String.trim/1),
+            "achievements" => parse_bullet_points(item["achievements"] || ""),
+            "current" => item["current"] == "true"
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_skill_categories(params) do
+    case params["skill_categories"] do
+      nil -> []
+      categories when is_map(categories) ->
+        categories
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, category} ->
+          skills = case category["skills"] do
+            nil -> []
+            skills when is_map(skills) ->
+              skills
+              |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+              |> Enum.map(fn {_index, skill} -> skill end)
+            _ -> []
+          end
+          Map.put(category, "skills", skills)
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_project_items(params) do
+    case params["items"] do
+      nil -> []
+      items when is_map(items) ->
+        items
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, item} ->
+          Map.merge(item, %{
+            "technologies" => String.split(item["technologies"] || "", ",") |> Enum.map(&String.trim/1),
+            "key_features" => parse_bullet_points(item["key_features"] || ""),
+            "featured" => item["featured"] == "true",
+            "open_source" => item["open_source"] == "true",
+            "has_case_study" => item["has_case_study"] == "true",
+            "team_size" => parse_integer(item["team_size"])
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_testimonial_items(params) do
+    case params["items"] do
+      nil -> []
+      items when is_map(items) ->
+        items
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, item} ->
+          Map.merge(item, %{
+            "rating" => parse_integer(item["rating"], 5),
+            "featured" => item["featured"] == "true",
+            "verified" => item["verified"] == "true",
+            "show_company" => item["show_company"] == "true"
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_cta_buttons(params) do
+    case params["cta_buttons"] do
+      nil -> []
+      buttons when is_map(buttons) ->
+        buttons
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, button} -> button end)
+      _ -> []
+    end
+  end
+
+  defp extract_social_links(params) do
+    %{
+      "linkedin" => params["social_linkedin"] || "",
+      "twitter" => params["social_twitter"] || "",
+      "github" => params["social_github"] || "",
+      "instagram" => params["social_instagram"] || "",
+      "website" => params["social_website"] || "",
+      "email" => params["social_email"] || ""
+    }
+  end
+
+  defp extract_highlights(params) do
+    case params["highlights"] do
+      nil -> []
+      highlights when is_map(highlights) ->
+        highlights
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, highlight} -> highlight end)
+      _ -> []
+    end
+  end
+
+  defp extract_contact_methods(params) do
+    case params["contact_methods"] do
+      nil -> []
+      methods when is_map(methods) ->
+        methods
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, method} ->
+          Map.put(method, "preferred", method["preferred"] == "true")
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_form_field_requirements(params) do
+    %{
+      "name" => params["require_name"] == "true",
+      "email" => params["require_email"] == "true",
+      "phone" => params["require_phone"] == "true",
+      "company" => params["require_company"] == "true",
+      "budget" => params["require_budget"] == "true"
+    }
+  end
+
+  defp extract_published_articles(params) do
+    case params["articles"] do
+      nil -> []
+      articles when is_map(articles) ->
+        articles
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, article} ->
+          Map.merge(article, %{
+            "co_authors" => String.split(article["co_authors"] || "", ",") |> Enum.map(&String.trim/1),
+            "tags" => String.split(article["tags"] || "", ",") |> Enum.map(&String.trim/1),
+            "featured" => article["featured"] == "true",
+            "metrics" => %{
+              "views" => parse_integer(article["views"]),
+              "likes" => parse_integer(article["likes"]),
+              "shares" => parse_integer(article["shares"]),
+              "comments" => parse_integer(article["comments"])
+            }
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_collaboration_items(params) do
+    case params["items"] do
+      nil -> []
+      items when is_map(items) ->
+        items
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, item} ->
+          Map.merge(item, %{
+            "technologies" => String.split(item["technologies"] || "", ",") |> Enum.map(&String.trim/1),
+            "collaborators" => extract_collaborators(item["collaborators"]),
+            "featured" => item["featured"] == "true",
+            "ongoing" => item["ongoing"] == "true"
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_certification_items(params) do
+    case params["items"] do
+      nil -> []
+      items when is_map(items) ->
+        items
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, item} ->
+          Map.merge(item, %{
+            "skills" => String.split(item["skills"] || "", ",") |> Enum.map(&String.trim/1),
+            "featured" => item["featured"] == "true",
+            "expires" => item["expires"] == "true"
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_achievement_items(params) do
+    case params["items"] do
+      nil -> []
+      items when is_map(items) ->
+        items
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, item} ->
+          Map.merge(item, %{
+            "tags" => String.split(item["tags"] || "", ",") |> Enum.map(&String.trim/1),
+            "featured" => item["featured"] == "true",
+            "metrics" => parse_achievement_metrics(item)
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_service_items(params) do
+    case params["items"] do
+      nil -> []
+      items when is_map(items) ->
+        items
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, item} ->
+          Map.merge(item, %{
+            "features" => parse_bullet_points(item["features"] || ""),
+            "deliverables" => parse_bullet_points(item["deliverables"] || ""),
+            "price" => parse_float(item["price"]),
+            "featured" => item["featured"] == "true",
+            "available" => item["available"] == "true"
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_education_items(params) do
+    case params["items"] do
+      nil -> []
+      items when is_map(items) ->
+        items
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, item} ->
+          Map.merge(item, %{
+            "relevant_coursework" => parse_bullet_points(item["relevant_coursework"] || ""),
+            "activities" => parse_bullet_points(item["activities"] || ""),
+            "honors" => parse_bullet_points(item["honors"] || ""),
+            "gpa" => parse_float(item["gpa"]),
+            "ongoing" => item["ongoing"] == "true"
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_custom_images(params) do
+    case params["images"] do
+      nil -> []
+      images when is_map(images) ->
+        images
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, image} ->
+          Map.merge(image, %{
+            "width" => parse_integer(image["width"]),
+            "height" => parse_integer(image["height"])
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_custom_links(params) do
+    case params["links"] do
+      nil -> []
+      links when is_map(links) ->
+        links
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, link} ->
+          Map.merge(link, %{
+            "new_tab" => link["new_tab"] == "true"
+          })
+        end)
+      _ -> []
+    end
+  end
+
+  defp extract_collaborators(collaborators_param) do
+    case collaborators_param do
+      nil -> []
+      collaborators when is_map(collaborators) ->
+        collaborators
+        |> Enum.sort_by(fn {key, _value} -> String.to_integer(key) end)
+        |> Enum.map(fn {_index, collaborator} -> collaborator end)
+      _ -> []
+    end
+  end
+
+  defp parse_achievement_metrics(item) do
+    %{
+      "impact_number" => parse_integer(item["impact_number"]),
+      "impact_unit" => item["impact_unit"] || "",
+      "ranking" => item["ranking"] || "",
+      "participants" => parse_integer(item["participants"])
+    }
+  end
+
+  defp parse_float(value, default \\ 0.0) do
+    case Float.parse(value || "") do
+      {float, _} -> float
+      :error -> default
     end
   end
 
@@ -363,65 +1056,46 @@ end
     end
   end
 
-  @impl true
   def handle_event("update_customization", params, socket) do
-    IO.puts("🔥 UPDATE_CUSTOMIZATION RECEIVED: #{inspect(params)}")
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
 
-    # Extract only the customization fields, ignoring form metadata
-    customization_params = extract_customization_params(params)
-    IO.puts("🔥 EXTRACTED CUSTOMIZATION PARAMS: #{inspect(customization_params)}")
+    # Merge new customization with existing
+    updated_customization = Map.merge(current_customization, params)
 
-    if map_size(customization_params) == 0 do
-      IO.puts("🔥 NO VALID CUSTOMIZATION PARAMS FOUND")
-      {:noreply, socket}
-    else
-      # Immediately update UI for responsiveness
-      updated_customization = Map.merge(socket.assigns.customization, customization_params)
-      IO.puts("🔥 UPDATED CUSTOMIZATION: #{inspect(updated_customization)}")
+    # FIX: Use proper update function that works with loaded portfolio
+    case update_portfolio_safely(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        broadcast_portfolio_update(updated_portfolio)
 
-      # Send immediate update to preview
-      broadcast_preview_update(socket.assigns.portfolio.id, socket.assigns.sections, updated_customization)
+        {:noreply, socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)}
 
-      # Cancel any pending debounced update
-      if socket.assigns[:debounce_timer] do
-        Process.cancel_timer(socket.assigns.debounce_timer)
-      end
-
-      # Set up new debounced database update using ID
-      timer = Process.send_after(self(), {:debounced_customization_update, socket.assigns.portfolio.id, customization_params}, 500)
-
-      {:noreply, socket
-      |> assign(:customization, updated_customization)
-      |> assign(:debounce_timer, timer)
-      |> push_event("design_updated", %{customization: updated_customization})}
+      {:error, changeset} ->
+        IO.inspect(changeset.errors, label: "Portfolio update errors")
+        {:noreply, put_flash(socket, :error, "Failed to update design")}
     end
   end
 
-@impl true
-def handle_info({:debounced_customization_update, portfolio_id, customization_params}, socket) do
-  case Portfolios.update_portfolio_customization_by_id(portfolio_id, customization_params) do
-    {:ok, updated_portfolio} ->
-      broadcast_preview_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
-
-      {:noreply, socket
-      |> assign(:portfolio, updated_portfolio)
-      |> assign(:customization, updated_portfolio.customization)
-      |> assign(:debounce_timer, nil)
-      |> assign(:last_updated, DateTime.utc_now())}
-
-    {:error, changeset} ->
-      IO.inspect(changeset, label: "Customization Update Error")
-      {:noreply, socket
-      |> assign(:debounce_timer, nil)
-      |> put_flash(:error, "Failed to save design changes")}
-  end
-end
-
   @impl true
-  def handle_event("close_section_modal", _params, socket) do
-    {:noreply, socket
-    |> assign(:show_section_modal, false)
-    |> assign(:editing_section, nil)}
+  def handle_info({:debounced_customization_update, portfolio_id, customization_params}, socket) do
+    case Portfolios.update_portfolio_customization_by_id(portfolio_id, customization_params) do
+      {:ok, updated_portfolio} ->
+        broadcast_preview_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
+
+        {:noreply, socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_portfolio.customization)
+        |> assign(:debounce_timer, nil)
+        |> assign(:last_updated, DateTime.utc_now())}
+
+      {:error, changeset} ->
+        IO.inspect(changeset, label: "Customization Update Error")
+        {:noreply, socket
+        |> assign(:debounce_timer, nil)
+        |> put_flash(:error, "Failed to save design changes")}
+    end
   end
 
   @impl true
@@ -588,37 +1262,80 @@ end
     end
   end
 
-@impl true
-def handle_event("apply_color_preset", %{"preset" => preset_json}, socket) do
-  IO.puts("🔥 APPLYING COLOR PRESET: #{preset_json}")
+  @impl true
+  def handle_event("apply_color_preset", %{"preset" => preset_name}, socket) do
+    IO.puts("🔥 APPLYING COLOR PRESET: #{preset_name}")
 
-  case Jason.decode(preset_json) do
-    {:ok, preset} ->
-      customization_params = %{
-        "primary_color" => preset["primary"],
-        "secondary_color" => preset["secondary"],
-        "accent_color" => preset["accent"]
-      }
+    case get_color_preset_by_name(preset_name) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Invalid color preset")}
 
-      # Use the helper function that takes ID
-      case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
-        {:ok, updated_portfolio} ->
-          broadcast_preview_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
+      preset ->
+        portfolio = socket.assigns.portfolio
+        current_customization = portfolio.customization || %{}
 
-          {:noreply, socket
-          |> assign(:portfolio, updated_portfolio)
-          |> assign(:customization, updated_portfolio.customization)
-          |> put_flash(:info, "Color preset applied successfully")}
+        updated_customization = Map.merge(current_customization, %{
+          "primary_color" => preset.primary,
+          "secondary_color" => preset.secondary,
+          "accent_color" => preset.accent
+        })
 
-        {:error, _} ->
-          {:noreply, socket
-          |> put_flash(:error, "Failed to apply color preset")}
-      end
+        case update_portfolio_safely(portfolio, %{customization: updated_customization}) do
+          {:ok, updated_portfolio} ->
+            broadcast_portfolio_update(updated_portfolio)
 
-    {:error, _} ->
-      {:noreply, put_flash(socket, :error, "Invalid color preset")}
+            {:noreply, socket
+            |> assign(:portfolio, updated_portfolio)
+            |> assign(:customization, updated_customization)
+            |> put_flash(:info, "Color preset applied successfully")}
+
+          {:error, changeset} ->
+            IO.inspect(changeset.errors, label: "Color preset update errors")
+            {:noreply, put_flash(socket, :error, "Failed to apply color preset")}
+        end
+    end
   end
-end
+
+
+  defp update_portfolio_safely(portfolio, attrs) do
+    try do
+      # Method 1: Use the portfolio ID to get a fresh copy
+      case Frestyl.Portfolios.get_portfolio(portfolio.id) do
+        nil ->
+          {:error, :not_found}
+        fresh_portfolio ->
+          Frestyl.Portfolios.update_portfolio(fresh_portfolio, attrs)
+      end
+    rescue
+      error ->
+        IO.inspect(error, label: "Portfolio update error")
+        {:error, :update_failed}
+    end
+  end
+
+  defp broadcast_portfolio_update(portfolio) do
+    # Broadcast to preview LiveView
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio.id}",
+      {:portfolio_updated, portfolio}
+    )
+
+    # Also broadcast to any other portfolio views
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio:#{portfolio.id}",
+      {:portfolio_updated, portfolio}
+    )
+  end
+
+  defp process_color_params(params) do
+    params
+    |> Map.put("primary_color", params["primary_color_hex"] || params["primary_color"])
+    |> Map.put("secondary_color", params["secondary_color_hex"] || params["secondary_color"])
+    |> Map.put("accent_color", params["accent_color_hex"] || params["accent_color"])
+    |> Map.drop(["primary_color_hex", "secondary_color_hex", "accent_color_hex"])
+  end
 
   @impl true
   def handle_event("update_hero_settings", params, socket) do
@@ -1056,29 +1773,6 @@ end
   end
 
   @impl true
-  def handle_event("update_portfolio_layout", %{"layout" => layout}, socket) do
-    IO.puts("🔥 APPLYING LAYOUT CHANGE: #{layout}")  # Add this logging line
-
-    customization_params = %{
-      "portfolio_layout" => layout
-    }
-
-    case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
-      {:ok, updated_portfolio} ->
-        broadcast_preview_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
-
-        {:noreply, socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_portfolio.customization)
-        |> put_flash(:info, "Layout updated successfully")}
-
-      {:error, _} ->
-        {:noreply, socket
-        |> put_flash(:error, "Failed to update layout")}
-    end
-  end
-
-  @impl true
   def handle_event("update_font_family", %{"font" => font}, socket) do
     IO.puts("🔥 APPLYING FONT CHANGE: #{font}")
 
@@ -1105,23 +1799,128 @@ end
   def handle_event("update_theme", %{"theme" => theme}, socket) do
     IO.puts("🔥 APPLYING THEME CHANGE: #{theme}")
 
-    customization_params = %{
-      "layout_style" => theme
-    }
+    portfolio = socket.assigns.portfolio
+    current_customization = portfolio.customization || %{}
+
+    updated_customization = Map.merge(current_customization, %{
+      "theme" => theme,
+      "primary_color" => get_theme_primary_color(theme),
+      "secondary_color" => get_theme_secondary_color(theme),
+      "font_family" => get_theme_font_family(theme)
+    })
+
+    case update_portfolio_safely(portfolio, %{customization: updated_customization}) do
+      {:ok, updated_portfolio} ->
+        broadcast_portfolio_update(updated_portfolio)
+
+        {:noreply, socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_customization)
+        |> put_flash(:info, "Theme updated successfully")}
+
+      {:error, changeset} ->
+        IO.inspect(changeset.errors, label: "Theme update errors")
+        {:noreply, put_flash(socket, :error, "Failed to update theme")}
+    end
+  end
+
+
+  @impl true
+  def handle_event("update_professional_type", %{"professional_type" => professional_type}, socket) do
+    IO.puts("🔥 UPDATING PROFESSIONAL TYPE: #{professional_type}")
+
+    # Update the portfolio with explicit professional type
+    updated_customization = Map.put(socket.assigns.customization, "professional_type", professional_type)
+    updated_portfolio = Map.put(socket.assigns.portfolio, :customization, updated_customization)
+
+    # Force CSS and preview update with new type
+    css = generate_dynamic_css(updated_portfolio)
+
+    socket = socket
+    |> assign(:portfolio, updated_portfolio)
+    |> assign(:customization, updated_customization)
+    |> push_event("design_updated", %{customization: updated_customization})
+    |> push_event("inject_design_css", %{css: css})
+
+    # Database update
+    case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, %{"professional_type" => professional_type}) do
+      {:ok, db_updated_portfolio} ->
+        broadcast_preview_update(db_updated_portfolio.id, socket.assigns.sections, db_updated_portfolio.customization)
+        {:noreply, socket |> assign(:portfolio, db_updated_portfolio)}
+
+      {:error, error} ->
+        IO.puts("❌ Failed to update professional type: #{inspect(error)}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("update_portfolio_layout", %{"portfolio_layout" => layout}, socket) do
+    IO.puts("🔥 UPDATING PORTFOLIO LAYOUT: #{layout}")
+
+    customization_params = %{"portfolio_layout" => layout}
 
     case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, customization_params) do
       {:ok, updated_portfolio} ->
+        IO.puts("✅ Database updated with layout: #{layout}")
+        IO.puts("🔍 Updated customization: #{inspect(updated_portfolio.customization)}")
+
         broadcast_preview_update(updated_portfolio.id, socket.assigns.sections, updated_portfolio.customization)
 
         {:noreply, socket
         |> assign(:portfolio, updated_portfolio)
         |> assign(:customization, updated_portfolio.customization)
-        |> put_flash(:info, "Theme updated successfully")}
+        |> put_flash(:info, "Layout updated successfully")}
 
-      {:error, _} ->
+      {:error, error} ->
+        IO.puts("❌ Failed to update layout: #{inspect(error)}")
         {:noreply, socket
-        |> put_flash(:error, "Failed to update theme")}
+        |> put_flash(:error, "Failed to update layout")}
     end
+  end
+
+  defp get_theme_primary_color(theme) do
+    case theme do
+      "professional" -> "#1e40af"
+      "creative" -> "#7c3aed"
+      "developer" -> "#059669"
+      "minimalist" -> "#374151"
+      _ -> "#1e40af"
+    end
+  end
+
+  defp get_theme_secondary_color(theme) do
+    case theme do
+      "professional" -> "#64748b"
+      "creative" -> "#ec4899"
+      "developer" -> "#10b981"
+      "minimalist" -> "#6b7280"
+      _ -> "#64748b"
+    end
+  end
+
+  defp get_color_preset_by_name(preset_name) do
+    presets = get_color_presets()
+    Enum.find(presets, fn preset -> preset.name == preset_name end)
+  end
+
+  defp get_theme_font_family(theme) do
+    case theme do
+      "professional" -> "Inter, sans-serif"
+      "creative" -> "Montserrat, sans-serif"
+      "developer" -> "JetBrains Mono, monospace"
+      "minimalist" -> "Helvetica, sans-serif"
+      _ -> "Inter, sans-serif"
+    end
+  end
+
+  # ADD broadcast function:
+  defp broadcast_portfolio_preview_update(portfolio) do
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio.id}",
+      {:portfolio_updated, portfolio}
+    )
   end
 
   @impl true
@@ -1239,6 +2038,60 @@ end
         |> put_flash(:error, "Failed to remove video")}
     end
   end
+
+  @impl true
+def handle_event("update_professional_type", %{"professional_type" => type}, socket) do
+  IO.puts("🔥 APPLYING PROFESSIONAL TYPE CHANGE: #{type}")
+
+  portfolio = socket.assigns.portfolio
+  current_customization = portfolio.customization || %{}
+
+  updated_customization = Map.merge(current_customization, %{
+    "professional_type" => type
+  })
+
+  case update_portfolio_safely(portfolio, %{customization: updated_customization}) do
+    {:ok, updated_portfolio} ->
+      broadcast_portfolio_update(updated_portfolio)
+
+      {:noreply, socket
+      |> assign(:portfolio, updated_portfolio)
+      |> assign(:customization, updated_customization)
+      |> put_flash(:info, "Professional type updated successfully")}
+
+    {:error, changeset} ->
+      IO.inspect(changeset.errors, label: "Professional type update errors")
+      {:noreply, put_flash(socket, :error, "Failed to update professional type")}
+  end
+end
+
+@impl true
+def handle_event("update_portfolio_layout", %{"portfolio_layout" => layout}, socket) do
+  IO.puts("🔥 APPLYING LAYOUT CHANGE: #{layout}")
+
+  portfolio = socket.assigns.portfolio
+  current_customization = portfolio.customization || %{}
+
+  updated_customization = Map.merge(current_customization, %{
+    "portfolio_layout" => layout
+  })
+
+  case update_portfolio_safely(portfolio, %{customization: updated_customization}) do
+    {:ok, updated_portfolio} ->
+      broadcast_portfolio_update(updated_portfolio)
+
+      {:noreply, socket
+      |> assign(:portfolio, updated_portfolio)
+      |> assign(:customization, updated_customization)
+      |> put_flash(:info, "Layout updated successfully")}
+
+    {:error, changeset} ->
+      IO.inspect(changeset.errors, label: "Layout update errors")
+      {:noreply, put_flash(socket, :error, "Failed to update layout")}
+  end
+end
+
+
 
   # ============================================================================
   # HELPER FUNCTIONS
@@ -1371,6 +2224,67 @@ end
     }
   end
 
+  # Add these functions to portfolio_editor_unified.ex
+
+  defp get_all_available_sections do
+    [
+      # Core sections (available to everyone)
+      {"intro", "Hero/About", "Essential", "👋"},
+      {"experience", "Experience", "Essential", "💼"},
+      {"skills", "Skills", "Essential", "⚡"},
+      {"projects", "Projects", "Essential", "🚀"},
+      {"contact", "Contact", "Essential", "📧"},
+
+      # Professional sections
+      {"education", "Education", "Professional", "🎓"},
+      {"achievements", "Achievements", "Professional", "🏆"},
+      {"testimonials", "Testimonials", "Professional", "💬"},
+      {"services", "Services", "Business", "🏢"},
+      {"certifications", "Certifications", "Professional", "📜"},
+
+      # Creative sections
+      {"media_showcase", "Media Gallery", "Creative", "🎨"},
+      {"collaborations", "Collaborations", "Creative", "🤝"},
+      {"blog", "Blog/Articles", "Creative", "✍️"},
+
+      # Technical sections
+      {"code_showcase", "Code Showcase", "Technical", "💻"},
+
+      # Flexible sections
+      {"custom", "Custom Section", "Universal", "⚙️"}
+    ]
+  end
+
+  defp get_sections_for_professional_type(professional_type) do
+    all_sections = get_all_available_sections()
+
+    case professional_type do
+      "developer" ->
+        suggested = ["intro", "code_showcase", "projects", "experience", "skills", "contact"]
+        {filter_suggested(all_sections, suggested), all_sections}
+
+      "creative" ->
+        suggested = ["intro", "media_showcase", "projects", "collaborations", "experience", "testimonials", "contact"]
+        {filter_suggested(all_sections, suggested), all_sections}
+
+      "service_provider" ->
+        suggested = ["intro", "services", "experience", "testimonials", "achievements", "contact"]
+        {filter_suggested(all_sections, suggested), all_sections}
+
+      "musician" ->
+        suggested = ["intro", "media_showcase", "collaborations", "testimonials", "contact"]
+        {filter_suggested(all_sections, suggested), all_sections}
+
+      _ ->
+        suggested = ["intro", "experience", "skills", "projects", "contact"]
+        {filter_suggested(all_sections, suggested), all_sections}
+    end
+  end
+
+  defp filter_suggested(all_sections, suggested_ids) do
+    Enum.filter(all_sections, fn {id, _, _, _} -> id in suggested_ids end)
+  end
+
   defp get_default_section_title(section_type) do
     case section_type do
       "hero" -> "Welcome"
@@ -1387,55 +2301,111 @@ end
       "blog" -> "Blog"
       "gallery" -> "Gallery"
       "custom" -> "Custom Section"
+      "narrative" -> "My Story"
       "published_articles" -> "Published Articles"
-      _ -> "New Section"
+      _ -> String.capitalize(section_type)
     end
   end
 
   defp get_default_section_content(section_type) do
     case section_type do
-      "hero" -> %{
-        "headline" => "Your Name Here",
-        "tagline" => "Your Professional Title",
-        "description" => "Brief description about yourself",
-        "cta_text" => "Get In Touch",
-        "cta_link" => "#contact"
+      "experience" -> %{
+        "jobs" => [get_default_item_for_section_type(section_type)]
       }
+
+      "education" -> %{
+        "education" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "skills" -> %{
+        "skills" => []
+      }
+
+      "projects" -> %{
+        "projects" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "testimonials" -> %{
+        "testimonials" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "certifications" -> %{
+        "certifications" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "achievements" -> %{
+        "achievements" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "services" -> %{
+        "services" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "blog" -> %{
+        "articles" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "gallery" -> %{
+        "images" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "hero" -> %{
+        "headline" => "Welcome to My Portfolio",
+        "summary" => "A brief introduction about yourself and your professional journey.",
+        "location" => "",
+        "website" => "",
+        "social_links" => %{}
+      }
+
+      "intro" -> %{
+        "headline" => "Welcome to My Portfolio",
+        "summary" => "A brief introduction about yourself and your professional journey.",
+        "location" => "",
+        "website" => "",
+        "social_links" => %{}
+      }
+
       "about" -> %{
         "content" => "Tell your story here...",
-        "image_url" => "",
         "highlights" => []
       }
-      "experience" -> %{
-        "items" => []
+
+      "narrative" -> %{
+        "content" => "Tell your story here...",
+        "highlights" => []
       }
-      "skills" -> %{
-        "categories" => []
-      }
-      "projects" -> %{
-        "items" => []
-      }
+
       "contact" -> %{
         "email" => "",
         "phone" => "",
         "location" => "",
-        "show_form" => true
+        "social_links" => %{},
+        "contact_form_enabled" => true
       }
-      "published_articles" -> %{
-        "headline" => "Published Articles",
-        "subtitle" => "My thought leadership and collaborative writing",
-        "display_style" => "grid",
-        "show_metrics" => true,
-        "show_collaboration_details" => false,
-        "platform_filter" => [],
-        "max_articles" => 12,
-        "sort_by" => "published_date",
-        "include_draft_metrics" => false
-      }
+
       _ -> %{
         "content" => "Add your content here..."
       }
     end
+  end
+
+  defp get_section_types do
+    [
+      {"intro", "Hero/About"},
+      {"experience", "Experience"},
+      {"skills", "Skills"},
+      {"projects", "Projects"},
+      {"education", "Education"},
+      {"achievements", "Achievements"},
+      {"testimonials", "Testimonials"},
+      {"media_showcase", "Media Gallery"},
+      {"code_showcase", "Code Showcase"},
+      {"collaborations", "Collaborations"},
+      {"services", "Services"},
+      {"blog", "Blog/Articles"},
+      {"contact", "Contact"},
+      {"custom", "Custom Section"}
+    ]
   end
 
   defp get_section_description(section_type) do
@@ -1457,6 +2427,41 @@ end
       "published_articles" -> "Showcase syndicated articles and collaborative content"
       _ -> "Additional portfolio content"
     end
+  end
+
+  defp get_section_modal_component(section_type) do
+    IO.puts("🔍 Getting modal component for section type: #{inspect(section_type)}")
+
+    component = case section_type do
+      :experience -> FrestylWeb.PortfolioLive.Modals.ExperienceModalComponent
+      :skills -> FrestylWeb.PortfolioLive.Modals.SkillsModalComponent
+      :projects -> FrestylWeb.PortfolioLive.Modals.ProjectsModalComponent
+      :code_showcase -> FrestylWeb.PortfolioLive.Modals.CodeShowcaseModalComponent
+      :media_showcase -> FrestylWeb.PortfolioLive.Modals.MediaShowcaseModalComponent
+      :testimonials -> FrestylWeb.PortfolioLive.Modals.TestimonialsModalComponent
+      :achievements -> FrestylWeb.PortfolioLive.Modals.AchievementsModalComponent
+      :collaborations -> FrestylWeb.PortfolioLive.Modals.CollaborationsModalComponent
+      :contact -> FrestylWeb.PortfolioLive.Modals.ContactModalComponent
+      :education -> FrestylWeb.PortfolioLive.Modals.EducationModalComponent
+      :services -> FrestylWeb.PortfolioLive.Modals.ServicesModalComponent
+      :blog -> FrestylWeb.PortfolioLive.Modals.BlogArticlesModalComponent
+      :custom -> FrestylWeb.PortfolioLive.Modals.CustomModalComponent
+
+      # Map additional section types
+      :intro -> FrestylWeb.PortfolioLive.Modals.HeroAboutModalComponent
+      :about -> FrestylWeb.PortfolioLive.Modals.HeroAboutModalComponent
+      :hero -> FrestylWeb.PortfolioLive.Modals.HeroAboutModalComponent
+      :narrative -> FrestylWeb.PortfolioLive.Modals.HeroAboutModalComponent
+      :journey -> FrestylWeb.PortfolioLive.Modals.HeroAboutModalComponent
+
+      # Fallback to base modal
+      _ ->
+        IO.puts("🔍 Using BaseSectionModalComponent as fallback for: #{inspect(section_type)}")
+        FrestylWeb.PortfolioLive.Modals.BaseSectionModalComponent
+    end
+
+    IO.puts("🔍 Selected modal component: #{inspect(component)}")
+    component
   end
 
   defp format_section_params(params) do
@@ -1481,30 +2486,19 @@ end
   end
 
   defp extract_customization_params(params) do
-    IO.puts("🔥 EXTRACTING FROM PARAMS: #{inspect(params)}")
-
-    # Define all possible customization fields
-    customization_fields = [
+    # Only extract valid customization fields
+    valid_fields = [
       "primary_color", "secondary_color", "accent_color",
-      "primary_color_text", "secondary_color_text", "accent_color_text",
-      "font_family", "layout_style", "hero_style", "portfolio_layout"
+      "font_family", "font_size", "border_radius",
+      "theme", "portfolio_layout", "professional_type",
+      "custom_css", "enable_dark_mode", "enable_animations",
+      "section_spacing"
     ]
 
-    # Filter and extract valid customization fields
-    result = params
-    |> Enum.filter(fn {key, value} ->
-      is_valid = key in customization_fields and not is_nil(value) and value != ""
-      if is_valid do
-        IO.puts("🔥 VALID PARAM: #{key} = #{value}")
-      else
-        IO.puts("🔥 FILTERED OUT: #{key} = #{inspect(value)}")
-      end
-      is_valid
-    end)
+    params
+    |> Map.take(valid_fields)
+    |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
     |> Map.new()
-
-    IO.puts("🔥 EXTRACTION RESULT: #{inspect(result)}")
-    result
   end
 
   defp update_section_in_list(sections, updated_section) do
@@ -1526,21 +2520,37 @@ end
   end
 
   defp broadcast_preview_update(portfolio_id, sections, customization) do
-    IO.puts("🔄 BROADCASTING PREVIEW UPDATE")
-
-    update_data = %{
-      sections: sections,
+    # Build portfolio structure for CSS generation
+    portfolio = %{
+      id: portfolio_id,
       customization: customization,
-      updated_at: DateTime.utc_now()
+      theme: Map.get(customization, "theme", "professional")
     }
 
-    # Broadcast to preview LiveView
-    PubSub.broadcast(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}", {
+    # Generate the CSS
+    css = generate_dynamic_css(portfolio)
+
+    # Broadcast with immediate CSS injection
+    Phoenix.PubSub.broadcast(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}", {
       :preview_update,
-      update_data
+      %{
+        css: css,
+        customization: customization,
+        portfolio: portfolio,
+        sections: sections,
+        force_update: true  # Add this flag
+      }
     })
 
-    IO.puts("✅ PREVIEW UPDATE BROADCASTED")
+    # Also send direct CSS injection event
+    Phoenix.PubSub.broadcast(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}", {
+      :inject_css,
+      %{css: css}
+    })
+
+    IO.puts("✅ PREVIEW UPDATE BROADCASTED - CSS: #{String.length(css)} chars")
+    IO.puts("🎨 Layout: #{Map.get(customization, "portfolio_layout", "unknown")}")
+    IO.puts("👔 Professional Type: #{Map.get(customization, "professional_type", "unknown")}")
   end
 
   defp time_ago(datetime) when is_struct(datetime, DateTime) do
@@ -1552,6 +2562,341 @@ end
     end
   end
   defp time_ago(_), do: "unknown"
+
+  defp generate_dynamic_css(portfolio) do
+    customization = portfolio.customization || %{}
+
+    primary_color = Map.get(customization, "primary_color", "#1e40af")
+    secondary_color = Map.get(customization, "secondary_color", "#64748b")
+    accent_color = Map.get(customization, "accent_color", "#f59e0b")
+    font_family = Map.get(customization, "font_family", "Inter, sans-serif")
+    font_size = Map.get(customization, "font_size", "medium")
+    border_radius = Map.get(customization, "border_radius", "medium")
+    theme = Map.get(customization, "theme", "professional")
+    portfolio_layout = Map.get(customization, "portfolio_layout", "grid")
+    professional_type = Map.get(customization, "professional_type", "general")
+
+    # Convert values to CSS units
+    font_size_px = case font_size do
+      "small" -> "14px"
+      "medium" -> "16px"
+      "large" -> "18px"
+      _ -> "16px"
+    end
+
+    border_radius_px = case border_radius do
+      "none" -> "0px"
+      "small" -> "4px"
+      "medium" -> "8px"
+      "large" -> "12px"
+      "xl" -> "16px"
+      _ -> "8px"
+    end
+
+    custom_css = Map.get(customization, "custom_css", "")
+
+    """
+    :root {
+      --primary-color: #{primary_color};
+      --secondary-color: #{secondary_color};
+      --accent-color: #{accent_color};
+      --font-family: #{font_family};
+      --font-size: #{font_size_px};
+      --border-radius: #{border_radius_px};
+      --theme: #{theme};
+      --portfolio-layout: #{portfolio_layout};
+      --professional-type: #{professional_type};
+    }
+
+    /* ===== TARGET ACTUAL RENDERED ELEMENTS ===== */
+
+    /* Portfolio Display Container */
+    .portfolio-display,
+    .portfolio-preview-container,
+    .portfolio-container,
+    .basic-portfolio-layout {
+      font-family: var(--font-family) !important;
+      font-size: var(--font-size) !important;
+    }
+
+    /* ===== LAYOUT-SPECIFIC TARGETING ===== */
+
+    /* Grid Layout - FIXED SQUARE SECTIONS */
+    [data-portfolio-layout="grid"] {
+      background: #ffffff !important;
+      padding: 1rem !important;
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-sections,
+    [data-portfolio-layout="grid"] > * {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)) !important;
+      grid-auto-rows: 320px !important; /* FIXED SQUARE HEIGHT */
+      gap: 1.5rem !important;
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-section {
+      background: white !important;
+      border-radius: 12px !important;
+      padding: 1.5rem !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+      border: 1px solid #e5e7eb !important;
+      width: 100% !important;
+      height: 100% !important; /* Fill the fixed grid cell */
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-section .section-title {
+      flex-shrink: 0 !important;
+      margin-bottom: 1rem !important;
+      font-weight: 600 !important;
+      font-size: 1.1rem !important;
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-section .section-content {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding-right: 8px !important;
+      min-height: 0 !important; /* Important for flex scrolling */
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-section:hover {
+      transform: translateY(-2px) !important;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important;
+    }
+
+    /* Dashboard Layout - MAX HEIGHT, SCROLLABLE */
+    [data-portfolio-layout="dashboard"] {
+      background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) !important;
+      padding: 1rem !important;
+    }
+
+    [data-portfolio-layout="dashboard"] .portfolio-sections,
+    [data-portfolio-layout="dashboard"] > * {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+      gap: 1rem !important;
+      grid-auto-rows: auto !important; /* Auto height, controlled by max-height */
+    }
+
+    [data-portfolio-layout="dashboard"] .portfolio-section {
+      background: white !important;
+      border-radius: 8px !important;
+      padding: 1rem !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+      border: 1px solid #d1d5db !important;
+      max-height: 250px !important; /* MAX HEIGHT - NOT FIXED */
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    [data-portfolio-layout="dashboard"] .portfolio-section .section-title {
+      flex-shrink: 0 !important;
+      margin-bottom: 0.75rem !important;
+      font-weight: 600 !important;
+      font-size: 1rem !important;
+    }
+
+    [data-portfolio-layout="dashboard"] .portfolio-section .section-content {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding-right: 6px !important;
+      min-height: 0 !important;
+    }
+
+    /* Single Column - MAX HEIGHT, SCROLLABLE */
+    [data-portfolio-layout="single_column"] {
+      max-width: 800px !important;
+      margin: 0 auto !important;
+      background: #f8fafc !important;
+      padding: 2rem !important;
+      border-radius: 12px !important;
+    }
+
+    [data-portfolio-layout="single_column"] .portfolio-sections,
+    [data-portfolio-layout="single_column"] > * {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 2rem !important;
+    }
+
+    [data-portfolio-layout="single_column"] .portfolio-section {
+      background: white !important;
+      padding: 2rem !important;
+      border-radius: 12px !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      border-left: 4px solid var(--primary-color) !important;
+      max-height: 400px !important; /* MAX HEIGHT - NOT FIXED */
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    [data-portfolio-layout="single_column"] .portfolio-section .section-title {
+      flex-shrink: 0 !important;
+      margin-bottom: 1.5rem !important;
+      font-weight: 600 !important;
+      font-size: 1.25rem !important;
+    }
+
+    [data-portfolio-layout="single_column"] .portfolio-section .section-content {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding-right: 12px !important;
+      min-height: 0 !important;
+    }
+
+    /* Creative Layout - MAX HEIGHT, SCROLLABLE */
+    [data-portfolio-layout="creative"] {
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
+      padding: 1rem !important;
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-sections,
+    [data-portfolio-layout="creative"] > * {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+      gap: 1.5rem !important;
+      grid-auto-rows: auto !important; /* Auto height, controlled by max-height */
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-section {
+      background: linear-gradient(135deg, white 0%, #f8fafc 100%) !important;
+      border-radius: 16px !important;
+      padding: 1.5rem !important;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.1) !important;
+      max-height: 350px !important; /* MAX HEIGHT - NOT FIXED */
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    /* Hero section in creative gets special treatment */
+    [data-portfolio-layout="creative"] .portfolio-section:first-child {
+      grid-column: 1 / -1 !important;
+      max-height: 250px !important;
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-section .section-title {
+      flex-shrink: 0 !important;
+      margin-bottom: 1rem !important;
+      font-weight: 600 !important;
+      font-size: 1.1rem !important;
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-section .section-content {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding-right: 10px !important;
+      min-height: 0 !important;
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-section:hover {
+      transform: scale(1.01) !important;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.15) !important;
+    }
+
+    /* ===== SCROLLBAR STYLING FOR ALL LAYOUTS ===== */
+    [data-portfolio-layout] .section-content::-webkit-scrollbar {
+      width: 6px !important;
+    }
+
+    [data-portfolio-layout] .section-content::-webkit-scrollbar-track {
+      background: #f8f9fa !important;
+      border-radius: 3px !important;
+    }
+
+    [data-portfolio-layout] .section-content::-webkit-scrollbar-thumb {
+      background: #d1d5db !important;
+      border-radius: 3px !important;
+    }
+
+    [data-portfolio-layout] .section-content::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af !important;
+    }
+
+    /* ===== RESPONSIVE BEHAVIOR ===== */
+    @media (max-width: 768px) {
+      /* Grid stays square but smaller on mobile */
+      [data-portfolio-layout="grid"] .portfolio-sections,
+      [data-portfolio-layout="grid"] > * {
+        grid-template-columns: 1fr !important;
+        grid-auto-rows: 280px !important;
+      }
+
+      /* Other layouts stack single column on mobile */
+      [data-portfolio-layout="dashboard"] .portfolio-sections,
+      [data-portfolio-layout="creative"] .portfolio-sections {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
+    /* ===== PROFESSIONAL TYPE STYLING ===== */
+
+    .portfolio-display[data-professional-type="creative"] {
+      --accent-color: #ec4899;
+      background: linear-gradient(135deg, #fdf2f8 0%, #f3e8ff 100%);
+    }
+
+    .portfolio-display[data-professional-type="creative"] .portfolio-section {
+      border-top: 3px solid var(--accent-color);
+    }
+
+    .portfolio-display[data-professional-type="technical"] {
+      --accent-color: #10b981;
+      background: #f0fdf4;
+    }
+
+    .portfolio-display[data-professional-type="technical"] .portfolio-section {
+      border-left: 4px solid var(--accent-color);
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+    }
+
+    .portfolio-display[data-professional-type="business"] {
+      --accent-color: #3b82f6;
+      background: #f8fafc;
+    }
+
+    .portfolio-display[data-professional-type="business"] .portfolio-section {
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+
+    /* ===== COLOR APPLICATIONS ===== */
+
+    /* Primary color applications */
+    .text-primary,
+    .text-blue-600,
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--primary-color) !important;
+    }
+
+    .bg-primary,
+    .bg-blue-600,
+    .btn-primary {
+      background-color: var(--primary-color) !important;
+    }
+
+    .border-primary,
+    .border-blue-500 {
+      border-color: var(--primary-color) !important;
+    }
+
+    /* Apply to common elements */
+    .section-title {
+      color: var(--primary-color) !important;
+    }
+
+    .hero-section h1 {
+      color: var(--primary-color) !important;
+    }
+
+    #{custom_css}
+    """
+  end
 
   defp get_color_suggestions do
     [
@@ -1694,25 +3039,68 @@ end
         "show_social" => false,
         "video_enabled" => false
       }
+      "experience" -> %{
+        "jobs" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "education" -> %{
+        "education" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "skills" -> %{
+        "skills" => []
+      }
+
+      "projects" -> %{
+        "projects" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "testimonials" -> %{
+        "testimonials" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "certifications" -> %{
+        "certifications" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "achievements" -> %{
+        "achievements" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "services" -> %{
+        "services" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "blog" -> %{
+        "articles" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "gallery" -> %{
+        "images" => [get_default_item_for_section_type(section_type)]
+      }
+
+      "hero" -> %{
+        "headline" => "Welcome to My Portfolio",
+        "summary" => "A brief introduction about yourself and your professional journey.",
+        "location" => "",
+        "website" => "",
+        "social_links" => %{}
+      }
+
+      "intro" -> %{
+        "headline" => "Welcome to My Portfolio",
+        "summary" => "A brief introduction about yourself and your professional journey.",
+        "location" => "",
+        "website" => "",
+        "social_links" => %{}
+      }
       "about" -> %{
         "content" => "",
-        "image_url" => "",
         "highlights" => []
       }
-      "experience" -> %{
-        "items" => []
-      }
-      "education" -> %{
-        "items" => []
-      }
-      "skills" -> %{
-        "categories" => []
-      }
-      "projects" -> %{
-        "items" => []
-      }
-      "testimonials" -> %{
-        "items" => []
+      "narrative" -> %{
+        "content" => "Tell your story here...",
+        "highlights" => []
       }
       "contact" -> %{
         "email" => "",
@@ -1720,22 +3108,6 @@ end
         "location" => "",
         "social_links" => %{},
         "contact_form_enabled" => true
-      }
-      "certifications" -> %{
-        "items" => []
-      }
-      "achievements" -> %{
-        "items" => []
-      }
-      "services" -> %{
-        "items" => []
-      }
-      "blog" -> %{
-        "items" => []
-      }
-      "gallery" -> %{
-        "images" => [],
-        "layout_style" => "grid"
       }
       "custom" -> %{
         "title" => "",
@@ -1750,7 +3122,10 @@ end
         "show_border" => false,
         "padding" => "normal"
       }
-      _ -> %{}
+
+      _ -> %{
+        "content" => "Add your content here..."
+      }
     end
   end
 
@@ -1855,6 +3230,139 @@ end
     end
   end
 
+  defp get_professional_types do
+    %{
+      "general" => %{
+        name: "General Professional",
+        description: "Versatile professional layout suitable for most careers",
+        icon: "👔"
+      },
+      "creative" => %{
+        name: "Creative Professional",
+        description: "Visual-focused layout for designers, artists, and creatives",
+        icon: "🎨"
+      },
+      "developer" => %{  # Change from "technical" to "developer"
+        name: "Developer/Technical",
+        description: "Code and project-focused layout for developers and engineers",
+        icon: "💻"
+      },
+      "service_provider" => %{  # Add this
+        name: "Service Provider",
+        description: "Business services, consulting, and client-focused layout",
+        icon: "🏢"
+      },
+      "musician" => %{  # Add this
+        name: "Musician/Artist",
+        description: "Music and performance-focused portfolio layout",
+        icon: "🎵"
+      }
+    }
+  end
+
+  defp get_available_themes do
+    %{
+      "professional" => %{
+        name: "Professional",
+        description: "Clean and business-focused",
+        color_class: "bg-blue-500"
+      },
+      "creative" => %{
+        name: "Creative",
+        description: "Bold and artistic",
+        color_class: "bg-purple-500"
+      },
+      "developer" => %{
+        name: "Developer",
+        description: "Technical and code-focused",
+        color_class: "bg-green-500"
+      },
+      "minimalist" => %{
+        name: "Minimalist",
+        description: "Simple and elegant",
+        color_class: "bg-gray-500"
+      }
+    }
+  end
+
+  defp get_portfolio_layouts do
+    %{
+      "single_column" => %{
+        name: "Single Column",
+        description: "Traditional single-column layout",
+        icon: "<svg class='w-6 h-6 text-gray-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 6h16M4 10h16M4 14h16M4 18h16'/></svg>"
+      },
+      "dashboard" => %{
+        name: "Dashboard",
+        description: "Card-based layout with varying sizes",
+        icon: "<svg class='w-6 h-6 text-gray-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM14 12a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z'/></svg>"
+      },
+      "grid" => %{
+        name: "Grid",
+        description: "Uniform grid layout",
+        icon: "<svg class='w-6 h-6 text-gray-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z'/></svg>"
+      },
+      "creative" => %{
+        name: "Creative",
+        description: "Dynamic and artistic layout",
+        icon: "<svg class='w-6 h-6 text-gray-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a2 2 0 002-2V5z'/></svg>"
+      }
+    }
+  end
+
+  defp get_color_presets do
+    [
+      %{name: "Ocean", primary: "#1e40af", secondary: "#64748b", accent: "#0ea5e9"},
+      %{name: "Forest", primary: "#059669", secondary: "#6b7280", accent: "#10b981"},
+      %{name: "Sunset", primary: "#ea580c", secondary: "#6b7280", accent: "#f97316"},
+      %{name: "Purple", primary: "#7c3aed", secondary: "#6b7280", accent: "#8b5cf6"},
+      %{name: "Rose", primary: "#be185d", secondary: "#6b7280", accent: "#ec4899"},
+      %{name: "Slate", primary: "#374151", secondary: "#6b7280", accent: "#6366f1"}
+    ]
+  end
+
+  # Helper functions to get current values:
+  defp get_current_professional_type(customization) do
+    Map.get(customization, "professional_type", "professional")
+  end
+
+  defp get_current_theme(customization) do
+    Map.get(customization, "theme", "professional")
+  end
+
+  defp get_current_layout(customization) do
+    Map.get(customization, "portfolio_layout", "single_column")
+  end
+
+  defp get_current_font(customization) do
+    Map.get(customization, "font_family", "Inter, sans-serif")
+  end
+
+  defp get_current_font_size(customization) do
+    Map.get(customization, "font_size", "medium")
+  end
+
+  def get_layout_component(professional_type, layout_style \\ "default") do
+    component = case {professional_type, layout_style} do
+      {:developer, "github"} -> FrestylWeb.PortfolioLive.Layouts.DeveloperGithubLayoutComponent
+      {:developer, _} -> FrestylWeb.PortfolioLive.Layouts.DeveloperLayoutComponent
+      {:creative, "imdb"} -> FrestylWeb.PortfolioLive.Layouts.CreativeImdbLayoutComponent
+      {:creative, _} -> FrestylWeb.PortfolioLive.Layouts.CreativeLayoutComponent
+      {:service_provider, _} -> FrestylWeb.PortfolioLive.Layouts.ServiceProviderLayoutComponent
+      {:musician, "playlist"} -> FrestylWeb.PortfolioLive.Layouts.MusicianPlaylistLayoutComponent
+      {:musician, _} -> FrestylWeb.PortfolioLive.Layouts.MusicianLayoutComponent
+      _ -> FrestylWeb.PortfolioLive.Layouts.ProfessionalLayoutComponent
+    end
+
+    # Check if component exists, fallback to ProfessionalLayoutComponent
+    if Code.ensure_loaded?(component) do
+      component
+    else
+      IO.puts("⚠️ Layout component #{inspect(component)} not found, using ProfessionalLayoutComponent")
+      FrestylWeb.PortfolioLive.Layouts.ProfessionalLayoutComponent
+    end
+  end
+
   # ============================================================================
   # RENDER FUNCTIONS
   # ============================================================================
@@ -1883,7 +3391,10 @@ end
     ~H"""
     <div class="min-h-screen bg-gray-50">
       <.nav {assigns} />
-
+      <!-- Use Map.get with fallback for preview_css -->
+      <style id="preview-styles">
+        <%= Phoenix.HTML.raw(Map.get(assigns, :preview_css, "/* No CSS */")) %>
+      </style>
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Editor Header -->
         <div class="mb-8">
@@ -2536,219 +4047,278 @@ end
 
     ~H"""
     <div class="space-y-6" id="design-updater" phx-hook="DesignUpdater">
-      <!-- Portfolio Layout - Wrap in Form -->
+
+      <!-- Professional Type Selector -->
       <div class="bg-white rounded-xl shadow-sm border p-6">
-        <h3 class="text-lg font-bold text-gray-900 mb-4">Portfolio Layout</h3>
+        <h3 class="text-lg font-bold text-gray-900 mb-4">Professional Type</h3>
+        <p class="text-gray-600 mb-4">Choose how your portfolio should be optimized</p>
 
-        <form phx-change="update_customization" class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-3">Choose Layout Style</label>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <%= for {layout, name, icon} <- [
-                {"single_column", "Single Column", "<svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 6h16M4 10h16M4 14h16M4 18h16'/></svg>"},
-                {"dashboard", "Dashboard", "<svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM14 12a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z'/></svg>"},
-                {"grid", "Grid", "<svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z'/></svg>"},
-                {"timeline", "Timeline", "<svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'/></svg>"}
-              ] do %>
-                <button
-                  type="button"
-                  id={"layout-picker-#{layout}"}
-                  phx-hook="LayoutPicker"
-                  data-layout={layout}
-                  class={[
-                    "p-3 border-2 rounded-lg transition-colors text-left",
-                    if(Map.get(customization, "portfolio_layout") == layout,
-                      do: "border-blue-600 bg-blue-50",
-                      else: "border-gray-200 hover:border-gray-300")
-                  ]}>
-                  <div class="flex items-center space-x-2">
-                    <%= raw(icon) %>
-                    <span class="text-sm font-medium text-gray-900"><%= name %></span>
-                  </div>
-                </button>
-              <% end %>
-            </div>
-          </div>
-        </form>
-      </div>
-
-      <!-- Typography & Theme - Wrap in Form -->
-      <div class="bg-white rounded-xl shadow-sm border p-6">
-        <h3 class="text-lg font-bold text-gray-900 mb-4">Typography & Theme</h3>
-
-        <form phx-change="update_customization" class="space-y-6">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Font Family -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Font Family</label>
-                <%= for {font, name} <- [{"inter", "Inter"}, {"system", "System"}, {"serif", "Serif"}, {"mono", "Mono"}] do %>
-                  <button
-                    type="button"
-                    id={"font-picker-#{font}"}
-                    phx-hook="FontPicker"
-                    data-font={font}
-                    phx-value-font={font}
-                    class={[
-                      "p-3 border-2 rounded-lg transition-colors text-center",
-                      if(Map.get(customization, "font_family") == font,
-                        do: "border-blue-600 bg-blue-50",
-                        else: "border-gray-200 hover:border-gray-300")
-                    ]}>
-                    <div class="text-sm font-medium text-gray-900" style={get_font_preview_style(font)}><%= name %></div>
-                  </button>
-                <% end %>
-            </div>
-
-            <!-- Theme (renamed from Layout Style) -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Theme</label>
-                <%= for {theme, name} <- [{"modern", "Modern"}, {"minimal", "Minimal"}, {"creative", "Creative"}, {"professional", "Professional"}] do %>
-                  <button
-                    type="button"
-                    id={"theme-picker-#{theme}"}
-                    phx-hook="ThemePicker"
-                    data-theme={theme}
-                    class={[
-                      "p-3 border-2 rounded-lg transition-colors text-center",
-                      if(Map.get(customization, "layout_style") == theme,
-                        do: "border-blue-600 bg-blue-50",
-                        else: "border-gray-200 hover:border-gray-300")
-                    ]}>
-                    <div class="text-sm font-medium text-gray-900"><%= name %></div>
-                  </button>
-                <% end %>
-            </div>
-          </div>
-
-          <!-- Hero Style -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-3">Hero Section Style</label>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <%= for style <- ["gradient", "image", "video", "minimal"] do %>
-                <label class="relative">
-                  <input
-                    type="radio"
-                    name="hero_style"
-                    value={style}
-                    checked={Map.get(customization, "hero_style") == style}
-                    class="sr-only peer">
-                  <div class={[
-                    "p-4 border-2 rounded-lg transition-colors text-center cursor-pointer",
-                    "peer-checked:border-gray-900 peer-checked:bg-gray-50",
-                    "border-gray-200 hover:border-gray-300"
-                  ]}>
-                    <div class="text-sm font-medium text-gray-900 capitalize"><%= style %></div>
-                    <div class="text-xs text-gray-600 mt-1"><%= get_hero_style_description(style) %></div>
-                  </div>
-                </label>
-              <% end %>
-            </div>
-          </div>
-        </form>
-      </div>
-
-      <!-- Color Scheme -->
-      <div class="bg-white rounded-xl shadow-sm border p-6">
-        <h3 class="text-lg font-bold text-gray-900 mb-4">Color Scheme</h3>
-
-        <div class="space-y-6">
-          <!-- Color Presets -->
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-3">Quick Presets</label>
-            <div class="grid grid-cols-2 gap-3">
-              <%= for preset <- get_color_suggestions() do %>
-                <button
-                  type="button"
-                  phx-click="apply_color_preset"
-                  phx-value-preset={Jason.encode!(preset)}
-                  class="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors text-left">
-                  <div class="flex space-x-1">
-                    <div class="w-4 h-4 rounded" style={"background-color: #{preset.primary}"}></div>
-                    <div class="w-4 h-4 rounded" style={"background-color: #{preset.secondary}"}></div>
-                    <div class="w-4 h-4 rounded" style={"background-color: #{preset.accent}"}></div>
-                  </div>
-                  <span class="text-sm font-medium text-gray-900"><%= preset.name %></span>
-                </button>
-              <% end %>
-            </div>
-          </div>
-
-          <!-- Individual Color Inputs - FIXED WITH IDs -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
-              <div class="flex items-center space-x-2">
-                <!-- Color picker with required ID -->
+        <!-- ✅ WRAP IN FORM -->
+        <form phx-change="update_professional_type">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <%= for {type_id, type_info} <- get_professional_types() do %>
+              <label class="relative">
                 <input
-                  id="primary-color-picker"
-                  type="color"
-                  name="primary_color"
-                  value={Map.get(@customization, "primary_color", "#1e40af")}
-                  phx-hook="ColorPicker"
-                  phx-value-field="primary_color"
-                  key={"primary-color-#{Map.get(@customization, "primary_color", "#1e40af")}"}
-                  class="w-12 h-10 border border-gray-300 rounded-lg cursor-pointer">
+                  type="radio"
+                  name="professional_type"
+                  value={type_id}
+                  checked={get_current_professional_type(customization) == type_id}
+                  class="sr-only peer">
+                <div class="p-4 border-2 border-gray-200 rounded-lg cursor-pointer peer-checked:border-blue-500 peer-checked:bg-blue-50 hover:border-gray-300 transition-colors">
+                  <div class="flex items-start space-x-3">
+                    <div class="text-2xl"><%= type_info.icon %></div>
+                    <div>
+                      <h4 class="font-medium text-gray-900"><%= type_info.name %></h4>
+                      <p class="text-sm text-gray-600"><%= type_info.description %></p>
+                    </div>
+                  </div>
+                </div>
+              </label>
+            <% end %>
+          </div>
+        </form>
+      </div>
 
-                <!-- Text input in its own form -->
-                <form phx-change="update_single_color" phx-submit="update_single_color" class="flex-1">
-                  <input type="hidden" name="field" value="primary_color">
+      <!-- Layout Options -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-4">Layout Style</h3>
+        <p class="text-gray-600 mb-4">Choose how sections are arranged</p>
+
+        <!-- ✅ WRAP IN FORM -->
+        <form phx-change="update_portfolio_layout">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <%= for {layout_id, layout_info} <- get_portfolio_layouts() do %>
+              <label class="relative">
+                <input
+                  type="radio"
+                  name="portfolio_layout"
+                  value={layout_id}
+                  checked={get_current_layout(customization) == layout_id}
+                  class="sr-only peer">
+                <div class="p-4 border-2 border-gray-200 rounded-lg cursor-pointer peer-checked:border-blue-500 peer-checked:bg-blue-50 hover:border-gray-300 transition-colors">
+                  <div class="flex items-start space-x-3">
+                    <div class="flex-shrink-0 w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <%= raw(layout_info.icon) %>
+                    </div>
+                    <div class="flex-1">
+                      <h4 class="font-medium text-gray-900"><%= layout_info.name %></h4>
+                      <p class="text-sm text-gray-600 mt-1"><%= layout_info.description %></p>
+                    </div>
+                  </div>
+                </div>
+              </label>
+            <% end %>
+          </div>
+        </form>
+      </div>
+
+      <!-- Color Customization -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-4">Colors</h3>
+        <p class="text-gray-600 mb-4">Customize your portfolio's color scheme</p>
+
+        <!-- ✅ WRAP IN FORM -->
+        <form phx-change="update_customization">
+          <div class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
+                <div class="flex items-center space-x-3">
                   <input
-                    type="text"
-                    name="value"
+                    type="color"
+                    name="primary_color"
                     value={Map.get(customization, "primary_color", "#1e40af")}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono">
-                </form>
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
-              <div class="flex items-center space-x-2">
-                <input
-                  id="secondary-color-picker"
-                  type="color"
-                  name="secondary_color"
-                  value={Map.get(customization, "secondary_color", "#64748b")}
-                  phx-hook="ColorPicker"
-                  phx-value-field="secondary_color"
-                  class="w-12 h-10 border border-gray-300 rounded-lg cursor-pointer">
-
-                <form phx-change="update_single_color" phx-submit="update_single_color" class="flex-1">
-                  <input type="hidden" name="field" value="secondary_color">
+                    class="w-12 h-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
                   <input
                     type="text"
-                    name="value"
+                    name="primary_color_hex"
+                    value={Map.get(customization, "primary_color", "#1e40af")}
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                    placeholder="#1e40af" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
+                <div class="flex items-center space-x-3">
+                  <input
+                    type="color"
+                    name="secondary_color"
                     value={Map.get(customization, "secondary_color", "#64748b")}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono">
-                </form>
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
-              <div class="flex items-center space-x-2">
-                <input
-                  id="accent-color-picker"
-                  type="color"
-                  name="accent_color"
-                  value={Map.get(customization, "accent_color", "#3b82f6")}
-                  phx-hook="ColorPicker"
-                  phx-value-field="accent_color"
-                  class="w-12 h-10 border border-gray-300 rounded-lg cursor-pointer">
-
-                <form phx-change="update_single_color" phx-submit="update_single_color" class="flex-1">
-                  <input type="hidden" name="field" value="accent_color">
+                    class="w-12 h-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
                   <input
                     type="text"
-                    name="value"
-                    value={Map.get(customization, "accent_color", "#3b82f6")}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono">
-                </form>
+                    name="secondary_color_hex"
+                    value={Map.get(customization, "secondary_color", "#64748b")}
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                    placeholder="#64748b" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Accent Color</label>
+                <div class="flex items-center space-x-3">
+                  <input
+                    type="color"
+                    name="accent_color"
+                    value={Map.get(customization, "accent_color", "#f59e0b")}
+                    class="w-12 h-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                  <input
+                    type="text"
+                    name="accent_color_hex"
+                    value={Map.get(customization, "accent_color", "#f59e0b")}
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                    placeholder="#f59e0b" />
+                </div>
               </div>
             </div>
+          </div>
+        </form>
+
+        <!-- Color Presets - SEPARATE BUTTONS -->
+        <div class="mt-6">
+          <label class="block text-sm font-medium text-gray-700 mb-3">Color Presets</label>
+          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <%= for preset <- get_color_presets() do %>
+              <button
+                type="button"
+                phx-click="apply_color_preset"
+                phx-value-preset={preset.name}
+                class="flex flex-col items-center p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors group">
+                <div class="flex space-x-1 mb-2">
+                  <div class="w-4 h-4 rounded" style={"background-color: #{preset.primary}"}></div>
+                  <div class="w-4 h-4 rounded" style={"background-color: #{preset.secondary}"}></div>
+                  <div class="w-4 h-4 rounded" style={"background-color: #{preset.accent}"}></div>
+                </div>
+                <span class="text-xs text-gray-600 group-hover:text-gray-900"><%= preset.name %></span>
+              </button>
+            <% end %>
           </div>
         </div>
       </div>
+
+      <!-- Typography -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-4">Typography</h3>
+        <p class="text-gray-600 mb-4">Choose fonts and text styling</p>
+
+        <!-- ✅ WRAP IN FORM -->
+        <form phx-change="update_customization">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Font Family</label>
+              <select
+                name="font_family"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="Inter, sans-serif" selected={get_current_font(customization) == "Inter, sans-serif"}>Inter (Modern Sans-serif)</option>
+                <option value="Helvetica, sans-serif" selected={get_current_font(customization) == "Helvetica, sans-serif"}>Helvetica (Classic Sans-serif)</option>
+                <option value="Georgia, serif" selected={get_current_font(customization) == "Georgia, serif"}>Georgia (Elegant Serif)</option>
+                <option value="JetBrains Mono, monospace" selected={get_current_font(customization) == "JetBrains Mono, monospace"}>JetBrains Mono (Developer)</option>
+                <option value="Playfair Display, serif" selected={get_current_font(customization) == "Playfair Display, serif"}>Playfair Display (Creative)</option>
+                <option value="Montserrat, sans-serif" selected={get_current_font(customization) == "Montserrat, sans-serif"}>Montserrat (Bold Sans-serif)</option>
+              </select>
+              <div class="mt-2 p-3 border border-gray-200 rounded-lg">
+                <p class="text-sm" style={"font-family: #{get_current_font(customization)}"}>
+                  Preview: The quick brown fox jumps over the lazy dog
+                </p>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Base Font Size</label>
+              <select
+                name="font_size"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="small" selected={get_current_font_size(customization) == "small"}>Small (14px base)</option>
+                <option value="medium" selected={get_current_font_size(customization) == "medium"}>Medium (16px base)</option>
+                <option value="large" selected={get_current_font_size(customization) == "large"}>Large (18px base)</option>
+              </select>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Advanced Options -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-4">Advanced Options</h3>
+
+        <!-- ✅ WRAP IN FORM -->
+        <form phx-change="update_customization">
+          <div class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-900">Dark Mode Support</label>
+                  <p class="text-xs text-gray-600">Enable automatic dark mode detection</p>
+                </div>
+                <input
+                  type="checkbox"
+                  name="enable_dark_mode"
+                  value="true"
+                  checked={Map.get(customization, "enable_dark_mode", false)}
+                  class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+              </div>
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-900">Smooth Animations</label>
+                  <p class="text-xs text-gray-600">Enable page transition animations</p>
+                </div>
+                <input
+                  type="checkbox"
+                  name="enable_animations"
+                  value="true"
+                  checked={Map.get(customization, "enable_animations", true)}
+                  class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Border Radius</label>
+                <select
+                  name="border_radius"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  <option value="none" selected={Map.get(customization, "border_radius") == "none"}>None (Sharp corners)</option>
+                  <option value="small" selected={Map.get(customization, "border_radius") == "small"}>Small (4px)</option>
+                  <option value="medium" selected={Map.get(customization, "border_radius", "medium") == "medium"}>Medium (8px)</option>
+                  <option value="large" selected={Map.get(customization, "border_radius") == "large"}>Large (12px)</option>
+                  <option value="xl" selected={Map.get(customization, "border_radius") == "xl"}>Extra Large (16px)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Section Spacing</label>
+                <select
+                  name="section_spacing"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  <option value="tight" selected={Map.get(customization, "section_spacing") == "tight"}>Tight</option>
+                  <option value="normal" selected={Map.get(customization, "section_spacing", "normal") == "normal"}>Normal</option>
+                  <option value="relaxed" selected={Map.get(customization, "section_spacing") == "relaxed"}>Relaxed</option>
+                  <option value="loose" selected={Map.get(customization, "section_spacing") == "loose"}>Loose</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Custom CSS -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <h3 class="text-lg font-bold text-gray-900 mb-4">Custom CSS</h3>
+        <p class="text-gray-600 mb-4">Add custom styles (Advanced users only)</p>
+
+        <!-- ✅ WRAP IN FORM -->
+        <form phx-change="update_customization">
+          <div>
+            <textarea
+              name="custom_css"
+              rows="8"
+              phx-debounce="1000"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+              placeholder="/* Add your custom CSS here */&#10;.portfolio-section {&#10;  /* Custom styles */&#10;}"><%= Map.get(customization, "custom_css", "") %></textarea>
+            <p class="text-xs text-gray-500 mt-2">
+              Use CSS custom properties: --primary-color, --secondary-color, --accent-color
+            </p>
+          </div>
+        </form>
+      </div>
+
     </div>
     """
   end
@@ -4324,23 +5894,186 @@ end
     """
   end
 
-    def render_section_modal(assigns) do
+  def render_section_modal(assigns) do
     ~H"""
-    <%= if Map.get(assigns, :show_section_modal, false) do %>
-      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          phx-window-keydown="close_modal_on_escape"
-          phx-key="Escape">
-        <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
-            phx-click-away="close_section_modal">
-          <!-- Modal content based on section type -->
-          <%= if assigns.editing_section && assigns.editing_section.section_type == :hero do %>
-            <.render_hero_section_modal {assigns} />
-          <% else %>
-            <.render_standard_section_modal {assigns} />
-          <% end %>
+    <%= case normalize_section_type(@editing_section.section_type) do %>
+      <% :code_showcase -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.CodeShowcaseModalComponent}
+          {Map.merge(assigns, %{id: "code-showcase-modal"})}
+        />
+      <% :media_showcase -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.MediaShowcaseModalComponent}
+          {Map.merge(assigns, %{id: "media-showcase-modal"})}
+        />
+      <% :experience -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.ExperienceModalComponent}
+          {Map.merge(assigns, %{id: "experience-modal"})}
+        />
+      <% :skills -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.SkillsModalComponent}
+          {Map.merge(assigns, %{id: "skills-modal"})}
+        />
+      <% :projects -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.ProjectsModalComponent}
+          {Map.merge(assigns, %{id: "projects-modal"})}
+        />
+      <% :testimonials -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.TestimonialsModalComponent}
+          {Map.merge(assigns, %{id: "testimonials-modal"})}
+        />
+      <% :hero -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.HeroAboutModalComponent}
+          {Map.merge(assigns, %{id: "hero-modal"})}
+        />
+      <% :about -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.HeroAboutModalComponent}
+          {Map.merge(assigns, %{id: "about-modal"})}
+        />
+      <% :contact -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.ContactModalComponent}
+          {Map.merge(assigns, %{id: "contact-modal"})}
+        />
+      <% :published_articles -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.PublishedArticlesModalComponent}
+          {Map.merge(assigns, %{id: "published-articles-modal"})}
+        />
+      <% :collaborations -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.CollaborationsModalComponent}
+          {Map.merge(assigns, %{id: "collaborations-modal"})}
+        />
+      <% :certifications -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.CertificationsModalComponent}
+          {Map.merge(assigns, %{id: "certifications-modal"})}
+        />
+      <% :achievements -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.AchievementsModalComponent}
+          {Map.merge(assigns, %{id: "achievements-modal"})}
+        />
+      <% :services -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.ServicesModalComponent}
+          {Map.merge(assigns, %{id: "services-modal"})}
+        />
+      <% :education -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.EducationModalComponent}
+          {Map.merge(assigns, %{id: "education-modal"})}
+        />
+      <% :custom -> %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Components.CustomModalComponent}
+          {Map.merge(assigns, %{id: "custom-modal"})}
+        />
+      <% _ -> %>
+        <%= render_standard_section_modal(assigns) %>
+    <% end %>
+    """
+  end
+
+  def render_section_creation_modal(assigns) do
+    professional_type = get_current_professional_type(assigns.customization)
+    {suggested_sections, all_sections} = get_sections_for_professional_type(professional_type)
+
+    ~H"""
+    <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-8 mx-auto p-5 border max-w-3xl shadow-lg rounded-xl bg-white mb-8">
+
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-6 border-b border-gray-200">
+          <div>
+            <h3 class="text-xl font-bold text-gray-900">Add New Section</h3>
+            <p class="text-gray-600">Choose any section type for your portfolio</p>
+          </div>
+          <button phx-click="close_section_creation_modal" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Section Selection -->
+        <div class="p-6 space-y-6">
+
+          <!-- Suggested for Your Profession -->
+          <div>
+            <h4 class="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+              <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+              Suggested for <%= String.capitalize(professional_type) %>
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <%= for {section_id, name, category, icon} <- suggested_sections do %>
+                <button
+                  phx-click="create_section"
+                  phx-value-section_type={section_id}
+                  class="flex items-center p-4 border-2 border-blue-200 bg-blue-50 rounded-lg hover:border-blue-300 hover:bg-blue-100 transition-colors text-left">
+                  <span class="text-2xl mr-3"><%= icon %></span>
+                  <div>
+                    <div class="font-medium text-gray-900"><%= name %></div>
+                    <div class="text-sm text-blue-600"><%= category %></div>
+                  </div>
+                </button>
+              <% end %>
+            </div>
+          </div>
+
+          <!-- All Available Sections -->
+          <div>
+            <h4 class="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+              <span class="w-2 h-2 bg-gray-400 rounded-full mr-2"></span>
+              All Available Sections
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <%= for {section_id, name, category, icon} <- all_sections do %>
+                <button
+                  phx-click="create_section"
+                  phx-value-section_type={section_id}
+                  class="flex items-center p-3 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 transition-colors text-left">
+                  <span class="text-xl mr-3"><%= icon %></span>
+                  <div>
+                    <div class="font-medium text-gray-900 text-sm"><%= name %></div>
+                    <div class="text-xs text-gray-500"><%= category %></div>
+                  </div>
+                </button>
+              <% end %>
+            </div>
+          </div>
+
+          <!-- Custom Section Builder -->
+          <div class="border-t pt-6">
+            <h4 class="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+              <span class="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+              Create Custom Section
+            </h4>
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+              <p class="text-sm text-green-700 mb-3">
+                Create a completely custom section with your own content and layout.
+              </p>
+              <button
+                phx-click="create_section"
+                phx-value-section_type="custom"
+                class="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                <span class="text-xl mr-2">⚙️</span>
+                Create Custom Section
+              </button>
+            </div>
+          </div>
+
         </div>
       </div>
-    <% end %>
+    </div>
     """
   end
 

@@ -28,10 +28,33 @@
 
           <!-- Account Switcher Dropdown -->
           <%= if @show_account_switcher do %>
-            <div class="absolute top-full right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 py-4 z-50">
+            <!-- Backdrop for click-away -->
+            <div 
+              class="fixed inset-0 z-40"
+              phx-click="close_account_switcher">
+            </div>
+            
+            <!-- Dropdown with escape key handler -->
+            <div 
+              class="absolute top-full right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 py-4 z-50"
+              phx-window-keydown="close_account_switcher"
+              phx-key="escape">
+              
               <div class="px-4 pb-3 border-b border-gray-100">
-                <h3 class="font-semibold text-gray-900">Switch Account</h3>
-                <p class="text-sm text-gray-600">Select an account to switch to</p>
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="font-semibold text-gray-900">Switch Account</h3>
+                    <p class="text-sm text-gray-600">Select an account to switch to</p>
+                  </div>
+                  <!-- Close button -->
+                  <button 
+                    phx-click="close_account_switcher"
+                    class="p-1 hover:bg-gray-100 rounded-full transition-colors">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
               
               <!-- Available Accounts -->
@@ -85,6 +108,7 @@
     </div>
   </div>
 
+
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="grid grid-cols-12 gap-6">
       
@@ -108,8 +132,8 @@
                 <h3 class="font-bold text-lg text-gray-900">Community Channels</h3>
                 <p class="text-sm text-gray-600 mt-1">Connect with creators</p>
               <% "content_campaigns" -> %>
-                <h3 class="font-bold text-lg text-gray-900">Community Channels</h3>
-                <p class="text-sm text-gray-600 mt-1">Connect with creators</p>
+                <h3 class="font-bold text-lg text-gray-900">Content Campaigns</h3>
+                <p class="text-sm text-gray-600 mt-1">Create with purpose</p>
               <% "service_dashboard" -> %>
                 <h3 class="font-bold text-lg text-gray-900">Service Dashboard</h3>
                 <p class="text-sm text-gray-600 mt-1">Monetize your expertise</p>
@@ -669,7 +693,7 @@
                 <% end %>
 
               <% _ -> %>
-                <!-- Default Portfolio Hub Actions (preserved from original) -->
+                <!-- Default Portfolio Hub Actions -->
                 <button 
                   phx-click="show_create_modal" 
                   phx-value-type="portfolio"
@@ -977,10 +1001,48 @@
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4">
                   <div>
                     <h1 class="text-2xl font-bold text-gray-900">Community Channels</h1>
-                    <p class="text-gray-600 mt-1">Connect, create, and collaborate with the community</p>
+                    <p class="text-gray-600 mt-1">
+                      Connect, create, and collaborate with the community
+                      <%= if @current_account do %>
+                        • <span class="font-medium"><%= @current_account.name %></span>
+                      <% end %>
+                    </p>
                   </div>
                   <div class="flex space-x-3 mt-4 sm:mt-0">
-                    <input type="text" placeholder="Search channels..." class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    <!-- Mobile View Toggle -->
+                    <div class="flex lg:hidden rounded-lg bg-gray-100 p-1">
+                      <button 
+                        phx-click="change_channels_view" 
+                        phx-value-view="list"
+                        class={[
+                          "px-3 py-2 text-sm rounded-md transition-all",
+                          if(@channels_view_mode == "list", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600")
+                        ]}>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                        </svg>
+                      </button>
+                      <button 
+                        phx-click="change_channels_view" 
+                        phx-value-view="cards"
+                        class={[
+                          "px-3 py-2 text-sm rounded-md transition-all",
+                          if(@channels_view_mode == "cards", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600")
+                        ]}>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                        </svg>
+                      </button>
+                    </div>
+                    
+                    <input 
+                      type="text" 
+                      placeholder="Search channels..." 
+                      value={@channel_search || ""}
+                      phx-change="search_channels"
+                      name="search"
+                      class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    
                     <button 
                       phx-click="show_create_modal" 
                       phx-value-type="channel"
@@ -988,97 +1050,359 @@
                       <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                       </svg>
-                      Create Channel
+                      New Channel
                     </button>
                   </div>
+                </div>
+
+                <!-- View Controls (Desktop) -->
+                <div class="hidden lg:flex items-center justify-between">
+                  <div class="flex items-center space-x-4">
+                    <!-- View Toggle -->
+                    <div class="flex rounded-lg bg-gray-100 p-1">
+                      <button 
+                        phx-click="change_channels_view" 
+                        phx-value-view="list"
+                        class={[
+                          "flex items-center px-3 py-2 text-sm rounded-md transition-all",
+                          if(@channels_view_mode == "list", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600 hover:text-gray-900")
+                        ]}>
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                        </svg>
+                        List
+                      </button>
+                      <button 
+                        phx-click="change_channels_view" 
+                        phx-value-view="cards"
+                        class={[
+                          "flex items-center px-3 py-2 text-sm rounded-md transition-all",
+                          if(@channels_view_mode == "cards", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600 hover:text-gray-900")
+                        ]}>
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                        </svg>
+                        Cards
+                      </button>
+                    </div>
+
+                    <!-- Sort Options -->
+                    <select 
+                      phx-change="change_channels_sort" 
+                      name="sort_by"
+                      class="rounded-lg border-gray-300 text-sm focus:border-gray-500 focus:ring-gray-500">
+                      <option value="recent" selected={@channels_sort_by == "recent"}>Recently Active</option>
+                      <option value="name" selected={@channels_sort_by == "name"}>Name A-Z</option>
+                      <option value="members" selected={@channels_sort_by == "members"}>Most Members</option>
+                      <option value="type" selected={@channels_sort_by == "type"}>Channel Type</option>
+                    </select>
+
+                    <select 
+                      phx-change="change_channels_filter" 
+                      name="filter"
+                      class="rounded-lg border-gray-300 text-sm focus:border-gray-500 focus:ring-gray-500">
+                      <option value="all" selected={@channels_filter == "all"}>All Channels</option>
+                      <option value="owned" selected={@channels_filter == "owned"}>My Channels</option>
+                      <option value="joined" selected={@channels_filter == "joined"}>Joined Channels</option>
+                      <option value="active" selected={@channels_filter == "active"}>Active Only</option>
+                    </select>
+                  </div>
+
+                  <span class="text-sm text-gray-600"><%= length(filter_channels(@user_channels, @channel_search || "", @channels_filter || "all")) %> channels</span>
                 </div>
               </div>
 
-              <!-- Frestyl Official Channel (Special styling) -->
-              <div class="bg-white rounded-xl p-6 shadow-sm border">
-                <h3 class="text-lg font-bold text-gray-900 mb-4">🌟 Frestyl Official</h3>
-                <div class="bg-gradient-to-r from-purple-600 via-blue-600 to-cyan-600 rounded-xl p-6 text-white">
-                  <div class="flex items-center justify-between mb-4">
-                    <div>
-                      <h4 class="text-xl font-bold">Frestyl Official Channel</h4>
-                      <p class="text-white/80">Updates, announcements, and community events</p>
-                    </div>
-                    <div class="flex items-center space-x-4">
-                      <div class="flex items-center space-x-2">
-                        <div class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                        <span class="text-sm font-medium">LIVE</span>
-                      </div>
-                      <span class="bg-white/20 px-3 py-1 rounded-full text-sm font-medium">1.5K members</span>
-                    </div>
-                  </div>
-                  <div class="flex space-x-3">
-                    <button class="bg-white/20 hover:bg-white/30 backdrop-blur-sm px-4 py-2 rounded-lg font-medium transition-all">
-                      Join Session
-                    </button>
-                    <button class="bg-white/10 hover:bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg font-medium transition-all">
-                      View Channel
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <!-- Frestyl Official Channel (Special) + My Channels -->
+              <%= if length(@user_channels) > 0 do %>
+                <%= if @channels_view_mode == "cards" do %>
+                  <!-- Card View -->
+                  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <%= for {channel, member_count} <- filter_channels(@user_channels, @channel_search || "", @channels_filter || "all") do %>
+                      <%= if channel.slug == "frestyl-official" do %>
+                        <!-- Frestyl Official Card (Special Styling) -->
+                        <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden">
+                          <!-- Special Header -->
+                          <div class="relative h-full p-5 bg-gradient-to-br from-purple-600 via-indigo-600 to-cyan-600">
+                            <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+                            
+                            <!-- Official Badge - Upper Right -->
+                            <div class="absolute top-4 right-4">
+                              <span class="inline-flex items-center px-3 py-1 bg-white bg-opacity-20 backdrop-blur-sm text-white text-xs font-bold rounded-full border border-white border-opacity-30">
+                                🔥 Official
+                              </span>
+                            </div>
 
-              <!-- My Channels -->
-              <div class="bg-white rounded-xl p-6 shadow-sm border">
-                <div class="flex items-center justify-between mb-6">
-                  <h3 class="text-lg font-bold text-gray-900">My Channels</h3>
-                  <span class="text-sm text-gray-600"><%= length(@user_channels) %> channels</span>
-                </div>
+                            <!-- Channel Info -->
+                            <div class="relative text-left pr-16">
+                              <h3 class="text-xl font-black text-white mb-2 line-clamp-1 drop-shadow-sm"><%= channel.name %></h3>
+                              <p class="text-white text-opacity-90 text-sm leading-relaxed line-clamp-2">
+                                <%= channel.description || "Platform updates, community highlights, and discovery hub." %>
+                              </p>
+                            </div>
 
-                <%= if length(@user_channels) > 0 do %>
-                  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    <%= for channel <- @user_channels do %>
-                      <div class="border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors">
-                        <div class="p-4 rounded-lg mb-4 bg-gradient-to-r from-indigo-500 to-purple-500 relative">
-                          <div class="absolute top-3 right-3">
-                            <div class="flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium bg-green-500 text-white">
-                              <div class="w-2 h-2 rounded-full bg-current"></div>
-                              <span>ACTIVE</span>
+                            <!-- Card Content -->
+                            <div class="p-5">
+                              <!-- Stats (Hidden for Official) -->
+                              <div class="flex items-center space-x-4 mb-6 text-sm text-gray-600">
+                                <div class="flex items-center space-x-1">
+                                  <div></div>
+                                  <span>""</span>
+                                </div>
+                              </div>
+
+                              <!-- Action Buttons -->
+                              <div class="flex items-center justify-between">
+                                <div class="flex space-x-2">
+                                  <button 
+                                    phx-click="discover_official_channel"
+                                    class="self-start bg-white bg-opacity-20 backdrop-blur-sm text-white font-semibold px-2 py-1 rounded-lg border border-white border-opacity-30 text-small hover:bg-opacity-30">
+                                    Discover
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                          <h4 class="font-semibold text-white pr-16"><%= channel.name %></h4>
-                          <p class="text-sm text-white/80">Channel description</p>
                         </div>
-                        <div class="flex items-center justify-between mb-4">
-                          <div class="flex items-center space-x-4 text-sm text-gray-600">
-                            <span>0 members</span>
-                            <span>Active recently</span>
+                      <% else %>
+                        <!-- Regular Channel Card -->
+                        <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden">
+                          <!-- Card Header -->
+                          <div class={[
+                            "relative p-5 bg-gradient-to-br",
+                            get_channel_card_gradient(channel)
+                          ]}>
+                            <!-- Type Badge - Upper Right -->
+                            <div class="absolute top-4 right-4">
+                              <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-white/20 text-white backdrop-blur-sm border border-white/30">
+                                <%= format_channel_type(channel.channel_type) %>
+                              </span>
+                            </div>
+
+                            <!-- Channel Info -->
+                            <div class="text-left pr-16">
+                              <h3 class="font-bold text-white text-xl mb-2 line-clamp-1 drop-shadow-sm"><%= channel.name %></h3>
+                              <p class="text-white/90 text-sm leading-relaxed line-clamp-2">
+                                <%= channel.description || "No description provided" %>
+                              </p>
+                            </div>
+                          </div>
+
+                          <!-- Card Content -->
+                          <div class="p-5">
+                            <!-- Stats -->
+                            <div class="flex items-center space-x-4 mb-6 text-sm text-gray-600">
+                              <div class="flex items-center space-x-1">
+                                <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                                <span><%= member_count %> members</span>
+                              </div>
+                              <span>•</span>
+                              <span>Active recently</span>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="flex items-center justify-between">
+                              <div class="flex space-x-2">
+                                <button 
+                                  phx-click="start_channel_session"
+                                  phx-value-channel_id={channel.id}
+                                  class="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                                  Start Session
+                                </button>
+                                
+                                <.link 
+                                  navigate={~p"/channels/#{channel.slug}"} 
+                                  class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                                  View
+                                </.link>
+                              </div>
+
+                              <button 
+                                phx-click="toggle_channel_menu"
+                                phx-value-channel_id={channel.id}
+                                class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                                </svg>
+                              </button>
+                            </div>
                           </div>
                         </div>
-                        <div class="flex space-x-2">
-                          <button class="flex-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-3 py-2 rounded-lg text-sm font-medium">
-                            Start Session
-                          </button>
-                          <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium">
-                            Settings
-                          </button>
-                        </div>
-                      </div>
+                      <% end %>
                     <% end %>
                   </div>
                 <% else %>
-                  <!-- Empty State -->
-                  <div class="text-center py-12">
-                    <div class="w-16 h-16 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 4v10a2 2 0 002 2h6a2 2 0 002-2V8M9 8h6"/>
-                      </svg>
+                  <!-- List View -->
+                  <div class="bg-white rounded-xl shadow-sm border">
+                    <div class="divide-y divide-gray-200">
+                      <%= for {channel, member_count} <- filter_channels(@user_channels, @channel_search || "", @channels_filter || "all") do %>
+                        <%= if channel.slug == "frestyl-official" do %>
+                          <!-- Frestyl Official List Item -->
+                          <div class="p-6 hover:bg-gray-50 transition-colors bg-gradient-to-r from-purple-50 to-indigo-50">
+                            <div class="flex items-center justify-between">
+                              <div class="flex items-center space-x-4">
+                                <!-- Channel Icon -->
+                                <div class="w-1 h-12 rounded-full bg-gradient-to-br from-purple-500 to-indigo-500"></div>
+
+                                <!-- Channel Info -->
+                                <div class="flex-1 min-w-0">
+                                  <div class="flex items-center space-x-2">
+                                    <h3 class="font-semibold text-gray-900"><%= channel.name %></h3>
+                                    <span class="inline-flex items-center px-2 py-1 text-xs font-bold rounded-full bg-purple-100 text-purple-800">
+                                      🔥 Official
+                                    </span>
+                                  </div>
+                                  <p class="text-sm text-gray-600 mt-1 line-clamp-1">
+                                    <%= channel.description || "Platform updates, community highlights, and discovery hub for creators." %>
+                                  </p>
+                                  <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500">
+                                    <span>Official Channel</span>
+                                    <span>Updated <%= time_ago(channel.updated_at) %></span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <!-- Actions -->
+                              <div class="flex items-center space-x-2">
+                                <button 
+                                  phx-click="discover_official_channel"
+                                  class="bg-gray-900 hover:bg-gray-800 text-white px-3 py-1 rounded-md text-sm font-medium">
+                                  Discover
+                                </button>
+                                <.link 
+                                  navigate={~p"/channels/#{channel.slug}"} 
+                                  class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md text-sm font-medium">
+                                  View
+                                </.link>
+                                <button 
+                                  phx-click="toggle_channel_menu"
+                                  phx-value-channel_id={channel.id}
+                                  class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
+                                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        <% else %>
+                          <!-- Regular Channel List Item -->
+                          <div class="p-6 hover:bg-gray-50 transition-colors">
+                            <div class="flex items-center justify-between">
+                              <div class="flex items-center space-x-4">
+                                <!-- Channel Icon -->
+                                <div class={[
+                                  "w-1 h-12 rounded-full bg-gradient-to-br",
+                                  get_channel_icon_gradient(channel)
+                                ]}>
+                                </div>
+
+                                <!-- Channel Info -->
+                                <div class="flex-1 min-w-0">
+                                  <div class="flex items-center space-x-2">
+                                    <h3 class="font-semibold text-gray-900"><%= channel.name %></h3>
+                                    <span class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                                      ACTIVE
+                                    </span>
+                                    <span class="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                                      <%= format_channel_type(channel.channel_type) %>
+                                    </span>
+                                  </div>
+                                  <p class="text-sm text-gray-600 mt-1 line-clamp-1">
+                                    <%= channel.description || "No description provided" %>
+                                  </p>
+                                  <div class="flex items-center space-x-4 mt-2 text-xs text-gray-500">
+                                    <span><%= member_count %> members</span>
+                                    <span><%= if channel.show_live_activity, do: "Live activity", else: "Recent activity" %></span>
+                                    <span>Updated <%= time_ago(channel.updated_at) %></span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <!-- Actions -->
+                              <div class="flex items-center space-x-2">
+                                <button 
+                                  phx-click="start_channel_session"
+                                  phx-value-channel_id={channel.id}
+                                  class="bg-gray-900 hover:bg-gray-800 text-white px-3 py-1 rounded-md text-sm font-medium">
+                                  Start Session
+                                </button>
+                                <.link 
+                                  navigate={~p"/channels/#{channel.slug}"} 
+                                  class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md text-sm font-medium">
+                                  View
+                                </.link>
+                                <button 
+                                  phx-click="toggle_channel_menu"
+                                  phx-value-channel_id={channel.id}
+                                  class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
+                                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        <% end %>
+                      <% end %>
                     </div>
-                    <h3 class="text-lg font-semibold text-gray-900 mb-2">No channels yet</h3>
-                    <p class="text-gray-600 mb-6 max-w-md mx-auto">Create your first channel to start building a community around your work.</p>
-                    <button 
-                      phx-click="show_create_modal" 
-                      phx-value-type="channel"
-                      class="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-3 rounded-lg font-medium transition-all transform hover:scale-105">
-                      Create Your First Channel
-                    </button>
                   </div>
                 <% end %>
-              </div>
+              <% else %>
+                <!-- Empty State with Official Channel -->
+                <div class="space-y-6">
+                  <!-- Frestyl Official Card -->
+                  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <div class="relative h-48 rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-500 bg-gradient-to-br from-purple-600 via-indigo-600 to-cyan-600">
+                      <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+                      <div class="relative h-full p-5 flex flex-col justify-between">
+                        <div>
+                          <span class="inline-flex items-center px-3 py-1 bg-white bg-opacity-20 backdrop-blur-sm text-white text-xs font-bold rounded-full border border-white border-opacity-30 mb-3">
+                            ⭐ Official
+                          </span>
+                          <h3 class="text-xl font-black text-white mb-2 leading-tight">
+                            Frestyl Official
+                          </h3>
+                          <p class="text-white text-opacity-90 text-sm leading-relaxed">
+                            Platform updates, community highlights, and discovery hub for creators.
+                          </p>
+                        </div>
+                        <button 
+                          phx-click="discover_official_channel"
+                          class="self-start bg-white bg-opacity-20 backdrop-blur-sm text-white font-semibold px-4 py-2 rounded-xl border border-white border-opacity-30 text-sm hover:bg-opacity-30 transition-all">
+                          Discover
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Empty State -->
+                  <div class="bg-white rounded-xl shadow-sm border">
+                    <div class="text-center py-16">
+                      <div class={[
+                        "w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 bg-gradient-to-br",
+                        "from-indigo-100 via-purple-100 to-cyan-100"
+                      ]}>
+                        <svg class="w-10 h-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 4v10a2 2 0 002 2h6a2 2 0 002-2V8M9 8h6"/>
+                        </svg>
+                      </div>
+                      <h3 class="text-xl font-bold text-gray-900 mb-3">No channels yet</h3>
+                      <p class="text-gray-600 mb-8 max-w-md mx-auto leading-relaxed">
+                        Create your first channel to start building a community around your work and connect with other creators.
+                      </p>
+                      <button 
+                        phx-click="show_create_modal" 
+                        phx-value-type="channel"
+                        class="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3 rounded-xl font-semibold transition-all transform hover:scale-105 shadow-lg">
+                        <svg class="w-5 h-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Create Your First Channel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
             </div>
 
           <% "story_lab" -> %>

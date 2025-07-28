@@ -410,25 +410,6 @@ end
     end
   end
 
-  defp get_channel_activity_status(channel) when is_map(channel) do
-    # Convert NaiveDateTime to DateTime if needed
-    updated_at = case channel.updated_at do
-      %NaiveDateTime{} = naive_dt ->
-        DateTime.from_naive!(naive_dt, "Etc/UTC")
-      %DateTime{} = dt ->
-        dt
-      _ ->
-        DateTime.utc_now()
-    end
-
-    case DateTime.diff(DateTime.utc_now(), updated_at, :day) do
-      days when days < 1 -> "Active"
-      days when days < 7 -> "Recent"
-      _ -> "Quiet"
-    end
-  end
-  defp get_channel_activity_status(_), do: "Unknown"
-
   defp format_time_ago(datetime) when is_nil(datetime), do: "Never"
   defp format_time_ago(%DateTime{} = datetime) do
     diff = DateTime.diff(DateTime.utc_now(), datetime, :second)

@@ -67,7 +67,7 @@ defmodule Frestyl.MixProject do
       {:chromic_pdf, "~> 1.15"},
       {:plug_cowboy, "~> 2.5"},
       {:temp, "~> 0.4"},
-      {:oban, "~> 2.17"},
+    #  {:oban, "~> 2.17"},
       {:pbkdf2_elixir, "~> 2.0"},
       {:sweet_xml, "~> 0.7.0"},
       {:bandit, "~> 1.5"},

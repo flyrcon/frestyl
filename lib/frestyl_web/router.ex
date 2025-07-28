@@ -135,7 +135,7 @@ defmodule FrestylWeb.Router do
     # Public portfolio routes
     # Public portfolio viewing
 
-    live "/p/:slug", PortfolioLive.Show, :public_view
+    live "/p/:slug", PortfolioLive.Show, :show
 
 
     # Shared portfolio access via token
@@ -167,8 +167,8 @@ defmodule FrestylWeb.Router do
     live "/hub/welcome", PortfolioHubLive, :welcome  # Welcome page
 
     # Enhanced Portfolio Hub with Chat
-    live "/hub", PortfolioHubLiveEnhanced, :index
-    live "/hub/:section", PortfolioHubLiveEnhanced, :section
+   # live "/hub", PortfolioHubLiveEnhanced, :index
+    #live "/hub/:section", PortfolioHubLiveEnhanced, :section
 
       # Studio routes
     live "/studio", StudioLive.Index, :index
@@ -231,11 +231,11 @@ defmodule FrestylWeb.Router do
 
     # Generic routes LAST
     live "/portfolios/:id", PortfolioLive.Show, :show
-    live "/portfolios/:id/edit", PortfolioLive.PortfolioEditorUnified, :edit
+    live "/portfolios/:id/edit", PortfolioLive.EnhancedPortfolioEditor, :edit
 
-    live "/portfolios/:id/preview", PortfolioLive.PortfolioPreviewLive, :preview
+    live "/portfolios/:id/preview", PortfolioLive.EnhancedPortfolioEditor, :preview
 
-    live "/portfolios/:id/enhance/:type", PortfolioLive.PortfolioEditor, :enhance
+    #live "/portfolios/:id/enhance/:type", PortfolioLive.PortfolioEditor, :enhance
 
     live "/portfolios/:id/settings", PortfolioLive.Settings, :settings
 

@@ -7,19 +7,16 @@ defmodule FrestylWeb.PortfolioLive.Show do
   import Phoenix.HTML, only: [raw: 1, html_escape: 1]
 
   alias Frestyl.Portfolios
-  alias Frestyl.Portfolios.PortfolioTemplates
   alias Phoenix.PubSub
 
-  alias FrestylWeb.PortfolioLive.{PorfolioEditorFixed}
+  alias FrestylWeb.PortfolioLive.EnhancedPortfolioEditor
   alias Frestyl.ResumeExporter
-
   alias FrestylWeb.PortfolioLive.Components.{
-    EnhancedContentRenderer,
-    EnhancedLayoutRenderer,
-    EnhancedHeroRenderer,
-    ThemeConsistencyManager,
-    EnhancedSectionCards
+    DynamicSectionModal,
+    EnhancedSectionRenderer,
+    PortfolioLayoutEngine
   }
+
 
 
   @impl true
@@ -90,73 +87,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
     color_scheme = Map.get(customization, "color_scheme", "blue")
 
     # ENHANCED: Generate complete theme CSS using our enhanced system
-    complete_css = try do
-      # Build theme settings structure expected by ThemeConsistencyManager
-      theme_settings = %{
-        theme: theme,
-        layout: layout_type,
-        color_scheme: color_scheme,
-        customization: customization,
-        portfolio: portfolio,
-        # ADD THE MISSING COLORS KEY:
-        colors: %{
-          primary: Map.get(customization, "primary_color", "#7c3aed"),
-          secondary: Map.get(customization, "secondary_color", "#ec4899"),
-          accent: Map.get(customization, "accent_color", "#f59e0b"),
-          background: "#ffffff",
-          text: "#1f2937"
-        },
-        # ADD ADDITIONAL REQUIRED KEYS:
-        theme_config: %{
-          typography: %{
-            font_family: "Inter, system-ui, sans-serif",
-            heading_weight: "font-semibold",
-            body_weight: "font-normal"
-          },
-          spacing: %{
-            section_gap: "space-y-16",
-            card_padding: "p-6"
-          },
-          borders: %{
-            radius: "rounded-xl",
-            card_border: "border border-gray-200"
-          },
-          # ADD THE MISSING SHADOWS:
-          shadows: %{
-            card: "shadow-lg",
-            hover: "hover:shadow-xl",
-            subtle: "shadow-sm"
-          },
-          # ADD ANIMATIONS TOO (likely needed):
-          animations: %{
-            transition: "transition-all duration-300",
-            hover_scale: "hover:scale-[1.02]",
-            button_transition: "transition-colors duration-200"
-          }
-        },
-        layout_config: %{
-          container_max_width: "max-w-4xl",
-          grid_columns: "single-column",
-          card_height: "auto",
-          section_spacing: "space-y-16"
-        },
-        color_config: %{
-          primary: Map.get(customization, "primary_color", "#7c3aed"),
-          secondary: Map.get(customization, "secondary_color", "#ec4899"),
-          accent: Map.get(customization, "accent_color", "#f59e0b"),
-          name: get_color_scheme_name(color_scheme),
-          css_class_prefix: color_scheme
-        }
-      }
-
-      ThemeConsistencyManager.generate_complete_theme_css(theme_settings)
-    rescue
-      error ->
-        IO.puts("⚠️ Theme CSS generation failed: #{inspect(error)}")
-        # Fallback to basic CSS generation
-        generate_basic_portfolio_css(portfolio)
-    end
-
     # Basic assignments with enhanced theme data
     socket = socket
     |> assign(:page_title, portfolio.title)
@@ -168,8 +98,8 @@ defmodule FrestylWeb.PortfolioLive.Show do
     |> assign(:theme, theme)
     |> assign(:layout_type, layout_type)
     |> assign(:color_scheme, color_scheme)
-    |> assign(:complete_theme_css, complete_css)
-    |> assign(:custom_css, complete_css)  # Backwards compatibility
+    |> assign(:use_enhanced_display, true)  # FIXED: Enable enhanced display
+
     |> assign(:intro_video, intro_video)
     |> assign(:intro_video_section, intro_video)
     |> assign(:has_intro_video, intro_video != nil)
@@ -185,6 +115,8 @@ defmodule FrestylWeb.PortfolioLive.Show do
     |> assign(:seo_image, "/images/default-portfolio.jpg")
     |> assign(:seo_description, portfolio.description || "Professional portfolio")
     |> assign(:canonical_url, "/p/#{portfolio.slug}")
+    |> assign(:show_floating_actions, true)  # ADDED: Enable floating actions
+    |> assign(:template_class, "template-#{theme}")  # ADDED: Template class
     |> assign(:public_view_settings, %{
       show_contact_info: true,
       show_social_links: true,
@@ -308,6 +240,21 @@ defmodule FrestylWeb.PortfolioLive.Show do
         socket
         |> put_flash(:error, "Portfolio not found")
         |> redirect(to: "/")}
+
+      # ADD THIS MISSING CASE:
+      {:error, :database_error} ->
+        {:ok,
+        socket
+        |> put_flash(:error, "Unable to load portfolio due to a database error")
+        |> redirect(to: "/")}
+
+      # ADD THIS CATCH-ALL CASE:
+      {:error, reason} ->
+        IO.puts("❌ Portfolio loading error: #{inspect(reason)}")
+        {:ok,
+        socket
+        |> put_flash(:error, "Unable to load portfolio")
+        |> redirect(to: "/")}
     end
   end
 
@@ -358,10 +305,57 @@ defmodule FrestylWeb.PortfolioLive.Show do
     handle_info({:design_complete_update, design_data}, socket)
   end
 
-  @impl true
+ @impl true
 def handle_info(msg, socket) do
-  IO.puts("🔥 LivePreview received unhandled message: #{inspect(msg)}")
-  {:noreply, socket}
+  case msg do
+    # Handle preview updates from editor
+    {:preview_update, data} when is_map(data) ->
+      IO.puts("🔄 SHOW: Handling preview_update")
+      sections = Map.get(data, :sections, socket.assigns.sections)
+      customization = Map.get(data, :customization, socket.assigns.customization)
+
+      {:noreply, socket
+      |> assign(:sections, sections)
+      |> assign(:customization, customization)
+      |> push_event("update_all_css_variables", %{customization: customization})}
+
+    # Handle sections updates
+    {:sections_updated, sections} ->
+      IO.puts("🔄 SHOW: Handling sections_updated")
+      {:noreply, assign(socket, :sections, sections)}
+
+    # Handle portfolio sections changed
+    {:portfolio_sections_changed, data} ->
+      IO.puts("🔄 SHOW: Handling portfolio_sections_changed")
+      sections = Map.get(data, :sections, socket.assigns.sections)
+      customization = Map.get(data, :customization, socket.assigns.customization)
+
+      {:noreply, socket
+      |> assign(:sections, sections)
+      |> assign(:customization, customization)
+      |> push_event("update_all_css_variables", %{customization: customization})}
+
+    # Handle customization updates
+    {:customization_updated, customization} ->
+      IO.puts("🔄 SHOW: Handling customization_updated")
+      {:noreply, socket
+      |> assign(:customization, customization)
+      |> push_event("update_all_css_variables", %{customization: customization})}
+
+    # Handle design updates
+    {:design_complete_update, design_data} ->
+      IO.puts("🔄 SHOW: Handling design_complete_update")
+      customization = Map.get(design_data, :customization, socket.assigns.customization)
+
+      {:noreply, socket
+      |> assign(:customization, customization)
+      |> push_event("update_all_css_variables", %{customization: customization})}
+
+    # Catch-all for truly unhandled messages
+    _ ->
+      IO.puts("🔥 SHOW: Truly unhandled message: #{inspect(msg)}")
+      {:noreply, socket}
+  end
 end
 
   defp load_portfolio_by_slug(slug) do
@@ -775,24 +769,23 @@ end
   end
 
   # Handle live updates from editor
-  @impl true
   def handle_info({:portfolio_updated, updated_portfolio}, socket) do
-    if updated_portfolio.id == socket.assigns.portfolio.id do
-      socket = socket
-      |> assign(:portfolio, updated_portfolio)
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
+    {:noreply, socket
+    |> assign(:portfolio, updated_portfolio)
+    |> assign(:customization, updated_portfolio.customization || %{})}
   end
 
   @impl true
   def handle_info({:design_complete_update, design_data}, socket) do
-    IO.puts("🎨 Received design update in show.ex: theme=#{design_data.theme}, layout=#{design_data.layout}, colors=#{design_data.color_scheme}")
+    IO.puts("🎨 SHOW PAGE received comprehensive design update")
 
-    # Apply the CSS update to the live view
+    template_class = Map.get(design_data, :template_class, "template-professional-dashboard")
+
     socket = socket
+    |> assign(:customization, design_data.customization)
+    |> assign(:custom_css, design_data.css)
+    |> assign(:template_class, template_class)
+    |> push_event("apply_comprehensive_design", design_data)
     |> push_event("apply_portfolio_design", design_data)
     |> push_event("inject_design_css", %{css: design_data.css})
 
@@ -800,10 +793,8 @@ end
   end
 
   @impl true
-  def handle_info({:design_update, data}, socket) do
-    # Handle legacy design update format
-    IO.puts("🎨 Received legacy design update")
-    {:noreply, socket}
+  def handle_info({:design_update, design_data}, socket) do
+    handle_info({:design_complete_update, design_data}, socket)
   end
 
 
@@ -812,46 +803,12 @@ end
   # ============================================================================
 
   @impl true
-  def handle_info({:preview_update, data}, socket) when is_map(data) do
-    css = Map.get(data, :css, "")
-    customization = Map.get(data, :customization, %{})
-
-    {:noreply, socket
-    |> assign(:portfolio_css, css)
-    |> assign(:customization, customization)}
-  end
-
-  @impl true
   def handle_info({:layout_changed, layout_name, customization}, socket) do
     # Generate new CSS with the layout change
-    css = generate_portfolio_css(customization)
-
     socket = socket
     |> assign(:portfolio_layout, Map.get(customization, "layout", "minimal"))
     |> assign(:customization, customization)
-    |> assign(:portfolio_css, css)
-    |> push_event("update_portfolio_styles", %{css: css})  # Add this line
 
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:customization_updated, customization}, socket) do
-    # Generate new CSS with updated customization
-    css = generate_portfolio_css(customization)
-
-    socket = socket
-    |> assign(:customization, customization)
-    |> assign(:portfolio_css, css)
-    |> push_event("update_portfolio_styles", %{css: css})  # Add this line
-
-    {:noreply, socket}
-  end
-
-  # Catch-all for unhandled messages
-  @impl true
-  def handle_info(msg, socket) do
-    IO.puts("🔥 Show received unhandled message: #{inspect(msg)}")
     {:noreply, socket}
   end
 
@@ -870,239 +827,285 @@ end
   end
 
   @impl true
-  def handle_info({:sections_update, sections}, socket) do
-    socket = assign(socket, :sections, sections)
-    {:noreply, socket}
-  end
-
-  @impl true
   def handle_info({:viewport_change, mobile_view}, socket) do
     socket = assign(socket, :mobile_view, mobile_view)
     {:noreply, socket}
   end
 
- @impl true
+  @impl true
+  def handle_info({:design_update, data}, socket) do
+    {:noreply, socket
+    |> assign(:customization, data.customization)
+    |> assign(:portfolio, data.portfolio)}
+  end
+
+  @impl true
+  def handle_info({:preview_update, data}, socket) when is_map(data) do
+    IO.puts("🔄 SHOW: preview_update received with #{map_size(data)} fields")
+
+    sections = Map.get(data, :sections, socket.assigns.sections)
+    customization = Map.get(data, :customization, socket.assigns.customization)
+
+    IO.puts("🔄 SHOW: Updating #{length(sections)} sections")
+    IO.puts("🔄 SHOW: Customization keys: #{inspect(Map.keys(customization))}")
+
+    {:noreply, socket
+    |> assign(:sections, sections)
+    |> assign(:customization, customization)
+
+    |> push_event("portfolio_updated", %{
+      sections: sections,
+      customization: customization,
+
+    })}
+  end
+
+
+  @impl true
+  def handle_info({:sections_updated, sections}, socket) do
+    IO.puts("🔄 SHOW: sections_updated received - #{length(sections)} sections")
+    {:noreply, assign(socket, :sections, sections)}
+  end
+
+  @impl true
+  def handle_info({:portfolio_sections_changed, data}, socket) do
+    IO.puts("🔄 SHOW: portfolio_sections_changed received")
+
+    sections = Map.get(data, :sections, socket.assigns.sections)
+    customization = Map.get(data, :customization, socket.assigns.customization)
+
+    {:noreply, socket
+    |> assign(:sections, sections)
+    |> assign(:customization, customization)
+    |> push_event("apply_portfolio_design", %{
+      layout: Map.get(customization, "layout_style", "mobile_single"),
+      color_scheme: Map.get(customization, "color_scheme", "blue"),
+      customization: customization
+    })}
+  end
+
+
   def render(assigns) do
     ~H"""
-    <!DOCTYPE html>
-    <html lang="en" class="scroll-smooth">
-      <head>
-        <%= render_seo_meta(assigns) %>
-        <style id="portfolio-server-css"><%= raw(@complete_theme_css || @custom_css || "") %></style>
-        <style id="portfolio-base-styles">
-          .portfolio-section {
-            scroll-margin-top: 2rem;
-            transition: transform 0.2s ease !important;
+    <div class="portfolio-show">
+      <div class={[
+        "portfolio-enhanced-view min-h-screen bg-gray-50",
+        "template-#{Map.get(@customization, "theme", "professional")}"
+      ]}
+      data-portfolio-layout={Map.get(@customization, "layout_style", "mobile_single")}
+      data-professional-type={Map.get(@customization, "professional_type", "general")}
+      data-color-scheme={Map.get(@customization, "color_scheme", "blue")}>
+
+        <!-- MINIMAL CSS - only variables, let PortfolioLayoutEngine handle layouts -->
+        <style id="portfolio-dynamic-css" phx-update="replace">
+          :root {
+            --primary-color: <%= Map.get(@customization, "primary_color", "#3B82F6") %>;
+            --secondary-color: <%= Map.get(@customization, "secondary_color", "#1D4ED8") %>;
+            --accent-color: <%= Map.get(@customization, "accent_color", "#60A5FA") %>;
+            --font-family: <%= Map.get(@customization, "font_family", "Inter, sans-serif") %>;
+            --section-spacing: <%= get_section_spacing(Map.get(@customization, "section_spacing", "normal")) %>;
+            --border-radius: <%= get_border_radius(Map.get(@customization, "corner_radius", "rounded")) %>;
           }
 
-          .portfolio-section:hover {
-            transform: translateY(-2px);
+          .portfolio-enhanced-view {
+            font-family: var(--font-family) !important;
           }
 
-          /* Ensure our styles have priority over any app.css */
-          .portfolio-container,
-          .portfolio-public-view,
-          body.portfolio-public-view {
-            isolation: isolate !important;
-            position: relative !important;
-            z-index: 1 !important;
+          .portfolio-enhanced-view h1,
+          .portfolio-enhanced-view h2,
+          .portfolio-enhanced-view h3 {
+            color: var(--primary-color) !important;
           }
 
-          /* Base responsive layout */
-          @media (max-width: 768px) {
-            .portfolio-container {
-              padding: 1rem !important;
-            }
+          /* FORCE CSS variables into all child components */
+          .portfolio-enhanced-view *,
+          .frestyl-layout-wrapper *,
+          .portfolio-layout *,
+          .section-content *,
+          [id^="section-"] *,
+          [id^="feed-"] *,
+          [id^="grid-"] *,
+          [id^="dash-"] *,
+          [id^="modern-"] * {
+            font-family: var(--font-family) !important;
+          }
 
-            .portfolio-section {
-              margin-bottom: 1rem !important;
-              padding: 1.5rem !important;
-            }
+          /* Color inheritance for all text elements */
+          .portfolio-enhanced-view p,
+          .frestyl-layout-wrapper p,
+          .frestyl-layout-wrapper div,
+          .frestyl-layout-wrapper span,
+          .portfolio-section p,
+          .portfolio-section div,
+          .portfolio-section span {
+            color: var(--secondary-color) !important;
+          }
+
+          /* Headings color */
+          .portfolio-enhanced-view h1,
+          .portfolio-enhanced-view h2,
+          .portfolio-enhanced-view h3,
+          .portfolio-enhanced-view h4,
+          .frestyl-layout-wrapper h1,
+          .frestyl-layout-wrapper h2,
+          .frestyl-layout-wrapper h3,
+          .frestyl-layout-wrapper h4,
+          .portfolio-section h1,
+          .portfolio-section h2,
+          .portfolio-section h3,
+          .portfolio-section h4 {
+            color: var(--primary-color) !important;
+          }
+
+          /* Links and accents */
+          .portfolio-enhanced-view a,
+          .frestyl-layout-wrapper a,
+          .portfolio-section a {
+            color: var(--accent-color) !important;
           }
         </style>
-        <script phx-track-static type="text/javascript" src={~p"/assets/app.js"}></script>
-      </head>
 
-      <body class="portfolio-public-view bg-gray-50">
-        <!-- Enhanced CSS Update Handler -->
-        <script>
-          // Handle comprehensive design updates
-          window.addEventListener('phx:apply_comprehensive_design', (e) => {
-            console.log('🎨 APPLYING DESIGN UPDATE:', e.detail);
 
-            // Remove old CSS
-            const oldCSS = document.getElementById('comprehensive-portfolio-design');
-            if (oldCSS) oldCSS.remove();
+        <!-- Portfolio Header -->
+        <header class="portfolio-header bg-white shadow-sm">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div class="text-center">
+              <h1 class="text-4xl font-bold" style="color: var(--primary-color)">
+                <%= @portfolio.title %>
+              </h1>
+              <%= if @portfolio.description do %>
+                <p class="text-xl text-gray-600 mt-2"><%= @portfolio.description %></p>
+              <% end %>
+            </div>
+          </div>
+        </header>
 
-            // Inject new CSS
-            const style = document.createElement('style');
-            style.id = 'comprehensive-portfolio-design';
-            style.innerHTML = e.detail.css;
-            document.head.appendChild(style);
+        <!-- USE THE NEW PORTFOLIO LAYOUT ENGINE -->
+        <main class="portfolio-content">
+          <.live_component
+            module={FrestylWeb.PortfolioLive.Components.PortfolioLayoutEngine}
+            id="portfolio-layout"
+            sections={@sections}
+            customization={@customization}
+            show_actions={false} />
+        </main>
 
-            // Update body class with template
-            document.body.className = `portfolio-public-view ${e.detail.template_class}`;
+      </div>
 
-            // Update container classes
-            const container = document.querySelector('.portfolio-container');
-            if (container) {
-              container.className = `portfolio-container ${e.detail.template_class} min-h-screen`;
+      <!-- JavaScript for handling live updates -->
+      <script>
+        // Handle comprehensive CSS variable updates
+        window.addEventListener('phx:update_all_css_variables', (e) => {
+          console.log('🎨 UPDATING ALL CSS VARIABLES:', e.detail);
+
+          if (e.detail.customization) {
+            const customization = e.detail.customization;
+            const root = document.documentElement;
+
+            // Color updates
+            if (customization.primary_color) {
+              root.style.setProperty('--primary-color', customization.primary_color);
+              console.log('✅ Updated primary color:', customization.primary_color);
             }
 
-            console.log('✅ Design applied successfully');
-          });
+            if (customization.secondary_color) {
+              root.style.setProperty('--secondary-color', customization.secondary_color);
+              console.log('✅ Updated secondary color:', customization.secondary_color);
+            }
 
-          // Handle portfolio design updates
-          window.addEventListener('phx:apply_portfolio_design', (e) => {
-            console.log('🎨 APPLYING PORTFOLIO DESIGN:', e.detail);
+            if (customization.accent_color) {
+              root.style.setProperty('--accent-color', customization.accent_color);
+              console.log('✅ Updated accent color:', customization.accent_color);
+            }
 
-            // Remove old CSS
-            const oldCSS = document.getElementById('comprehensive-portfolio-design');
-            if (oldCSS) oldCSS.remove();
+            // Typography updates
+            if (customization.font_family) {
+              root.style.setProperty('--font-family', customization.font_family);
+              document.body.style.fontFamily = customization.font_family;
+              console.log('✅ Updated font family:', customization.font_family);
+            }
 
-            // Inject new CSS
-            const style = document.createElement('style');
-            style.id = 'comprehensive-portfolio-design';
-            style.innerHTML = e.detail.css;
-            document.head.appendChild(style);
-          });
+            if (customization.font_style) {
+              const fontMap = {
+                'inter': 'Inter, sans-serif',
+                'poppins': 'Poppins, sans-serif',
+                'playfair': 'Playfair Display, serif',
+                'source_sans': 'Source Sans Pro, sans-serif'
+              };
+              const fontFamily = fontMap[customization.font_style] || customization.font_style;
+              root.style.setProperty('--font-family', fontFamily);
+              document.body.style.fontFamily = fontFamily;
+              console.log('✅ Updated font style:', customization.font_style);
+            }
 
-          // Handle CSS injection
-          window.addEventListener('phx:inject_design_css', (e) => {
-            console.log('🎨 INJECTING CSS:', e.detail);
+            // Spacing and style updates
+            if (customization.section_spacing) {
+              const spacingMap = {
+                'compact': '1rem',
+                'normal': '1.5rem',
+                'spacious': '3rem'
+              };
+              const spacing = spacingMap[customization.section_spacing] || '1.5rem';
+              root.style.setProperty('--section-spacing', spacing);
+              console.log('✅ Updated section spacing:', customization.section_spacing);
+            }
 
-            const oldCSS = document.getElementById('comprehensive-portfolio-design');
-            if (oldCSS) oldCSS.remove();
+            if (customization.corner_radius) {
+              const radiusMap = {
+                'sharp': '0',
+                'rounded': '0.5rem',
+                'very-rounded': '1rem'
+              };
+              const radius = radiusMap[customization.corner_radius] || '0.5rem';
+              root.style.setProperty('--border-radius', radius);
+              console.log('✅ Updated corner radius:', customization.corner_radius);
+            }
 
-            const style = document.createElement('style');
-            style.id = 'comprehensive-portfolio-design';
-            style.innerHTML = e.detail.css;
-            document.head.appendChild(style);
-          });
-        </script>
+            // Layout updates (this already works)
+            if (customization.layout_style) {
+              const container = document.querySelector('[data-layout]');
+              if (container) {
+                container.setAttribute('data-layout', customization.layout_style);
+                console.log('✅ Updated layout:', customization.layout_style);
+              }
+            }
 
-        <!-- Portfolio Content -->
-        <div class="portfolio-container min-h-screen">
-          <%= render_traditional_public_view(assigns) %>
-        </div>
+            // Force a visual update to trigger re-render
+            document.body.style.opacity = '0.99';
+            setTimeout(() => document.body.style.opacity = '1', 10);
+          }
+        });
 
-        <!-- Floating Action Buttons -->
-        <%= if Map.get(assigns, :show_floating_actions, true) do %>
-          <%= render_floating_actions(assigns) %>
-        <% end %>
+        // Keep existing event handlers for backward compatibility
+        window.addEventListener('phx:force_css_update', (e) => {
+          window.dispatchEvent(new CustomEvent('phx:update_all_css_variables', { detail: e.detail }));
+        });
+      </script>
 
-        <!-- Modals - Only render if assigns exist -->
-        <%= if Map.get(assigns, :show_export_modal, false) do %>
-          <%= render_export_modal(assigns) %>
-        <% end %>
-
-        <%= if Map.get(assigns, :show_share_modal, false) do %>
-          <%= render_share_modal(assigns) %>
-        <% end %>
-
-        <%= if Map.get(assigns, :show_contact_modal, false) do %>
-          <%= render_contact_modal(assigns) %>
-        <% end %>
-
-        <!-- Lightbox - Only render if media exists -->
-        <%= if Map.get(assigns, :active_lightbox_media) do %>
-          <%= render_lightbox(assigns) %>
-        <% end %>
-
-        <!-- Flash Messages -->
-        <div id="flash-messages" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
-          <%= if live_flash(@flash, :info) do %>
-            <div class="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg mb-2">
-              <%= live_flash(@flash, :info) %>
-            </div>
-          <% end %>
-
-          <%= if live_flash(@flash, :error) do %>
-            <div class="bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg mb-2">
-              <%= live_flash(@flash, :error) %>
-            </div>
-          <% end %>
-        </div>
-      </body>
-    </html>
+    </div>
     """
   end
+
+  defp get_layout_css("mobile_single"), do: "display: flex; flex-direction: column; gap: 1.5rem;"
+  defp get_layout_css("grid_uniform"), do: "display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem;"
+  defp get_layout_css("dashboard"), do: "display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;"
+  defp get_layout_css("creative_modern"), do: "display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;"
+  defp get_layout_css(_), do: "display: flex; flex-direction: column; gap: 1.5rem;"
+
+  defp get_section_spacing("compact"), do: "0.75rem"
+  defp get_section_spacing("normal"), do: "1.5rem"
+  defp get_section_spacing("spacious"), do: "3rem"
+  defp get_section_spacing(_), do: "1.5rem"
+
+  defp get_border_radius("sharp"), do: "0"
+  defp get_border_radius("rounded"), do: "0.5rem"
+  defp get_border_radius("very-rounded"), do: "1.25rem"
+  defp get_border_radius(_), do: "0.5rem"
 
   # ============================================================================
   # RENDER HELPERS
   # ============================================================================
 
-  defp render_seo_meta(assigns) do
-    ~H"""
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="csrf-token" content={get_csrf_token()} />
-
-    <!-- SEO Meta Tags -->
-    <title><%= @seo_title %></title>
-    <meta name="description" content={@seo_description} />
-    <link rel="canonical" href={@canonical_url} />
-
-    <!-- Open Graph Meta Tags -->
-    <meta property="og:title" content={@seo_title} />
-    <meta property="og:description" content={@seo_description} />
-    <meta property="og:image" content={@seo_image} />
-    <meta property="og:url" content={@canonical_url} />
-    <meta property="og:type" content="profile" />
-
-    <!-- Twitter Card Meta Tags -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={@seo_title} />
-    <meta name="twitter:description" content={@seo_description} />
-    <meta name="twitter:image" content={@seo_image} />
-
-    <!-- JSON-LD Structured Data -->
-    <script type="application/ld+json">
-      <%= raw(generate_json_ld(@portfolio)) %>
-    </script>
-    """
-  end
-
-  defp render_traditional_public_view(assigns) do
-    ~H"""
-    <div class="traditional-portfolio-view">
-      <!-- Portfolio Header -->
-      <header class="portfolio-header text-center mb-8 p-6 bg-white rounded-lg shadow-sm">
-        <h1 class="text-4xl font-bold text-gray-900 mb-4"><%= @portfolio.title %></h1>
-        <%= if @portfolio.description do %>
-          <p class="text-xl text-gray-600 max-w-2xl mx-auto"><%= @portfolio.description %></p>
-        <% end %>
-      </header>
-
-      <!-- Portfolio Sections -->
-      <div class="portfolio-sections">
-        <%= if length(Map.get(assigns, :sections, [])) > 0 do %>
-          <%= for section <- @sections do %>
-            <%= if Map.get(section, :visible, true) do %>
-              <section class="portfolio-section bg-white rounded-lg shadow-sm p-6 mb-6">
-                <h2 class="text-2xl font-semibold text-gray-900 mb-4"><%= section.title %></h2>
-                <div class="prose max-w-none">
-                  <%= render_section_content_safe(section) %>
-                </div>
-              </section>
-            <% end %>
-          <% end %>
-        <% else %>
-          <!-- Empty state -->
-          <div class="empty-portfolio text-center py-12">
-            <div class="empty-content max-w-md mx-auto">
-              <svg class="empty-icon w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-              </svg>
-              <h3 class="text-xl font-semibold text-gray-900 mb-2">Portfolio Under Construction</h3>
-              <p class="text-gray-600">This portfolio is being set up. Check back soon!</p>
-            </div>
-          </div>
-        <% end %>
-      </div>
-    </div>
-    """
-  end
 
   defp render_floating_actions(assigns) do
     ~H"""
@@ -1213,120 +1216,16 @@ end
     """
   end
 
-  defp render_section_content_safe(section) do
+  defp render_section_content(section, _color_scheme \\ "blue") do
     try do
-      # Get color scheme from socket assigns if available, fallback to blue
-      color_scheme = "blue"  # Default fallback
-
-      # Try to use EnhancedContentRenderer, fall back to basic rendering
-      enhanced_content = try do
-        EnhancedContentRenderer.render_enhanced_section_content(section, color_scheme)
-      rescue
-        _ ->
-          # Fallback to basic rendering if enhanced component fails
-          render_basic_section_content(section)
-      end
-
-      # Return as safe HTML
-      raw(enhanced_content)
+      render_basic_section_content(section)
+      |> raw()
     rescue
       _ ->
-        # Ultimate fallback for any errors
         raw("<p>Content loading...</p>")
     end
   end
 
-
-defp generate_portfolio_css(portfolio) when is_map(portfolio) do
-  # Extract theme settings from portfolio
-  customization = portfolio.customization || %{}
-  theme = portfolio.theme || "professional"
-  layout = Map.get(customization, "layout", "standard")
-  color_scheme = Map.get(customization, "color_scheme", "blue")
-
-  # Build theme settings structure for ThemeConsistencyManager
-  theme_settings = %{
-    theme: theme,
-    layout: layout,
-    color_scheme: color_scheme,
-    customization: customization,
-    portfolio: portfolio
-  }
-
-  try do
-    ThemeConsistencyManager.generate_complete_theme_css(theme_settings)
-  rescue
-    error ->
-      IO.puts("⚠️ ThemeConsistencyManager failed: #{inspect(error)}")
-      generate_basic_portfolio_css(portfolio)
-  end
-end
-
-  defp generate_portfolio_css(customization) when is_map(customization) do
-    # Legacy support for when only customization is passed
-    theme = Map.get(customization, "theme", "professional")
-    layout = Map.get(customization, "layout", "standard")
-    color_scheme = Map.get(customization, "color_scheme", "blue")
-
-    # Create minimal portfolio structure for ThemeConsistencyManager
-    portfolio = %{
-      theme: theme,
-      customization: customization,
-      title: "Portfolio",
-      description: ""
-    }
-
-    theme_settings = %{
-      theme: theme,
-      layout: layout,
-      color_scheme: color_scheme,
-      customization: customization,
-      portfolio: portfolio
-    }
-
-    try do
-      ThemeConsistencyManager.generate_complete_theme_css(theme_settings)
-    rescue
-      error ->
-        IO.puts("⚠️ ThemeConsistencyManager failed: #{inspect(error)}")
-        generate_basic_portfolio_css(portfolio)
-    end
-  end
-
-  defp generate_portfolio_css(portfolio, sections \\ []) do
-    # Extract theme settings
-    customization = portfolio.customization || %{}
-    theme = portfolio.theme || "professional"
-    layout = Map.get(customization, "layout", "standard")
-    color_scheme = Map.get(customization, "color_scheme", "blue")
-
-    # Enhanced: Apply complete theme consistency with sections
-    try do
-      {_enhanced_assigns, complete_css, _theme_settings} =
-        ThemeConsistencyManager.apply_theme_to_all_components(portfolio, sections, %{})
-
-      complete_css
-    rescue
-      error ->
-        IO.puts("⚠️ Complete theme application failed: #{inspect(error)}")
-
-        # Fallback: Try basic CSS generation
-        theme_settings = %{
-          theme: theme,
-          layout: layout,
-          color_scheme: color_scheme,
-          customization: customization,
-          portfolio: portfolio
-        }
-
-        try do
-          ThemeConsistencyManager.generate_complete_theme_css(theme_settings)
-        rescue
-          _error2 ->
-            generate_basic_portfolio_css(portfolio)
-        end
-    end
-  end
 
   defp render_basic_section_content(section) do
     content = Map.get(section, :content, %{})
@@ -1388,33 +1287,6 @@ end
   end
 
   @impl true
-  def handle_event("show_contact_modal", _params, socket) do
-    {:noreply, assign(socket, :show_contact_modal, true)}
-  end
-
-  @impl true
-  def handle_event("hide_contact_modal", _params, socket) do
-    {:noreply, assign(socket, :show_contact_modal, false)}
-  end
-
-  @impl true
-  def handle_event("show_lightbox", %{"media_id" => media_id}, socket) do
-    # Find the media item by ID
-    media = find_media_by_id(socket.assigns.portfolio, media_id)
-
-    {:noreply, socket
-    |> assign(:show_lightbox, true)
-    |> assign(:lightbox_media, media)}
-  end
-
-  @impl true
-  def handle_event("hide_lightbox", _params, socket) do
-    {:noreply, socket
-    |> assign(:show_lightbox, false)
-    |> assign(:lightbox_media, nil)}
-  end
-
-  @impl true
   def handle_event("export_portfolio", _params, socket) do
     # Handle portfolio export logic here
     {:noreply, socket
@@ -1439,55 +1311,6 @@ end
   def handle_event("prevent_close", _params, socket) do
     {:noreply, socket}
   end
-
-  defp generate_basic_portfolio_css(portfolio) do
-    customization = portfolio.customization || %{}
-    theme = portfolio.theme || "professional"
-
-    primary_color = Map.get(customization, "primary_color", "#1e40af")
-    secondary_color = Map.get(customization, "secondary_color", "#64748b")
-
-    """
-    <style id="basic-portfolio-css">
-    :root {
-      --primary-color: #{primary_color};
-      --secondary-color: #{secondary_color};
-    }
-
-    .portfolio-container {
-      font-family: 'Inter', system-ui, sans-serif;
-      background-color: #fafafa;
-      min-height: 100vh;
-      padding: 2rem;
-    }
-
-    .portfolio-section {
-      background: white;
-      padding: 2rem;
-      margin-bottom: 1.5rem;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    .section-title {
-      color: var(--primary-color);
-      font-size: 1.5rem;
-      font-weight: bold;
-      margin-bottom: 1rem;
-    }
-
-    .hero-section {
-      background: var(--primary-color);
-      color: white;
-      text-align: center;
-      padding: 4rem 2rem;
-      margin-bottom: 2rem;
-      border-radius: 12px;
-    }
-    </style>
-    """
-  end
-
 
 
   defp safe_capitalize(value) when is_atom(value) do
@@ -1520,89 +1343,6 @@ end
 
 
   # ============================================================================
-  # TRADITIONAL SECTION RENDERERS
-  # ============================================================================
-
-
-  defp render_traditional_public_view(assigns) do
-    # Extract theme settings with fallbacks
-    theme = Map.get(assigns, :theme, "professional")
-    layout_type = Map.get(assigns, :layout_type, "standard")
-    color_scheme = Map.get(assigns, :color_scheme, "blue")
-    portfolio = assigns.portfolio
-    sections = Map.get(assigns, :sections, [])
-
-    # Try to use EnhancedLayoutRenderer, fall back to basic layout
-    enhanced_html = try do
-      EnhancedLayoutRenderer.render_portfolio_layout(
-        portfolio,
-        sections,
-        layout_type,
-        color_scheme,
-        theme
-      )
-    rescue
-      error ->
-        IO.puts("⚠️ Enhanced layout rendering failed: #{inspect(error)}")
-        # Fallback to basic layout
-        render_basic_portfolio_layout(assigns)
-    end
-
-    raw(enhanced_html)
-  end
-
-    defp render_basic_portfolio_layout(assigns) do
-    sections = Map.get(assigns, :sections, [])
-
-    """
-    <div class="basic-portfolio-layout">
-      <!-- Basic Hero -->
-      <header class="hero-section">
-        <h1>#{assigns.portfolio.title}</h1>
-        <p>#{assigns.portfolio.description || ""}</p>
-      </header>
-
-      <!-- Basic Sections -->
-      <main class="portfolio-sections">
-        #{if length(sections) > 0 do
-          Enum.map(sections, fn section ->
-            if Map.get(section, :visible, true) do
-              "<section class='portfolio-section'>
-                <h2 class='section-title'>#{section.title}</h2>
-                <div class='section-content'>
-                  #{render_basic_section_content(section)}
-                </div>
-              </section>"
-            else
-              ""
-            end
-          end) |> Enum.join("")
-        else
-          "<div class='empty-portfolio'>
-            <h3>Portfolio Under Construction</h3>
-            <p>This portfolio is being set up. Check back soon!</p>
-          </div>"
-        end}
-      </main>
-    </div>
-    """
-  end
-
-  defp get_zone_css_class(zone_name) do
-    case zone_name do
-      :hero -> "hero-zone"
-      :about -> "about-zone"
-      :experience -> "experience-zone"
-      :skills -> "skills-zone"
-      :projects -> "projects-zone"
-      :services -> "services-zone"
-      :contact -> "contact-zone"
-      _ -> "content-zone"
-    end
-  end
-
-
-  # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
 
@@ -1632,49 +1372,8 @@ end
     end
   end
 
-  defp render_traditional_sections(assigns) do
-    ~H"""
-    <!-- Your existing traditional section rendering -->
-    <div class="traditional-portfolio">
-      <%= for section <- @sections do %>
-        <%= if section.visible do %>
-          <section class="mb-8">
-            <h2 class="text-2xl font-bold mb-4"><%= section.title %></h2>
-            <div class="prose max-w-none">
-              <%= get_section_excerpt(section) %>
-            </div>
-          </section>
-        <% end %>
-      <% end %>
-    </div>
-    """
-  end
-
-  defp assign_portfolio_data(socket, portfolio) do
-    socket
-    |> assign(:portfolio, portfolio)
-    |> assign(:owner, portfolio.user)
-    |> assign(:page_title, portfolio.title)
-    |> assign(:customization, Map.get(portfolio, :customization, %{}))
-  end
-
-  defp assign_view_context(socket, view_type) do
-    socket
-    |> assign(:view_mode, view_type)
-    |> assign(:show_edit_controls, view_type in [:preview, :authenticated])
-    |> assign(:is_public_view, view_type == :public)
-    |> assign(:can_edit, view_type in [:preview, :authenticated])
-  end
 
 
-  defp assign_ui_state(socket) do
-    socket
-    |> assign(:show_export_modal, false)
-    |> assign(:show_share_modal, false)
-    |> assign(:show_contact_modal, false)
-    |> assign(:active_lightbox_media, nil)
-    |> assign(:mobile_nav_open, false)
-  end
 
   defp assign_seo_data(socket, portfolio) do
     socket
@@ -1703,52 +1402,22 @@ end
     end) || "/images/default-portfolio-preview.jpg"
   end
 
-
-  defp get_section_badge_class(section_type) do
-    case safe_capitalize(section_type) do
-      "Hero" -> "bg-purple-100 text-purple-800"
-      "About" -> "bg-blue-100 text-blue-800"
-      "Experience" -> "bg-green-100 text-green-800"
-      "Skills" -> "bg-yellow-100 text-yellow-800"
-      "Projects" -> "bg-red-100 text-red-800"
-      "Contact" -> "bg-indigo-100 text-indigo-800"
-      "Education" -> "bg-orange-100 text-orange-800"
-      "Testimonials" -> "bg-pink-100 text-pink-800"
-      "Custom" -> "bg-gray-100 text-gray-800"
-      _ -> "bg-gray-100 text-gray-800"
+  defp get_section_spacing(spacing) do
+    case spacing do
+      "compact" -> "1rem"
+      "normal" -> "1.5rem"
+      "spacious" -> "3rem"
+      _ -> "1.5rem"
     end
   end
 
-  defp format_section_type(section_type) do
-    case safe_capitalize(section_type) do
-      "Hero" -> "Hero Section"
-      "About" -> "About Me"
-      "Experience" -> "Work Experience"
-      "Skills" -> "Skills & Expertise"
-      "Projects" -> "Projects Portfolio"
-      "Contact" -> "Contact Information"
-      "Education" -> "Education & Certifications"
-      "Testimonials" -> "Testimonials & Reviews"
-      "Custom" -> "Custom Content"
-      _ -> safe_capitalize(section_type)
+  defp get_border_radius(radius) do
+    case radius do
+      "sharp" -> "0"
+      "rounded" -> "0.5rem"
+      "very-rounded" -> "1rem"
+      _ -> "0.5rem"
     end
-  end
-
-
-  defp get_public_view_settings(portfolio) do
-    customization = portfolio.customization || %{}
-
-    %{
-      layout_type: Map.get(customization, "public_layout_type", "dashboard"),
-      enable_sticky_nav: Map.get(customization, "enable_sticky_nav", true),
-      enable_back_to_top: Map.get(customization, "enable_back_to_top", true),
-      mobile_expansion_style: Map.get(customization, "mobile_expansion_style", "in_place"),
-      video_autoplay: Map.get(customization, "video_autoplay", "muted"),
-      gallery_lightbox: Map.get(customization, "gallery_lightbox", true),
-      color_scheme: Map.get(customization, "color_scheme", "professional"),
-      font_family: Map.get(customization, "font_family", "inter"),
-      enable_animations: Map.get(customization, "enable_animations", true)
-    }
   end
 
   # ============================================================================
@@ -1861,138 +1530,6 @@ end
     }
   end
 
-  defp generate_design_tokens_with_brand(portfolio, brand_settings) do
-    base_tokens = generate_design_tokens(portfolio)
-
-    # Handle both atom and string keys for brand_settings
-    brand_primary = case brand_settings do
-      %{primary_color: color} -> color
-      %{"primary_color" => color} -> color
-      _ -> "#1e40af"
-    end
-
-    brand_secondary = case brand_settings do
-      %{secondary_color: color} -> color
-      %{"secondary_color" => color} -> color
-      _ -> "#64748b"
-    end
-
-    brand_accent = case brand_settings do
-      %{accent_color: color} -> color
-      %{"accent_color" => color} -> color
-      _ -> "#f59e0b"
-    end
-
-    Map.merge(base_tokens, %{
-      brand_primary: brand_primary,
-      brand_secondary: brand_secondary,
-      brand_accent: brand_accent
-    })
-  end
-
-  defp generate_brand_css(brand_settings) do
-    # Handle both atom and string keys for brand_settings
-    primary = case brand_settings do
-      %{primary_color: color} -> color
-      %{"primary_color" => color} -> color
-      _ -> "#1e40af"
-    end
-
-    secondary = case brand_settings do
-      %{secondary_color: color} -> color
-      %{"secondary_color" => color} -> color
-      _ -> "#64748b"
-    end
-
-    accent = case brand_settings do
-      %{accent_color: color} -> color
-      %{"accent_color" => color} -> color
-      _ -> "#f59e0b"
-    end
-
-    """
-    :root {
-      --brand-primary: #{primary};
-      --brand-secondary: #{secondary};
-      --brand-accent: #{accent};
-    }
-    """
-  end
-
-  defp determine_section_zone(section) do
-    case section.section_type do
-      "hero" -> :hero
-      "about" -> :main_content
-      "experience" -> :main_content
-      "skills" -> :sidebar
-      "portfolio" -> :main_content
-      "contact" -> :footer
-      "services" -> :main_content
-      "testimonials" -> :sidebar
-      _ -> :main_content
-    end
-  end
-
-  defp convert_sections_to_content_blocks(_), do: %{}
-
-  defp map_section_type_to_block_type(section_type) do
-    case section_type do
-      "hero" -> :hero_card
-      "about" -> :about_card
-      "experience" -> :experience_card
-      "skills" -> :skills_card
-      "portfolio" -> :project_card
-      "contact" -> :contact_card
-      "services" -> :service_card
-      "testimonials" -> :testimonial_card
-      _ -> :text_card
-    end
-  end
-
-  defp extract_content_from_section(section) do
-    content = section.content || %{}
-
-    case section.section_type do
-      :intro ->
-        %{
-          title: section.title,
-          subtitle: Map.get(content, "headline", ""),
-          content: Map.get(content, "main_content", Map.get(content, "summary", "")),
-          call_to_action: %{text: "Learn More", url: "#about"}
-        }
-
-      :media_showcase ->
-        %{
-          title: section.title,
-          subtitle: Map.get(content, "description", ""),
-          video_url: Map.get(content, "video_url"),
-          background_type: "video"
-        }
-
-      :experience ->
-        %{
-          title: section.title,
-          jobs: Map.get(content, "jobs", []),
-          content: Map.get(content, "main_content", "")
-        }
-
-      :achievements ->
-        %{
-          title: section.title,
-          achievements: Map.get(content, "achievements", []),
-          content: Map.get(content, "main_content", ""),
-          description: Map.get(content, "description", ""),
-          awards: Map.get(content, "awards", [])
-        }
-
-      _ ->
-        %{
-          title: section.title,
-          content: Map.get(content, "main_content", Map.get(content, "summary", "")),
-          description: Map.get(content, "description", "")
-        }
-    end
-  end
 
   defp update_section_in_list(sections, updated_section) do
     Enum.map(sections, fn section ->
@@ -2019,42 +1556,6 @@ end
     get_connect_params(socket)["ref"]
   end
 
-
-
-  defp get_color_palette(scheme) do
-    case scheme do
-      "blue" ->
-        %{primary: "#1e40af", secondary: "#3b82f6", accent: "#60a5fa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
-      "green" ->
-        %{primary: "#065f46", secondary: "#059669", accent: "#34d399", background: "#f0fdf4", surface: "#ffffff", text_primary: "#064e3b", text_secondary: "#6b7280"}
-      "purple" ->
-        %{primary: "#581c87", secondary: "#7c3aed", accent: "#a78bfa", background: "#faf5ff", surface: "#ffffff", text_primary: "#581c87", text_secondary: "#6b7280"}
-      "red" ->
-        %{primary: "#991b1b", secondary: "#dc2626", accent: "#f87171", background: "#fef2f2", surface: "#ffffff", text_primary: "#991b1b", text_secondary: "#6b7280"}
-      "orange" ->
-        %{primary: "#ea580c", secondary: "#f97316", accent: "#fb923c", background: "#fff7ed", surface: "#ffffff", text_primary: "#ea580c", text_secondary: "#6b7280"}
-      "teal" ->
-        %{primary: "#0f766e", secondary: "#14b8a6", accent: "#5eead4", background: "#f0fdfa", surface: "#ffffff", text_primary: "#134e4a", text_secondary: "#6b7280"}
-      _ ->
-        %{primary: "#1e40af", secondary: "#3b82f6", accent: "#60a5fa", background: "#fafafa", surface: "#ffffff", text_primary: "#1f2937", text_secondary: "#6b7280"}
-    end
-  end
-
-  defp get_portfolio_template_class(assigns) do
-    customization = Map.get(assigns, :customization, %{})
-    theme = Map.get(customization, "theme", "professional")
-    layout = Map.get(customization, "layout", "dashboard")
-
-    case {theme, layout} do
-      {"professional", "dashboard"} -> "template-professional-dashboard"
-      {"professional", "grid"} -> "template-professional-grid"
-      {"creative", "dashboard"} -> "template-creative-dashboard"
-      {"creative", "timeline"} -> "template-creative-timeline"
-      {"minimal", _} -> "template-minimal-#{layout}"
-      {"modern", _} -> "template-modern-#{layout}"
-      {theme, layout} -> "template-#{theme}-#{layout}"
-    end
-  end
 
   defp extract_portfolio_description(portfolio) do
     description = portfolio.description || "Professional portfolio and showcase"
@@ -2123,75 +1624,6 @@ end
     end)
   end
 
-  defp render_enhanced_hero_section(assigns) do
-    portfolio = assigns.portfolio
-    sections = Map.get(assigns, :sections, [])
-    color_scheme = Map.get(assigns, :color_scheme, "blue")
-
-    # Use EnhancedHeroRenderer for complete hero section rendering
-    enhanced_hero_html = EnhancedHeroRenderer.render_enhanced_hero(portfolio, sections, color_scheme)
-
-    raw(enhanced_hero_html)
-  end
-
-  defp render_dashboard_layout(assigns) do
-    sections = Map.get(assigns, :sections, [])
-    theme_settings = Map.get(assigns, :theme_settings, %{})
-
-    # Create card configuration from theme settings
-    card_config = %{
-      color_scheme: Map.get(assigns, :color_scheme, "blue"),
-      theme: Map.get(assigns, :theme, "professional")
-    }
-
-    # Render sections using enhanced section cards
-    section_cards = sections
-    |> Enum.map(fn section ->
-      EnhancedSectionCards.render_section_card(section, card_config, "dashboard")
-    end)
-    |> Enum.join("\n")
-
-    ~H"""
-    <div class="min-h-screen bg-gray-50">
-      <!-- Dashboard Header -->
-      <header class="bg-white shadow-sm border-b">
-        <div class="max-w-7xl mx-auto px-6 py-4">
-          <h1 class="text-3xl font-bold text-gray-900"><%= @portfolio.title %></h1>
-          <p class="text-gray-600 mt-1"><%= @portfolio.description %></p>
-        </div>
-      </header>
-
-      <!-- Enhanced Dashboard Content -->
-      <main class="max-w-7xl mx-auto px-6 py-8">
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div class="lg:col-span-2 space-y-8">
-            <%= raw(section_cards) %>
-          </div>
-          <div class="space-y-6">
-            <div class="bg-white rounded-xl shadow-sm border p-6">
-              <h3 class="font-semibold text-gray-900 mb-4">Portfolio Info</h3>
-              <div class="space-y-3 text-sm">
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Sections:</span>
-                  <span class="font-medium"><%= length(@sections) %></span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Theme:</span>
-                  <span class="font-medium"><%= String.capitalize(@theme) %></span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Layout:</span>
-                  <span class="font-medium"><%= String.capitalize(@layout_type) %></span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
-    """
-  end
-
 
 
   defp has_hero_section?(sections) do
@@ -2200,25 +1632,6 @@ end
 
   defp filter_non_hero_sections(sections) do
     Enum.reject(sections, &(&1.section_type == "hero"))
-  end
-
-  defp render_hero_with_template(assigns) do
-    hero_section = Enum.find(assigns.sections, &(&1.section_type == "hero"))
-
-    if hero_section do
-      assigns = assign(assigns, :hero_section, hero_section)
-
-      ~H"""
-      <div class="hero-content">
-        <h1 class="hero-title"><%= @hero_section.title %></h1>
-        <div class="hero-body">
-          <%= render_section_content_safe(@hero_section) %>
-        </div>
-      </div>
-      """
-    else
-      ~H"<div></div>"
-    end
   end
 
   defp get_section_content_map(section) do
@@ -2265,56 +1678,6 @@ end
 
   defp format_video_duration(_), do: "0:00"
 
-
-  defp determine_portfolio_category(portfolio) do
-    customization = portfolio.customization || %{}
-    layout = Map.get(customization, "layout", portfolio.theme)
-
-    case layout do
-      "professional_service_provider" -> :service_provider
-      "creative_portfolio_showcase" -> :creative_showcase
-      "technical_expert_dashboard" -> :technical_expert
-      "content_creator_hub" -> :content_creator
-      "corporate_executive_profile" -> :corporate_executive
-      theme when theme in ["professional_service", "consultant"] -> :service_provider
-      theme when theme in ["creative", "designer", "artist"] -> :creative_showcase
-      theme when theme in ["developer", "engineer", "tech"] -> :technical_expert
-      _ -> :service_provider
-    end
-  end
-
-  defp get_base_zones_for_category(category) do
-    case category do
-      :service_provider ->
-        %{hero: [], about: [], services: [], experience: [], testimonials: [], contact: []}
-      :creative_showcase ->
-        %{hero: [], about: [], portfolio: [], skills: [], experience: [], contact: []}
-      :technical_expert ->
-        %{hero: [], about: [], skills: [], experience: [], projects: [], achievements: [], contact: []}
-      :content_creator ->
-        %{hero: [], about: [], content: [], social: [], monetization: [], contact: []}
-      :corporate_executive ->
-        %{hero: [], about: [], experience: [], achievements: [], leadership: [], contact: []}
-    end
-  end
-
-  defp determine_zone_for_block(block_type, category) do
-    case {block_type, category} do
-      {:hero_card, _} -> :hero
-      {:about_card, _} -> :about
-      {:experience_card, _} -> :experience
-      {:achievement_card, _} -> :achievements
-      {:skill_card, :technical_expert} -> :skills
-      {:skill_card, :creative_showcase} -> :skills
-      {:project_card, :technical_expert} -> :projects
-      {:project_card, :creative_showcase} -> :portfolio
-      {:service_card, _} -> :services
-      {:testimonial_card, _} -> :testimonials
-      {:contact_card, _} -> :contact
-      {_, _} -> :about # fallback
-    end
-  end
-
   defp get_portfolio_brand_settings(portfolio) do
     account = get_portfolio_account(portfolio)
 
@@ -2335,80 +1698,6 @@ end
     portfolio.user_id == current_user.id
   end
 
-
-
-  defp filter_blocks_by_type(content_blocks, types) do
-    Enum.filter(content_blocks, fn block ->
-      block.block_type in types
-    end)
-    |> Enum.sort_by(& &1.position)
-  end
-
-  defp get_section_media_url(section, type) do
-    case section.media do
-      media when is_list(media) ->
-        media
-        |> Enum.find(fn m -> m.media_type == to_string(type) end)
-        |> case do
-          nil -> nil
-          media_item -> media_item.url
-        end
-      _ -> nil
-    end
-  end
-
-  defp extract_cta_from_section(section) do
-    case section.content do
-      content when is_binary(content) ->
-        %{text: "Get Started", url: "#contact"}
-      _ -> nil
-    end
-  end
-
-
-  defp extract_highlights_from_section(_section), do: []
-
-  defp extract_skills_from_section(section) do
-    case section.content do
-      content when is_binary(content) ->
-        [%{name: "Skill", level: "intermediate", category: "general", description: content}]
-      _ -> []
-    end
-  end
-
-  defp extract_projects_from_section(section) do
-    [%{
-      title: section.title || "Project",
-      description: section.content || "",
-      image_url: get_section_media_url(section, :image),
-      url: nil,
-      technologies: []
-    }]
-  end
-
-  defp extract_services_from_section(section) do
-    [%{
-      title: section.title || "Service",
-      description: section.content || "",
-      price: nil,
-      features: [],
-      booking_enabled: false
-    }]
-  end
-
-  defp extract_testimonials_from_section(section) do
-    [%{
-      content: section.content || "",
-      author: "Client",
-      title: "Customer",
-      avatar_url: nil,
-      rating: 5
-    }]
-  end
-
-  defp extract_contact_methods_from_section(_section) do
-    [%{type: "email", value: "contact@example.com", label: "Email"}]
-  end
 
   defp is_portfolio_public?(portfolio) do
     case portfolio.visibility do

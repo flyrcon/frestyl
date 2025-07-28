@@ -13,45 +13,38 @@ defmodule FrestylWeb.PortfolioLive.PortfolioPreviewLive do
 
   @impl true
   def mount(%{"id" => portfolio_id}, _session, socket) do
-    IO.puts("🔥 PREVIEW MOUNT: Starting...")
+    IO.puts("🎬 Preview mounting for portfolio #{portfolio_id}")
 
+    # ✅ SUBSCRIBE TO UPDATES
     if connected?(socket) do
-      PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
+      Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio:#{portfolio_id}")
+      IO.puts("📡 Preview subscribed to updates")
     end
 
-    case Portfolios.get_portfolio_with_sections(portfolio_id) do
-      {:ok, portfolio} ->
-        IO.puts("🔥 PREVIEW MOUNT: Got portfolio with keys: #{inspect(Map.keys(portfolio))}")
+    case load_portfolio_for_preview(portfolio_id) do
+      {:ok, portfolio, sections} ->
+        IO.puts("✅ Preview loaded portfolio: #{portfolio.title}")
 
-        socket = socket |> assign_portfolio_data(portfolio)
-        IO.puts("🔥 PREVIEW MOUNT: After assign_portfolio_data")
-
-        socket = socket |> assign_preview_state()
-        IO.puts("🔥 PREVIEW MOUNT: After assign_preview_state")
+        socket = socket
+        |> assign(:portfolio, portfolio)
+        |> assign(:sections, sections)
+        |> assign(:customization, portfolio.customization || %{})
+        |> assign(:preview_css, generate_preview_css(portfolio))
+        |> assign(:use_enhanced_display, true)
+        |> assign(:mobile_view, false)                               # ✅ Fix mobile_view
+        |> assign(:viewport_width, "100%")                           # ✅ Add viewport_width
+        |> assign(:preview_mode, true)                               # ✅ Add preview_mode
+        |> assign(:last_updated, DateTime.utc_now())
 
         {:ok, socket}
 
-      {:error, _} ->
+      {:error, reason} ->
+        IO.puts("❌ Preview failed to load: #{inspect(reason)}")
         {:ok, socket
         |> put_flash(:error, "Portfolio not found")
         |> redirect(to: ~p"/portfolios")}
     end
-  end
-
-  @impl true
-  def handle_info({:preview_update, data}, socket) do
-    IO.puts("🔥 LivePreview handling preview_update")
-
-    {:noreply, socket
-    |> assign(:sections, Map.get(data, :sections, socket.assigns.sections))
-    |> assign(:customization, Map.get(data, :customization, socket.assigns.customization))
-    |> assign(:last_updated, Map.get(data, :updated_at, DateTime.utc_now()))}
-  end
-
-  defp assign_preview_state(socket) do
-    socket
-    |> assign(:preview_mode, true)
-    |> assign(:last_updated, DateTime.utc_now())
   end
 
   defp assign_portfolio_data(socket, portfolio) do
@@ -66,6 +59,12 @@ defmodule FrestylWeb.PortfolioLive.PortfolioPreviewLive do
     |> assign(:hero_section, hero_section)
   end
 
+  defp assign_preview_state(socket) do
+    socket
+    |> assign(:preview_mode, true)
+    |> assign(:last_updated, DateTime.utc_now())
+  end
+
   # Also add this helper function:
   defp find_hero_section(sections) when is_list(sections) do
     Enum.find(sections, fn section ->
@@ -75,145 +74,455 @@ defmodule FrestylWeb.PortfolioLive.PortfolioPreviewLive do
   end
   defp find_hero_section(_), do: nil
 
+  def handle_event("refresh_preview", _params, socket) do
+    # Force iframe refresh by pushing event to client
+    {:noreply, push_event(socket, "refresh_preview_iframe", %{})}
+  end
+
   @impl true
-  def handle_info(msg, socket) do
-    IO.puts("🔥 LivePreview received unhandled message: #{inspect(msg)}")
+  def handle_info({:preview_update, data}, socket) when is_map(data) do
+    css = Map.get(data, :css, "")
+    customization = Map.get(data, :customization, %{})
+
+    socket = socket
+    |> assign(:portfolio_css, css)
+    |> assign(:customization, customization)
+    |> push_event("inject_design_css", %{css: css})  # ← Add this line
+
     {:noreply, socket}
   end
 
   @impl true
-  def render(assigns) do
-    # FIXED: Make sure portfolio is available or provide defaults
-    portfolio = Map.get(assigns, :portfolio, %{title: "Portfolio Preview"})
-    customization = Map.get(assigns, :customization, %{})
-    sections = Map.get(assigns, :sections, [])
-    hero_section = Map.get(assigns, :hero_section)
+  def handle_info({:inject_css, data}, socket) do
+    css = Map.get(data, :css, "")
 
-    # Safely assign these to the template
-    assigns = assigns
-    |> Map.put(:portfolio, portfolio)
-    |> Map.put(:customization, customization)
-    |> Map.put(:sections, sections)
-    |> Map.put(:hero_section, hero_section)
+    socket = socket
+    |> assign(:preview_css, css)
+    |> push_event("inject_design_css", %{css: css})
 
-    ~H"""
-    <!DOCTYPE html>
-    <html lang="en" class="h-full">
-      <head>
-        <meta charset="utf-8"/>
-        <meta name="viewport" content="width=device-width, initial-scale=1"/>
-        <title><%= @portfolio.title %> - Preview</title>
-        <style>
-          <%= generate_preview_css(@customization) %>
-        </style>
-        <script src="https://cdn.tailwindcss.com"></script>
-      </head>
-      <body class="h-full bg-gray-50 portfolio-preview">
+    {:noreply, socket}
+  end
 
-        <!-- Preview Header -->
-        <div class="bg-blue-600 text-white px-4 py-2 text-sm font-medium text-center">
-          <div class="flex items-center justify-center space-x-2">
-            <svg class="w-4 h-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 616 0z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-            </svg>
-            <span>Live Preview</span>
+  @impl true
+  def handle_info({:portfolio_updated, updated_portfolio}, socket) do
+    IO.puts("📡 Preview received portfolio update - handling...")
+
+    # Update the socket with new portfolio data
+    socket = socket
+    |> assign(:portfolio, updated_portfolio)
+    |> assign(:sections, Portfolios.list_portfolio_sections(updated_portfolio.id))
+    |> assign(:customization, updated_portfolio.customization || %{})
+    |> assign(:last_updated, DateTime.utc_now())
+
+    # Generate new CSS and push to browser
+    updated_css = generate_preview_css(updated_portfolio)  # ✅ FIXED: Use existing function
+    socket = push_event(socket, "update_preview_styles", %{css: updated_css})  # ✅ FIXED: Correct event name
+
+    IO.puts("✅ Preview updated successfully")
+    {:noreply, socket}
+  end
+
+
+  @impl true
+  def handle_info({:section_updated, section}, socket) do
+    IO.puts("🔧 Preview handling section update: #{section.title}")
+
+    # Update the specific section in the sections list
+    updated_sections = update_section_in_list(socket.assigns.sections, section)  # ✅ FIXED: Use correct function
+
+    {:noreply, assign(socket, :sections, updated_sections)}
+  end
+
+  defp load_portfolio_for_preview(portfolio_id) do
+    try do
+      case Frestyl.Portfolios.get_portfolio_with_sections(portfolio_id) do
+        {:ok, portfolio} ->
+          sections = load_portfolio_sections_safe(portfolio_id)
+          {:ok, portfolio, sections}
+        nil ->
+          {:error, :not_found}
+        error ->
+          {:error, error}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error loading portfolio: #{inspect(error)}")
+        {:error, :database_error}
+    end
+  end
+
+    defp load_portfolio_sections_safe(portfolio_id) do
+    try do
+      sections = Frestyl.Portfolios.list_portfolio_sections(portfolio_id)
+      IO.puts("📋 Loaded #{length(sections)} sections for preview")
+      sections
+    rescue
+      error ->
+        IO.puts("❌ Error loading sections: #{inspect(error)}")
+        []
+    end
+  end
+
+  defp get_portfolio_sections(portfolio) do
+    case Map.get(portfolio, :sections) do
+      sections when is_list(sections) -> sections
+      %Ecto.Association.NotLoaded{} ->
+        Frestyl.Portfolios.list_portfolio_sections(portfolio.id)
+      _ -> []
+    end
+  end
+
+  defp update_section_in_sections(sections, updated_section) do
+    Enum.map(sections, fn section ->
+      if section.id == updated_section.id do
+        updated_section
+      else
+        section
+      end
+    end)
+  end
+
+  defp update_section_in_list(sections, updated_section) do
+    Enum.map(sections, fn section ->
+      if section.id == updated_section.id, do: updated_section, else: section
+    end)
+  end
+
+defp render_section_content(section) do
+  content = section.content || %{}
+
+  # Convert atom to string for consistent matching
+  section_type = case section.section_type do
+    atom when is_atom(atom) -> Atom.to_string(atom)
+    string when is_binary(string) -> string
+    _ -> "unknown"
+  end
+
+  case section_type do
+    "hero" ->
+      headline = Map.get(content, "headline", "")
+      tagline = Map.get(content, "tagline", "")
+      cta_text = Map.get(content, "cta_text", "")
+
+      """
+      <div class="hero-content text-center">
+        <h1 class="text-4xl font-bold mb-4 text-primary">#{headline}</h1>
+        <p class="text-xl text-secondary mb-6">#{tagline}</p>
+        #{if cta_text != "", do: "<button class='bg-accent text-white px-6 py-3 rounded-lg'>#{cta_text}</button>", else: ""}
+      </div>
+      """
+
+    # Handle "intro" section type (from your data)
+    "intro" ->
+      intro_content = Map.get(content, "content", "") || Map.get(content, "description", "")
+      headline = Map.get(content, "headline", "")
+      subtitle = Map.get(content, "subtitle", "")
+
+      """
+      <div class="intro-content">
+        #{if headline != "", do: "<h3 class='text-2xl font-bold mb-3 text-primary'>#{headline}</h3>", else: ""}
+        #{if subtitle != "", do: "<p class='text-lg text-secondary mb-4'>#{subtitle}</p>", else: ""}
+        <p class="text-gray-700 leading-relaxed">#{if intro_content != "", do: intro_content, else: "Welcome to my portfolio!"}</p>
+      </div>
+      """
+
+    "about" ->
+      about_content = Map.get(content, "content", "") || Map.get(content, "description", "") || Map.get(content, "main_content", "")
+
+      """
+      <div class="about-content">
+        <p class="text-gray-700 leading-relaxed">#{if about_content != "", do: about_content, else: "Tell your story here..."}</p>
+      </div>
+      """
+
+    "experience" ->
+      # Handle both "experiences" and "jobs" field names from your data
+      experiences = Map.get(content, "experiences", []) || Map.get(content, "jobs", [])
+
+      if length(experiences) > 0 do
+        experience_html = Enum.map(experiences, fn exp ->
+          title = Map.get(exp, "title", "") || Map.get(exp, "position", "")
+          company = Map.get(exp, "company", "")
+          # Handle different date field names
+          period = cond do
+            Map.get(exp, "period") -> Map.get(exp, "period")
+            Map.get(exp, "start_date") && Map.get(exp, "end_date") -> "#{Map.get(exp, "start_date")} - #{Map.get(exp, "end_date")}"
+            Map.get(exp, "duration") -> Map.get(exp, "duration")
+            true -> ""
+          end
+          description = Map.get(exp, "description", "")
+
+          """
+          <div class="experience-item mb-6 p-4 border-l-4 border-accent">
+            <h4 class="font-semibold text-lg text-primary">#{title}</h4>
+            <p class="text-secondary font-medium">#{company}</p>
+            <p class="text-sm text-gray-500 mb-2">#{period}</p>
+            #{if description != "", do: "<p class='text-gray-700'>#{description}</p>", else: ""}
           </div>
-        </div>
+          """
+        end) |> Enum.join("")
 
-        <!-- Portfolio Content -->
-        <div class="portfolio-content">
-          <.render_portfolio_preview
-            layout_style={Map.get(@customization, "layout_style", "modern")}
-            visible_sections={filter_visible_sections(@sections)}
-            visible_non_hero_sections={filter_visible_non_hero_sections(@sections)}
-            hero_section={@hero_section}
-            customization={@customization}
-            sections={@sections} />
+        """
+        <div class="experience-content">
+          #{experience_html}
         </div>
+        """
+      else
+        "<p class='text-gray-500 italic'>No experience added yet</p>"
+      end
 
-      </body>
-    </html>
+"contact" ->
+  # Handle the complex contact structure from your data
+  email = Map.get(content, "email", "")
+  phone = Map.get(content, "phone", "")
+  location = Map.get(content, "location", "")
+  main_content = Map.get(content, "main_content", "")
+  subtitle = Map.get(content, "subtitle", "")
+
+  # Handle social links
+  social_links = Map.get(content, "social_links", %{})
+  linkedin = Map.get(social_links, "linkedin", "")
+  github = Map.get(social_links, "github", "")
+  twitter = Map.get(social_links, "twitter", "")
+  website = Map.get(social_links, "website", "")
+
+  # Build social links HTML conditionally
+  social_html = if linkedin != "" || github != "" || twitter != "" || website != "" do
+    links = []
+    links = if linkedin != "", do: ["<a href='#{linkedin}' class='text-accent hover:underline'>LinkedIn</a>" | links], else: links
+    links = if github != "", do: ["<a href='#{github}' class='text-accent hover:underline'>GitHub</a>" | links], else: links
+    links = if twitter != "", do: ["<a href='#{twitter}' class='text-accent hover:underline'>Twitter</a>" | links], else: links
+    links = if website != "", do: ["<a href='#{website}' class='text-accent hover:underline'>Website</a>" | links], else: links
+
+    """
+    <div class="social-links mt-6">
+      <h4 class="font-medium text-gray-900 mb-3">Connect with me:</h4>
+      <div class="flex space-x-4">
+        #{Enum.reverse(links) |> Enum.join("")}
+      </div>
+    </div>
+    """
+  else
+    ""
+  end
+
+  """
+  <div class="contact-content">
+    #{if subtitle != "", do: "<h3 class='text-xl font-semibold mb-4 text-primary'>#{subtitle}</h3>", else: ""}
+    #{if main_content != "", do: "<p class='text-gray-700 mb-6'>#{main_content}</p>", else: ""}
+
+    <div class="contact-info space-y-3">
+      #{if email != "", do: "<div class='flex items-center'><span class='font-medium text-primary'>Email:</span> <a href='mailto:#{email}' class='ml-2 text-accent hover:underline'>#{email}</a></div>", else: ""}
+      #{if phone != "", do: "<div class='flex items-center'><span class='font-medium text-primary'>Phone:</span> <a href='tel:#{phone}' class='ml-2 text-accent hover:underline'>#{phone}</a></div>", else: ""}
+      #{if location != "", do: "<div class='flex items-center'><span class='font-medium text-primary'>Location:</span> <span class='ml-2 text-gray-700'>#{location}</span></div>", else: ""}
+    </div>
+
+    #{social_html}
+  </div>
+  """
+
+    # Keep all your other section types (education, skills, projects, etc.)
+    "education" ->
+      education = Map.get(content, "education", [])
+
+      if length(education) > 0 do
+        education_html = Enum.map(education, fn edu ->
+          degree = Map.get(edu, "degree", "")
+          school = Map.get(edu, "school", "") || Map.get(edu, "institution", "")
+          year = Map.get(edu, "year", "") || Map.get(edu, "graduation_year", "")
+
+          """
+          <div class="education-item mb-4 p-3 bg-gray-50 rounded-lg">
+            <h4 class="font-semibold text-primary">#{degree}</h4>
+            <p class="text-secondary">#{school}</p>
+            <p class="text-sm text-gray-500">#{year}</p>
+          </div>
+          """
+        end) |> Enum.join("")
+
+        """
+        <div class="education-content">
+          #{education_html}
+        </div>
+        """
+      else
+        "<p class='text-gray-500 italic'>No education added yet</p>"
+      end
+
+    # Add all your other section types here...
+    # (skills, projects, testimonials, etc. - same as before but with atom handling)
+
+    _ ->
+      # Generic fallback
+      main_content = Map.get(content, "content", "") ||
+                    Map.get(content, "main_content", "") ||
+                    Map.get(content, "description", "") ||
+                    Map.get(content, "text", "")
+
+      """
+      <div class="generic-section-content">
+        <p class="text-gray-600">Section Type: <code>#{section_type}</code></p>
+        #{if main_content != "", do: "<p class='text-gray-700 mt-2'>#{main_content}</p>", else: "<p class='text-gray-500 italic mt-2'>No content available for this section type</p>"}
+        <details class="mt-4">
+          <summary class="text-sm text-gray-500 cursor-pointer">Debug: View raw content</summary>
+          <pre class="text-xs bg-gray-100 p-2 rounded mt-2 overflow-auto">#{inspect(content, pretty: true)}</pre>
+        </details>
+      </div>
+      """
+  end
+  |> Phoenix.HTML.raw()
+end
+
+  def render(assigns) do
+    ~H"""
+    <div class="portfolio-preview-container" data-portfolio-id={@portfolio.id} id="portfolio-preview">
+      <!-- Dynamic CSS that gets updated -->
+      <style id="dynamic-portfolio-css">
+        <%= raw(generate_dynamic_css(@portfolio)) %>
+      </style>
+
+      <!-- Portfolio Content -->
+      <%= if @use_enhanced_display do %>
+        <.live_component
+          module={FrestylWeb.PortfolioLive.Display.PortfolioDisplayCoordinator}
+          id="portfolio-display-preview"
+          portfolio={@portfolio}
+          sections={@sections}
+          customization={@customization}
+          preview_mode={@preview_mode} />
+      <% else %>
+        <.render_traditional_portfolio {assigns} />
+      <% end %>
+
+      <!-- Preview indicator -->
+      <div class="fixed bottom-4 right-4 bg-blue-600 text-white px-3 py-1 rounded-full text-sm shadow-lg">
+        Preview Mode
+        <%= if Map.get(assigns, :last_updated) do %>
+          <span class="ml-2 opacity-75">
+            Updated <%= time_ago(@last_updated) %>
+          </span>
+        <% end %>
+      </div>
+    </div>
     """
   end
 
-defp render_portfolio_preview(assigns) do
-  # Get the layout from customization
-  layout_style = Map.get(assigns.customization, "portfolio_layout", "dashboard")
+  defp render_enhanced_portfolio(assigns) do
+    ~H"""
+    <.live_component
+      module={FrestylWeb.PortfolioLive.Display.PortfolioDisplayCoordinator}
+      id="portfolio-display-preview"
+      portfolio={@portfolio}
+      sections={@sections}
+      customization={@customization}
+      preview_mode={@preview_mode} />
+    """
+  end
 
-  ~H"""
-  <div class={["portfolio-container", "layout-#{layout_style}"]}>
-    <!-- Hero Section (same for all layouts) -->
-    <%= if @hero_section && @hero_section.visible do %>
-      <.render_hero_preview hero_section={@hero_section} customization={@customization} />
-    <% end %>
+  # ✅ FALLBACK TRADITIONAL RENDERING
+  defp render_traditional_portfolio(assigns) do
+    ~H"""
+    <div class="traditional-portfolio max-w-4xl mx-auto p-8">
+      <!-- Hero Section -->
+      <header class="text-center mb-12">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4"><%= @portfolio.title %></h1>
+        <p class="text-xl text-gray-600"><%= @portfolio.description %></p>
+      </header>
 
-    <!-- Render sections based on layout -->
-    <%= case layout_style do %>
-      <% "single_column" -> %>
-        <main class="portfolio-sections max-w-4xl mx-auto px-6 py-8">
-          <%= for section <- @visible_non_hero_sections do %>
-            <div class="mb-16">
-              <.render_section_preview section={section} customization={@customization} />
-            </div>
+      <!-- Sections -->
+      <div class="space-y-12">
+        <%= for section <- @sections do %>
+          <%= if section.visible do %>
+            <section class="border-b border-gray-200 pb-8">
+              <h2 class="text-2xl font-semibold text-gray-900 mb-4"><%= section.title %></h2>
+              <div class="prose max-w-none">
+                <%= render_section_content_simple(section) %>
+              </div>
+            </section>
           <% end %>
-        </main>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
 
-      <% "dashboard" -> %>
-        <main class="portfolio-sections max-w-7xl mx-auto px-6 py-8">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+  defp render_portfolio_preview(assigns) do
+    # Get the layout from customization
+    layout_style = Map.get(assigns.customization, "portfolio_layout", "dashboard")
+
+    ~H"""
+    <div class={["portfolio-container", "layout-#{layout_style}"]}>
+      <!-- Hero Section (same for all layouts) -->
+      <%= if @hero_section && @hero_section.visible do %>
+        <.render_hero_preview hero_section={@hero_section} customization={@customization} />
+      <% end %>
+
+      <!-- Render sections based on layout -->
+      <%= case layout_style do %>
+        <% "single_column" -> %>
+          <main class="portfolio-sections max-w-4xl mx-auto px-6 py-8">
             <%= for section <- @visible_non_hero_sections do %>
-              <div class="bg-white rounded-xl shadow-lg border p-6 hover:shadow-xl transition-shadow">
+              <div class="mb-16">
                 <.render_section_preview section={section} customization={@customization} />
               </div>
             <% end %>
-          </div>
-        </main>
+          </main>
 
-      <% "grid" -> %>
-        <main class="portfolio-sections max-w-7xl mx-auto px-6 py-8">
-          <div class="columns-1 md:columns-2 lg:columns-3 gap-8 space-y-8">
-            <%= for section <- @visible_non_hero_sections do %>
-              <div class="break-inside-avoid bg-white rounded-xl shadow-lg border p-6 mb-8">
-                <.render_section_preview section={section} customization={@customization} />
-              </div>
-            <% end %>
-          </div>
-        </main>
-
-      <% "timeline" -> %>
-        <main class="portfolio-sections max-w-4xl mx-auto px-6 py-8">
-          <div class="relative">
-            <!-- Timeline line -->
-            <div class="absolute left-8 top-0 bottom-0 w-1 bg-blue-300"></div>
-            <%= for {section, index} <- Enum.with_index(@visible_non_hero_sections) do %>
-              <div class="relative flex items-start mb-12">
-                <!-- Timeline dot -->
-                <div class="flex-shrink-0 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg z-10">
-                  <%= index + 1 %>
-                </div>
-                <!-- Content -->
-                <div class="ml-8 flex-1 bg-white rounded-xl shadow-lg border p-6">
+        <% "dashboard" -> %>
+          <main class="portfolio-sections max-w-7xl mx-auto px-6 py-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <%= for section <- @visible_non_hero_sections do %>
+                <div class="bg-white rounded-xl shadow-lg border p-6 hover:shadow-xl transition-shadow">
                   <.render_section_preview section={section} customization={@customization} />
                 </div>
+              <% end %>
+            </div>
+          </main>
+
+        <% "grid" -> %>
+          <main class="portfolio-sections max-w-7xl mx-auto px-6 py-8">
+            <div class="columns-1 md:columns-2 lg:columns-3 gap-8 space-y-8">
+              <%= for section <- @visible_non_hero_sections do %>
+                <div class="break-inside-avoid bg-white rounded-xl shadow-lg border p-6 mb-8">
+                  <.render_section_preview section={section} customization={@customization} />
+                </div>
+              <% end %>
+            </div>
+          </main>
+
+        <% "timeline" -> %>
+          <main class="portfolio-sections max-w-4xl mx-auto px-6 py-8">
+            <div class="relative">
+              <!-- Timeline line -->
+              <div class="absolute left-8 top-0 bottom-0 w-1 bg-blue-300"></div>
+              <%= for {section, index} <- Enum.with_index(@visible_non_hero_sections) do %>
+                <div class="relative flex items-start mb-12">
+                  <!-- Timeline dot -->
+                  <div class="flex-shrink-0 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg z-10">
+                    <%= index + 1 %>
+                  </div>
+                  <!-- Content -->
+                  <div class="ml-8 flex-1 bg-white rounded-xl shadow-lg border p-6">
+                    <.render_section_preview section={section} customization={@customization} />
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          </main>
+
+        <% _ -> %>
+          <!-- Default fallback -->
+          <main class="portfolio-sections max-w-6xl mx-auto px-6 py-8">
+            <%= for section <- @visible_non_hero_sections do %>
+              <div class="mb-12">
+                <.render_section_preview section={section} customization={@customization} />
               </div>
             <% end %>
-          </div>
-        </main>
-
-      <% _ -> %>
-        <!-- Default fallback -->
-        <main class="portfolio-sections max-w-6xl mx-auto px-6 py-8">
-          <%= for section <- @visible_non_hero_sections do %>
-            <div class="mb-12">
-              <.render_section_preview section={section} customization={@customization} />
-            </div>
-          <% end %>
-        </main>
-    <% end %>
-  </div>
-  """
-end
+          </main>
+      <% end %>
+    </div>
+    """
+  end
 
   defp render_hero_preview(assigns) do
     assigns = assign(assigns, :content, assigns.hero_section.content || %{})
@@ -1052,6 +1361,463 @@ end
     sections
     |> Enum.filter(& &1.visible)
     |> Enum.reject(&(&1.section_type == :hero or &1.section_type == "hero"))
+  end
+
+  defp generate_dynamic_css(portfolio) do
+    customization = portfolio.customization || %{}
+
+    primary_color = Map.get(customization, "primary_color", "#1e40af")
+    secondary_color = Map.get(customization, "secondary_color", "#64748b")
+    accent_color = Map.get(customization, "accent_color", "#f59e0b")
+    font_family = Map.get(customization, "font_family", "Inter, sans-serif")
+    font_size = Map.get(customization, "font_size", "medium")
+    border_radius = Map.get(customization, "border_radius", "medium")
+    theme = Map.get(customization, "theme", "professional")
+    portfolio_layout = Map.get(customization, "portfolio_layout", "grid")
+    professional_type = Map.get(customization, "professional_type", "general")
+
+    # Convert values to CSS units
+    font_size_px = case font_size do
+      "small" -> "14px"
+      "medium" -> "16px"
+      "large" -> "18px"
+      _ -> "16px"
+    end
+
+    border_radius_px = case border_radius do
+      "none" -> "0px"
+      "small" -> "4px"
+      "medium" -> "8px"
+      "large" -> "12px"
+      "xl" -> "16px"
+      _ -> "8px"
+    end
+
+    custom_css = Map.get(customization, "custom_css", "")
+
+    """
+    :root {
+      --primary-color: #{primary_color};
+      --secondary-color: #{secondary_color};
+      --accent-color: #{accent_color};
+      --font-family: #{font_family};
+      --font-size: #{font_size_px};
+      --border-radius: #{border_radius_px};
+      --theme: #{theme};
+      --portfolio-layout: #{portfolio_layout};
+      --professional-type: #{professional_type};
+    }
+
+    /* ===== TARGET ACTUAL RENDERED ELEMENTS ===== */
+
+    /* Portfolio Display Container */
+    .portfolio-display,
+    .portfolio-preview-container,
+    .portfolio-container,
+    .basic-portfolio-layout {
+      font-family: var(--font-family) !important;
+      font-size: var(--font-size) !important;
+    }
+
+    /* ===== LAYOUT-SPECIFIC TARGETING ===== */
+
+    /* Grid Layout - FIXED SQUARE SECTIONS */
+    [data-portfolio-layout="grid"] {
+      background: #ffffff !important;
+      padding: 1rem !important;
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-sections,
+    [data-portfolio-layout="grid"] > * {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)) !important;
+      grid-auto-rows: 320px !important; /* FIXED SQUARE HEIGHT */
+      gap: 1.5rem !important;
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-section {
+      background: white !important;
+      border-radius: 12px !important;
+      padding: 1.5rem !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+      border: 1px solid #e5e7eb !important;
+      width: 100% !important;
+      height: 100% !important; /* Fill the fixed grid cell */
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-section .section-title {
+      flex-shrink: 0 !important;
+      margin-bottom: 1rem !important;
+      font-weight: 600 !important;
+      font-size: 1.1rem !important;
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-section .section-content {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding-right: 8px !important;
+      min-height: 0 !important; /* Important for flex scrolling */
+    }
+
+    [data-portfolio-layout="grid"] .portfolio-section:hover {
+      transform: translateY(-2px) !important;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important;
+    }
+
+    /* Dashboard Layout - MAX HEIGHT, SCROLLABLE */
+    [data-portfolio-layout="dashboard"] {
+      background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) !important;
+      padding: 1rem !important;
+    }
+
+    [data-portfolio-layout="dashboard"] .portfolio-sections,
+    [data-portfolio-layout="dashboard"] > * {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+      gap: 1rem !important;
+      grid-auto-rows: auto !important; /* Auto height, controlled by max-height */
+    }
+
+    [data-portfolio-layout="dashboard"] .portfolio-section {
+      background: white !important;
+      border-radius: 8px !important;
+      padding: 1rem !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+      border: 1px solid #d1d5db !important;
+      max-height: 250px !important; /* MAX HEIGHT - NOT FIXED */
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    [data-portfolio-layout="dashboard"] .portfolio-section .section-title {
+      flex-shrink: 0 !important;
+      margin-bottom: 0.75rem !important;
+      font-weight: 600 !important;
+      font-size: 1rem !important;
+    }
+
+    [data-portfolio-layout="dashboard"] .portfolio-section .section-content {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding-right: 6px !important;
+      min-height: 0 !important;
+    }
+
+    /* Single Column - MAX HEIGHT, SCROLLABLE */
+    [data-portfolio-layout="single_column"] {
+      max-width: 800px !important;
+      margin: 0 auto !important;
+      background: #f8fafc !important;
+      padding: 2rem !important;
+      border-radius: 12px !important;
+    }
+
+    [data-portfolio-layout="single_column"] .portfolio-sections,
+    [data-portfolio-layout="single_column"] > * {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 2rem !important;
+    }
+
+    [data-portfolio-layout="single_column"] .portfolio-section {
+      background: white !important;
+      padding: 2rem !important;
+      border-radius: 12px !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+      border-left: 4px solid var(--primary-color) !important;
+      max-height: 400px !important; /* MAX HEIGHT - NOT FIXED */
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    [data-portfolio-layout="single_column"] .portfolio-section .section-title {
+      flex-shrink: 0 !important;
+      margin-bottom: 1.5rem !important;
+      font-weight: 600 !important;
+      font-size: 1.25rem !important;
+    }
+
+    [data-portfolio-layout="single_column"] .portfolio-section .section-content {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding-right: 12px !important;
+      min-height: 0 !important;
+    }
+
+    /* Creative Layout - MAX HEIGHT, SCROLLABLE */
+    [data-portfolio-layout="creative"] {
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
+      padding: 1rem !important;
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-sections,
+    [data-portfolio-layout="creative"] > * {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+      gap: 1.5rem !important;
+      grid-auto-rows: auto !important; /* Auto height, controlled by max-height */
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-section {
+      background: linear-gradient(135deg, white 0%, #f8fafc 100%) !important;
+      border-radius: 16px !important;
+      padding: 1.5rem !important;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.1) !important;
+      max-height: 350px !important; /* MAX HEIGHT - NOT FIXED */
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    /* Hero section in creative gets special treatment */
+    [data-portfolio-layout="creative"] .portfolio-section:first-child {
+      grid-column: 1 / -1 !important;
+      max-height: 250px !important;
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-section .section-title {
+      flex-shrink: 0 !important;
+      margin-bottom: 1rem !important;
+      font-weight: 600 !important;
+      font-size: 1.1rem !important;
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-section .section-content {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding-right: 10px !important;
+      min-height: 0 !important;
+    }
+
+    [data-portfolio-layout="creative"] .portfolio-section:hover {
+      transform: scale(1.01) !important;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.15) !important;
+    }
+
+    /* ===== SCROLLBAR STYLING FOR ALL LAYOUTS ===== */
+    [data-portfolio-layout] .section-content::-webkit-scrollbar {
+      width: 6px !important;
+    }
+
+    [data-portfolio-layout] .section-content::-webkit-scrollbar-track {
+      background: #f8f9fa !important;
+      border-radius: 3px !important;
+    }
+
+    [data-portfolio-layout] .section-content::-webkit-scrollbar-thumb {
+      background: #d1d5db !important;
+      border-radius: 3px !important;
+    }
+
+    [data-portfolio-layout] .section-content::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af !important;
+    }
+
+    /* ===== RESPONSIVE BEHAVIOR ===== */
+    @media (max-width: 768px) {
+      /* Grid stays square but smaller on mobile */
+      [data-portfolio-layout="grid"] .portfolio-sections,
+      [data-portfolio-layout="grid"] > * {
+        grid-template-columns: 1fr !important;
+        grid-auto-rows: 280px !important;
+      }
+
+      /* Other layouts stack single column on mobile */
+      [data-portfolio-layout="dashboard"] .portfolio-sections,
+      [data-portfolio-layout="creative"] .portfolio-sections {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
+    /* ===== PROFESSIONAL TYPE STYLING ===== */
+
+    .portfolio-display[data-professional-type="creative"] {
+      --accent-color: #ec4899;
+      background: linear-gradient(135deg, #fdf2f8 0%, #f3e8ff 100%);
+    }
+
+    .portfolio-display[data-professional-type="creative"] .portfolio-section {
+      border-top: 3px solid var(--accent-color);
+    }
+
+    .portfolio-display[data-professional-type="technical"] {
+      --accent-color: #10b981;
+      background: #f0fdf4;
+    }
+
+    .portfolio-display[data-professional-type="technical"] .portfolio-section {
+      border-left: 4px solid var(--accent-color);
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+    }
+
+    .portfolio-display[data-professional-type="business"] {
+      --accent-color: #3b82f6;
+      background: #f8fafc;
+    }
+
+    .portfolio-display[data-professional-type="business"] .portfolio-section {
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+
+    /* ===== COLOR APPLICATIONS ===== */
+
+    /* Primary color applications */
+    .text-primary,
+    .text-blue-600,
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--primary-color) !important;
+    }
+
+    .bg-primary,
+    .bg-blue-600,
+    .btn-primary {
+      background-color: var(--primary-color) !important;
+    }
+
+    .border-primary,
+    .border-blue-500 {
+      border-color: var(--primary-color) !important;
+    }
+
+    /* Apply to common elements */
+    .section-title {
+      color: var(--primary-color) !important;
+    }
+
+    .hero-section h1 {
+      color: var(--primary-color) !important;
+    }
+
+    #{custom_css}
+    """
+  end
+
+  @impl true
+  def handle_info({:inject_css, data}, socket) do
+    css = Map.get(data, :css, "")
+
+    socket = socket
+    |> assign(:preview_css, css)
+    |> push_event("inject_design_css", %{css: css})
+
+    {:noreply, socket}
+  end
+
+  defp time_ago(datetime) do
+    seconds = DateTime.diff(DateTime.utc_now(), datetime)
+    cond do
+      seconds < 60 -> "just now"
+      seconds < 3600 -> "#{div(seconds, 60)}m ago"
+      true -> "#{div(seconds, 3600)}h ago"
+    end
+  end
+
+
+  defp get_theme_specific_css(theme, primary, secondary, accent) do
+    case theme do
+      "developer" ->
+        """
+        .terminal-hero {
+          background: #1e1e1e;
+          color: #00ff00;
+          font-family: 'JetBrains Mono', monospace;
+        }
+        .code-block {
+          background: #2d2d2d;
+          border: 1px solid #{primary};
+        }
+        """
+      "creative" ->
+        """
+        .creative-hero {
+          background: linear-gradient(135deg, #{primary}, #{accent});
+        }
+        .portfolio-section {
+          box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        """
+      "minimalist" ->
+        """
+        .portfolio-section {
+          border: none;
+          box-shadow: none;
+          background: white;
+        }
+        h1, h2, h3 {
+          font-weight: 300;
+        }
+        """
+      _ ->
+        """
+        .portfolio-section {
+          background: white;
+          border: 1px solid #e5e7eb;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        """
+    end
+  end
+
+  defp render_section_content_simple(section) do
+    content = section.content || %{}
+
+    case section.section_type do
+      :experience ->
+        items = Map.get(content, "items", [])
+        if length(items) > 0 do
+          items
+          |> Enum.map(fn item ->
+            """
+            <div class="mb-4">
+              <h3 class="font-semibold">#{Map.get(item, "title", "")}</h3>
+              <p class="text-primary font-medium">#{Map.get(item, "company", "")}</p>
+              <p class="text-sm text-gray-600">#{Map.get(item, "start_date", "")} - #{Map.get(item, "end_date", "")}</p>
+              <p class="mt-2">#{Map.get(item, "description", "")}</p>
+            </div>
+            """
+          end)
+          |> Enum.join("")
+          |> Phoenix.HTML.raw()
+        else
+          Phoenix.HTML.raw("<p>No experience entries yet.</p>")
+        end
+
+      :skills ->
+        categories = Map.get(content, "skill_categories", [])
+        if length(categories) > 0 do
+          categories
+          |> Enum.map(fn category ->
+            skills = Map.get(category, "skills", [])
+            skill_names = Enum.map(skills, fn skill ->
+              if is_map(skill), do: Map.get(skill, "name", skill), else: skill
+            end)
+            """
+            <div class="mb-4">
+              <h3 class="font-semibold">#{Map.get(category, "name", "")}</h3>
+              <div class="flex flex-wrap gap-2 mt-2">
+                #{Enum.map(skill_names, fn skill ->
+                  "<span class='bg-primary text-white px-2 py-1 rounded text-sm'>#{skill}</span>"
+                end) |> Enum.join("")}
+              </div>
+            </div>
+            """
+          end)
+          |> Enum.join("")
+          |> Phoenix.HTML.raw()
+        else
+          Phoenix.HTML.raw("<p>No skills added yet.</p>")
+        end
+
+      _ ->
+        description = Map.get(content, "description", Map.get(content, "content", ""))
+        Phoenix.HTML.raw("<p>#{description}</p>")
+    end
   end
 
   defp generate_preview_css(customization) do

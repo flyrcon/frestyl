@@ -1204,15 +1204,38 @@ def get_portfolio_by_share_token_simple(token) do
     |> Repo.insert()
   end
 
-  def update_portfolio_section(section, section_params) do
-    section
-    |> PortfolioSection.changeset(section_params)
+  def update_portfolio_section(section, attrs) do
+    IO.puts("🔧 UPDATING SECTION #{section.id} with: #{inspect(attrs)}")
+
+    result = section
+    |> PortfolioSection.changeset(attrs)
     |> Repo.update()
+
+    case result do
+      {:ok, updated_section} ->
+        IO.puts("✅ SECTION UPDATED SUCCESSFULLY")
+        {:ok, updated_section}
+      {:error, changeset} ->
+        IO.puts("❌ SECTION UPDATE FAILED: #{inspect(changeset.errors)}")
+        {:error, changeset}
+    end
   end
 
   def delete_portfolio_section(section) do
-    Repo.delete(section)
+    IO.puts("🔧 DELETING SECTION #{section.id}")
+
+    result = Repo.delete(section)
+
+    case result do
+      {:ok, deleted_section} ->
+        IO.puts("✅ SECTION DELETED SUCCESSFULLY")
+        {:ok, deleted_section}
+      {:error, changeset} ->
+        IO.puts("❌ SECTION DELETE FAILED: #{inspect(changeset.errors)}")
+        {:error, changeset}
+    end
   end
+
 
   @doc """
   Get share by token
@@ -1284,13 +1307,32 @@ def get_portfolio_by_share_token_simple(token) do
   defp remove_recursive_legacy_backup(value), do: value
 
 
-  def update_portfolio_customization(portfolio, customization_params) do
-    current_customization = portfolio.customization || %{}
-    updated_customization = Map.merge(current_customization, customization_params)
+  def update_portfolio_customization_by_id(portfolio_id, customization_params) do
+    IO.puts("🔧 UPDATING PORTFOLIO #{portfolio_id} CUSTOMIZATION")
+    IO.puts("🔧 PARAMS: #{inspect(customization_params)}")
 
-    portfolio
-    |> Portfolio.changeset(%{customization: updated_customization})
-    |> Repo.update()
+    case get_portfolio(portfolio_id) do
+      nil ->
+        IO.puts("❌ PORTFOLIO NOT FOUND")
+        {:error, :not_found}
+
+      portfolio ->
+        current_customization = portfolio.customization || %{}
+        updated_customization = Map.merge(current_customization, customization_params)
+
+        result = portfolio
+        |> Portfolio.changeset(%{customization: updated_customization})
+        |> Repo.update()
+
+        case result do
+          {:ok, updated_portfolio} ->
+            IO.puts("✅ PORTFOLIO CUSTOMIZATION UPDATED")
+            {:ok, updated_portfolio}
+          {:error, changeset} ->
+            IO.puts("❌ PORTFOLIO UPDATE FAILED: #{inspect(changeset.errors)}")
+            {:error, changeset}
+        end
+    end
   end
 
   def update_portfolio_seo_settings(portfolio, seo_params) do
@@ -1315,6 +1357,16 @@ def get_portfolio_by_share_token_simple(token) do
 
     portfolio
     |> Portfolio.changeset(%{customization: safe_customization})
+    |> Repo.update()
+  end
+
+  def update_portfolio_customization_by_id(portfolio_id, customization_params) do
+    portfolio = Repo.get!(Portfolio, portfolio_id)
+    current_customization = portfolio.customization || %{}
+    updated_customization = Map.merge(current_customization, customization_params)
+
+    portfolio
+    |> Portfolio.changeset(%{customization: updated_customization})
     |> Repo.update()
   end
 

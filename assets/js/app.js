@@ -107,56 +107,36 @@ Hooks.ColorPicker = {
 
 Hooks.DesignUpdater = {
   mounted() {
-    this.handleEvent("design_updated", ({customization}) => {
-      console.log("Design updated:", customization);
-      this.updateFormElements(customization);
-    });
-  },
-  
-  updateFormElements(customization) {
-    // Force update portfolio layout with visual feedback
-    const layoutContainer = document.getElementById('layout-options');
-    if (layoutContainer) {
-      const layoutLabels = layoutContainer.querySelectorAll('label');
-      layoutLabels.forEach(label => {
-        const input = label.querySelector('input[name="portfolio_layout"]');
-        const container = label.querySelector('div');
+    console.log('DesignUpdater hook mounted')
+    
+    this.handleEvent("update_portfolio_css", ({css}) => {
+      console.log('Received CSS update:', css.substring(0, 100) + '...')
+      
+      // Update the dynamic CSS in preview
+      let styleElement = document.getElementById("dynamic-portfolio-css")
+      if (styleElement) {
+        styleElement.innerHTML = css
+        console.log('✅ CSS updated successfully')
+      } else {
+        console.log('❌ Could not find #dynamic-portfolio-css element')
         
-        if (input && container) {
-          const isSelected = input.value === customization.portfolio_layout;
-          input.checked = isSelected;
-          
-          // Update visual state
-          if (isSelected) {
-            label.classList.add('ring-2', 'ring-blue-500');
-            container.classList.remove('border-gray-200');
-            container.classList.add('border-blue-500', 'bg-blue-50');
-          } else {
-            label.classList.remove('ring-2', 'ring-blue-500');
-            container.classList.remove('border-blue-500', 'bg-blue-50');
-            container.classList.add('border-gray-200');
-          }
-        }
-      });
-    }
-    
-    // Force update font family select
-    const fontSelect = document.querySelector('select[name="font_family"]');
-    if (fontSelect && customization.font_family) {
-      fontSelect.value = customization.font_family;
-      // Trigger visual update
-      fontSelect.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    
-    // Force update theme select
-    const themeSelect = document.querySelector('select[name="layout_style"]');
-    if (themeSelect && customization.layout_style) {
-      themeSelect.value = customization.layout_style;
-      // Trigger visual update
-      themeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-    }
+        // Try to create the style element if it doesn't exist
+        let newStyle = document.createElement('style')
+        newStyle.id = 'dynamic-portfolio-css'
+        newStyle.innerHTML = css
+        document.head.appendChild(newStyle)
+        console.log('✅ Created new CSS style element')
+      }
+    })
+
+    this.handleEvent("refresh_preview_iframe", () => {
+      let iframe = document.getElementById("portfolio-preview-iframe")
+      if (iframe) {
+        iframe.src = iframe.src  // Force reload
+      }
+    })
   }
-};
+}
 
 // SortableSections Hook
 Hooks.SortableSections = {
@@ -326,6 +306,84 @@ Hooks.VideoCapture = {
 };*/
 
 console.log("🔥 All hooks defined:", Object.keys(Hooks))
+
+export default Hooks
+
+// Make sure Hooks object exists
+window.Hooks = window.Hooks || {};
+
+// Fix the DesignUpdater hook
+window.Hooks.DesignUpdater = {
+  mounted() {
+    console.log("DesignUpdater hook mounted successfully");
+    
+    this.handleEvent("design_updated", (data) => {
+      console.log("🎨 Design updated:", data);
+      this.updatePortfolioStyles(data.customization);
+    });
+    
+    // Listen for direct CSS injection
+    this.handleEvent("inject_design_css", (data) => {
+      console.log("🎨 CSS injection received:", data.css.substring(0, 100) + "...");
+      this.injectCSS(data.css);
+    });
+  },
+  
+  injectCSS(css) {
+    // Remove old portfolio CSS
+    const oldCSS = document.getElementById('dynamic-portfolio-css');
+    if (oldCSS) {
+      oldCSS.remove();
+    }
+    
+    // Inject new CSS
+    const style = document.createElement('style');
+    style.id = 'dynamic-portfolio-css';
+    style.innerHTML = css;
+    document.head.appendChild(style);
+    
+    console.log("✅ CSS injected successfully");
+    
+    // Force layout recalculation
+    const containers = document.querySelectorAll('.portfolio-display, .portfolio-preview-container');
+    containers.forEach(container => {
+      container.style.display = 'none';
+      container.offsetHeight; // Trigger reflow
+      container.style.display = '';
+      console.log("🔄 Container attributes:", {
+        'data-portfolio-layout': container.getAttribute('data-portfolio-layout'),
+        'data-professional-type': container.getAttribute('data-professional-type'),
+        classes: container.className
+      });
+    });
+  },
+  
+  updatePortfolioStyles(customization) {
+    console.log("🔄 Updating portfolio styles:", customization);
+    
+    // Update data attributes
+    const containers = document.querySelectorAll('.portfolio-display, .portfolio-preview-container');
+    containers.forEach(container => {
+      if (customization.portfolio_layout) {
+        container.setAttribute('data-portfolio-layout', customization.portfolio_layout);
+        console.log("📝 Set data-portfolio-layout to:", customization.portfolio_layout);
+      }
+      if (customization.professional_type) {
+        container.setAttribute('data-professional-type', customization.professional_type);
+        console.log("📝 Set data-professional-type to:", customization.professional_type);
+      }
+    });
+    
+    // Update CSS custom properties
+    const root = document.documentElement;
+    if (customization.primary_color) {
+      root.style.setProperty('--primary-color', customization.primary_color);
+    }
+    if (customization.portfolio_layout) {
+      root.style.setProperty('--portfolio-layout', customization.portfolio_layout);
+    }
+  }
+};
 
 // Get CSRF token
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")

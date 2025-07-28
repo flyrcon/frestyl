@@ -4,25 +4,25 @@ defmodule Frestyl.Workers.RevenueCalculator do
   Calculate and distribute revenue from syndicated content
   """
 
-  use Oban.Worker, queue: :revenue
+#  use Oban.Worker, queue: :revenue
 
   import Ecto.Query, warn: false
   alias Frestyl.Repo
   alias Frestyl.Content.{Syndication, Document}
   alias Frestyl.Billing.RevenueDistribution
 
-  @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"syndication_id" => syndication_id}}) do
-    with {:ok, syndication} <- get_syndication_with_document(syndication_id),
-         {:ok, revenue} <- calculate_revenue(syndication),
-         {:ok, distributions} <- calculate_distributions(syndication, revenue) do
-
-      update_revenue_attribution(syndication, revenue, distributions)
-      process_revenue_distributions(distributions)
-
-      :ok
-    end
-  end
+#  @impl Oban.Worker
+#  def perform(%Oban.Job{args: %{"syndication_id" => syndication_id}}) do
+#   with {:ok, syndication} <- get_syndication_with_document(syndication_id),
+#         {:ok, revenue} <- calculate_revenue(syndication),
+#         {:ok, distributions} <- calculate_distributions(syndication, revenue) do
+#
+#      update_revenue_attribution(syndication, revenue, distributions)
+#      process_revenue_distributions(distributions)
+#
+#      :ok
+#    end
+#  end
 
   defp calculate_revenue(syndication) do
     # Platform-specific revenue calculation
