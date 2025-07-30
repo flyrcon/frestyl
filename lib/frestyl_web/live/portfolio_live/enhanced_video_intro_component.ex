@@ -33,27 +33,14 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
 
 
   @impl true
-  def update(%{portfolio: portfolio, current_user: user} = assigns, socket) do
-    # Get user subscription tier for quality settings
-    user_tier = TierManager.get_user_tier(user)
-
-    # Check if video intro section already exists
-    existing_video_section = get_existing_video_section(portfolio.id)
-
-    # Get predefined positions for video placement
-    available_positions = get_available_positions()
-    current_position = get_current_video_position(existing_video_section)
-
-    socket =
-      socket
-      |> assign(assigns)
-      |> assign(:user_tier, user_tier)
-      |> assign(:existing_video_section, existing_video_section)
-      |> assign(:available_positions, available_positions)
-      |> assign(:current_position, current_position)
-      |> assign(:section_visible, get_section_visibility(existing_video_section))
-      |> assign(:max_duration, get_max_duration_for_tier(user_tier))
-      |> assign(:quality_info, get_quality_info_for_tier(user_tier))
+  def update(assigns, socket) do
+    socket = socket
+    |> assign(assigns)
+    |> assign(:recording_state, :idle)
+    |> assign(:countdown, nil)
+    |> assign(:recording_duration, 0)
+    |> assign(:camera_status, :initializing)
+    |> assign(:error_message, nil)
 
     {:ok, socket}
   end
@@ -117,7 +104,144 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   # EVENT HANDLERS - RECORDING CONTROLS
   # ============================================================================
 
+    @impl true
+  def handle_event("camera_initialized", _params, socket) do
+    IO.puts("📹 Camera initialized successfully")
+
+    socket = socket
+    |> assign(:camera_status, :ready)
+    |> assign(:error_message, nil)
+
+    {:noreply, socket}
+  end
+
   @impl true
+  def handle_event("camera_error", %{"error" => error}, socket) do
+    IO.puts("❌ Camera error: #{error}")
+
+    socket = socket
+    |> assign(:camera_status, :error)
+    |> assign(:error_message, "Camera access failed: #{error}")
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("start_countdown", _params, socket) do
+    if socket.assigns.camera_status == :ready do
+      IO.puts("⏰ Starting countdown...")
+
+      # Start the countdown process
+      socket = socket
+      |> assign(:recording_state, :countdown)
+      |> assign(:countdown, 3)
+
+      # Send countdown update event to hook
+      send(self(), {:countdown_tick, socket.assigns.id})
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "Camera not ready")}
+    end
+  end
+
+  @impl true
+  def handle_event("cancel_countdown", _params, socket) do
+    IO.puts("❌ Countdown cancelled")
+
+    socket = socket
+    |> assign(:recording_state, :idle)
+    |> assign(:countdown, nil)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("countdown_complete", _params, socket) do
+    IO.puts("🎬 Countdown complete, starting recording")
+
+    socket = socket
+    |> assign(:recording_state, :recording)
+    |> assign(:countdown, nil)
+    |> assign(:recording_duration, 0)
+
+    # Send recording start event to hook
+    send(self(), {:start_recording, socket.assigns.id})
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("stop_recording", _params, socket) do
+    IO.puts("⏹️ Stopping recording")
+
+    socket = socket
+    |> assign(:recording_state, :idle)
+    |> assign(:recording_duration, 0)
+
+    # Send stop recording event to hook
+    send(self(), {:stop_recording, socket.assigns.id})
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("recording_update", %{"duration" => duration}, socket) do
+    socket = assign(socket, :recording_duration, duration)
+    {:noreply, socket}
+  end
+
+  # Handle countdown tick messages
+  @impl true
+  def handle_info({:countdown_tick, component_id}, socket) do
+    if socket.assigns.id == component_id && socket.assigns.recording_state == :countdown do
+      current_countdown = socket.assigns.countdown
+
+      if current_countdown > 1 do
+        # Continue countdown
+        socket = assign(socket, :countdown, current_countdown - 1)
+        Process.send_after(self(), {:countdown_tick, component_id}, 1000)
+        {:noreply, socket}
+      else
+        # Countdown finished, start recording
+        handle_event("countdown_complete", %{}, socket)
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:start_recording, component_id}, socket) do
+    if socket.assigns.id == component_id do
+      # Push event to JavaScript hook to start recording
+      send_update_after(self(), __MODULE__, %{id: socket.assigns.id}, 0)
+      {:noreply, push_event(socket, "start-recording", %{component_id: component_id})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:stop_recording, component_id}, socket) do
+    if socket.assigns.id == component_id do
+      # Push event to JavaScript hook to stop recording
+      {:noreply, push_event(socket, "stop-recording", %{component_id: component_id})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Helper function to format recording duration
+  defp format_duration(seconds) when is_integer(seconds) do
+    minutes = div(seconds, 60)
+    remaining_seconds = rem(seconds, 60)
+    "#{String.pad_leading(to_string(minutes), 2, "0")}:#{String.pad_leading(to_string(remaining_seconds), 2, "0")}"
+  end
+  defp format_duration(_), do: "00:00"
+######
+
+    @impl true
   def handle_event("toggle_upload_mode", _params, socket) do
     if socket.assigns.user_tier in ["pro", "premium"] do
       upload_mode = !socket.assigns.upload_mode
@@ -605,101 +729,102 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-4xl w-full">
-      <!-- Fixed Header with Better Menu Placement -->
-      <div class="bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-4">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center space-x-3">
-            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
-              <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-              </svg>
-            </div>
-            <div>
-              <h3 class="text-xl font-bold text-white">Video Introduction</h3>
-              <p class="text-purple-100 text-sm">Record a personal introduction for your portfolio</p>
-            </div>
-          </div>
+    <div class="video-intro-component" id={"video-intro-#{@id}"}>
+      <!-- Camera Preview -->
+      <div class="camera-container mb-4">
+        <video id={"camera-preview-#{@id}"}
+               class="camera-preview w-full h-64 bg-gray-900 rounded-lg object-cover"
+               muted
+               playsinline
+               phx-hook="VideoCapture"
+               data-component-id={@id}>
+        </video>
 
-          <!-- Fixed Menu Button with Loading State -->
-          <div class="flex items-center space-x-2">
-            <div class="relative">
-              <button phx-click="toggle_menu" phx-target={@myself}
-                      disabled={@menu_loading}
-                      class="p-2 text-white hover:bg-white hover:bg-opacity-10 rounded-lg transition-colors disabled:opacity-50">
-                <%= if @menu_loading do %>
-                  <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                <% else %>
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
-                  </svg>
-                <% end %>
-              </button>
-
-              <!-- Fixed Dropdown Menu with Better Positioning -->
-              <%= if @show_menu do %>
-                <div class="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50 overflow-hidden">
-                  <div class="py-2">
-                    <button phx-click="reset_recording" phx-target={@myself}
-                            class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors flex items-center">
-                      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                      </svg>
-                      Reset Recording
-                    </button>
-
-                    <button phx-click="test_camera" phx-target={@myself}
-                            class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors flex items-center">
-                      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                      </svg>
-                      Test Camera
-                    </button>
-
-                    <hr class="my-2 border-gray-200">
-
-                    <button phx-click="close_modal" phx-target={@myself}
-                            class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center">
-                      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                      </svg>
-                      Close Modal
-                    </button>
-                  </div>
-                </div>
-              <% end %>
-            </div>
-
-            <button phx-click="close_modal" phx-target={@myself}
-                    class="p-2 text-white hover:bg-white hover:bg-opacity-10 rounded-lg transition-colors">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
+        <!-- Camera Status Overlay -->
+        <div class="camera-status-overlay absolute inset-0 flex items-center justify-center"
+             style={"display: #{if @camera_status == :ready, do: "none", else: "flex"}"}>
+          <%= case @camera_status do %>
+            <% :initializing -> %>
+              <div class="text-center text-white">
+                <svg class="animate-spin w-8 h-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p>Initializing camera...</p>
+              </div>
+            <% :error -> %>
+              <div class="text-center text-red-300">
+                <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                </svg>
+                <p>Camera access denied</p>
+                <p class="text-sm">Please allow camera access and refresh</p>
+              </div>
+          <% end %>
         </div>
       </div>
 
-      <!-- Video Content Area with Loading States -->
-      <div class="p-6">
-        <%= case @recording_state do %>
-          <% :setup -> %>
-            <%= render_camera_setup(assigns) %>
-          <% :countdown -> %>
-            <%= render_countdown(assigns) %>
-          <% :recording -> %>
-            <%= render_recording_interface(assigns) %>
-          <% :preview -> %>
-            <%= render_preview(assigns) %>
-          <% :saving -> %>
-            <%= render_saving_state(assigns) %>
-          <% :complete -> %>
-            <%= render_completion(assigns) %>
-          <% :error -> %>
-            <%= render_error_state(assigns) %>
+      <!-- Recording Controls -->
+      <div class="recording-controls flex flex-col items-center space-y-4">
+        <!-- Countdown Display -->
+        <%= if @countdown && @countdown > 0 do %>
+          <div class="countdown-display">
+            <div class="text-6xl font-bold text-blue-600 animate-pulse">
+              <%= @countdown %>
+            </div>
+            <p class="text-gray-600">Get ready...</p>
+          </div>
+        <% end %>
+
+        <!-- Recording Duration -->
+        <%= if @recording_state == :recording do %>
+          <div class="recording-duration flex items-center space-x-2 text-red-600">
+            <div class="recording-dot w-3 h-3 bg-red-600 rounded-full animate-pulse"></div>
+            <span class="font-mono">
+              <%= format_duration(@recording_duration) %>
+            </span>
+          </div>
+        <% end %>
+
+        <!-- Control Buttons -->
+        <div class="control-buttons flex space-x-4">
+          <%= case @recording_state do %>
+            <% :idle -> %>
+              <button phx-click="start_countdown"
+                      phx-target={@myself}
+                      disabled={@camera_status != :ready}
+                      class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                Start Recording
+              </button>
+
+            <% :countdown -> %>
+              <button phx-click="cancel_countdown"
+                      phx-target={@myself}
+                      class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                Cancel
+              </button>
+
+            <% :recording -> %>
+              <button phx-click="stop_recording"
+                      phx-target={@myself}
+                      class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+                </svg>
+                Stop Recording
+              </button>
+          <% end %>
+        </div>
+
+        <!-- Error Message -->
+        <%= if @error_message do %>
+          <div class="error-message bg-red-50 border border-red-200 rounded-lg p-3 text-red-800 text-sm">
+            <%= @error_message %>
+          </div>
         <% end %>
       </div>
     </div>

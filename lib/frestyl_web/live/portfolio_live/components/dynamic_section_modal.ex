@@ -55,6 +55,10 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
           </button>
         </div>
 
+        <div class="px-6 pt-6 pb-0">
+          <%= render_section_form_errors(assigns) %>
+        </div>
+
         <!-- Modal Content -->
         <div class="p-6 max-h-[calc(90vh-200px)] overflow-y-auto">
           <form phx-submit="save_section" class="space-y-6" id="section-form">
@@ -779,5 +783,37 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
   def handle_event("close_section_modal", _params, socket) do
     send(self(), :close_section_modal)
     {:noreply, socket}
+  end
+
+  defp render_section_form_errors(assigns) do
+    ~H"""
+    <%= if Map.get(assigns, :section_changeset_errors, []) != [] do %>
+      <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div class="flex items-start">
+          <svg class="w-5 h-5 text-red-400 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+          </svg>
+          <div>
+            <h4 class="text-sm font-medium text-red-800 mb-2">Please fix the following errors:</h4>
+            <ul class="text-sm text-red-700 space-y-1">
+              <%= for {field, {message, _details}} <- @section_changeset_errors do %>
+                <li>• <%= format_field_name(field) %> <%= message %></li>
+              <% end %>
+            </ul>
+          </div>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  # Also add this helper function to format field names nicely:
+  defp format_field_name(field) do
+    field
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.split(" ")
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
   end
 end

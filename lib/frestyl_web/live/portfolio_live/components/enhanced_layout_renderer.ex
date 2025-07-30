@@ -20,26 +20,82 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer do
   # ============================================================================
 
   def render_portfolio_layout(portfolio, sections, layout_type, color_scheme, theme) do
+    IO.puts("🎨 ENHANCED LAYOUT RENDERER called")
+    IO.puts("🎨 Layout: #{layout_type}")
+    IO.puts("🎨 Color scheme: #{color_scheme}")
+    IO.puts("🎨 Theme: #{theme}")
+    IO.puts("🎨 Sections count: #{length(sections)}")
+
     # Filter visible sections for navigation
     visible_sections = filter_visible_sections(sections)
+    IO.puts("🎨 Visible sections: #{length(visible_sections)}")
 
     # Get clean layout configuration
     layout_config = get_clean_layout_config(layout_type, color_scheme)
+    IO.puts("🎨 Layout config: #{inspect(layout_config)}")
 
     # Render based on layout type
-    case normalize_layout_type(layout_type) do
+    normalized_layout = normalize_layout_type(layout_type)
+    IO.puts("🎨 Normalized layout: #{normalized_layout}")
+
+    result = case normalized_layout do
       :sidebar -> render_sidebar_layout(portfolio, sections, visible_sections, layout_config)
       :single -> render_single_layout(portfolio, sections, visible_sections, layout_config)
       :workspace -> render_workspace_layout(portfolio, sections, visible_sections, layout_config)
-      # Legacy support - map old layout names to new ones
-      :standard -> render_single_layout(portfolio, sections, visible_sections, layout_config)
-      :dashboard -> render_workspace_layout(portfolio, sections, visible_sections, layout_config)
-      :grid -> render_workspace_layout(portfolio, sections, visible_sections, layout_config)
-      :timeline -> render_single_layout(portfolio, sections, visible_sections, layout_config)
-      :magazine -> render_single_layout(portfolio, sections, visible_sections, layout_config)
-      :minimal -> render_single_layout(portfolio, sections, visible_sections, layout_config)
       _ -> render_single_layout(portfolio, sections, visible_sections, layout_config)
     end
+
+    IO.puts("🎨 Layout rendered successfully")
+    result
+  end
+
+  defp render_workspace_cards(sections, config) do
+    sections
+    |> Enum.with_index()
+    |> Enum.map(fn {section, index} ->
+      # Get section details
+      section_title = get_section_title(section)
+      section_preview = get_section_preview(section)
+      section_emoji = get_section_emoji(section.section_type)
+
+      # Calculate grid positioning
+      grid_class = case rem(index, 3) do
+        0 -> "md:col-span-2"  # First item spans 2 columns
+        _ -> "md:col-span-1"  # Others span 1 column
+      end
+
+      """
+      <div id="section-#{section.id}"
+          class="workspace-card bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-#{config.color_scheme}-200 transition-all duration-300 cursor-pointer #{grid_class}"
+          onclick="scrollToSection('#{section.id}')">
+
+        <!-- Card Header -->
+        <div class="flex items-center mb-4">
+          <div class="w-12 h-12 bg-#{config.color_scheme}-100 rounded-xl flex items-center justify-center mr-4 flex-shrink-0">
+            <span class="text-xl">#{section_emoji}</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <h3 class="font-semibold text-gray-900 truncate">#{section_title}</h3>
+            <p class="text-sm text-#{config.color_scheme}-600">#{format_section_type_title(section.section_type)}</p>
+          </div>
+        </div>
+
+        <!-- Card Content Preview -->
+        <div class="mb-4">
+          <p class="text-sm text-gray-600 line-clamp-3">#{section_preview}</p>
+        </div>
+
+        <!-- Card Footer with Action -->
+        <div class="flex items-center justify-between pt-4 border-t border-gray-100">
+          <span class="text-xs text-gray-500 uppercase tracking-wide">#{get_section_category(section.section_type)}</span>
+          <svg class="w-4 h-4 text-#{config.color_scheme}-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </div>
+      </div>
+      """
+    end)
+    |> Enum.join("\n")
   end
 
   # ============================================================================
@@ -113,8 +169,6 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer do
 
   defp render_single_layout(portfolio, sections, visible_sections, config) do
     has_media = has_portfolio_media?(portfolio, sections)
-    social_links = extract_social_links_from_portfolio(portfolio)
-    contact_info = extract_contact_info_from_portfolio(portfolio, sections)
 
     """
     <div class="portfolio-layout single-layout min-h-screen bg-white">
@@ -160,58 +214,34 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer do
 
   defp render_workspace_layout(portfolio, sections, visible_sections, config) do
     has_media = has_portfolio_media?(portfolio, sections)
-    primary_sections = get_primary_sections(sections)
-    secondary_sections = get_secondary_sections(sections)
-    social_links = extract_social_links_from_portfolio(portfolio)
-    contact_info = extract_contact_info_from_portfolio(portfolio, sections)
 
     """
-    <div class="portfolio-layout workspace-layout min-h-screen bg-gray-50">
-      <!-- Workspace Header -->
-      <header class="bg-white border-b border-gray-200 sticky top-0 z-30">
-        <div class="max-w-7xl mx-auto px-6 py-4">
-          <div class="flex items-center justify-between">
-            #{render_unified_workspace_header(portfolio, social_links, contact_info)}
-
-            <!-- Workspace Nav -->
-            <nav class="hidden lg:flex items-center space-x-6">
+    <div class="portfolio-layout workspace-layout min-h-screen bg-white">
+      <!-- Top Navigation Bar -->
+      <nav class="fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-6">
+          <div class="flex items-center justify-between h-16">
+            <h1 class="text-xl font-bold text-gray-900">#{portfolio.title}</h1>
+            <div class="flex items-center space-x-4">
               #{render_workspace_nav_items(visible_sections)}
-            </nav>
-
-            <!-- Mobile Menu Button -->
-            <button onclick="toggleWorkspaceMenu()" class="lg:hidden p-2 text-gray-600 hover:text-gray-900">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-              </svg>
-            </button>
+            </div>
           </div>
         </div>
-      </header>
+      </nav>
 
-      <!-- Hero Section -->
-      #{render_clean_hero(portfolio, sections, has_media, "workspace")}
-
-      <!-- Workspace Grid -->
-      <main class="max-w-7xl mx-auto px-6 py-8">
-        <!-- Primary Content Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <!-- Main Content Column -->
-          <div class="lg:col-span-2 space-y-6">
-            #{render_primary_workspace_sections(primary_sections, config)}
-          </div>
-
-          <!-- Sidebar Column -->
-          <div class="space-y-6">
-            #{render_secondary_workspace_sections(secondary_sections, config)}
-          </div>
+      <!-- Main Content with Grid -->
+      <main class="pt-16 min-h-screen">
+        <!-- Hero Section -->
+        <div class="bg-gray-50 py-12">
+          #{render_clean_hero(portfolio, sections, has_media, "workspace")}
         </div>
 
-        <!-- Additional Sections -->
-        #{if length(sections) > length(primary_sections) + length(secondary_sections) do
-          render_additional_workspace_sections(sections -- primary_sections -- secondary_sections, config)
-        else
-          ""
-        end}
+        <!-- Dashboard Grid -->
+        <div class="max-w-7xl mx-auto px-6 py-8">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            #{render_workspace_cards(sections, config)}
+          </div>
+        </div>
       </main>
 
       #{render_layout_scripts()}
@@ -262,133 +292,139 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer do
     </div>
     """
   end
-    defp render_clean_hero(portfolio, sections, has_media, layout_type) do
-    intro_video = find_intro_video(sections)
+
+# ============================================================================
+# HERO RENDERING FUNCTIONS
+# ============================================================================
+
+
+  defp render_clean_hero(portfolio, sections, has_media, layout_type) do
     social_links = extract_social_links_from_portfolio(portfolio)
     contact_info = extract_contact_info_from_portfolio(portfolio, sections)
 
-    # Determine hero height based on content
-    hero_height = cond do
-      intro_video && Map.get(intro_video.content || %{}, "video_url") -> "min-h-[500px]"
-      has_media -> "min-h-[400px]"
-      true -> "py-16"
+    if has_media do
+      render_media_hero(portfolio, social_links, contact_info, layout_type)
+    else
+      render_text_hero(portfolio, social_links, contact_info, layout_type)
     end
+  end
 
-    hero_bg = case layout_type do
-      "workspace" -> "bg-white border-b border-gray-200"
-      _ -> "bg-white border-b border-gray-100"
-    end
+  defp render_media_hero(portfolio, social_links, contact_info, layout_type) do
+    video_url = get_portfolio_video_url(portfolio)
 
     """
-    <section class="hero-section #{hero_height} #{hero_bg}">
-      <div class="max-w-4xl mx-auto px-6 lg:px-8 py-8">
-        #{if intro_video do
-          render_video_hero(portfolio, intro_video, social_links, contact_info, layout_type)
-        else
-          render_text_hero(portfolio, social_links, contact_info, layout_type)
-        end}
+    <section class="py-12 px-6 lg:px-8">
+      <div class="max-w-4xl mx-auto">
+        <div class="flex flex-col lg:flex-row items-center gap-8">
+          <!-- Media -->
+          <div class="w-full lg:w-1/2">
+            #{if video_url do
+              "<div class=\"aspect-video rounded-lg overflow-hidden shadow-lg\">
+                <video controls preload=\"metadata\" class=\"w-full h-full object-cover\">
+                  <source src=\"#{video_url}\" type=\"video/mp4\">
+                  Your browser does not support the video tag.
+                </video>
+              </div>"
+            else
+              "<div class=\"aspect-video bg-gray-100 rounded-lg flex items-center justify-center\">
+                <div class=\"text-center text-gray-500\">
+                  <svg class=\"w-12 h-12 mx-auto mb-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
+                    <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1\" d=\"M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z\"/>
+                  </svg>
+                  <p class=\"text-sm\">Video introduction</p>
+                </div>
+              </div>"
+            end}
+          </div>
+
+          <!-- Content -->
+          <div class="flex-1">
+            <h1 class="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">#{portfolio.title}</h1>
+            #{if portfolio.description do
+              "<p class=\"text-lg text-gray-600 leading-relaxed mb-6\">#{portfolio.description}</p>"
+            else
+              ""
+            end}
+
+            <!-- Social & Contact for non-sidebar layouts -->
+            #{if layout_type != "sidebar" do
+              render_hero_social_contact(social_links, contact_info)
+            else
+              ""
+            end}
+
+            #{render_hero_actions(portfolio)}
+          </div>
+        </div>
       </div>
     </section>
     """
   end
 
-  defp render_video_hero(portfolio, video_section, social_links, contact_info, layout_type) do
-    video_content = video_section.content || %{}
-    video_url = Map.get(video_content, "video_url")
-
+  defp render_text_hero(portfolio, social_links, contact_info, layout_type) do
     """
-    <div class="flex flex-col lg:flex-row items-center gap-8">
-      <!-- Video -->
-      <div class="flex-1">
-        #{if video_url do
-          "<div class=\"aspect-video bg-gray-100 rounded-lg overflow-hidden shadow-sm\">
-            <video controls class=\"w-full h-full object-cover\">
-              <source src=\"#{video_url}\" type=\"video/mp4\">
-              Your browser does not support the video tag.
-            </video>
-          </div>"
-        else
-          "<div class=\"aspect-video bg-gray-100 rounded-lg flex items-center justify-center\">
-            <div class=\"text-center text-gray-500\">
-              <svg class=\"w-12 h-12 mx-auto mb-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1\" d=\"M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z\"/>
-              </svg>
-              <p class=\"text-sm\">Video introduction</p>
-            </div>
-          </div>"
-        end}
-      </div>
-
-      <!-- Content -->
-      <div class="flex-1">
-        <h1 class="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">#{portfolio.title}</h1>
+    <section class="py-16 px-6 lg:px-8">
+      <div class="max-w-4xl mx-auto text-center">
+        <h1 class="text-4xl lg:text-6xl font-bold text-gray-900 mb-6">#{portfolio.title}</h1>
         #{if portfolio.description do
-          "<p class=\"text-lg text-gray-600 leading-relaxed mb-6\">#{portfolio.description}</p>"
+          "<p class=\"text-xl text-gray-600 leading-relaxed mb-8 max-w-2xl mx-auto\">#{portfolio.description}</p>"
         else
           ""
         end}
 
         <!-- Social & Contact for non-sidebar layouts -->
         #{if layout_type != "sidebar" do
-          render_hero_social_contact(social_links, contact_info)
+          "<div class=\"flex justify-center\">" <> render_hero_social_contact(social_links, contact_info) <> "</div>"
         else
           ""
         end}
 
         #{render_hero_actions(portfolio)}
       </div>
-    </div>
-    """
-  end
-
-  defp render_text_hero(portfolio, social_links, contact_info, layout_type) do
-    """
-    <div class="text-center max-w-3xl mx-auto">
-      <h1 class="text-3xl lg:text-5xl font-bold text-gray-900 mb-6">#{portfolio.title}</h1>
-      #{if portfolio.description do
-        "<p class=\"text-xl text-gray-600 leading-relaxed mb-8\">#{portfolio.description}</p>"
-      else
-        ""
-      end}
-
-      <!-- Social & Contact for non-sidebar layouts -->
-      #{if layout_type != "sidebar" do
-        render_hero_social_contact(social_links, contact_info)
-      else
-        ""
-      end}
-
-      #{render_hero_actions(portfolio)}
-    </div>
+    </section>
     """
   end
 
   defp render_hero_social_contact(social_links, contact_info) do
-    """
-    <div class="flex flex-col sm:flex-row items-center justify-center gap-6 mb-8">
-      #{if length(social_links) > 0 do
-        render_hero_social_links(social_links)
-      else
-        ""
-      end}
+    social_html = social_links
+    |> Enum.map(fn {platform, url} ->
+      """
+      <a href="#{url}" target="_blank"
+        class="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm text-gray-700 transition-colors mr-3 mb-3">
+        #{get_social_icon_simple(platform)}
+        <span class="ml-2">#{format_platform_name(platform)}</span>
+      </a>
+      """
+    end)
+    |> Enum.join("\n")
 
-      #{if contact_info[:email] || contact_info[:phone] do
-        render_hero_contact_info(contact_info)
-      else
-        ""
-      end}
-    </div>
-    """
+    contact_html = if contact_info[:email] do
+      """
+      <a href="mailto:#{contact_info[:email]}"
+        class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors mr-3 mb-3">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        Contact
+      </a>
+      """
+    else
+      ""
+    end
+
+    "<div class=\"flex flex-wrap items-center justify-center mb-8\">" <> social_html <> contact_html <> "</div>"
   end
 
   defp render_hero_actions(portfolio) do
     """
-    <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-      <button class="px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium">
-        Get in Touch
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+      <button onclick="scrollToSection('content')"
+              class="px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
+        View Portfolio
       </button>
-      <button class="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium">
-        View Work
+      <button onclick="openContactModal()"
+              class="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+        Get in Touch
       </button>
     </div>
     """
@@ -672,12 +708,687 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer do
     """
   end
 
+  defp render_sidebar_layout(portfolio, sections, visible_sections, config) do
+    has_media = has_portfolio_media?(portfolio, sections)
+    social_links = extract_social_links_from_portfolio(portfolio)
+    contact_info = extract_contact_info_from_portfolio(portfolio, sections)
+
+    """
+    <div class="portfolio-layout sidebar-layout min-h-screen bg-white">
+      <div class="flex">
+        <!-- Sidebar Navigation -->
+        <nav class="fixed left-0 top-0 w-64 h-full bg-gray-50 border-r border-gray-200 z-30 lg:block hidden">
+          <div class="p-6">
+            <!-- Portfolio Owner -->
+            <div class="text-center mb-8">
+              <div class="w-16 h-16 bg-gray-200 rounded-full mx-auto mb-3 flex items-center justify-center">
+                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
+              </div>
+              <h2 class="font-semibold text-gray-900">#{portfolio.title}</h2>
+            </div>
+
+            <!-- Navigation -->
+            <ul class="space-y-2">
+              #{render_sidebar_nav_items(visible_sections)}
+            </ul>
+
+            <!-- Contact & Social -->
+            <div class="mt-8 pt-8 border-t border-gray-200">
+              #{render_sidebar_contact_social(social_links, contact_info)}
+            </div>
+          </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1 lg:ml-64">
+          <!-- Unified Hero Section -->
+          #{render_clean_hero(portfolio, sections, has_media, "sidebar")}
+
+          <!-- Content Sections -->
+          <div class="px-6 lg:px-8 py-8">
+            #{render_clean_sections(sections, "sidebar", config)}
+          </div>
+        </main>
+      </div>
+
+      #{render_layout_scripts()}
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # SINGLE LAYOUT - Clean single-column with floating navigation
+  # ============================================================================
+
+  defp render_single_layout(portfolio, sections, visible_sections, config) do
+    has_media = has_portfolio_media?(portfolio, sections)
+    social_links = extract_social_links_from_portfolio(portfolio)
+    contact_info = extract_contact_info_from_portfolio(portfolio, sections)
+
+    """
+    <div class="portfolio-layout single-layout min-h-screen bg-white">
+      <!-- Floating Navigation -->
+      <nav class="fixed top-6 right-6 z-40 lg:block hidden">
+        <div class="bg-white rounded-lg shadow-lg border border-gray-200 p-2 max-w-xs">
+          <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 py-2">Navigation</h4>
+          <ul class="space-y-1">
+            #{render_compact_nav_items(visible_sections)}
+          </ul>
+        </div>
+      </nav>
+
+      <!-- Mobile Navigation -->
+      <div class="lg:hidden fixed bottom-6 right-6 z-40">
+        <button onclick="toggleFloatingNav()"
+                class="p-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Main Content -->
+      <main class="max-w-4xl mx-auto">
+        <!-- Unified Hero Section -->
+        #{render_clean_hero(portfolio, sections, has_media, "single")}
+
+        <!-- Content Sections -->
+        <div class="px-6 lg:px-8 py-8">
+          #{render_clean_sections(sections, "single", config)}
+        </div>
+      </main>
+
+      #{render_layout_scripts()}
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # WORKSPACE LAYOUT - Unique dashboard-style layout
+  # ============================================================================
+
+  defp render_workspace_layout(portfolio, sections, visible_sections, config) do
+    has_media = has_portfolio_media?(portfolio, sections)
+    social_links = extract_social_links_from_portfolio(portfolio)
+    contact_info = extract_contact_info_from_portfolio(portfolio, sections)
+
+    """
+    <div class="portfolio-layout workspace-layout min-h-screen bg-white">
+      <!-- Top Navigation Bar -->
+      <nav class="fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-6">
+          <div class="flex items-center justify-between h-16">
+            <h1 class="text-xl font-bold text-gray-900">#{portfolio.title}</h1>
+            <div class="flex items-center space-x-4">
+              #{render_workspace_nav_items(visible_sections)}
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main Content with Grid -->
+      <main class="pt-16 min-h-screen">
+        <!-- Hero Section -->
+        <div class="bg-gray-50 py-12">
+          #{render_clean_hero(portfolio, sections, has_media, "workspace")}
+        </div>
+
+        <!-- Dashboard Grid -->
+        <div class="max-w-7xl mx-auto px-6 py-8">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            #{render_workspace_cards(sections, config)}
+          </div>
+        </div>
+      </main>
+
+      #{render_layout_scripts()}
+    </div>
+    """
+  end
+
+
   # ============================================================================
   # HELPER FUNCTIONS
   # ============================================================================
 
+  defp render_sidebar_nav_items(sections) do
+    sections
+    |> Enum.map(fn section ->
+      """
+      <li>
+        <a href="#section-#{section.id}"
+          class="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+          <span class="mr-3">#{get_section_emoji(section.section_type)}</span>
+          #{get_section_title(section)}
+        </a>
+      </li>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp render_compact_nav_items(sections) do
+    sections
+    |> Enum.map(fn section ->
+      """
+      <li>
+        <a href="#section-#{section.id}"
+          class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded transition-colors">
+          #{get_section_title(section)}
+        </a>
+      </li>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp render_workspace_nav_items(sections) do
+    sections
+    |> Enum.take(5)  # Limit to 5 items for top nav
+    |> Enum.map(fn section ->
+      """
+      <a href="#section-#{section.id}"
+        class="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+        #{get_section_title(section)}
+      </a>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp render_sidebar_contact_social(social_links, contact_info) do
+    social_html = social_links
+    |> Enum.map(fn {platform, url} ->
+      """
+      <a href="#{url}" target="_blank"
+        class="flex items-center text-sm text-gray-600 hover:text-gray-900 mb-2">
+        #{get_social_icon_simple(platform)}
+        <span class="ml-2">#{format_platform_name(platform)}</span>
+      </a>
+      """
+    end)
+    |> Enum.join("\n")
+
+    contact_html = if contact_info[:email] do
+      """
+      <a href="mailto:#{contact_info[:email]}"
+        class="flex items-center text-sm text-gray-600 hover:text-gray-900 mb-2">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        Contact
+      </a>
+      """
+    else
+      ""
+    end
+
+    social_html <> contact_html
+  end
+
+
+  defp render_hero_actions(portfolio) do
+    """
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+      <button onclick="scrollToSection('content')"
+              class="px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
+        View Portfolio
+      </button>
+      <button onclick="openContactModal()"
+              class="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+        Get in Touch
+      </button>
+    </div>
+    """
+  end
+
+  defp render_clean_sections(sections, layout_type, config) do
+    sections
+    |> Enum.map(fn section ->
+      render_clean_section_card(section, layout_type, config)
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp render_clean_section_card(section, layout_type, config) do
+    """
+    <section id="section-#{section.id}" class="mb-12 scroll-mt-20">
+      <div class="bg-white rounded-lg border border-gray-200 p-6 lg:p-8 shadow-sm hover:shadow-md transition-shadow">
+        <div class="flex items-center mb-6">
+          <div class="w-10 h-10 bg-#{config.color_scheme}-100 rounded-lg flex items-center justify-center mr-4">
+            <span class="text-lg">#{get_section_emoji(section.section_type)}</span>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-900">#{get_section_title(section)}</h2>
+        </div>
+
+        <div class="prose prose-gray max-w-none">
+          #{render_section_content_safe(section)}
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  # ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+defp get_portfolio_video_url(portfolio) do
+  # Safely access video_url - it might be in different locations
+  video_url = case portfolio do
+    %{video_url: url} when url != nil and url != "" -> url
+    _ ->
+      # Check if it's in customization
+      customization = Map.get(portfolio, :customization, %{})
+      Map.get(customization, "video_url") ||
+      Map.get(customization, "intro_video") ||
+      nil
+  end
+
+  case video_url do
+    nil -> nil
+    "" -> nil
+    url -> url
+  end
+end
+
+defp has_portfolio_media?(portfolio, sections) do
+  # Safely check if portfolio has video
+  has_video = case get_portfolio_video_url(portfolio) do
+    nil -> false
+    "" -> false
+    _url -> true
+  end
+
+  # Check if any section has media
+  has_section_media = Enum.any?(sections, fn section ->
+    content = section.content || %{}
+    Map.has_key?(content, "image_url") ||
+    Map.has_key?(content, "video_url") ||
+    Map.has_key?(content, "media_url")
+  end)
+
+  has_video || has_section_media
+end
+
+defp extract_social_links_from_portfolio(portfolio) do
+  customization = portfolio.customization || %{}
+  social_links = Map.get(customization, "social_links", %{})
+
+  # Convert string keys to atoms and filter out empty values
+  social_links
+  |> Enum.filter(fn {_key, value} -> value && value != "" end)
+  |> Enum.map(fn {key, value} -> {String.to_atom(key), value} end)
+end
+
+defp extract_contact_info_from_portfolio(portfolio, sections) do
+  # Try to get contact info from portfolio customization first
+  customization = portfolio.customization || %{}
+
+  contact_email = Map.get(customization, "contact_email") ||
+                  Map.get(customization, "email")
+
+  # If not found, look in contact sections
+  contact_email = contact_email || find_contact_email_in_sections(sections)
+
+  %{
+    email: contact_email,
+    phone: Map.get(customization, "phone"),
+    location: Map.get(customization, "location")
+  }
+end
+
+defp find_contact_email_in_sections(sections) do
+  contact_section = Enum.find(sections, fn section ->
+    String.contains?(to_string(section.section_type), "contact")
+  end)
+
+  case contact_section do
+    nil -> nil
+    section ->
+      content = section.content || %{}
+      Map.get(content, "email")
+  end
+end
+
+defp get_section_emoji(section_type) do
+  case to_string(section_type) do
+    "about" -> "👋"
+    "intro" -> "👋"
+    "experience" -> "💼"
+    "work_experience" -> "💼"
+    "education" -> "🎓"
+    "skills" -> "⚡"
+    "projects" -> "🚀"
+    "portfolio" -> "🎨"
+    "contact" -> "📧"
+    "testimonials" -> "💬"
+    "certifications" -> "📜"
+    "achievements" -> "🏆"
+    _ -> "📄"
+  end
+end
+
+defp get_section_title(section) do
+  case section.content do
+    %{"title" => title} when title != nil and title != "" -> title
+    _ -> format_section_type_title(section.section_type)
+  end
+end
+
+defp format_section_type_title(section_type) do
+  section_type
+  |> to_string()
+  |> String.replace("_", " ")
+  |> String.split(" ")
+  |> Enum.map(&String.capitalize/1)
+  |> Enum.join(" ")
+end
+
+defp get_section_preview(section) do
+  content = section.content || %{}
+
+  preview = Map.get(content, "summary") ||
+            Map.get(content, "description") ||
+            Map.get(content, "content")
+
+  case preview do
+    nil -> "Click to view details"
+    text when is_binary(text) ->
+      text
+      |> String.slice(0, 100)
+      |> then(fn truncated ->
+        if String.length(text) > 100 do
+          truncated <> "..."
+        else
+          truncated
+        end
+      end)
+    _ -> "Click to view details"
+  end
+end
+
+defp get_social_icon_simple(platform) do
+  case to_string(platform) do
+    "linkedin" -> """
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M16.338 16.338H13.67V12.16c0-.995-.017-2.277-1.387-2.277-1.39 0-1.601 1.086-1.601 2.207v4.248H8.014v-8.59h2.559v1.174h.037c.356-.675 1.227-1.387 2.526-1.387 2.703 0 3.203 1.778 3.203 4.092v4.711zM5.005 6.575a1.548 1.548 0 11-.003-3.096 1.548 1.548 0 01.003 3.096zm-1.337 9.763H6.34v-8.59H3.667v8.59zM17.668 1H2.328C1.595 1 1 1.581 1 2.298v15.403C1 18.418 1.595 19 2.328 19h15.34c.734 0 1.332-.582 1.332-1.299V2.298C19 1.581 18.402 1 17.668 1z"/>
+      </svg>
+    """
+    "github" -> """
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z"/>
+      </svg>
+    """
+    "twitter" -> """
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M6.29 18.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0020 3.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.073 4.073 0 01.8 7.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 010 16.407a11.616 11.616 0 006.29 1.84"/>
+      </svg>
+    """
+    "email" -> """
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+      </svg>
+    """
+    _ -> """
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+      </svg>
+    """
+  end
+end
+
+defp format_platform_name(platform) do
+  case to_string(platform) do
+    "linkedin" -> "LinkedIn"
+    "github" -> "GitHub"
+    "twitter" -> "Twitter"
+    "instagram" -> "Instagram"
+    "email" -> "Email"
+    name -> String.capitalize(name)
+  end
+end
+
+defp render_about_content(content) do
+  """
+  #{Map.get(content, "content", Map.get(content, "description", ""))}
+  """
+end
+
+defp render_experience_content(content) do
+  experiences = Map.get(content, "experiences", [])
+
+  if Enum.empty?(experiences) do
+    Map.get(content, "content", "")
+  else
+    experiences
+    |> Enum.map(fn exp ->
+      """
+      <div class="mb-6 pb-6 border-b border-gray-200 last:border-b-0">
+        <h4 class="font-semibold text-gray-900">#{Map.get(exp, "position", "Position")}</h4>
+        <p class="text-gray-600 mb-2">#{Map.get(exp, "company", "Company")} • #{Map.get(exp, "duration", "Duration")}</p>
+        <p class="text-gray-700">#{Map.get(exp, "description", "")}</p>
+      </div>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+end
+
+defp render_education_content(content) do
+  education = Map.get(content, "education", [])
+
+  if Enum.empty?(education) do
+    Map.get(content, "content", "")
+  else
+    education
+    |> Enum.map(fn edu ->
+      """
+      <div class="mb-4">
+        <h4 class="font-semibold text-gray-900">#{Map.get(edu, "degree", "Degree")}</h4>
+        <p class="text-gray-600">#{Map.get(edu, "institution", "Institution")} • #{Map.get(edu, "year", "Year")}</p>
+      </div>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+end
+
+defp render_skills_content(content) do
+  skills = Map.get(content, "skills", [])
+
+  if Enum.empty?(skills) do
+    Map.get(content, "content", "")
+  else
+    """
+    <div class="flex flex-wrap gap-2">
+      #{skills
+        |> Enum.map(fn skill ->
+          skill_name = if is_map(skill), do: Map.get(skill, "name", skill), else: skill
+          "<span class=\"px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm\">#{skill_name}</span>"
+        end)
+        |> Enum.join("\n")}
+    </div>
+    """
+  end
+end
+
+defp render_projects_content(content) do
+  projects = Map.get(content, "projects", [])
+
+  if Enum.empty?(projects) do
+    Map.get(content, "content", "")
+  else
+    projects
+    |> Enum.map(fn project ->
+      """
+      <div class="mb-6 pb-6 border-b border-gray-200 last:border-b-0">
+        <h4 class="font-semibold text-gray-900 mb-2">#{Map.get(project, "title", "Project")}</h4>
+        <p class="text-gray-700 mb-3">#{Map.get(project, "description", "")}</p>
+        #{if Map.get(project, "url") do
+          "<a href=\"#{Map.get(project, "url")}\" target=\"_blank\" class=\"text-blue-600 hover:text-blue-800 text-sm\">View Project →</a>"
+        else
+          ""
+        end}
+      </div>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+end
+
+defp render_contact_content(content) do
+  """
+  <div class="space-y-4">
+    #{if Map.get(content, "email") do
+      "<p class=\"flex items-center text-gray-700\">
+        <svg class=\"w-4 h-4 mr-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z\"/>
+        </svg>
+        <a href=\"mailto:#{Map.get(content, "email")}\" class=\"text-blue-600 hover:text-blue-800\">#{Map.get(content, "email")}</a>
+      </p>"
+    else
+      ""
+    end}
+
+    #{if Map.get(content, "phone") do
+      "<p class=\"flex items-center text-gray-700\">
+        <svg class=\"w-4 h-4 mr-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
+          <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z\"/>
+        </svg>
+        #{Map.get(content, "phone")}
+      </p>"
+    else
+      ""
+    end}
+
+    #{Map.get(content, "content", "")}
+  </div>
+  """
+end
+
+defp render_testimonials_content(content) do
+  testimonials = Map.get(content, "testimonials", [])
+
+  if Enum.empty?(testimonials) do
+    Map.get(content, "content", "")
+  else
+    testimonials
+    |> Enum.map(fn testimonial ->
+      """
+      <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+        <p class="text-gray-700 italic mb-3">"#{Map.get(testimonial, "quote", "")}"</p>
+        <p class="text-gray-600 text-sm">— #{Map.get(testimonial, "author", "Anonymous")}</p>
+      </div>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+end
+
+defp render_certifications_content(content) do
+  certifications = Map.get(content, "certifications", [])
+
+  if Enum.empty?(certifications) do
+    Map.get(content, "content", "")
+  else
+    certifications
+    |> Enum.map(fn cert ->
+      """
+      <div class="mb-4">
+        <h4 class="font-semibold text-gray-900">#{Map.get(cert, "name", "Certification")}</h4>
+        <p class="text-gray-600">#{Map.get(cert, "issuer", "Issuer")} • #{Map.get(cert, "date", "Date")}</p>
+      </div>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+end
+
+defp render_achievements_content(content) do
+  achievements = Map.get(content, "achievements", [])
+
+  if Enum.empty?(achievements) do
+    Map.get(content, "content", "")
+  else
+    """
+    <ul class="space-y-3">
+      #{achievements
+        |> Enum.map(fn achievement ->
+          achievement_text = if is_map(achievement), do: Map.get(achievement, "title", achievement), else: achievement
+          "<li class=\"flex items-start\">
+            <span class=\"text-green-500 mr-2 mt-1\">✓</span>
+            <span class=\"text-gray-700\">#{achievement_text}</span>
+          </li>"
+        end)
+        |> Enum.join("\n")}
+    </ul>
+    """
+  end
+end
+
+defp render_generic_content(content) do
+  Map.get(content, "content", Map.get(content, "description", "No content available"))
+end
+
+# ============================================================================
+# LAYOUT SCRIPTS
+# ============================================================================
+
+defp render_layout_scripts() do
+  """
+  <script>
+    // Smooth scrolling
+    function scrollToSection(sectionId) {
+      const element = document.getElementById('section-' + sectionId) || document.getElementById(sectionId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    // Mobile navigation toggle
+    function toggleFloatingNav() {
+      // Implementation for mobile nav toggle
+      console.log('Toggle mobile navigation');
+    }
+
+    // Contact modal
+    function openContactModal() {
+      // Send event to LiveView to open contact modal
+      window.dispatchEvent(new CustomEvent('phx:open_contact_modal'));
+    }
+
+    // Initialize layout
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('Portfolio layout initialized');
+
+      // Add smooth scroll behavior to all nav links
+      document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+          e.preventDefault();
+          const target = document.querySelector(this.getAttribute('href'));
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        });
+      });
+    });
+  </script>
+  """
+end
+
+#####
+
+
+
+
   defp filter_visible_sections(sections) do
-    Enum.filter(sections, &(&1.visible && &1.section_type not in ["video_intro", "media_showcase"]))
+    Enum.filter(sections, fn section ->
+      Map.get(section, :visible, true) &&
+      Map.get(section, :content, %{}) != %{}
+    end)
   end
 
   defp filter_content_sections(sections) do
@@ -765,21 +1476,75 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer do
     |> Enum.take(3)
   end
 
-  defp normalize_layout_type(layout_type) when is_binary(layout_type) do
-    case String.downcase(layout_type) do
+  defp filter_visible_sections(sections) do
+    Enum.filter(sections, fn section ->
+      Map.get(section, :is_visible, true) &&
+      Map.get(section, :content, %{}) != %{}
+    end)
+  end
+
+  defp get_clean_layout_config(layout_type, color_scheme) do
+    %{
+      layout_type: layout_type,
+      color_scheme: color_scheme,
+      primary_color: get_color_scheme_primary(color_scheme),
+      secondary_color: get_color_scheme_secondary(color_scheme),
+      accent_color: get_color_scheme_accent(color_scheme)
+    }
+  end
+
+  defp get_color_scheme_primary(scheme) do
+    case scheme do
+      "professional" -> "#1e40af"
+      "creative" -> "#7c3aed"
+      "tech" -> "#059669"
+      "warm" -> "#ea580c"
+      _ -> "#1e40af"
+    end
+  end
+
+  defp get_color_scheme_secondary(scheme) do
+    case scheme do
+      "professional" -> "#3b82f6"
+      "creative" -> "#a855f7"
+      "tech" -> "#10b981"
+      "warm" -> "#f97316"
+      _ -> "#3b82f6"
+    end
+  end
+
+  defp get_color_scheme_accent(scheme) do
+    case scheme do
+      "professional" -> "#60a5fa"
+      "creative" -> "#c084fc"
+      "tech" -> "#34d399"
+      "warm" -> "#fb923c"
+      _ -> "#60a5fa"
+    end
+  end
+
+  defp normalize_layout_type(layout_type) do
+    layout_string = to_string(layout_type)
+    IO.puts("🎨 NORMALIZING LAYOUT: #{layout_string}")
+
+    case layout_string do
       "sidebar" -> :sidebar
       "single" -> :single
       "workspace" -> :workspace
-      # Legacy mappings
+      # Legacy layout mapping
       "standard" -> :single
       "dashboard" -> :workspace
       "grid" -> :workspace
+      "masonry_grid" -> :workspace
       "timeline" -> :single
       "magazine" -> :single
       "minimal" -> :single
-      _ -> :single
+      _ ->
+        IO.puts("🎨 Unknown layout type: #{layout_string}, defaulting to single")
+        :single
     end
   end
+
   defp normalize_layout_type(layout_type) when is_atom(layout_type), do: layout_type
   defp normalize_layout_type(_), do: :single
 
@@ -1217,72 +1982,490 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer do
   end
 
   # ============================================================================
+  # SECTIONS RENDERING FUNCTIONS
+  # ============================================================================
+
+  defp render_clean_sections(sections, layout_type, config) do
+    sections
+    |> Enum.map(fn section ->
+      render_clean_section_card(section, layout_type, config)
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp render_clean_section_card(section, layout_type, config) do
+    """
+    <section id="section-#{section.id}" class="mb-12 scroll-mt-20">
+      <div class="bg-white rounded-lg border border-gray-200 p-6 lg:p-8 shadow-sm hover:shadow-md transition-shadow">
+        <div class="flex items-center mb-6">
+          <div class="w-10 h-10 bg-#{config.color_scheme}-100 rounded-lg flex items-center justify-center mr-4">
+            <span class="text-lg">#{get_section_emoji(section.section_type)}</span>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-900">#{get_section_title(section)}</h2>
+        </div>
+
+        <div class="prose prose-gray max-w-none">
+          #{render_section_content_safe(section)}
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  # ============================================================================
+  # UTILITY AND HELPER FUNCTIONS
+  # ============================================================================
+
+  defp has_portfolio_media?(portfolio, sections) do
+    # Check if portfolio has video or if any section has media
+    has_video = portfolio.video_url && portfolio.video_url != ""
+    has_section_media = Enum.any?(sections, fn section ->
+      content = section.content || %{}
+      Map.has_key?(content, "image_url") || Map.has_key?(content, "video_url")
+    end)
+
+    has_video || has_section_media
+  end
+
+  defp get_portfolio_video_url(portfolio) do
+    case portfolio.video_url do
+      nil -> nil
+      "" -> nil
+      url -> url
+    end
+  end
+
+  defp extract_social_links_from_portfolio(portfolio) do
+    customization = portfolio.customization || %{}
+    social_links = Map.get(customization, "social_links", %{})
+
+    # Convert string keys to atoms and filter out empty values
+    social_links
+    |> Enum.filter(fn {_key, value} -> value && value != "" end)
+    |> Enum.map(fn {key, value} -> {String.to_atom(key), value} end)
+  end
+
+  defp extract_contact_info_from_portfolio(portfolio, sections) do
+    # Try to get contact info from portfolio customization first
+    customization = portfolio.customization || %{}
+
+    contact_email = Map.get(customization, "contact_email") ||
+                    Map.get(customization, "email")
+
+    # If not found, look in contact sections
+    contact_email = contact_email || find_contact_email_in_sections(sections)
+
+    %{
+      email: contact_email,
+      phone: Map.get(customization, "phone"),
+      location: Map.get(customization, "location")
+    }
+  end
+
+  defp find_contact_email_in_sections(sections) do
+    contact_section = Enum.find(sections, fn section ->
+      String.contains?(to_string(section.section_type), "contact")
+    end)
+
+    case contact_section do
+      nil -> nil
+      section ->
+        content = section.content || %{}
+        Map.get(content, "email")
+    end
+  end
+
+  defp get_section_emoji(section_type) do
+    case to_string(section_type) do
+      "about" -> "👋"
+      "intro" -> "👋"
+      "experience" -> "💼"
+      "work_experience" -> "💼"
+      "education" -> "🎓"
+      "skills" -> "⚡"
+      "projects" -> "🚀"
+      "portfolio" -> "🎨"
+      "contact" -> "📧"
+      "testimonials" -> "💬"
+      "certifications" -> "📜"
+      "achievements" -> "🏆"
+      _ -> "📄"
+    end
+  end
+
+  defp get_section_title(section) do
+    case section.content do
+      %{"title" => title} when title != nil and title != "" -> title
+      _ -> format_section_type_title(section.section_type)
+    end
+  end
+
+  defp format_section_type_title(section_type) do
+    section_type
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.split(" ")
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp get_section_preview(section) do
+    content = section.content || %{}
+
+    preview = Map.get(content, "summary") ||
+              Map.get(content, "description") ||
+              Map.get(content, "content")
+
+    case preview do
+      nil -> "Click to view details"
+      text when is_binary(text) ->
+        text
+        |> String.slice(0, 120)
+        |> then(fn truncated ->
+          if String.length(text) > 120 do
+            truncated <> "..."
+          else
+            truncated
+          end
+        end)
+      _ -> "Click to view details"
+    end
+  end
+
+  defp get_section_category(section_type) do
+    case to_string(section_type) do
+      "about" -> "Introduction"
+      "intro" -> "Introduction"
+      "experience" -> "Professional"
+      "work_experience" -> "Professional"
+      "education" -> "Academic"
+      "skills" -> "Technical"
+      "projects" -> "Portfolio"
+      "portfolio" -> "Portfolio"
+      "contact" -> "Contact"
+      "testimonials" -> "Social Proof"
+      "certifications" -> "Credentials"
+      "achievements" -> "Recognition"
+      _ -> "Content"
+    end
+  end
+
+  defp get_social_icon_simple(platform) do
+    case to_string(platform) do
+      "linkedin" -> """
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M16.338 16.338H13.67V12.16c0-.995-.017-2.277-1.387-2.277-1.39 0-1.601 1.086-1.601 2.207v4.248H8.014v-8.59h2.559v1.174h.037c.356-.675 1.227-1.387 2.526-1.387 2.703 0 3.203 1.778 3.203 4.092v4.711zM5.005 6.575a1.548 1.548 0 11-.003-3.096 1.548 1.548 0 01.003 3.096zm-1.337 9.763H6.34v-8.59H3.667v8.59zM17.668 1H2.328C1.595 1 1 1.581 1 2.298v15.403C1 18.418 1.595 19 2.328 19h15.34c.734 0 1.332-.582 1.332-1.299V2.298C19 1.581 18.402 1 17.668 1z"/>
+        </svg>
+      """
+      "github" -> """
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z"/>
+        </svg>
+      """
+      "twitter" -> """
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M6.29 18.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0020 3.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.073 4.073 0 01.8 7.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 010 16.407a11.616 11.616 0 006.29 1.84"/>
+        </svg>
+      """
+      "email" -> """
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+      """
+      _ -> """
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+        </svg>
+      """
+    end
+  end
+
+  defp format_platform_name(platform) do
+    case to_string(platform) do
+      "linkedin" -> "LinkedIn"
+      "github" -> "GitHub"
+      "twitter" -> "Twitter"
+      "instagram" -> "Instagram"
+      "email" -> "Email"
+      name -> String.capitalize(name)
+    end
+  end
+
+  defp get_color_scheme_primary(scheme) do
+    case scheme do
+      "professional" -> "#1e40af"
+      "creative" -> "#7c3aed"
+      "tech" -> "#059669"
+      "warm" -> "#ea580c"
+      _ -> "#1e40af"
+    end
+  end
+
+  defp get_color_scheme_secondary(scheme) do
+    case scheme do
+      "professional" -> "#3b82f6"
+      "creative" -> "#a855f7"
+      "tech" -> "#10b981"
+      "warm" -> "#f97316"
+      _ -> "#3b82f6"
+    end
+  end
+
+  defp get_color_scheme_accent(scheme) do
+    case scheme do
+      "professional" -> "#60a5fa"
+      "creative" -> "#c084fc"
+      "tech" -> "#34d399"
+      "warm" -> "#fb923c"
+      _ -> "#60a5fa"
+    end
+  end
+
+  # ============================================================================
+  # SECTION CONTENT RENDERING FUNCTIONS
+  # ============================================================================
+
+  defp render_section_content_safe(section) do
+    content = section.content || %{}
+
+    case to_string(section.section_type) do
+      "about" -> render_about_content(content)
+      "intro" -> render_about_content(content)
+      "experience" -> render_experience_content(content)
+      "work_experience" -> render_experience_content(content)
+      "education" -> render_education_content(content)
+      "skills" -> render_skills_content(content)
+      "projects" -> render_projects_content(content)
+      "portfolio" -> render_projects_content(content)
+      "contact" -> render_contact_content(content)
+      "testimonials" -> render_testimonials_content(content)
+      "certifications" -> render_certifications_content(content)
+      "achievements" -> render_achievements_content(content)
+      _ -> render_generic_content(content)
+    end
+  end
+
+  defp render_about_content(content) do
+    """
+    #{Map.get(content, "content", Map.get(content, "description", ""))}
+    """
+  end
+
+  defp render_experience_content(content) do
+    experiences = Map.get(content, "experiences", [])
+
+    if Enum.empty?(experiences) do
+      Map.get(content, "content", "")
+    else
+      experiences
+      |> Enum.map(fn exp ->
+        """
+        <div class="mb-6 pb-6 border-b border-gray-200 last:border-b-0">
+          <h4 class="font-semibold text-gray-900">#{Map.get(exp, "position", "Position")}</h4>
+          <p class="text-gray-600 mb-2">#{Map.get(exp, "company", "Company")} • #{Map.get(exp, "duration", "Duration")}</p>
+          <p class="text-gray-700">#{Map.get(exp, "description", "")}</p>
+        </div>
+        """
+      end)
+      |> Enum.join("\n")
+    end
+  end
+
+  defp render_education_content(content) do
+    education = Map.get(content, "education", [])
+
+    if Enum.empty?(education) do
+      Map.get(content, "content", "")
+    else
+      education
+      |> Enum.map(fn edu ->
+        """
+        <div class="mb-4">
+          <h4 class="font-semibold text-gray-900">#{Map.get(edu, "degree", "Degree")}</h4>
+          <p class="text-gray-600">#{Map.get(edu, "institution", "Institution")} • #{Map.get(edu, "year", "Year")}</p>
+        </div>
+        """
+      end)
+      |> Enum.join("\n")
+    end
+  end
+
+  defp render_skills_content(content) do
+    skills = Map.get(content, "skills", [])
+
+    if Enum.empty?(skills) do
+      Map.get(content, "content", "")
+    else
+      """
+      <div class="flex flex-wrap gap-2">
+        #{skills
+          |> Enum.map(fn skill ->
+            skill_name = if is_map(skill), do: Map.get(skill, "name", skill), else: skill
+            "<span class=\"px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm\">#{skill_name}</span>"
+          end)
+          |> Enum.join("\n")}
+      </div>
+      """
+    end
+  end
+
+  defp render_projects_content(content) do
+    projects = Map.get(content, "projects", [])
+
+    if Enum.empty?(projects) do
+      Map.get(content, "content", "")
+    else
+      projects
+      |> Enum.map(fn project ->
+        """
+        <div class="mb-6 pb-6 border-b border-gray-200 last:border-b-0">
+          <h4 class="font-semibold text-gray-900 mb-2">#{Map.get(project, "title", "Project")}</h4>
+          <p class="text-gray-700 mb-3">#{Map.get(project, "description", "")}</p>
+          #{if Map.get(project, "url") do
+            "<a href=\"#{Map.get(project, "url")}\" target=\"_blank\" class=\"text-blue-600 hover:text-blue-800 text-sm\">View Project →</a>"
+          else
+            ""
+          end}
+        </div>
+        """
+      end)
+      |> Enum.join("\n")
+    end
+  end
+
+  defp render_contact_content(content) do
+    """
+    <div class="space-y-4">
+      #{if Map.get(content, "email") do
+        "<p class=\"flex items-center text-gray-700\">
+          <svg class=\"w-4 h-4 mr-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
+            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z\"/>
+          </svg>
+          <a href=\"mailto:#{Map.get(content, "email")}\" class=\"text-blue-600 hover:text-blue-800\">#{Map.get(content, "email")}</a>
+        </p>"
+      else
+        ""
+      end}
+
+      #{if Map.get(content, "phone") do
+        "<p class=\"flex items-center text-gray-700\">
+          <svg class=\"w-4 h-4 mr-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
+            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z\"/>
+          </svg>
+          #{Map.get(content, "phone")}
+        </p>"
+      else
+        ""
+      end}
+
+      #{Map.get(content, "content", "")}
+    </div>
+    """
+  end
+
+  defp render_testimonials_content(content) do
+    testimonials = Map.get(content, "testimonials", [])
+
+    if Enum.empty?(testimonials) do
+      Map.get(content, "content", "")
+    else
+      testimonials
+      |> Enum.map(fn testimonial ->
+        """
+        <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+          <p class="text-gray-700 italic mb-3">"#{Map.get(testimonial, "quote", "")}"</p>
+          <p class="text-gray-600 text-sm">— #{Map.get(testimonial, "author", "Anonymous")}</p>
+        </div>
+        """
+      end)
+      |> Enum.join("\n")
+    end
+  end
+
+  defp render_certifications_content(content) do
+    certifications = Map.get(content, "certifications", [])
+
+    if Enum.empty?(certifications) do
+      Map.get(content, "content", "")
+    else
+      certifications
+      |> Enum.map(fn cert ->
+        """
+        <div class="mb-4">
+          <h4 class="font-semibold text-gray-900">#{Map.get(cert, "name", "Certification")}</h4>
+          <p class="text-gray-600">#{Map.get(cert, "issuer", "Issuer")} • #{Map.get(cert, "date", "Date")}</p>
+        </div>
+        """
+      end)
+      |> Enum.join("\n")
+    end
+  end
+
+  defp render_achievements_content(content) do
+    achievements = Map.get(content, "achievements", [])
+
+    if Enum.empty?(achievements) do
+      Map.get(content, "content", "")
+    else
+      """
+      <ul class="space-y-3">
+        #{achievements
+          |> Enum.map(fn achievement ->
+            achievement_text = if is_map(achievement), do: Map.get(achievement, "title", achievement), else: achievement
+            "<li class=\"flex items-start\">
+              <span class=\"text-green-500 mr-2 mt-1\">✓</span>
+              <span class=\"text-gray-700\">#{achievement_text}</span>
+            </li>"
+          end)
+          |> Enum.join("\n")}
+      </ul>
+      """
+    end
+  end
+
+  defp render_generic_content(content) do
+    Map.get(content, "content", Map.get(content, "description", "No content available"))
+  end
+
+  # ============================================================================
   # LAYOUT SCRIPTS
   # ============================================================================
 
   defp render_layout_scripts() do
     """
     <script>
-      // Mobile navigation for sidebar layout
-      function toggleMobileNav() {
-        const sidebar = document.getElementById('portfolio-sidebar');
-        const overlay = document.getElementById('mobile-overlay');
-
-        if (sidebar && overlay) {
-          if (sidebar.classList.contains('-translate-x-full')) {
-            sidebar.classList.remove('-translate-x-full');
-            overlay.classList.remove('hidden');
-          } else {
-            sidebar.classList.add('-translate-x-full');
-            overlay.classList.add('hidden');
-          }
+      // Smooth scrolling
+      function scrollToSection(sectionId) {
+        const element = document.getElementById('section-' + sectionId) || document.getElementById(sectionId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       }
 
-      // Floating navigation for single layout
+      // Mobile navigation toggle
       function toggleFloatingNav() {
-        console.log('Toggle floating navigation');
-        // Could expand for mobile menu
+        console.log('Toggle mobile navigation');
       }
 
-      // Workspace menu for workspace layout
-      function toggleWorkspaceMenu() {
-        console.log('Toggle workspace menu');
-        // Could expand for mobile menu
+      // Contact modal
+      function openContactModal() {
+        window.dispatchEvent(new CustomEvent('phx:open_contact_modal'));
       }
 
-      // Smooth scrolling for navigation links
+      // Initialize layout
       document.addEventListener('DOMContentLoaded', function() {
-        const links = document.querySelectorAll('a[href^="#section-"]');
-        links.forEach(link => {
-          link.addEventListener('click', function(e) {
-            e.preventDefault();
-            const targetId = this.getAttribute('href').substring(1);
-            const targetElement = document.getElementById(targetId);
-            if (targetElement) {
-              targetElement.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-              });
+        console.log('Portfolio layout initialized');
 
-              // Close mobile nav if open
-              const sidebar = document.getElementById('portfolio-sidebar');
-              const overlay = document.getElementById('mobile-overlay');
-              if (sidebar && overlay && !sidebar.classList.contains('-translate-x-full')) {
-                sidebar.classList.add('-translate-x-full');
-                overlay.classList.add('hidden');
-              }
+        // Add smooth scroll behavior to all nav links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+          anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+              target.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
           });
         });
-      });
-
-      // Close mobile nav when clicking overlay
-      document.addEventListener('DOMContentLoaded', function() {
-        const overlay = document.getElementById('mobile-overlay');
-        if (overlay) {
-          overlay.addEventListener('click', toggleMobileNav);
-        }
       });
     </script>
     """

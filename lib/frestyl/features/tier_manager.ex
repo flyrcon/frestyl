@@ -196,7 +196,11 @@ defmodule Frestyl.Features.TierManager do
       api_access: false,
       white_label: false,
       custom_domains: false,
-      priority_support: false
+      priority_support: false,
+      max_concurrent_sessions: 1,
+      max_broadcast_duration: 30, # minutes
+      max_participants_per_session: 2,
+      max_audio_tracks: 2,
     }
   end
 
@@ -219,7 +223,11 @@ defmodule Frestyl.Features.TierManager do
       api_access: false,
       white_label: false,
       custom_domains: false,
-      priority_support: false
+      priority_support: false,
+      max_concurrent_sessions: 3,
+      max_broadcast_duration: 120, # minutes
+      max_participants_per_session: 10,
+      max_audio_tracks: 8
     }
   end
 
@@ -239,7 +247,11 @@ defmodule Frestyl.Features.TierManager do
       api_access: true,
       white_label: false,
       custom_domains: true,
-      priority_support: true
+      priority_support: true,
+      max_concurrent_sessions: 10,
+      max_broadcast_duration: 480, # minutes
+      max_participants_per_session: 50,
+      max_audio_tracks: 32
     }
   end
 
@@ -259,7 +271,11 @@ defmodule Frestyl.Features.TierManager do
       api_access: true,
       white_label: true,
       custom_domains: true,
-      priority_support: true
+      priority_support: true,
+      max_concurrent_sessions: :unlimited,
+      max_broadcast_duration: :unlimited,
+      max_participants_per_session: :unlimited,
+      max_audio_tracks: :unlimited
     }
   end
 
@@ -280,6 +296,30 @@ defmodule Frestyl.Features.TierManager do
       :priority_support -> Map.get(limits, :priority_support, false)
       _ -> false
     end
+  end
+
+  def feature_available?(tier, :audio_studio) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :multi_track_recording) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :broadcast_scheduling) do
+    tier in ["creator", "professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :advanced_broadcasting) do
+    tier in ["professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :live_streaming) do
+    tier in ["professional", "enterprise"]
+  end
+
+  def feature_available?(tier, :session_management) do
+    tier in ["creator", "professional", "enterprise"]
   end
 
   def feature_available?(tier, :story_lab), do: true  # All tiers

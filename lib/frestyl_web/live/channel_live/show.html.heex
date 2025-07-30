@@ -106,6 +106,111 @@
 
   <!-- Main Content -->
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Tool Access Panel - Add this near the top of the main content area -->
+    <%= if @tool_permissions.can_view_tools and @is_member do %>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">Studio Tools</h3>
+          <div class="flex items-center gap-3">
+            <!-- Quick Session Launch -->
+            <%= if @tool_permissions.can_create_sessions do %>
+              <button 
+                phx-click="show_session_launcher"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Start Session
+              </button>
+            <% end %>
+            
+            <!-- Broadcast Scheduler -->
+            <%= if @tool_permissions.can_create_broadcasts do %>
+              <button 
+                phx-click="show_broadcast_scheduler"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                </svg>
+                Schedule Broadcast  
+              </button>
+            <% end %>
+            
+            <button 
+              phx-click="show_tool_launcher"
+              class="inline-flex items-center gap-2 px-3 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 8.172V5L8 4z" />
+              </svg>
+              All Tools
+            </button>
+          </div>
+        </div>
+        
+        <!-- Available Tools Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <%= for tool <- Enum.take(@available_studio_tools, 4) do %>
+            <div class={[
+              "relative p-4 rounded-lg border transition-all cursor-pointer",
+              if(tool.available, do: "border-gray-200 hover:border-indigo-300 hover:shadow-sm bg-white", else: "border-gray-100 bg-gray-50")
+            ]}>
+              <%= if tool.available do %>
+                <button 
+                  phx-click="launch_studio_tool" 
+                  phx-value-tool={tool.id}
+                  class="w-full text-left"
+                >
+                  <div class="flex items-center gap-3 mb-2">
+                    <div class="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                      <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <%= case tool.icon do %>
+                          <% "microphone" -> %>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          <% "document-text" -> %>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          <% "musical-note" -> %>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+                          <% "video-camera" -> %>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          <% "signal" -> %>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+                          <% _ -> %>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        <% end %>
+                      </svg>
+                    </div>
+                    <div>
+                      <div class="font-medium text-gray-900 text-sm"><%= tool.name %></div>
+                    </div>
+                  </div>
+                  <p class="text-xs text-gray-600"><%= tool.description %></p>
+                </button>
+              <% else %>
+                <div class="w-full text-left opacity-50 cursor-not-allowed">
+                  <div class="flex items-center gap-3 mb-2">
+                    <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div class="font-medium text-gray-600 text-sm"><%= tool.name %></div>
+                      <div class="text-xs text-gray-500">Requires <%= tool.tier_required %></div>
+                    </div>
+                  </div>
+                  <p class="text-xs text-gray-500"><%= tool.description %></p>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
       
       <!-- Primary Content -->

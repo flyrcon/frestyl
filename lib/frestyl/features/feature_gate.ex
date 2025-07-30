@@ -147,6 +147,36 @@ defmodule Frestyl.Features.FeatureGate do
       :creator_lab ->
         TierManager.feature_available?(user_tier, :creator_lab)
 
+      :audio_studio ->
+      TierManager.feature_available?(user_tier, :audio_studio)
+
+      :multi_track_recording ->
+        TierManager.feature_available?(user_tier, :multi_track_recording)
+
+      :session_management ->
+        TierManager.feature_available?(user_tier, :session_management)
+
+      :broadcast_scheduling ->
+        TierManager.feature_available?(user_tier, :broadcast_scheduling)
+
+      :advanced_broadcasting ->
+        TierManager.feature_available?(user_tier, :advanced_broadcasting)
+
+      :live_streaming ->
+        TierManager.feature_available?(user_tier, :live_streaming)
+
+      {:concurrent_sessions, count} ->
+        check_concurrent_session_limit(limits, current_usage, count)
+
+      {:broadcast_duration, minutes} ->
+        check_broadcast_duration_limit(limits, minutes)
+
+      {:session_participants, count} ->
+        check_session_participant_limit(limits, count)
+
+      {:audio_tracks, count} ->
+        check_audio_track_limit(limits, count)
+
       _ ->
         false
     end
@@ -439,6 +469,48 @@ defmodule Frestyl.Features.FeatureGate do
     case user_tier do
       "personal" -> false
       _ -> true
+    end
+  end
+
+  defp check_concurrent_session_limit(limits, current_usage, requested_count) do
+    max_sessions = Map.get(limits, :max_concurrent_sessions, 1)
+    current_sessions = Map.get(current_usage, :active_sessions, 0)
+
+    case max_sessions do
+      :unlimited -> true
+      limit when is_integer(limit) ->
+        current_sessions + requested_count <= limit
+      _ -> false
+    end
+  end
+
+  defp check_broadcast_duration_limit(limits, requested_minutes) do
+    max_duration = Map.get(limits, :max_broadcast_duration, 30)
+
+    case max_duration do
+      :unlimited -> true
+      limit when is_integer(limit) -> requested_minutes <= limit
+      _ -> false
+    end
+  end
+
+  defp check_session_participant_limit(limits, requested_count) do
+    max_participants = Map.get(limits, :max_participants_per_session, 2)
+
+    case max_participants do
+      :unlimited -> true
+      limit when is_integer(limit) -> requested_count <= limit
+      _ -> false
+    end
+  end
+
+  defp check_audio_track_limit(limits, requested_count) do
+    max_tracks = Map.get(limits, :max_audio_tracks, 2)
+
+    case max_tracks do
+      :unlimited -> true
+      limit when is_integer(limit) -> requested_count <= limit
+      _ -> false
     end
   end
 

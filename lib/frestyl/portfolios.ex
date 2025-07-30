@@ -1307,31 +1307,37 @@ def get_portfolio_by_share_token_simple(token) do
   defp remove_recursive_legacy_backup(value), do: value
 
 
-  def update_portfolio_customization_by_id(portfolio_id, customization_params) do
-    IO.puts("🔧 UPDATING PORTFOLIO #{portfolio_id} CUSTOMIZATION")
-    IO.puts("🔧 PARAMS: #{inspect(customization_params)}")
-
+  def update_portfolio_customization_by_id(portfolio_id, customization_params) when is_integer(portfolio_id) do
     case get_portfolio(portfolio_id) do
       nil ->
-        IO.puts("❌ PORTFOLIO NOT FOUND")
+        IO.puts("❌ Portfolio not found with ID: #{portfolio_id}")
         {:error, :not_found}
-
       portfolio ->
-        current_customization = portfolio.customization || %{}
-        updated_customization = Map.merge(current_customization, customization_params)
+        update_portfolio_customization_by_id(portfolio, customization_params)
+    end
+  end
 
-        result = portfolio
-        |> Portfolio.changeset(%{customization: updated_customization})
-        |> Repo.update()
+  def update_portfolio_customization_by_id(%Portfolio{} = portfolio, customization_params) do
+    IO.puts("🔄 Updating portfolio customization")
+    IO.puts("🔄 Current customization: #{inspect(portfolio.customization)}")
+    IO.puts("🔄 New params: #{inspect(customization_params)}")
 
-        case result do
-          {:ok, updated_portfolio} ->
-            IO.puts("✅ PORTFOLIO CUSTOMIZATION UPDATED")
-            {:ok, updated_portfolio}
-          {:error, changeset} ->
-            IO.puts("❌ PORTFOLIO UPDATE FAILED: #{inspect(changeset.errors)}")
-            {:error, changeset}
-        end
+    existing_customization = portfolio.customization || %{}
+    updated_customization = Map.merge(existing_customization, customization_params)
+
+    IO.puts("🔄 Final customization: #{inspect(updated_customization)}")
+
+    result = portfolio
+    |> Portfolio.changeset(%{customization: updated_customization})
+    |> Repo.update()
+
+    case result do
+      {:ok, updated_portfolio} ->
+        IO.puts("✅ Portfolio customization updated successfully")
+        {:ok, updated_portfolio}
+      {:error, changeset} ->
+        IO.puts("❌ Failed to update portfolio customization: #{inspect(changeset.errors)}")
+        {:error, changeset}
     end
   end
 

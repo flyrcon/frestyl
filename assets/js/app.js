@@ -397,6 +397,52 @@ let liveSocket = new LiveSocket("/live", Socket, {
 
 console.log("🔥 LiveSocket created with hooks:", Object.keys(Hooks))
 
+window.addEventListener("phx:apply_portfolio_design", (e) => {
+  console.log("🎨 JS: Applying portfolio design:", e.detail);
+  
+  const { layout, color_scheme, customization } = e.detail;
+  
+  // Update CSS variables
+  const root = document.documentElement;
+  if (customization) {
+    if (customization.primary_color) {
+      root.style.setProperty('--primary-color', customization.primary_color);
+    }
+    if (customization.secondary_color) {
+      root.style.setProperty('--secondary-color', customization.secondary_color);
+    }
+    if (customization.accent_color) {
+      root.style.setProperty('--accent-color', customization.accent_color);
+    }
+    if (customization.typography) {
+      const fontFamily = getTypographyCSS(customization.typography);
+      root.style.setProperty('--font-family', fontFamily);
+    }
+  }
+  
+  // Update layout attributes
+  const portfolioView = document.querySelector('.portfolio-enhanced-view, .portfolio-show');
+  if (portfolioView) {
+    if (layout) {
+      portfolioView.setAttribute('data-portfolio-layout', layout);
+    }
+    if (color_scheme) {
+      portfolioView.setAttribute('data-color-scheme', color_scheme);
+    }
+  }
+  
+  console.log("✅ Portfolio design applied successfully");
+});
+
+function getTypographyCSS(typography) {
+  switch(typography) {
+    case 'sans': return '-apple-system, BlinkMacSystemFont, "Inter", sans-serif';
+    case 'serif': return '"Crimson Text", "Times New Roman", serif';
+    case 'mono': return '"JetBrains Mono", "Fira Code", monospace';
+    default: return '-apple-system, BlinkMacSystemFont, "Inter", sans-serif';
+  }
+}
+
 // Progress bar
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", info => topbar.show())

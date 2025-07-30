@@ -50,11 +50,18 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
     case result do
       {:ok, socket} ->
+        # Subscribe to ALL portfolio channels if connected and portfolio exists
         if connected?(socket) && socket.assigns[:portfolio] do
           portfolio_id = socket.assigns.portfolio.id
-          Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
+          IO.puts("🔄 SUBSCRIBING to portfolio channels: #{portfolio_id}")
+
+          # Subscribe to ALL 4 channels for comprehensive coverage
           Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio:#{portfolio_id}")
+          Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
           Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_show:#{portfolio_id}")
+          Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_editor:#{portfolio_id}")
+
+          IO.puts("✅ SUBSCRIBED to all portfolio channels")
         end
         {:ok, socket}
       error ->
@@ -258,6 +265,269 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+  defp mount_portfolio_safe(portfolio, socket) do
+    if portfolio do
+      mount_portfolio(portfolio, socket)
+    else
+      {:ok,
+      socket
+      |> put_flash(:error, "Portfolio not found")
+      |> redirect(to: "/")}
+    end
+  end
+
+
+# GROUP 6: Preview System Fix
+# File: lib/frestyl_web/live/portfolio_live/show.ex
+# Fix preview system to handle portfolio updates correctly
+
+# Update the handle_info function to properly handle all message types
+@impl true
+def handle_info(msg, socket) do
+  case msg do
+    # Handle preview updates from editor
+    {:preview_update, data} when is_map(data) ->
+      IO.puts("🔄 SHOW: Handling preview_update")
+
+      sections = Map.get(data, :sections, socket.assigns.sections)
+      customization = Map.get(data, :customization, socket.assigns.customization)
+
+      # Update socket with new data
+      socket = socket
+      |> assign(:sections, sections)
+      |> assign(:customization, customization)
+      |> push_event("update_preview_content", %{
+        sections: sections,
+        customization: customization
+      })
+
+      {:noreply, socket}
+
+    # Handle section updates
+    {:sections_updated, sections} ->
+      IO.puts("🔄 SHOW: Handling sections_updated")
+
+      socket = socket
+      |> assign(:sections, sections)
+      |> push_event("update_sections", %{sections: sections})
+
+      {:noreply, socket}
+
+    # Handle portfolio sections changed (comprehensive update)
+    {:portfolio_sections_changed, data} when is_map(data) ->
+      IO.puts("🔄 SHOW: Handling portfolio_sections_changed")
+
+      sections = Map.get(data, :sections, socket.assigns.sections)
+      customization = Map.get(data, :customization, socket.assigns.customization)
+
+      socket = socket
+      |> assign(:sections, sections)
+      |> assign(:customization, customization)
+      |> push_event("comprehensive_update", %{
+        sections: sections,
+        customization: customization
+      })
+
+      {:noreply, socket}
+
+    # Handle customization updates
+    {:customization_updated, customization} ->
+      IO.puts("🔄 SHOW: Handling customization_updated")
+
+      socket = socket
+      |> assign(:customization, customization)
+      |> push_event("update_css_variables", customization)
+
+      {:noreply, socket}
+
+    # Handle section visibility changes
+    {:section_visibility_changed, data} when is_map(data) ->
+      IO.puts("🔄 SHOW: Handling section_visibility_changed")
+
+      sections = Map.get(data, :sections, socket.assigns.sections)
+
+      socket = socket
+      |> assign(:sections, sections)
+      |> push_event("update_section_visibility", %{sections: sections})
+
+      {:noreply, socket}
+
+    # Handle design updates
+    {:design_update, data} when is_map(data) ->
+      IO.puts("🔄 SHOW: Handling design_update")
+      handle_design_update(data, socket)
+
+    {:design_complete_update, data} when is_map(data) ->
+      IO.puts("🔄 SHOW: Handling design_complete_update")
+      handle_design_update(data, socket)
+
+    # Handle layout changes
+    {:layout_changed, layout_name, customization} ->
+      IO.puts("🔄 SHOW: Handling layout_changed")
+
+      socket = socket
+      |> assign(:portfolio_layout, Map.get(customization, "layout", "minimal"))
+      |> assign(:customization, customization)
+      |> push_event("layout_changed", %{layout: layout_name})
+
+      {:noreply, socket}
+
+    # Handle content updates for individual sections
+    {:content_update, section} ->
+      IO.puts("🔄 SHOW: Handling content_update")
+
+      sections = update_section_in_list(socket.assigns.sections, section)
+
+      socket = socket
+      |> assign(:sections, sections)
+      |> push_event("update_section_content", %{
+        section_id: section.id,
+        content: section.content
+      })
+
+      {:noreply, socket}
+
+    # Handle portfolio updates (legacy)
+    {:portfolio_updated, updated_portfolio} ->
+      IO.puts("🔄 SHOW: Handling portfolio_updated")
+
+      socket = socket
+      |> assign(:portfolio, updated_portfolio)
+      |> assign(:customization, updated_portfolio.customization || %{})
+
+      {:noreply, socket}
+
+    # Handle viewport changes
+    {:viewport_change, mobile_view} ->
+      socket = assign(socket, :mobile_view, mobile_view)
+      {:noreply, socket}
+
+    # Catch-all for unhandled messages
+    unknown_msg ->
+      IO.puts("⚠️ SHOW: Unhandled message: #{inspect(unknown_msg)}")
+      {:noreply, socket}
+  end
+end
+
+# Helper function to handle design updates
+defp handle_design_update(design_data, socket) do
+  IO.puts("🎨 SHOW PAGE processing design update")
+
+  customization = Map.get(design_data, :customization, socket.assigns.customization)
+  css = Map.get(design_data, :css, "")
+  template_class = Map.get(design_data, :template_class, "template-professional-dashboard")
+
+  socket = socket
+  |> assign(:customization, customization)
+  |> assign(:custom_css, css)
+  |> assign(:template_class, template_class)
+  |> push_event("apply_comprehensive_design", design_data)
+  |> push_event("apply_portfolio_design", design_data)
+  |> push_event("inject_design_css", %{css: css})
+  |> push_event("update_css_variables", customization)
+
+  {:noreply, socket}
+end
+
+# Ensure proper mount subscription to all channels
+@impl true
+def mount(params, _session, socket) do
+  IO.puts("🌍 MOUNTING PORTFOLIO SHOW with params: #{inspect(params)}")
+
+  result = case params do
+    # Public view via slug
+    %{"slug" => slug} ->
+      mount_public_portfolio(slug, socket)
+
+    # Shared view via token
+    %{"token" => token} ->
+      mount_shared_portfolio(token, socket)
+
+    # Preview for editor
+    %{"id" => id, "preview_token" => token} ->
+      mount_preview_portfolio(id, token, socket)
+
+    # Authenticated view by ID
+    %{"id" => id} ->
+      mount_authenticated_portfolio(id, socket)
+
+    _ ->
+      IO.puts("❌ Invalid portfolio URL parameters")
+      {:ok,
+      socket
+      |> put_flash(:error, "Portfolio not found")
+      |> redirect(to: "/")}
+  end
+
+  case result do
+    {:ok, socket} ->
+      # Subscribe to ALL portfolio channels if connected and portfolio exists
+      if connected?(socket) && socket.assigns[:portfolio] do
+        portfolio_id = socket.assigns.portfolio.id
+        IO.puts("🔄 SUBSCRIBING to portfolio channels: #{portfolio_id}")
+
+        # Subscribe to ALL 4 channels for comprehensive coverage
+        Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio:#{portfolio_id}")
+        Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
+        Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_show:#{portfolio_id}")
+        Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_editor:#{portfolio_id}")
+
+        IO.puts("✅ SUBSCRIBED to all portfolio channels")
+      end
+      {:ok, socket}
+    error ->
+      error
+  end
+end
+
+# Helper function to update section in list (if not already defined)
+defp update_section_in_list(sections, updated_section) do
+  Enum.map(sections, fn section ->
+    if section.id == updated_section.id do
+      updated_section
+    else
+      section
+    end
+  end)
+end
+
+# Add error handling for missing data
+defp mount_portfolio_safe(portfolio, socket) do
+  if portfolio do
+    mount_portfolio(portfolio, socket)
+  else
+    {:ok,
+    socket
+    |> put_flash(:error, "Portfolio not found")
+    |> redirect(to: "/")}
+  end
+end
+
+# Enhanced error handling for portfolio loading
+defp load_portfolio_safe(portfolio_id) do
+  try do
+    case Portfolios.get_portfolio_with_sections(portfolio_id) do
+      {:ok, portfolio} -> portfolio
+      {:error, :not_found} -> nil
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+end
+
+# Enhanced error handling for section loading
+defp load_portfolio_sections_safe(portfolio_id) do
+  try do
+    case Portfolios.list_portfolio_sections(portfolio_id) do
+      sections when is_list(sections) -> sections
+      _ -> []
+    end
+  rescue
+    _ -> []
+  end
+end
+
   defp can_view_portfolio_safe?(portfolio, user) do
     case portfolio.visibility do
       :public -> true
@@ -301,62 +571,172 @@ defmodule FrestylWeb.PortfolioLive.Show do
   end
 
   @impl true
+  def handle_info({:update_portfolio_design, design_update}, socket) do
+    IO.puts("🎨 SHOW: Received direct design update")
+
+    # Update local state immediately for responsive UI
+    updated_customization = Map.merge(socket.assigns.customization, design_update)
+
+    {:noreply, socket
+      |> assign(:customization, updated_customization)
+      |> push_event("apply_portfolio_design", %{
+        layout: Map.get(updated_customization, "layout_style", "single"),
+        color_scheme: Map.get(updated_customization, "color_scheme", "professional"),
+        customization: updated_customization
+      })}
+  end
+
+  @impl true
   def handle_info({:design_update, design_data}, socket) do
     handle_info({:design_complete_update, design_data}, socket)
   end
 
- @impl true
-def handle_info(msg, socket) do
-  case msg do
-    # Handle preview updates from editor
-    {:preview_update, data} when is_map(data) ->
-      IO.puts("🔄 SHOW: Handling preview_update")
-      sections = Map.get(data, :sections, socket.assigns.sections)
-      customization = Map.get(data, :customization, socket.assigns.customization)
+  @impl true
+  def handle_info(msg, socket) do
+    case msg do
+      # Handle preview updates from editor
+      {:preview_update, data} when is_map(data) ->
+        IO.puts("🔄 SHOW: Handling preview_update")
 
-      {:noreply, socket
-      |> assign(:sections, sections)
-      |> assign(:customization, customization)
-      |> push_event("update_all_css_variables", %{customization: customization})}
+        sections = Map.get(data, :sections, socket.assigns.sections)
+        customization = Map.get(data, :customization, socket.assigns.customization)
 
-    # Handle sections updates
-    {:sections_updated, sections} ->
-      IO.puts("🔄 SHOW: Handling sections_updated")
-      {:noreply, assign(socket, :sections, sections)}
+        # Update socket with new data
+        socket = socket
+        |> assign(:sections, sections)
+        |> assign(:customization, customization)
+        |> push_event("update_preview_content", %{
+          sections: sections,
+          customization: customization
+        })
 
-    # Handle portfolio sections changed
-    {:portfolio_sections_changed, data} ->
-      IO.puts("🔄 SHOW: Handling portfolio_sections_changed")
-      sections = Map.get(data, :sections, socket.assigns.sections)
-      customization = Map.get(data, :customization, socket.assigns.customization)
+        {:noreply, socket}
 
-      {:noreply, socket
-      |> assign(:sections, sections)
-      |> assign(:customization, customization)
-      |> push_event("update_all_css_variables", %{customization: customization})}
+      # Handle section updates
+      {:sections_updated, sections} ->
+        IO.puts("🔄 SHOW: Handling sections_updated")
 
-    # Handle customization updates
-    {:customization_updated, customization} ->
-      IO.puts("🔄 SHOW: Handling customization_updated")
-      {:noreply, socket
-      |> assign(:customization, customization)
-      |> push_event("update_all_css_variables", %{customization: customization})}
+        socket = socket
+        |> assign(:sections, sections)
+        |> push_event("update_sections", %{sections: sections})
 
-    # Handle design updates
-    {:design_complete_update, design_data} ->
-      IO.puts("🔄 SHOW: Handling design_complete_update")
-      customization = Map.get(design_data, :customization, socket.assigns.customization)
+        {:noreply, socket}
 
-      {:noreply, socket
-      |> assign(:customization, customization)
-      |> push_event("update_all_css_variables", %{customization: customization})}
+      # Handle portfolio sections changed (comprehensive update)
+      {:portfolio_sections_changed, data} when is_map(data) ->
+        IO.puts("🔄 SHOW: Handling portfolio_sections_changed")
 
-    # Catch-all for truly unhandled messages
-    _ ->
-      IO.puts("🔥 SHOW: Truly unhandled message: #{inspect(msg)}")
-      {:noreply, socket}
+        sections = Map.get(data, :sections, socket.assigns.sections)
+        customization = Map.get(data, :customization, socket.assigns.customization)
+
+        socket = socket
+        |> assign(:sections, sections)
+        |> assign(:customization, customization)
+        |> push_event("comprehensive_update", %{
+          sections: sections,
+          customization: customization
+        })
+
+        {:noreply, socket}
+
+      # Handle customization updates
+      {:customization_updated, customization} ->
+        IO.puts("🔄 SHOW: Handling customization_updated")
+
+        socket = socket
+        |> assign(:customization, customization)
+        |> push_event("update_css_variables", customization)
+
+        {:noreply, socket}
+
+      # Handle section visibility changes
+      {:section_visibility_changed, data} when is_map(data) ->
+        IO.puts("🔄 SHOW: Handling section_visibility_changed")
+
+        sections = Map.get(data, :sections, socket.assigns.sections)
+
+        socket = socket
+        |> assign(:sections, sections)
+        |> push_event("update_section_visibility", %{sections: sections})
+
+        {:noreply, socket}
+
+      # Handle design updates
+      {:design_update, data} when is_map(data) ->
+        IO.puts("🔄 SHOW: Handling design_update")
+        handle_design_update(data, socket)
+
+      {:design_complete_update, data} when is_map(data) ->
+        IO.puts("🔄 SHOW: Handling design_complete_update")
+        handle_design_update(data, socket)
+
+      # Handle layout changes
+      {:layout_changed, layout_name, customization} ->
+        IO.puts("🔄 SHOW: Handling layout_changed")
+
+        socket = socket
+        |> assign(:portfolio_layout, Map.get(customization, "layout", "minimal"))
+        |> assign(:customization, customization)
+        |> push_event("layout_changed", %{layout: layout_name})
+
+        {:noreply, socket}
+
+      # Handle content updates for individual sections
+      {:content_update, section} ->
+        IO.puts("🔄 SHOW: Handling content_update")
+
+        sections = update_section_in_list(socket.assigns.sections, section)
+
+        socket = socket
+        |> assign(:sections, sections)
+        |> push_event("update_section_content", %{
+          section_id: section.id,
+          content: section.content
+        })
+
+        {:noreply, socket}
+
+      # Handle portfolio updates (legacy)
+      {:portfolio_updated, updated_portfolio} ->
+        IO.puts("🔄 SHOW: Handling portfolio_updated")
+
+        socket = socket
+        |> assign(:portfolio, updated_portfolio)
+        |> assign(:customization, updated_portfolio.customization || %{})
+
+        {:noreply, socket}
+
+      # Handle viewport changes
+      {:viewport_change, mobile_view} ->
+        socket = assign(socket, :mobile_view, mobile_view)
+        {:noreply, socket}
+
+      # Catch-all for unhandled messages
+      unknown_msg ->
+        IO.puts("⚠️ SHOW: Unhandled message: #{inspect(unknown_msg)}")
+        {:noreply, socket}
+    end
   end
-end
+
+  defp handle_design_update(design_data, socket) do
+    IO.puts("🎨 SHOW PAGE processing design update")
+
+    customization = Map.get(design_data, :customization, socket.assigns.customization)
+    css = Map.get(design_data, :css, "")
+    template_class = Map.get(design_data, :template_class, "template-professional-dashboard")
+
+    socket = socket
+    |> assign(:customization, customization)
+    |> assign(:custom_css, css)
+    |> assign(:template_class, template_class)
+    |> push_event("apply_comprehensive_design", design_data)
+    |> push_event("apply_portfolio_design", design_data)
+    |> push_event("inject_design_css", %{css: css})
+    |> push_event("update_css_variables", customization)
+
+    {:noreply, socket}
+  end
+
 
   defp load_portfolio_by_slug(slug) do
     try do
@@ -886,205 +1266,82 @@ end
 
 
   def render(assigns) do
+    # Extract layout settings with proper defaults
+    layout_style = Map.get(assigns.customization, "layout_style", "single")
+    color_scheme = Map.get(assigns.customization, "color_scheme", "professional")
+    typography = Map.get(assigns.customization, "typography", "sans")
+
+    IO.puts("🎨 SHOW RENDER: Layout=#{layout_style}, Color=#{color_scheme}, Typography=#{typography}")
+
     ~H"""
     <div class="portfolio-show">
-      <div class={[
-        "portfolio-enhanced-view min-h-screen bg-gray-50",
-        "template-#{Map.get(@customization, "theme", "professional")}"
-      ]}
-      data-portfolio-layout={Map.get(@customization, "layout_style", "mobile_single")}
-      data-professional-type={Map.get(@customization, "professional_type", "general")}
-      data-color-scheme={Map.get(@customization, "color_scheme", "blue")}>
+      <!-- Dynamic CSS Variables -->
+      <style id="portfolio-dynamic-css" phx-update="replace">
+        :root {
+          --primary-color: <%= Map.get(@customization, "primary_color", "#1e40af") %>;
+          --secondary-color: <%= Map.get(@customization, "secondary_color", "#3b82f6") %>;
+          --accent-color: <%= Map.get(@customization, "accent_color", "#60a5fa") %>;
+          --font-family: <%= get_typography_css(typography) %>;
+        }
 
-        <!-- MINIMAL CSS - only variables, let PortfolioLayoutEngine handle layouts -->
-        <style id="portfolio-dynamic-css" phx-update="replace">
-          :root {
-            --primary-color: <%= Map.get(@customization, "primary_color", "#3B82F6") %>;
-            --secondary-color: <%= Map.get(@customization, "secondary_color", "#1D4ED8") %>;
-            --accent-color: <%= Map.get(@customization, "accent_color", "#60A5FA") %>;
-            --font-family: <%= Map.get(@customization, "font_family", "Inter, sans-serif") %>;
-            --section-spacing: <%= get_section_spacing(Map.get(@customization, "section_spacing", "normal")) %>;
-            --border-radius: <%= get_border_radius(Map.get(@customization, "corner_radius", "rounded")) %>;
-          }
+        body {
+          font-family: var(--font-family);
+        }
+      </style>
 
-          .portfolio-enhanced-view {
-            font-family: var(--font-family) !important;
-          }
+      <!-- Enhanced Layout Rendering -->
+      <%= raw(
+        FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer.render_portfolio_layout(
+          @portfolio,
+          @sections,
+          layout_style,
+          color_scheme,
+          typography
+        )
+      ) %>
 
-          .portfolio-enhanced-view h1,
-          .portfolio-enhanced-view h2,
-          .portfolio-enhanced-view h3 {
-            color: var(--primary-color) !important;
-          }
+      <!-- Contact Modal -->
+      <%= if Map.get(assigns, :show_contact_modal, false) do %>
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            phx-click="close_contact_modal">
+          <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4" phx-click-away="close_contact_modal">
+            <h3 class="text-lg font-bold mb-4">Get in Touch</h3>
+            <p class="text-gray-600 mb-4">Ready to discuss your project?</p>
 
-          /* FORCE CSS variables into all child components */
-          .portfolio-enhanced-view *,
-          .frestyl-layout-wrapper *,
-          .portfolio-layout *,
-          .section-content *,
-          [id^="section-"] *,
-          [id^="feed-"] *,
-          [id^="grid-"] *,
-          [id^="dash-"] *,
-          [id^="modern-"] * {
-            font-family: var(--font-family) !important;
-          }
-
-          /* Color inheritance for all text elements */
-          .portfolio-enhanced-view p,
-          .frestyl-layout-wrapper p,
-          .frestyl-layout-wrapper div,
-          .frestyl-layout-wrapper span,
-          .portfolio-section p,
-          .portfolio-section div,
-          .portfolio-section span {
-            color: var(--secondary-color) !important;
-          }
-
-          /* Headings color */
-          .portfolio-enhanced-view h1,
-          .portfolio-enhanced-view h2,
-          .portfolio-enhanced-view h3,
-          .portfolio-enhanced-view h4,
-          .frestyl-layout-wrapper h1,
-          .frestyl-layout-wrapper h2,
-          .frestyl-layout-wrapper h3,
-          .frestyl-layout-wrapper h4,
-          .portfolio-section h1,
-          .portfolio-section h2,
-          .portfolio-section h3,
-          .portfolio-section h4 {
-            color: var(--primary-color) !important;
-          }
-
-          /* Links and accents */
-          .portfolio-enhanced-view a,
-          .frestyl-layout-wrapper a,
-          .portfolio-section a {
-            color: var(--accent-color) !important;
-          }
-        </style>
-
-
-        <!-- Portfolio Header -->
-        <header class="portfolio-header bg-white shadow-sm">
-          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div class="text-center">
-              <h1 class="text-4xl font-bold" style="color: var(--primary-color)">
-                <%= @portfolio.title %>
-              </h1>
-              <%= if @portfolio.description do %>
-                <p class="text-xl text-gray-600 mt-2"><%= @portfolio.description %></p>
-              <% end %>
-            </div>
+            <form phx-submit="send_contact_message">
+              <div class="space-y-4">
+                <input type="text" name="name" placeholder="Your Name" required
+                      class="w-full p-3 border rounded-lg">
+                <input type="email" name="email" placeholder="Your Email" required
+                      class="w-full p-3 border rounded-lg">
+                <textarea name="message" placeholder="Your Message" rows="4" required
+                          class="w-full p-3 border rounded-lg"></textarea>
+              </div>
+              <div class="flex justify-end space-x-3 mt-6">
+                <button type="button" phx-click="close_contact_modal"
+                        class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                  Cancel
+                </button>
+                <button type="submit"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                  Send Message
+                </button>
+              </div>
+            </form>
           </div>
-        </header>
-
-        <!-- USE THE NEW PORTFOLIO LAYOUT ENGINE -->
-        <main class="portfolio-content">
-          <%= raw(FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer.render_portfolio_layout(
-            @portfolio,
-            @sections,
-            @layout_type,
-            @color_scheme,
-            @theme
-          )) %>
-        </main>
-
-      </div>
-
-      <!-- JavaScript for handling live updates -->
-      <script>
-        // Handle comprehensive CSS variable updates
-        window.addEventListener('phx:update_all_css_variables', (e) => {
-          console.log('🎨 UPDATING ALL CSS VARIABLES:', e.detail);
-
-          if (e.detail.customization) {
-            const customization = e.detail.customization;
-            const root = document.documentElement;
-
-            // Color updates
-            if (customization.primary_color) {
-              root.style.setProperty('--primary-color', customization.primary_color);
-              console.log('✅ Updated primary color:', customization.primary_color);
-            }
-
-            if (customization.secondary_color) {
-              root.style.setProperty('--secondary-color', customization.secondary_color);
-              console.log('✅ Updated secondary color:', customization.secondary_color);
-            }
-
-            if (customization.accent_color) {
-              root.style.setProperty('--accent-color', customization.accent_color);
-              console.log('✅ Updated accent color:', customization.accent_color);
-            }
-
-            // Typography updates
-            if (customization.font_family) {
-              root.style.setProperty('--font-family', customization.font_family);
-              document.body.style.fontFamily = customization.font_family;
-              console.log('✅ Updated font family:', customization.font_family);
-            }
-
-            if (customization.font_style) {
-              const fontMap = {
-                'inter': 'Inter, sans-serif',
-                'poppins': 'Poppins, sans-serif',
-                'playfair': 'Playfair Display, serif',
-                'source_sans': 'Source Sans Pro, sans-serif'
-              };
-              const fontFamily = fontMap[customization.font_style] || customization.font_style;
-              root.style.setProperty('--font-family', fontFamily);
-              document.body.style.fontFamily = fontFamily;
-              console.log('✅ Updated font style:', customization.font_style);
-            }
-
-            // Spacing and style updates
-            if (customization.section_spacing) {
-              const spacingMap = {
-                'compact': '1rem',
-                'normal': '1.5rem',
-                'spacious': '3rem'
-              };
-              const spacing = spacingMap[customization.section_spacing] || '1.5rem';
-              root.style.setProperty('--section-spacing', spacing);
-              console.log('✅ Updated section spacing:', customization.section_spacing);
-            }
-
-            if (customization.corner_radius) {
-              const radiusMap = {
-                'sharp': '0',
-                'rounded': '0.5rem',
-                'very-rounded': '1rem'
-              };
-              const radius = radiusMap[customization.corner_radius] || '0.5rem';
-              root.style.setProperty('--border-radius', radius);
-              console.log('✅ Updated corner radius:', customization.corner_radius);
-            }
-
-            // Layout updates (this already works)
-            if (customization.layout_style) {
-              const container = document.querySelector('[data-layout]');
-              if (container) {
-                container.setAttribute('data-layout', customization.layout_style);
-                console.log('✅ Updated layout:', customization.layout_style);
-              }
-            }
-
-            // Force a visual update to trigger re-render
-            document.body.style.opacity = '0.99';
-            setTimeout(() => document.body.style.opacity = '1', 10);
-          }
-        });
-
-        // Keep existing event handlers for backward compatibility
-        window.addEventListener('phx:force_css_update', (e) => {
-          window.dispatchEvent(new CustomEvent('phx:update_all_css_variables', { detail: e.detail }));
-        });
-      </script>
-
+        </div>
+      <% end %>
     </div>
     """
+  end
+
+  defp get_typography_css(typography) do
+    case typography do
+      "sans" -> "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif"
+      "serif" -> "'Crimson Text', 'Times New Roman', serif"
+      "mono" -> "'JetBrains Mono', 'Fira Code', monospace"
+      _ -> "-apple-system, BlinkMacSystemFont, 'Inter', sans-serif"
+    end
   end
 
   defp get_layout_css("mobile_single"), do: "display: flex; flex-direction: column; gap: 1.5rem;"

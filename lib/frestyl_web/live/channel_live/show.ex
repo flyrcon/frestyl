@@ -2,14 +2,11 @@
 defmodule FrestylWeb.ChannelLive.Show do
   use FrestylWeb, :live_view
 
-  alias Frestyl.Channels
+  alias Frestyl.{Accounts, Channels, Chat, Media, Sessions, Timezone}
   alias Frestyl.Channels.Channel
-  alias Frestyl.Chat
-  alias Frestyl.Accounts
-  alias Frestyl.Media
-  alias Frestyl.Sessions
+  alias Frestyl.Features.TierManager
   alias Frestyl.Sessions.Session
-  alias Frestyl.Timezone
+  alias Frestyl.Studio.StudioSupervisor
   import FrestylWeb.Navigation, only: [nav: 1]
 
   # Helper functions
@@ -197,7 +194,7 @@ defmodule FrestylWeb.ChannelLive.Show do
     # Get current user from session
     current_user = session["user_token"] && Accounts.get_user_by_session_token(session["user_token"])
 
-    # Updated: Get channel by the new parameter name
+    # Get channel by the parameter name
     channel_identifier = params["id_or_slug"] || params["slug"] || params["id"]
 
     changeset = Sessions.change_session(%Sessions.Session{})
@@ -210,7 +207,7 @@ defmodule FrestylWeb.ChannelLive.Show do
 
       {:ok, socket}
     else
-      # Updated: Use the new helper function for getting channel
+      # Use the helper function for getting channel
       channel = get_channel_by_identifier(channel_identifier)
 
       case channel do
@@ -267,6 +264,13 @@ defmodule FrestylWeb.ChannelLive.Show do
             |> assign(:user_to_block, nil)
             |> assign(:blocking_member, false)
             |> setup_uploads()
+            # ADD TOOL ACCESS PERMISSIONS HERE (after setup_uploads)
+            |> assign_tool_access_permissions(current_user, is_admin, is_member)
+            |> assign(:available_studio_tools, get_available_studio_tools(current_user))
+            |> assign(:show_tool_launcher, false)
+            |> assign(:show_session_launcher, false)
+            |> assign(:show_broadcast_scheduler, false)
+            |> assign(:selected_tool, nil)
 
           # If this is a connected mount, subscribe to the channel topic
           if connected?(socket) && !restricted do
@@ -426,6 +430,173 @@ defmodule FrestylWeb.ChannelLive.Show do
         |> push_event("show-form-errors", %{})}
     end
   end
+
+  @impl true
+def handle_event("show_tool_launcher", _params, socket) do
+  {:noreply, assign(socket, :show_tool_launcher, true)}
+end
+
+@impl true
+def handle_event("hide_tool_launcher", _params, socket) do
+  {:noreply, assign(socket, :show_tool_launcher, false)}
+end
+
+@impl true
+def handle_event("launch_studio_tool", %{"tool" => tool}, socket) do
+  current_user = socket.assigns.current_user
+  channel = socket.assigns.channel
+
+  case can_access_tool?(socket.assigns.tool_permissions, tool) do
+    true ->
+      case launch_tool(tool, channel, current_user) do
+        {:ok, :redirect, path} ->
+          {:noreply,
+           socket
+           |> assign(:show_tool_launcher, false)
+           |> redirect(to: path)}
+
+        {:ok, :session_created, session_id} ->
+          {:noreply,
+           socket
+           |> assign(:show_tool_launcher, false)
+           |> redirect(to: ~p"/studio/#{session_id}")}
+
+        {:error, reason} ->
+          {:noreply,
+           socket
+           |> put_flash(:error, "Failed to launch #{tool}: #{reason}")
+           |> assign(:show_tool_launcher, false)}
+      end
+
+    false ->
+      tier_info = get_tier_upgrade_info(current_user, tool)
+      {:noreply,
+       socket
+       |> put_flash(:info, "#{tier_info.feature_name} requires #{tier_info.required_tier} tier. Upgrade to access.")
+       |> assign(:show_tool_launcher, false)}
+  end
+end
+
+@impl true
+def handle_event("show_session_launcher", _params, socket) do
+  {:noreply, assign(socket, :show_session_launcher, true)}
+end
+
+@impl true
+def handle_event("hide_session_launcher", _params, socket) do
+  {:noreply, assign(socket, :show_session_launcher, false)}
+end
+
+@impl true
+def handle_event("launch_session", %{"session_type" => session_type}, socket) do
+  current_user = socket.assigns.current_user
+  channel = socket.assigns.channel
+
+  if socket.assigns.tool_permissions.can_create_sessions do
+    session_params = %{
+      title: "New #{String.capitalize(session_type)} Session",
+      description: "Collaborative #{session_type} session in #{channel.name}",
+      session_type: session_type,
+      channel_id: channel.id,
+      creator_id: current_user.id,
+      status: "active"
+    }
+
+    case Sessions.create_session(session_params) do
+      {:ok, session} ->
+        # Start studio processes if audio session
+        if session_type in ["audio", "podcast", "music"] do
+          StudioSupervisor.start_studio_session(session.id)
+        end
+
+        {:noreply,
+         socket
+         |> assign(:show_session_launcher, false)
+         |> redirect(to: ~p"/studio/#{session.id}")}
+
+      {:error, changeset} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to create session")
+         |> assign(:show_session_launcher, false)}
+    end
+  else
+    {:noreply,
+     socket
+     |> put_flash(:error, "You don't have permission to create sessions in this channel")
+     |> assign(:show_session_launcher, false)}
+  end
+end
+
+@impl true
+def handle_event("join_session", %{"session_id" => session_id}, socket) do
+  current_user = socket.assigns.current_user
+
+  case Sessions.join_session(session_id, current_user.id) do
+    {:ok, _participant} ->
+      {:noreply, redirect(socket, to: ~p"/studio/#{session_id}")}
+
+    {:error, reason} ->
+      {:noreply, put_flash(socket, :error, "Failed to join session: #{reason}")}
+  end
+end
+
+@impl true
+def handle_event("show_broadcast_scheduler", _params, socket) do
+  if socket.assigns.tool_permissions.can_create_broadcasts do
+    {:noreply, assign(socket, :show_broadcast_scheduler, true)}
+  else
+    {:noreply, put_flash(socket, :error, "You don't have permission to schedule broadcasts")}
+  end
+end
+
+@impl true
+def handle_event("hide_broadcast_scheduler", _params, socket) do
+  {:noreply, assign(socket, :show_broadcast_scheduler, false)}
+end
+
+@impl true
+def handle_event("quick_schedule_broadcast", %{"broadcast_type" => broadcast_type}, socket) do
+  current_user = socket.assigns.current_user
+  channel = socket.assigns.channel
+
+  # Create a broadcast scheduled for 5 minutes from now
+  scheduled_time = DateTime.add(DateTime.utc_now(), 5 * 60, :second)
+
+  broadcast_params = %{
+    title: "Live #{String.capitalize(broadcast_type)} Broadcast",
+    description: "Live #{broadcast_type} broadcast in #{channel.name}",
+    session_type: "broadcast",
+    broadcast_type: broadcast_type,
+    channel_id: channel.id,
+    creator_id: current_user.id,
+    host_id: current_user.id,
+    status: "scheduled",
+    scheduled_for: scheduled_time,
+    visibility: "public"
+  }
+
+  case Sessions.create_broadcast(broadcast_params) do
+    {:ok, broadcast} ->
+      # Refresh broadcasts list
+      upcoming_broadcasts = Sessions.get_upcoming_broadcasts(channel.id)
+
+      {:noreply,
+       socket
+       |> assign(:upcoming_broadcasts, upcoming_broadcasts)
+       |> assign(:broadcasts, upcoming_broadcasts)
+       |> assign(:show_broadcast_scheduler, false)
+       |> put_flash(:info, "Broadcast scheduled for #{Calendar.strftime(scheduled_time, "%I:%M %p")}!")
+       |> redirect(to: ~p"/channels/#{channel.slug}/broadcasts/#{broadcast.id}/manage")}
+
+    {:error, changeset} ->
+      {:noreply,
+       socket
+       |> put_flash(:error, "Failed to schedule broadcast")
+       |> assign(:show_broadcast_scheduler, false)}
+  end
+end
+
 
   # Helper function for better feedback messages
   defp format_broadcast_time(broadcast) do
@@ -775,6 +946,261 @@ defmodule FrestylWeb.ChannelLive.Show do
   format_time_ago(datetime)
   end
   defp format_time_ago(_), do: "Unknown"
+
+
+  defp assign_tool_access_permissions(socket, current_user, user_role) do
+    tier = if current_user, do: TierManager.get_account_tier(current_user), else: "personal"
+
+    permissions = %{
+      # Basic permissions based on channel role
+      can_view_tools: user_role in ["admin", "moderator", "member"],
+      can_create_sessions: user_role in ["admin", "moderator", "member"],
+      can_create_broadcasts: user_role in ["admin", "moderator"],
+      can_manage_broadcasts: user_role in ["admin", "moderator"],
+
+      # Tier-based tool access
+      can_use_audio_studio: TierManager.feature_available?(tier, :audio_studio),
+      can_use_video_tools: TierManager.feature_available?(tier, :video_recording),
+      can_use_collaboration: TierManager.feature_available?(tier, :real_time_collaboration),
+      can_use_advanced_broadcasting: TierManager.feature_available?(tier, :advanced_broadcasting),
+      can_use_analytics: TierManager.feature_available?(tier, :advanced_analytics),
+
+      # Usage limits
+      max_concurrent_sessions: get_tier_limit(tier, :max_concurrent_sessions),
+      max_broadcast_duration: get_tier_limit(tier, :max_broadcast_duration)
+    }
+
+    assign(socket, :tool_permissions, permissions)
+  end
+
+  defp get_available_studio_tools(current_user, user_role) do
+    tier = if current_user, do: TierManager.get_account_tier(current_user), else: "personal"
+
+    base_tools = [
+      %{
+        id: "audio_recorder",
+        name: "Audio Recorder",
+        description: "Record high-quality audio",
+        icon: "microphone",
+        tier_required: "personal",
+        available: true
+      },
+      %{
+        id: "text_editor",
+        name: "Text Editor",
+        description: "Collaborative text editing",
+        icon: "document-text",
+        tier_required: "personal",
+        available: true
+      }
+    ]
+
+    premium_tools = [
+      %{
+        id: "audio_studio",
+        name: "Audio Studio",
+        description: "Multi-track audio production",
+        icon: "musical-note",
+        tier_required: "creator",
+        available: TierManager.feature_available?(tier, :audio_studio)
+      },
+      %{
+        id: "video_studio",
+        name: "Video Studio",
+        description: "Video recording and editing",
+        icon: "video-camera",
+        tier_required: "creator",
+        available: TierManager.feature_available?(tier, :video_recording)
+      },
+      %{
+        id: "live_streaming",
+        name: "Live Streaming",
+        description: "Professional live broadcasts",
+        icon: "signal",
+        tier_required: "professional",
+        available: TierManager.feature_available?(tier, :advanced_broadcasting)
+      }
+    ]
+
+    Enum.concat(base_tools, premium_tools)
+  end
+
+  defp can_access_tool?(permissions, tool) do
+    case tool do
+      "audio_recorder" -> permissions.can_view_tools
+      "text_editor" -> permissions.can_view_tools
+      "audio_studio" -> permissions.can_use_audio_studio
+      "video_studio" -> permissions.can_use_video_tools
+      "live_streaming" -> permissions.can_use_advanced_broadcasting
+      _ -> false
+    end
+  end
+
+  defp launch_tool(tool, channel, user) do
+    case tool do
+      "audio_studio" ->
+        # Create a new audio session
+        session_params = %{
+          title: "Audio Studio Session",
+          session_type: "audio",
+          channel_id: channel.id,
+          creator_id: user.id,
+          status: "active"
+        }
+
+        case Sessions.create_session(session_params) do
+          {:ok, session} ->
+            StudioSupervisor.start_studio_session(session.id)
+            {:ok, :session_created, session.id}
+          error -> error
+        end
+
+      "live_streaming" ->
+        {:ok, :redirect, ~p"/channels/#{channel.slug}/broadcasts/new"}
+
+      "video_studio" ->
+        {:ok, :redirect, ~p"/studio/video/#{channel.id}"}
+
+      _ ->
+        {:error, "Unknown tool"}
+    end
+  end
+
+  defp assign_tool_access_permissions(socket, current_user, is_admin, is_member) do
+    tier = if current_user, do: TierManager.get_account_tier(current_user), else: "personal"
+
+    permissions = %{
+      # Basic permissions based on channel role - using existing booleans
+      can_view_tools: is_member or is_admin,
+      can_create_sessions: is_member or is_admin,
+      can_create_broadcasts: is_admin, # Only admins can create broadcasts
+      can_manage_broadcasts: is_admin,
+
+      # Tier-based tool access
+      can_use_audio_studio: TierManager.feature_available?(tier, :audio_studio),
+      can_use_video_tools: TierManager.feature_available?(tier, :video_recording),
+      can_use_collaboration: TierManager.feature_available?(tier, :real_time_collaboration),
+      can_use_advanced_broadcasting: TierManager.feature_available?(tier, :advanced_broadcasting),
+      can_use_analytics: TierManager.feature_available?(tier, :advanced_analytics),
+
+      # Usage limits
+      max_concurrent_sessions: get_tier_limit(tier, :max_concurrent_sessions),
+      max_broadcast_duration: get_tier_limit(tier, :max_broadcast_duration)
+    }
+
+    assign(socket, :tool_permissions, permissions)
+  end
+
+  defp get_available_studio_tools(current_user) do
+    tier = if current_user, do: TierManager.get_account_tier(current_user), else: "personal"
+
+    base_tools = [
+      %{
+        id: "audio_recorder",
+        name: "Audio Recorder",
+        description: "Record high-quality audio",
+        icon: "microphone",
+        tier_required: "personal",
+        available: true
+      },
+      %{
+        id: "text_editor",
+        name: "Text Editor",
+        description: "Collaborative text editing",
+        icon: "document-text",
+        tier_required: "personal",
+        available: true
+      }
+    ]
+
+    premium_tools = [
+      %{
+        id: "audio_studio",
+        name: "Audio Studio",
+        description: "Multi-track audio production",
+        icon: "musical-note",
+        tier_required: "creator",
+        available: TierManager.feature_available?(tier, :audio_studio)
+      },
+      %{
+        id: "video_studio",
+        name: "Video Studio",
+        description: "Video recording and editing",
+        icon: "video-camera",
+        tier_required: "creator",
+        available: TierManager.feature_available?(tier, :video_recording)
+      },
+      %{
+        id: "live_streaming",
+        name: "Live Streaming",
+        description: "Professional live broadcasts",
+        icon: "signal",
+        tier_required: "professional",
+        available: TierManager.feature_available?(tier, :advanced_broadcasting)
+      }
+    ]
+
+    Enum.concat(base_tools, premium_tools)
+  end
+
+  defp can_access_tool?(permissions, tool) do
+    case tool do
+      "audio_recorder" -> permissions.can_view_tools
+      "text_editor" -> permissions.can_view_tools
+      "audio_studio" -> permissions.can_use_audio_studio
+      "video_studio" -> permissions.can_use_video_tools
+      "live_streaming" -> permissions.can_use_advanced_broadcasting
+      _ -> false
+    end
+  end
+
+  defp launch_tool(tool, channel, user) do
+    case tool do
+      "audio_studio" ->
+        # Create a new audio session
+        session_params = %{
+          title: "Audio Studio Session",
+          session_type: "audio",
+          channel_id: channel.id,
+          creator_id: user.id,
+          status: "active"
+        }
+
+        case Sessions.create_session(session_params) do
+          {:ok, session} ->
+            StudioSupervisor.start_studio_session(session.id)
+            {:ok, :session_created, session.id}
+          error -> error
+        end
+
+      "live_streaming" ->
+        {:ok, :redirect, ~p"/channels/#{channel.slug}/broadcasts/new"}
+
+      "video_studio" ->
+        {:ok, :redirect, ~p"/studio/video/#{channel.id}"}
+
+      _ ->
+        {:error, "Unknown tool"}
+    end
+  end
+
+  defp get_tier_upgrade_info(user, tool) do
+    case tool do
+      "audio_studio" ->
+        %{feature_name: "Audio Studio", required_tier: "Creator"}
+      "video_studio" ->
+        %{feature_name: "Video Studio", required_tier: "Creator"}
+      "live_streaming" ->
+        %{feature_name: "Live Streaming", required_tier: "Professional"}
+      _ ->
+        %{feature_name: "This feature", required_tier: "Premium"}
+    end
+  end
+
+  defp get_tier_limit(tier, limit_type) do
+    limits = TierManager.get_tier_limits(tier)
+    Map.get(limits, limit_type, 1)
+  end
 
   # NEW: Customization event handlers
   @impl true
@@ -2405,6 +2831,20 @@ defmodule FrestylWeb.ChannelLive.Show do
   @impl true
   def handle_params(params, _url, socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+  end
+
+  @impl true
+  def handle_info({:session_created, session}, socket) do
+    # Refresh sessions list when new session created
+    sessions = Sessions.list_channel_sessions(socket.assigns.channel.id)
+    {:noreply, assign(socket, :sessions, sessions)}
+  end
+
+  @impl true
+  def handle_info({:broadcast_scheduled, broadcast}, socket) do
+    # Refresh broadcasts when new one scheduled
+    upcoming_broadcasts = Sessions.get_upcoming_broadcasts(socket.assigns.channel.id)
+    {:noreply, assign(socket, :upcoming_broadcasts, upcoming_broadcasts)}
   end
 
   # Helper functions for live activity updates

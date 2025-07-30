@@ -332,6 +332,11 @@ defmodule FrestylWeb.PortfolioLive.Components.LayoutPickerComponent do
 
   @impl true
   def handle_event("apply_design_changes", _params, socket) do
+    IO.puts("🎨 LAYOUT PICKER: Applying design changes")
+    IO.puts("🎨 Current layout: #{socket.assigns.current_layout}")
+    IO.puts("🎨 Current color scheme: #{socket.assigns.current_color_scheme}")
+    IO.puts("🎨 Current typography: #{socket.assigns.current_typography}")
+
     # Build the customization update
     layout_update = %{
       "layout_style" => socket.assigns.current_layout,
@@ -340,13 +345,16 @@ defmodule FrestylWeb.PortfolioLive.Components.LayoutPickerComponent do
       "updated_at" => DateTime.utc_now() |> DateTime.to_iso8601()
     }
 
-    # Send to parent
+    IO.puts("🎨 Sending layout update: #{inspect(layout_update)}")
+
+    # Send to parent LiveView
     send(self(), {:update_portfolio_design, layout_update})
 
     {:noreply, socket
       |> put_flash(:info, "Design updated successfully!")
     }
   end
+
 
   # ============================================================================
   # HELPER FUNCTIONS

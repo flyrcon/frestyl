@@ -254,4 +254,5 @@ defmodule Frestyl.Accounts.User do
 
   def has_backup_codes?(%__MODULE__{backup_codes: codes}) when is_list(codes) and length(codes) > 0, do: true
   def has_backup_codes?(_), do: false
+
 end
