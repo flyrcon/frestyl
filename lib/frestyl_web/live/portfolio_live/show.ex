@@ -11,12 +11,11 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   alias FrestylWeb.PortfolioLive.EnhancedPortfolioEditor
   alias Frestyl.ResumeExporter
-  alias FrestylWeb.PortfolioLive.Components.{
+  alias FrestylWeb.PortfolioLive.Components.{EnhancedHeroRenderer,
     DynamicSectionModal,
     EnhancedSectionRenderer,
-    EnhancedLayoutRenderer
-  }
 
+  }
 
 
   @impl true
@@ -69,6 +68,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+
   defp mount_portfolio(portfolio, socket) do
     IO.puts("📁 MOUNTING PORTFOLIO DATA: #{portfolio.title}")
 
@@ -93,6 +93,16 @@ defmodule FrestylWeb.PortfolioLive.Show do
     layout_type = Map.get(customization, "layout", "standard")
     color_scheme = Map.get(customization, "color_scheme", "blue")
 
+    # NEW: Extract video display settings
+    video_aspect_ratio = Map.get(customization, "video_aspect_ratio", "16:9")
+    video_display_mode = Map.get(customization, "video_display_mode", "original")
+
+    # Create display options for video rendering
+    video_display_options = %{
+      aspect_ratio: video_aspect_ratio,
+      display_mode: video_display_mode
+    }
+
     # ENHANCED: Generate complete theme CSS using our enhanced system
     # Basic assignments with enhanced theme data
     socket = socket
@@ -106,6 +116,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
     |> assign(:layout_type, layout_type)
     |> assign(:color_scheme, color_scheme)
     |> assign(:use_enhanced_display, true)  # FIXED: Enable enhanced display
+    |> assign(:video_display_options, video_display_options)  # NEW: Video display settings
 
     |> assign(:intro_video, intro_video)
     |> assign(:intro_video_section, intro_video)
@@ -940,32 +951,48 @@ end
     end
   end
 
+  defp get_modal_video_classes(video_display_options) do
+    aspect_ratio = Map.get(video_display_options, :aspect_ratio, "16:9")
+
+    case aspect_ratio do
+      "16:9" -> "aspect-video bg-black rounded-lg overflow-hidden"
+      "9:16" -> "aspect-[9/16] bg-black rounded-lg overflow-hidden max-h-[80vh]"
+      "1:1" -> "aspect-square bg-black rounded-lg overflow-hidden max-w-[80vh]"
+      _ -> "aspect-video bg-black rounded-lg overflow-hidden"
+    end
+  end
+
+  defp get_modal_video_object_fit(video_display_options) do
+    display_mode = Map.get(video_display_options, :display_mode, "original")
+
+    case display_mode do
+      "original" -> "object-contain"
+      "crop_" <> _ -> "object-cover"
+      _ -> "object-contain"  # Default to contain for modals to ensure full video is visible
+    end
+  end
+
   defp extract_intro_video_and_filter_sections(sections) do
-    intro_video_section = Enum.find(sections, fn section ->
-      section.title == "Video Introduction" ||
-      (section.content && Map.get(section.content, "video_type") == "introduction")
+    intro_section = Enum.find(sections, fn section ->
+      section.section_type == "intro" &&
+      get_in(section, [:content, "video_url"])
     end)
 
-    filtered_sections = if intro_video_section do
-      Enum.reject(sections, &(&1.id == intro_video_section.id))
-    else
-      sections
-    end
+    case intro_section do
+      nil ->
+        {nil, sections}
+      section ->
+        # Preserve video display settings in the intro video data
+        enhanced_section = %{section |
+          content: Map.merge(section.content || %{}, %{
+            "preserved_aspect_ratio" => Map.get(section.content || %{}, "video_aspect_ratio"),
+            "preserved_display_mode" => Map.get(section.content || %{}, "video_display_mode")
+          })
+        }
 
-    intro_video = if intro_video_section do
-      content = intro_video_section.content || %{}
-      %{
-        url: Map.get(content, "video_url"),
-        duration: Map.get(content, "duration"),
-        title: Map.get(content, "title", "Personal Introduction"),
-        description: Map.get(content, "description"),
-        filename: Map.get(content, "video_filename")
-      }
-    else
-      nil
+        filtered_sections = Enum.reject(sections, &(&1.id == section.id))
+        {enhanced_section, filtered_sections}
     end
-
-    {intro_video, filtered_sections}
   end
 
   defp get_video_url_safe(nil), do: nil
@@ -1148,11 +1175,32 @@ end
     end
   end
 
+  def handle_event("open_video_modal", _params, socket) do
+    {:noreply, assign(socket, :show_video_modal, true)}
+  end
+
+  def handle_event("close_video_modal", _params, socket) do
+    {:noreply, assign(socket, :show_video_modal, false)}
+  end
+
   # Handle live updates from editor
-  def handle_info({:portfolio_updated, updated_portfolio}, socket) do
-    {:noreply, socket
-    |> assign(:portfolio, updated_portfolio)
-    |> assign(:customization, updated_portfolio.customization || %{})}
+  def handle_info({:portfolio_updated, portfolio_id, _sections, customization, _type}, socket) do
+    if socket.assigns.portfolio.id == portfolio_id do
+      # Update video display options when portfolio is updated
+      video_aspect_ratio = Map.get(customization, "video_aspect_ratio", "16:9")
+      video_display_mode = Map.get(customization, "video_display_mode", "original")
+
+      video_display_options = %{
+        aspect_ratio: video_aspect_ratio,
+        display_mode: video_display_mode
+      }
+
+      {:noreply, socket
+        |> assign(:customization, customization)
+        |> assign(:video_display_options, video_display_options)}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -1264,7 +1312,6 @@ end
     })}
   end
 
-
   def render(assigns) do
     # Extract layout settings with proper defaults
     layout_style = Map.get(assigns.customization, "layout_style", "single")
@@ -1289,16 +1336,53 @@ end
         }
       </style>
 
-      <!-- Enhanced Layout Rendering -->
-      <%= raw(
-        FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer.render_portfolio_layout(
-          @portfolio,
-          @sections,
-          layout_style,
-          color_scheme,
-          typography
-        )
-      ) %>
+      <!-- Enhanced Layout Rendering - FIXED: Check if function exists with 6 parameters -->
+      <%= if function_exported?(FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer, :render_portfolio_layout, 6) do %>
+        <%= raw(
+          FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer.render_portfolio_layout(
+            @portfolio,
+            @sections,
+            layout_style,
+            color_scheme,
+            typography,
+            @video_display_options
+          )
+        ) %>
+      <% else %>
+        <!-- Fallback: Call without video display options -->
+        <%= raw(
+          FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer.render_portfolio_layout(
+            @portfolio,
+            @sections,
+            layout_style,
+            color_scheme,
+            typography
+          )
+        ) %>
+      <% end %>
+
+      <!-- Video Introduction Modal with Aspect Ratio Support -->
+      <%= if @show_video_modal && @intro_video do %>
+        <div class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+            phx-click="close_video_modal">
+          <div class="relative max-w-4xl w-full mx-4" phx-click="ignore">
+            <button phx-click="close_video_modal"
+                    class="absolute -top-12 right-0 text-white hover:text-gray-300 transition-colors">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+
+            <div class={"video-modal-container #{get_modal_video_classes(@video_display_options)}"}>
+              <video controls autoplay class={"w-full h-full #{get_modal_video_object_fit(@video_display_options)}"}>
+                <source src={@video_url} type="video/mp4">
+                <source src={@video_url} type="video/webm">
+                Your browser does not support the video tag.
+              </video>
+            </div>
+          </div>
+        </div>
+      <% end %>
 
       <!-- Contact Modal -->
       <%= if Map.get(assigns, :show_contact_modal, false) do %>
@@ -1903,14 +1987,6 @@ end
   defp get_video_content_safe(intro_video) do
     case intro_video do
       %{content: content} when is_map(content) -> content
-      %{"video_url" => _} = content -> content
-      video_data when is_map(video_data) ->
-        %{
-          "video_url" => Map.get(video_data, :video_url, ""),
-          "title" => Map.get(video_data, :title, "Personal Introduction"),
-          "description" => Map.get(video_data, :description, ""),
-          "duration" => Map.get(video_data, :duration, 0)
-        }
       _ -> %{}
     end
   end
@@ -1918,11 +1994,7 @@ end
   # Safe video URL extraction
   defp get_video_url_safe(intro_video) do
     case intro_video do
-      nil -> nil
-      %{video_url: url} when is_binary(url) -> url
-      %{"video_url" => url} when is_binary(url) -> url
       %{content: %{"video_url" => url}} when is_binary(url) -> url
-      %{content: content} when is_map(content) -> Map.get(content, "video_url")
       _ -> nil
     end
   end

@@ -8,8 +8,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
 
   @impl true
   def mount(socket) do
-    {:ok,
-    socket
+    socket = socket
     |> assign(:recording_state, :setup)
     |> assign(:countdown, 0)
     |> assign(:recording_time, 0)
@@ -19,6 +18,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     |> assign(:is_saving, false)
     |> assign(:upload_progress, 0)
     |> assign(:processing_video, false)
+    |> assign(:mode, "record")
     |> assign(:video_constraints, %{
         "video" => %{
           "width" => %{"ideal" => 1280},
@@ -28,9 +28,18 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         "audio" => true
       })
     |> assign(:show_menu, false)  # Add menu state
-    |> assign(:menu_loading, false)}  # Add loading state
-  end
+    |> assign(:menu_loading, false)  # Add loading state
+    # ADD the missing aspect ratio assigns from our patches:
+    |> assign(:aspect_ratio, "16:9")  # Default aspect ratio
+    |> assign(:display_mode, "original")  # How to display uploaded videos
+    |> assign(:available_ratios, [
+      %{value: "16:9", label: "Widescreen", description: "Professional landscape format"},
+      %{value: "9:16", label: "Portrait", description: "Mobile-friendly vertical format"},
+      %{value: "1:1", label: "Square", description: "Social media optimized format"}
+    ])
 
+    {:ok, socket}
+  end
 
   @impl true
   def update(assigns, socket) do
@@ -104,12 +113,14 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   # EVENT HANDLERS - RECORDING CONTROLS
   # ============================================================================
 
-    @impl true
+  @impl true
   def handle_event("camera_initialized", _params, socket) do
     IO.puts("📹 Camera initialized successfully")
 
     socket = socket
     |> assign(:camera_status, :ready)
+    |> assign(:camera_ready, true)  # FIXED: Set both status fields
+    |> assign(:recording_state, :ready)  # FIXED: Set recording state
     |> assign(:error_message, nil)
 
     {:noreply, socket}
@@ -211,6 +222,33 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     end
   end
 
+  def handle_event("set_aspect_ratio", %{"ratio" => ratio}, socket) do
+    IO.puts("🎬 Setting aspect ratio to: #{ratio}")
+    {:noreply, assign(socket, :aspect_ratio, ratio)}
+  end
+
+  def handle_event("set_display_mode", %{"mode" => mode}, socket) do
+    IO.puts("🎬 Setting display mode to: #{mode}")
+    {:noreply, assign(socket, :display_mode, mode)}
+  end
+
+  def handle_event("set_mode", %{"mode" => mode}, socket) do
+    IO.puts("🎬 Setting mode to: #{mode}")
+    {:noreply, assign(socket, :mode, mode)}
+  end
+
+  def handle_event("trigger_file_upload", _params, socket) do
+    IO.puts("🎬 Triggering file upload")
+    # Trigger file input or upload modal
+    {:noreply, push_event(socket, "trigger_file_upload", %{})}
+  end
+
+  def handle_event("close_modal", _params, socket) do
+    # Send event to parent to close modal
+    send(self(), {:close_video_modal})
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info({:start_recording, component_id}, socket) do
     if socket.assigns.id == component_id do
@@ -295,38 +333,52 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   # ============================================================================
 
   @impl true
-  def handle_event("camera_ready", params, socket) do
-    component_id = "video-intro-recorder-modal-#{socket.assigns.portfolio.id}"
-    IO.puts("🔥 Camera ready for component: #{component_id}")
+  def handle_event("camera_ready", _params, socket) do
+    IO.puts("📹 Camera ready (alternative event)")
 
-    # Forward to the video component with correct ID
-    send_update(FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent,
-      id: component_id,
-      camera_status: :ready)
+    socket = socket
+    |> assign(:camera_status, :ready)
+    |> assign(:camera_ready, true)
+    |> assign(:recording_state, :ready)
+    |> assign(:error_message, nil)
 
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("camera_error", params, socket) do
-    component_id = "video-intro-recorder-modal-#{socket.assigns.portfolio.id}"
-    error = Map.get(params, "error", "Unknown camera error")
-    IO.puts("❌ Camera error for component #{component_id}: #{error}")
+  def handle_event("camera_error", %{"error" => error}, socket) do
+    IO.puts("❌ Camera error: #{error}")
 
-    # Forward to the video component with correct ID
-    send_update(FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent,
-      id: component_id,
-      camera_status: :error,
-      error_message: error)
+    socket = socket
+    |> assign(:camera_status, :error)
+    |> assign(:camera_ready, false)  # FIXED: Set camera_ready to false
+    |> assign(:error_message, "Camera access failed: #{error}")
 
-    {:noreply, socket
-    |> put_flash(:error, "Camera access failed: #{error}")}
+    {:noreply, socket}
   end
 
   @impl true
-  def handle_event("start_recording", _params, socket) do
-    IO.puts("🔥 Starting video recording")
-    {:noreply, assign(socket, :recording_state, :recording)}
+  def handle_event("start_countdown", _params, socket) do
+    cond do
+      not socket.assigns.camera_ready ->
+        socket = put_flash(socket, :error, "Camera not ready. Please allow camera access.")
+        {:noreply, socket}
+
+      socket.assigns.camera_status != :ready ->  # FIXED: Use atom comparison
+        socket = put_flash(socket, :error, "Camera is still initializing. Please wait.")
+        {:noreply, socket}
+
+      true ->
+        socket =
+          socket
+          |> assign(:recording_state, :countdown)
+          |> assign(:countdown_timer, 3)
+          |> assign(:countdown_value, 3)
+          |> assign(:error_message, nil)
+
+        socket = push_event(socket, "start_countdown", %{})
+        {:noreply, socket}
+    end
   end
 
   @impl true
@@ -561,6 +613,33 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     Portfolios.update_section(section, %{content: updated_content, visible: visibility})
   end
 
+  defp get_aspect_ratio_style(ratio) do
+    case ratio do
+      "16:9" -> "aspect-ratio: 16/9;"
+      "9:16" -> "aspect-ratio: 9/16;"
+      "1:1" -> "aspect-ratio: 1/1;"
+      _ -> "aspect-ratio: 16/9;"
+    end
+  end
+
+  defp get_preview_aspect_class(ratio) do
+    case ratio do
+      "16:9" -> "aspect-[16/9]"
+      "9:16" -> "aspect-[9/16]"
+      "1:1" -> "aspect-square"
+      _ -> "aspect-[16/9]"
+    end
+  end
+
+  defp get_object_fit_class(display_mode) do
+    case display_mode do
+      "original" -> "object-contain"
+      "crop_" <> _ -> "object-cover"
+      _ -> "object-cover"
+    end
+  end
+
+
   # ============================================================================
   # TIER-BASED SETTINGS
   # ============================================================================
@@ -729,108 +808,69 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="video-intro-component" id={"video-intro-#{@id}"}>
-      <!-- Camera Preview -->
-      <div class="camera-container mb-4">
-        <video id={"camera-preview-#{@id}"}
-               class="camera-preview w-full h-64 bg-gray-900 rounded-lg object-cover"
-               muted
-               playsinline
-               phx-hook="VideoCapture"
-               data-component-id={@id}>
-        </video>
+    <div class="video-intro-component space-y-6" id={"video-intro-#{@id}"}>
 
-        <!-- Camera Status Overlay -->
-        <div class="camera-status-overlay absolute inset-0 flex items-center justify-center"
-             style={"display: #{if @camera_status == :ready, do: "none", else: "flex"}"}>
-          <%= case @camera_status do %>
-            <% :initializing -> %>
-              <div class="text-center text-white">
-                <svg class="animate-spin w-8 h-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <p>Initializing camera...</p>
+      <!-- Aspect Ratio Selection (Always Visible) -->
+      <div class="bg-gray-50 rounded-lg p-4">
+        <h5 class="font-medium text-gray-900 mb-3">Choose Video Format</h5>
+        <div class="grid grid-cols-3 gap-3">
+          <%= for ratio <- @available_ratios do %>
+            <label class={[
+              "flex flex-col items-center p-3 border rounded-lg cursor-pointer hover:bg-white transition-colors",
+              if(@aspect_ratio == ratio.value, do: "border-blue-500 bg-blue-50", else: "border-gray-200")
+            ]}>
+              <input type="radio" name="aspect_ratio" value={ratio.value}
+                    checked={@aspect_ratio == ratio.value}
+                    phx-click="set_aspect_ratio" phx-value-ratio={ratio.value} phx-target={@myself}
+                    class="sr-only">
+
+              <!-- Visual Preview of Aspect Ratio -->
+              <div class={["w-12 h-8 bg-gray-300 rounded mb-2", get_preview_aspect_class(ratio.value)]}></div>
+
+              <div class="text-center">
+                <div class="font-medium text-sm"><%= ratio.label %></div>
+                <div class="text-xs text-gray-500"><%= ratio.description %></div>
               </div>
-            <% :error -> %>
-              <div class="text-center text-red-300">
-                <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
-                </svg>
-                <p>Camera access denied</p>
-                <p class="text-sm">Please allow camera access and refresh</p>
-              </div>
+            </label>
           <% end %>
         </div>
       </div>
 
-      <!-- Recording Controls -->
-      <div class="recording-controls flex flex-col items-center space-y-4">
-        <!-- Countdown Display -->
-        <%= if @countdown && @countdown > 0 do %>
-          <div class="countdown-display">
-            <div class="text-6xl font-bold text-blue-600 animate-pulse">
-              <%= @countdown %>
-            </div>
-            <p class="text-gray-600">Get ready...</p>
-          </div>
-        <% end %>
-
-        <!-- Recording Duration -->
-        <%= if @recording_state == :recording do %>
-          <div class="recording-duration flex items-center space-x-2 text-red-600">
-            <div class="recording-dot w-3 h-3 bg-red-600 rounded-full animate-pulse"></div>
-            <span class="font-mono">
-              <%= format_duration(@recording_duration) %>
-            </span>
-          </div>
-        <% end %>
-
-        <!-- Control Buttons -->
-        <div class="control-buttons flex space-x-4">
-          <%= case @recording_state do %>
-            <% :idle -> %>
-              <button phx-click="start_countdown"
-                      phx-target={@myself}
-                      disabled={@camera_status != :ready}
-                      class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                </svg>
-                Start Recording
-              </button>
-
-            <% :countdown -> %>
-              <button phx-click="cancel_countdown"
-                      phx-target={@myself}
-                      class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
-                Cancel
-              </button>
-
-            <% :recording -> %>
-              <button phx-click="stop_recording"
-                      phx-target={@myself}
-                      class="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-                <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
-                </svg>
-                Stop Recording
-              </button>
-          <% end %>
-        </div>
-
-        <!-- Error Message -->
-        <%= if @error_message do %>
-          <div class="error-message bg-red-50 border border-red-200 rounded-lg p-3 text-red-800 text-sm">
-            <%= @error_message %>
-          </div>
-        <% end %>
+      <!-- Mode Toggle (Record vs Upload) -->
+      <div class="flex bg-gray-100 rounded-lg p-1">
+        <button
+          phx-click="set_mode"
+          phx-value-mode="record"
+          phx-target={@myself}
+          class={[
+            "flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors",
+            if(@mode == "record", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-500 hover:text-gray-700")
+          ]}>
+          📹 Record Video
+        </button>
+        <button
+          phx-click="set_mode"
+          phx-value-mode="upload"
+          phx-target={@myself}
+          class={[
+            "flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors",
+            if(@mode == "upload", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-500 hover:text-gray-700")
+          ]}>
+          📁 Upload Video
+        </button>
       </div>
+
+      <!-- Dynamic Content Based on Mode -->
+      <%= case @mode do %>
+        <% "upload" -> %>
+          <%= render_upload_interface(assigns) %>
+        <% _ -> %>
+          <%= render_recording_interface(assigns) %>
+      <% end %>
+
     </div>
     """
   end
-
 
   # ============================================================================
   # RENDER PHASE FUNCTIONS
@@ -860,6 +900,37 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         Choose Video File
       </button>
 
+      <!-- Display Options for Uploaded Videos -->
+      <div class="bg-gray-50 rounded-lg p-4 mt-6">
+        <h5 class="font-medium text-gray-900 mb-3">Display Options</h5>
+        <div class="space-y-3">
+          <label class="flex items-center">
+            <input type="radio" name="display_mode" value="original"
+                  checked={@display_mode == "original"}
+                  phx-click="set_display_mode" phx-value-mode="original" phx-target={@myself}>
+            <span class="ml-2 text-sm">Keep original aspect ratio</span>
+          </label>
+          <label class="flex items-center">
+            <input type="radio" name="display_mode" value="crop_16_9"
+                  checked={@display_mode == "crop_16_9"}
+                  phx-click="set_display_mode" phx-value-mode="crop_16_9" phx-target={@myself}>
+            <span class="ml-2 text-sm">Crop to 16:9 widescreen</span>
+          </label>
+          <label class="flex items-center">
+            <input type="radio" name="display_mode" value="crop_9_16"
+                  checked={@display_mode == "crop_9_16"}
+                  phx-click="set_display_mode" phx-value-mode="crop_9_16" phx-target={@myself}>
+            <span class="ml-2 text-sm">Crop to 9:16 portrait</span>
+          </label>
+          <label class="flex items-center">
+            <input type="radio" name="display_mode" value="crop_1_1"
+                  checked={@display_mode == "crop_1_1"}
+                  phx-click="set_display_mode" phx-value-mode="crop_1_1" phx-target={@myself}>
+            <span class="ml-2 text-sm">Crop to 1:1 square</span>
+          </label>
+        </div>
+      </div>
+
       <!-- Upload Restrictions -->
       <div class="text-sm text-gray-500 space-y-1">
         <p>• Maximum file size: <%= if @user_tier == "premium", do: "100MB", else: "50MB" %></p>
@@ -873,6 +944,28 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   defp render_setup_phase(assigns) do
     ~H"""
     <div class="space-y-6">
+      <!-- Aspect Ratio Selection -->
+      <div class="bg-gray-50 rounded-lg p-4">
+        <h5 class="font-medium text-gray-900 mb-3">Choose Video Format</h5>
+        <div class="grid grid-cols-3 gap-3">
+          <%= for ratio <- @available_ratios do %>
+            <label class="flex flex-col items-center p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-white transition-colors">
+              <input type="radio" name="aspect_ratio" value={ratio.value}
+                    checked={@aspect_ratio == ratio.value}
+                    phx-click="set_aspect_ratio" phx-value-ratio={ratio.value} phx-target={@myself}>
+
+              <!-- Visual Preview of Aspect Ratio -->
+              <div class={"w-12 h-8 bg-gray-300 rounded mb-2 #{get_preview_aspect_class(ratio.value)}"}></div>
+
+              <div class="text-center">
+                <div class="font-medium text-sm"><%= ratio.label %></div>
+                <div class="text-xs text-gray-500"><%= ratio.description %></div>
+              </div>
+            </label>
+          <% end %>
+        </div>
+      </div>
+
       <!-- Enhanced Instructions with Tier Info -->
       <div class="text-center">
         <div class="w-12 h-12 mx-auto mb-4 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full flex items-center justify-center">
@@ -891,10 +984,10 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         </div>
       </div>
 
-      <!-- Camera Preview with Enhanced Status -->
-      <div class="relative bg-black rounded-xl overflow-hidden" style="aspect-ratio: 16/9;">
+      <!-- Camera Preview with Dynamic Aspect Ratio -->
+      <div class="relative bg-black rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
         <video id="camera-preview" autoplay muted playsinline
-               class="w-full h-full object-cover" style="transform: scaleX(-1);">
+              class="w-full h-full object-cover" style="transform: scaleX(-1);">
         </video>
 
         <%= if not @camera_ready do %>
@@ -916,35 +1009,189 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
                   <p class="text-white text-lg font-semibold mb-2">Camera Error</p>
-                  <p class="text-gray-300 text-sm"><%= @error_message || "Please check your camera connection" %></p>
+                  <p class="text-gray-300 text-sm mb-4">Unable to access camera. Please check permissions.</p>
               <% end %>
             </div>
           </div>
         <% end %>
       </div>
 
-      <!-- Enhanced Controls -->
-      <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-        <button phx-click="start_countdown" phx-target={@myself}
-                disabled={not @camera_ready}
-                class={"px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-200 #{if @camera_ready, do: 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl', else: 'bg-gray-300 text-gray-500 cursor-not-allowed'}"}>
-          <%= if @camera_ready do %>
-            <svg class="w-6 h-6 inline mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <circle cx="10" cy="10" r="3"/>
+      <!-- Start Recording Button -->
+      <div class="text-center">
+        <button phx-click="start_recording" phx-target={@myself}
+                disabled={not @camera_ready or @is_preparing}
+                class="px-8 py-4 bg-red-600 text-white text-lg font-semibold rounded-xl hover:bg-red-700 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+          <%= if @is_preparing do %>
+            <svg class="w-6 h-6 inline mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
-            Start Recording
+            <span>Preparing...</span>
           <% else %>
-            <svg class="w-6 h-6 inline mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            <svg class="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
             </svg>
-            Preparing Camera...
+            <span>Start Recording</span>
           <% end %>
         </button>
+      </div>
 
-        <button phx-click="cancel_recording" phx-target={@myself}
-                class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+      <!-- Recording Tips -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h5 class="font-medium text-blue-900 mb-2">📹 Recording Tips:</h5>
+        <ul class="text-sm text-blue-800 space-y-1">
+          <li>• Ensure good lighting on your face</li>
+          <li>• Speak clearly and at a normal pace</li>
+          <li>• Keep your introduction to 30-90 seconds</li>
+          <li>• Look directly at the camera</li>
+        </ul>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_upload_interface(assigns) do
+    ~H"""
+    <div class="space-y-6 text-center">
+      <div class="w-16 h-16 mx-auto mb-4 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
+        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+      </div>
+
+      <h4 class="text-2xl font-bold text-gray-900 mb-3">Upload Your Video</h4>
+      <p class="text-gray-600 mb-6 max-w-2xl mx-auto leading-relaxed">
+        Upload a pre-recorded introduction video. Supported formats: MP4, WebM, MOV.
+        Maximum duration: <%= Map.get(assigns, :max_duration, 60) %> seconds.
+      </p>
+
+      <!-- Upload Button -->
+      <button phx-click="trigger_file_upload" phx-target={@myself}
+              class="inline-flex items-center px-8 py-4 bg-blue-600 text-white text-lg font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-lg">
+        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+        Choose Video File
+      </button>
+
+      <!-- Display Options for Uploaded Videos -->
+      <div class="bg-gray-50 rounded-lg p-4 mt-6">
+        <h5 class="font-medium text-gray-900 mb-3">Display Options</h5>
+        <div class="space-y-3">
+          <label class="flex items-center">
+            <input type="radio" name="display_mode" value="original"
+                  checked={@display_mode == "original"}
+                  phx-click="set_display_mode" phx-value-mode="original" phx-target={@myself}>
+            <span class="ml-2 text-sm">Keep original aspect ratio</span>
+          </label>
+          <label class="flex items-center">
+            <input type="radio" name="display_mode" value="crop_16_9"
+                  checked={@display_mode == "crop_16_9"}
+                  phx-click="set_display_mode" phx-value-mode="crop_16_9" phx-target={@myself}>
+            <span class="ml-2 text-sm">Crop to 16:9 widescreen</span>
+          </label>
+          <label class="flex items-center">
+            <input type="radio" name="display_mode" value="crop_9_16"
+                  checked={@display_mode == "crop_9_16"}
+                  phx-click="set_display_mode" phx-value-mode="crop_9_16" phx-target={@myself}>
+            <span class="ml-2 text-sm">Crop to 9:16 portrait</span>
+          </label>
+          <label class="flex items-center">
+            <input type="radio" name="display_mode" value="crop_1_1"
+                  checked={@display_mode == "crop_1_1"}
+                  phx-click="set_display_mode" phx-value-mode="crop_1_1" phx-target={@myself}>
+            <span class="ml-2 text-sm">Crop to 1:1 square</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Upload Restrictions -->
+      <div class="text-sm text-gray-500 space-y-1">
+        <p>• Maximum file size: <%= if Map.get(assigns, :user_tier) == "premium", do: "100MB", else: "50MB" %></p>
+        <p>• Maximum duration: <%= Map.get(assigns, :max_duration, 60) %> seconds</p>
+        <p>• Recommended quality: 720p or higher</p>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_recording_interface(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <!-- Camera Preview Area -->
+      <div class="relative bg-gray-900 rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
+        <video
+          id={"camera-preview-#{@id}"}
+          class="w-full h-full object-cover"
+          autoplay
+          muted
+          playsinline
+          phx-hook="VideoCapture"
+          data-component-id={@id}
+          style="transform: scaleX(-1);">
+        </video>
+
+        <!-- Camera Status Overlay -->
+        <%= if not Map.get(assigns, :camera_ready, false) do %>
+          <div class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-90">
+            <div class="text-center space-y-4">
+              <div class="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <div class="text-white">
+                <h4 class="font-medium mb-2">Initializing Camera...</h4>
+                <p class="text-sm text-gray-300">Please allow camera access when prompted</p>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Recording Controls -->
+      <div class="flex items-center justify-center space-x-4">
+        <%= if Map.get(assigns, :recording_state, :setup) == :setup do %>
+          <button
+            phx-click="start_recording"
+            phx-target={@myself}
+            disabled={not Map.get(assigns, :camera_ready, false)}
+            class={[
+              "px-8 py-4 rounded-xl font-semibold transition-colors",
+              "bg-red-600 hover:bg-red-700 text-white",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            ]}>
+            <svg class="w-6 h-6 mr-2 inline" fill="currentColor" viewBox="0 0 20 20">
+              <circle cx="10" cy="10" r="8"/>
+            </svg>
+            Start Recording
+          </button>
+        <% else %>
+          <button
+            phx-click="stop_recording"
+            phx-target={@myself}
+            class="bg-gray-600 hover:bg-gray-700 text-white px-8 py-4 rounded-xl font-semibold transition-colors">
+            <svg class="w-6 h-6 mr-2 inline" fill="currentColor" viewBox="0 0 20 20">
+              <rect x="6" y="6" width="8" height="8"/>
+            </svg>
+            Stop Recording
+          </button>
+        <% end %>
+
+        <button
+          phx-click="close_modal"
+          phx-target={@myself}
+          class="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-3 rounded-xl font-medium transition-colors">
           Cancel
         </button>
+      </div>
+
+      <!-- Recording Tips -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h5 class="font-medium text-blue-900 mb-2">📹 Recording Tips:</h5>
+        <ul class="text-sm text-blue-800 space-y-1">
+          <li>• Ensure good lighting on your face</li>
+          <li>• Speak clearly and at a normal pace</li>
+          <li>• Keep your introduction to 30-90 seconds</li>
+          <li>• Look directly at the camera</li>
+          <li>• Current format: <%= @aspect_ratio %></li>
+        </ul>
       </div>
     </div>
     """
@@ -954,9 +1201,9 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   defp render_countdown_phase(assigns) do
     ~H"""
     <div class="text-center">
-      <div class="relative bg-black rounded-xl overflow-hidden" style="aspect-ratio: 16/9;">
+      <div class="relative bg-black rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
         <video id="camera-preview" autoplay muted playsinline
-               class="w-full h-full object-cover" style="transform: scaleX(-1);">
+              class="w-full h-full object-cover" style="transform: scaleX(-1);">
         </video>
 
         <div class="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
@@ -985,9 +1232,9 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   defp render_recording_phase(assigns) do
     ~H"""
     <div class="text-center">
-      <div class="relative bg-black rounded-xl overflow-hidden" style="aspect-ratio: 16/9;">
+      <div class="relative bg-black rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
         <video id="camera-preview" autoplay muted playsinline
-               class="w-full h-full object-cover" style="transform: scaleX(-1);">
+              class="w-full h-full object-cover" style="transform: scaleX(-1);">
         </video>
 
         <!-- Recording Indicator -->
@@ -1007,7 +1254,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         <div class="absolute bottom-4 left-4 right-4">
           <div class="w-full bg-black bg-opacity-50 rounded-full h-2">
             <div class="bg-red-600 h-2 rounded-full transition-all duration-1000"
-                 style={"width: #{min(100, (@elapsed_time / @max_duration) * 100)}%"}></div>
+                style={"width: #{min(100, (@elapsed_time / @max_duration) * 100)}%"}></div>
           </div>
         </div>
       </div>
@@ -1032,38 +1279,45 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         <h4 class="text-2xl font-bold text-gray-900 mb-4">Review Your Video</h4>
       </div>
 
-      <!-- Video Preview -->
-      <div class="relative bg-black rounded-xl overflow-hidden" style="aspect-ratio: 16/9;">
+      <!-- Video Preview with Dynamic Aspect Ratio -->
+      <div class="relative bg-black rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
         <video id="video-preview" controls preload="metadata"
-               class="w-full h-full object-cover">
+              class="w-full h-full object-cover">
           Your browser does not support the video tag.
         </video>
       </div>
 
-      <!-- Video Info -->
-      <div class="text-center text-sm text-gray-600 space-y-1">
-        <p>Duration: <%= format_time(@elapsed_time) %></p>
-        <p>Quality: <%= @quality_info.resolution %></p>
-        <p>Position: <%= find_position_name(@current_position, @available_positions) %></p>
-      </div>
+      <!-- Preview Controls -->
+      <div class="flex items-center justify-between">
+        <div class="space-y-1">
+          <h4 class="font-medium text-gray-900">Review Your Recording</h4>
+          <p class="text-sm text-gray-600">
+            Duration: <%= format_time(@recording_time) %> •
+            Quality: <%= @quality_info.resolution %> •
+            Format: <%= @aspect_ratio %>
+          </p>
+        </div>
 
-      <!-- Action Buttons -->
-      <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-        <button phx-click="save_video" phx-target={@myself}
-                class="px-8 py-4 bg-green-600 text-white text-lg font-semibold rounded-xl hover:bg-green-700 transition-colors shadow-lg">
-          <svg class="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
-          </svg>
-          Save Video
-        </button>
+        <div class="flex space-x-3">
+          <button phx-click="retake_video" phx-target={@myself}
+                  class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+            Retake
+          </button>
 
-        <button phx-click="retake_video" phx-target={@myself}
-                class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
-          <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          Record Again
-        </button>
+          <button phx-click="save_video" phx-target={@myself}
+                  disabled={@is_saving}
+                  class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center space-x-2">
+            <%= if @is_saving do %>
+              <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+              <span>Saving...</span>
+            <% else %>
+              <span>Save Video</span>
+            <% end %>
+          </button>
+        </div>
       </div>
     </div>
     """
@@ -1099,7 +1353,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     ~H"""
     <div class="space-y-6">
       <!-- Camera Preview Area with Loading State -->
-      <div class="relative bg-gray-900 rounded-xl overflow-hidden" style="aspect-ratio: 16/9;">
+      <div class="relative bg-gray-900 rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
         <!-- Loading Overlay -->
         <%= if not @camera_ready do %>
           <div class="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
@@ -1113,7 +1367,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
           </div>
         <% end %>
 
-        <!-- FIXED: Video Element with proper hook registration -->
+        <!-- Video Element with proper hook registration -->
         <video
               id={"camera-preview-#{@id}"}
               class="w-full h-full object-cover"
@@ -1128,61 +1382,20 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         <!-- Camera Error State -->
         <%= if @camera_error do %>
           <div class="absolute inset-0 flex items-center justify-center bg-red-900 bg-opacity-90 z-20">
-            <div class="text-center space-y-4 text-white">
-              <svg class="w-16 h-16 mx-auto text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="text-center text-white max-w-sm">
+              <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
-              <div>
-                <h4 class="font-medium mb-2">Camera Access Error</h4>
-                <p class="text-sm text-red-200 mb-4"><%= @camera_error %></p>
-                <button phx-click="retry_camera" phx-target={@myself}
-                        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors">
-                  Try Again
-                </button>
-              </div>
+              <h4 class="font-semibold mb-2">Camera Error</h4>
+              <p class="text-sm"><%= @camera_error %></p>
             </div>
           </div>
         <% end %>
       </div>
-
-      <!-- Enhanced Controls with Loading States -->
-      <div class="flex items-center justify-between">
-        <div class="space-y-2">
-          <h4 class="font-medium text-gray-900">Ready to record?</h4>
-          <p class="text-sm text-gray-600">Position yourself in the frame and click start when ready</p>
-        </div>
-
-        <button phx-click="start_recording" phx-target={@myself}
-                disabled={not @camera_ready or @processing_video}
-                class="px-6 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
-          <%= if @processing_video do %>
-            <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span>Preparing...</span>
-          <% else %>
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-            </svg>
-            <span>Start Recording</span>
-          <% end %>
-        </button>
-      </div>
-
-      <!-- Recording Tips -->
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h5 class="font-medium text-blue-900 mb-2">📹 Recording Tips:</h5>
-        <ul class="text-sm text-blue-800 space-y-1">
-          <li>• Ensure good lighting on your face</li>
-          <li>• Speak clearly and at a normal pace</li>
-          <li>• Keep your introduction to 30-90 seconds</li>
-          <li>• Look directly at the camera</li>
-        </ul>
-      </div>
     </div>
     """
   end
+
 
   defp render_countdown(assigns) do
     ~H"""

@@ -5,12 +5,16 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
-import "./hooks/video_capture.js" 
+import VideoCapture from "./hooks/video_capture"
 
 console.log("🔥 Imports loaded")
 
 // COMPLETE HOOKS DEFINITION
-let Hooks = {}
+let Hooks = {
+
+   VideoCapture: VideoCapture
+  
+};
 
 console.log("🔥 Creating hooks object")
 

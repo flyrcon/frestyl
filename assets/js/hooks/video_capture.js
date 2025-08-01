@@ -1,3 +1,6 @@
+// assets/js/hooks/video_capture.js
+// PATCH: Fix event names and add retry functionality
+
 window.VideoCapture = {
   mounted() {
     console.log("📹 VideoCapture hook mounted");
@@ -5,6 +8,8 @@ window.VideoCapture = {
     this.mediaRecorder = null;
     this.recordedChunks = [];
     this.stream = null;
+    this.retryCount = 0;
+    this.maxRetries = 3;
     
     // Initialize camera on mount
     this.initializeCamera();
@@ -20,6 +25,11 @@ window.VideoCapture = {
       if (data.component_id === this.componentId) {
         this.stopRecording();
       }
+    });
+
+    // FIXED: Listen for retry camera event
+    this.handleEvent("retry_camera", () => {
+      this.retryCamera();
     });
   },
 
@@ -45,28 +55,71 @@ window.VideoCapture = {
       
       console.log("✅ Camera initialized successfully");
       
-      // Notify component that camera is ready
+      // FIXED: Send camera_initialized event (matches component expectations)
       this.pushEvent("camera_initialized", {});
+      
+      // Reset retry count on success
+      this.retryCount = 0;
       
     } catch (error) {
       console.error("❌ Camera initialization failed:", error);
       
-      let errorMessage = "Unknown error";
-      if (error.name === "NotAllowedError") {
-        errorMessage = "Camera access denied by user";
-      } else if (error.name === "NotFoundError") {
-        errorMessage = "No camera found";
-      } else if (error.name === "NotReadableError") {
-        errorMessage = "Camera is being used by another application";
-      }
+      let errorMessage = this.getErrorMessage(error);
       
+      // FIXED: Send camera_error event with proper error message
       this.pushEvent("camera_error", { error: errorMessage });
+    }
+  },
+
+  // FIXED: Add retry functionality
+  async retryCamera() {
+    if (this.retryCount >= this.maxRetries) {
+      console.error("❌ Max camera retry attempts reached");
+      this.pushEvent("camera_error", { 
+        error: "Unable to access camera after multiple attempts. Please check your camera permissions and try refreshing the page." 
+      });
+      return;
+    }
+
+    this.retryCount++;
+    console.log(`📹 Retrying camera initialization (attempt ${this.retryCount}/${this.maxRetries})`);
+    
+    // Clean up existing stream if any
+    if (this.stream) {
+      this.stream.getTracks().forEach(track => track.stop());
+      this.stream = null;
+    }
+    
+    // Wait a bit before retrying
+    setTimeout(() => {
+      this.initializeCamera();
+    }, 1000);
+  },
+
+  // FIXED: Better error message handling
+  getErrorMessage(error) {
+    switch (error.name) {
+      case "NotAllowedError":
+        return "Camera access denied by user. Please allow camera access and try again.";
+      case "NotFoundError":
+        return "No camera found on this device.";
+      case "NotReadableError":
+        return "Camera is being used by another application. Please close other apps using the camera.";
+      case "OverconstrainedError":
+        return "Camera doesn't support the requested settings.";
+      case "SecurityError":
+        return "Camera access blocked due to security restrictions.";
+      case "AbortError":
+        return "Camera access was interrupted.";
+      default:
+        return `Camera error: ${error.message || "Unknown error"}`;
     }
   },
 
   startRecording() {
     if (!this.stream) {
       console.error("❌ No stream available for recording");
+      this.pushEvent("camera_error", { error: "No camera stream available" });
       return;
     }
 
@@ -100,6 +153,7 @@ window.VideoCapture = {
       
       this.mediaRecorder.onerror = (event) => {
         console.error("❌ Recording error:", event.error);
+        this.pushEvent("recording_error", { error: event.error.message });
       };
       
       // Start recording
@@ -114,8 +168,12 @@ window.VideoCapture = {
         }
       }, 1000);
       
+      // Notify component that recording started
+      this.pushEvent("recording_started", {});
+      
     } catch (error) {
       console.error("❌ Failed to start recording:", error);
+      this.pushEvent("recording_error", { error: error.message });
     }
   },
 
@@ -134,6 +192,7 @@ window.VideoCapture = {
   processRecording() {
     if (this.recordedChunks.length === 0) {
       console.error("❌ No recorded data available");
+      this.pushEvent("recording_error", { error: "No recorded data available" });
       return;
     }
 
@@ -145,13 +204,13 @@ window.VideoCapture = {
     // Create object URL for preview/download
     const videoUrl = URL.createObjectURL(blob);
     
-    // You can extend this to upload the video or save it
     console.log("✅ Recording processed, size:", blob.size, "bytes");
     
     // Notify component that recording is complete
     this.pushEvent("recording_complete", { 
       size: blob.size,
-      duration: Math.floor((Date.now() - this.recordingStartTime) / 1000)
+      duration: Math.floor((Date.now() - this.recordingStartTime) / 1000),
+      videoUrl: videoUrl
     });
     
     // Clean up

@@ -435,6 +435,132 @@ defmodule FrestylWeb.PortfolioLive.ResumeParser do
     }
   end
 
+  defp normalize_skill_item(skill) do
+  case skill do
+    skill_name when is_binary(skill_name) ->
+      %{
+        "name" => skill_name,
+        "category" => "Technical Skills",
+        "proficiency" => "Intermediate",
+        "years_experience" => 0
+      }
+
+    skill_map when is_map(skill_map) ->
+      %{
+        "name" => Map.get(skill_map, :name, Map.get(skill_map, :skill, "")),
+        "category" => Map.get(skill_map, :category, "Technical Skills"),
+        "proficiency" => normalize_proficiency(Map.get(skill_map, :proficiency, Map.get(skill_map, :level, "Intermediate"))),
+        "years_experience" => Map.get(skill_map, :years, Map.get(skill_map, :experience, 0)),
+        "endorsed_by" => normalize_list(Map.get(skill_map, :endorsed_by, [])),
+        "certifications" => normalize_list(Map.get(skill_map, :certifications, []))
+      }
+
+    _ ->
+      %{
+        "name" => "Unknown Skill",
+        "category" => "Other",
+        "proficiency" => "Intermediate",
+        "years_experience" => 0
+      }
+  end
+end
+
+defp normalize_proficiency(level) do
+  case String.downcase(to_string(level)) do
+    level when level in ["expert", "advanced", "proficient", "5", "4"] -> "Expert"
+    level when level in ["intermediate", "good", "3"] -> "Advanced"
+    level when level in ["basic", "beginner", "learning", "2", "1"] -> "Intermediate"
+    _ -> "Intermediate"
+  end
+end
+
+defp normalize_list(value) when is_list(value), do: value
+defp normalize_list(value) when is_binary(value) do
+  value
+  |> String.split([",", ";", "\n"])
+  |> Enum.map(&String.trim/1)
+  |> Enum.filter(&(&1 != ""))
+end
+defp normalize_list(_), do: []
+
+defp format_import_date(date) do
+  case date do
+    date when is_binary(date) -> date
+    %Date{} = date -> Date.to_string(date)
+    %DateTime{} = datetime -> datetime |> DateTime.to_date() |> Date.to_string()
+    %NaiveDateTime{} = naive -> naive |> NaiveDateTime.to_date() |> Date.to_string()
+    {year, month} when is_integer(year) and is_integer(month) ->
+      "#{String.pad_leading(to_string(month), 2, "0")}/#{year}"
+    year when is_integer(year) -> to_string(year)
+    _ -> ""
+  end
+end
+
+defp determine_education_status(edu) do
+  case Map.get(edu, :status) do
+    status when status in [:completed, "completed", "Completed"] -> "Completed"
+    status when status in [:in_progress, "in_progress", "In Progress"] -> "In Progress"
+    status when status in [:paused, "paused", "Paused"] -> "Paused"
+    _ ->
+      # Determine from dates
+      end_date = Map.get(edu, :end_date)
+      if end_date == nil or end_date == "Present" or end_date == "present" do
+        "In Progress"
+      else
+        "Completed"
+      end
+  end
+end
+
+defp format_gpa(gpa) do
+  case gpa do
+    gpa when is_number(gpa) -> to_string(gpa)
+    gpa when is_binary(gpa) -> gpa
+    _ -> ""
+  end
+end
+
+defp create_or_update_section(portfolio_id, section_type, title, content) do
+  # Check if section already exists
+  existing_sections = Portfolios.list_portfolio_sections(portfolio_id)
+  existing_section = Enum.find(existing_sections, fn s ->
+    to_string(s.section_type) == section_type
+  end)
+
+  if existing_section do
+    # Update existing section
+    case Portfolios.update_portfolio_section(existing_section, %{
+      title: title,
+      content: content,
+      visible: true
+    }) do
+      {:ok, updated_section} ->
+        {:ok, updated_section}
+      {:error, changeset} ->
+        {:error, "Failed to update #{section_type} section: #{inspect(changeset.errors)}"}
+    end
+  else
+    # Create new section
+    position = length(existing_sections) + 1
+
+    case Portfolios.create_portfolio_section(%{
+      portfolio_id: portfolio_id,
+      section_type: String.to_atom(section_type),
+      title: title,
+      content: content,
+      visible: true,
+      position: position
+    }) do
+      {:ok, new_section} ->
+        {:ok, new_section}
+      {:error, changeset} ->
+        {:error, "Failed to create #{section_type} section: #{inspect(changeset.errors)}"}
+    end
+  end
+end
+
+
+
   # Helper functions for text parsing when structured data isn't available
   defp parse_experience_text(text) do
     # Simple parsing - in production you might want more sophisticated parsing
@@ -597,6 +723,241 @@ defmodule FrestylWeb.PortfolioLive.ResumeParser do
   defp import_section(_portfolio, _section_type, _parsed_data) do
     {:error, "Unknown section type"}
   end
+
+  defp import_section(portfolio, section_type, parsed_data) do
+  case section_type do
+    "personal_info" ->
+      import_contact_with_validation(portfolio.id, parsed_data.personal_info)
+    "professional_summary" ->
+      import_intro_with_validation(portfolio.id, parsed_data.professional_summary)
+    "experience" ->
+      import_experience_with_validation(portfolio.id, parsed_data.work_experience)
+    "education" ->
+      import_education_with_validation(portfolio.id, parsed_data.education)
+    "skills" ->
+      import_skills_with_validation(portfolio.id, parsed_data.skills)
+    "projects" ->
+      import_projects_with_validation(portfolio.id, parsed_data.projects)
+    "certifications" ->
+      import_certifications_with_validation(portfolio.id, parsed_data.certifications)
+    _ ->
+      {:error, "Unknown section type: #{section_type}"}
+  end
+end
+
+defp import_contact_with_validation(portfolio_id, contact_data) do
+  # Convert import data to match form structure
+  content = %{
+    "email" => Map.get(contact_data, :email, ""),
+    "phone" => Map.get(contact_data, :phone, ""),
+    "location" => Map.get(contact_data, :location, ""),
+    "website" => Map.get(contact_data, :website, ""),
+    "linkedin" => Map.get(contact_data, :linkedin, ""),
+    "github" => Map.get(contact_data, :github, ""),
+    "availability" => "Available",
+    "preferred_contact" => "Email"
+  }
+
+  # Validate before creating
+  case EnhancedSectionSystem.validate_section_content("contact", content) do
+    %{valid: true} ->
+      create_or_update_section(portfolio_id, "contact", "Contact Information", content)
+    %{valid: false, errors: errors} ->
+      {:error, "Contact validation failed: #{inspect(errors)}"}
+  end
+end
+
+defp import_intro_with_validation(portfolio_id, intro_data) do
+  content = %{
+    "story" => Map.get(intro_data, :summary, Map.get(intro_data, :description, "")),
+    "highlights" => Map.get(intro_data, :highlights, []),
+    "personality_traits" => [],
+    "fun_facts" => []
+  }
+
+  case EnhancedSectionSystem.validate_section_content("intro", content) do
+    %{valid: true} ->
+      create_or_update_section(portfolio_id, "intro", "About Me", content)
+    %{valid: false, errors: errors} ->
+      {:error, "Introduction validation failed: #{inspect(errors)}"}
+  end
+end
+
+# FIXED: Experience section import with proper item structure
+defp import_experience_with_validation(portfolio_id, experience_data) do
+  # Convert import data to match form structure
+  normalized_items = Enum.map(experience_data, fn exp ->
+    %{
+      "title" => Map.get(exp, :position, Map.get(exp, :title, "")),
+      "company" => Map.get(exp, :company, ""),
+      "location" => Map.get(exp, :location, ""),
+      "start_date" => format_import_date(Map.get(exp, :start_date)),
+      "end_date" => format_import_date(Map.get(exp, :end_date)),
+      "is_current" => Map.get(exp, :is_current, false),
+      "description" => Map.get(exp, :description, ""),
+      "employment_type" => Map.get(exp, :employment_type, "Full-time"),
+      "achievements" => normalize_list(Map.get(exp, :achievements, [])),
+      "skills_used" => normalize_list(Map.get(exp, :skills_used, [])),
+      "projects" => normalize_list(Map.get(exp, :projects, []))
+    }
+  end)
+
+  content = %{
+    "items" => normalized_items,
+    "display_style" => "timeline"
+  }
+
+  # Validate before creating
+  case EnhancedSectionSystem.validate_section_content("experience", content) do
+    %{valid: true} ->
+      create_or_update_section(portfolio_id, "experience", "Professional Experience", content)
+    %{valid: false, errors: errors} ->
+      {:error, "Experience validation failed: #{inspect(errors)}"}
+  end
+end
+
+# FIXED: Education section import with proper structure
+defp import_education_with_validation(portfolio_id, education_data) do
+  normalized_items = Enum.map(education_data, fn edu ->
+    %{
+      "degree" => Map.get(edu, :degree, ""),
+      "field" => Map.get(edu, :field, Map.get(edu, :major, "")),
+      "institution" => Map.get(edu, :institution, Map.get(edu, :school, "")),
+      "location" => Map.get(edu, :location, ""),
+      "start_date" => format_import_date(Map.get(edu, :start_date)),
+      "end_date" => format_import_date(Map.get(edu, :end_date)),
+      "status" => determine_education_status(edu),
+      "gpa" => format_gpa(Map.get(edu, :gpa)),
+      "description" => Map.get(edu, :description, ""),
+      "relevant_coursework" => normalize_list(Map.get(edu, :coursework, [])),
+      "activities" => normalize_list(Map.get(edu, :activities, [])),
+      "honors" => normalize_list(Map.get(edu, :honors, []))
+    }
+  end)
+
+  content = %{
+    "items" => normalized_items,
+    "display_style" => "timeline"
+  }
+
+  case EnhancedSectionSystem.validate_section_content("education", content) do
+    %{valid: true} ->
+      create_or_update_section(portfolio_id, "education", "Education & Learning", content)
+    %{valid: false, errors: errors} ->
+      {:error, "Education validation failed: #{inspect(errors)}"}
+  end
+end
+
+# FIXED: Skills section import with categorization
+defp import_skills_with_validation(portfolio_id, skills_data) do
+  # Handle different skills data formats
+  {skills_list, categories} = case skills_data do
+    skills when is_list(skills) ->
+      # Simple list format
+      skill_items = Enum.map(skills, fn skill ->
+        if is_binary(skill) do
+          %{
+            "name" => skill,
+            "category" => "Technical Skills",
+            "proficiency" => "Intermediate",
+            "years_experience" => 0
+          }
+        else
+          normalize_skill_item(skill)
+        end
+      end)
+
+      # Group by category
+      grouped = Enum.group_by(skill_items, fn skill -> skill["category"] end)
+      {skill_items, grouped}
+
+    skills_map when is_map(skills_map) ->
+      # Categorized format
+      all_skills = []
+      categories = Enum.reduce(skills_map, %{}, fn {category, category_skills}, acc ->
+        normalized_skills = Enum.map(category_skills, fn skill ->
+          skill_item = normalize_skill_item(skill)
+          Map.put(skill_item, "category", category)
+        end)
+
+        all_skills = all_skills ++ normalized_skills
+        Map.put(acc, category, normalized_skills)
+      end)
+
+      {all_skills, categories}
+
+    _ ->
+      {[], %{}}
+  end
+
+  content = %{
+    "skills" => skills_list,
+    "categories" => categories,
+    "display_style" => "categorized"
+  }
+
+  case EnhancedSectionSystem.validate_section_content("skills", content) do
+    %{valid: true} ->
+      create_or_update_section(portfolio_id, "skills", "Skills & Expertise", content)
+    %{valid: false, errors: errors} ->
+      {:error, "Skills validation failed: #{inspect(errors)}"}
+  end
+end
+
+# FIXED: Projects section import
+defp import_projects_with_validation(portfolio_id, projects_data) do
+  normalized_items = Enum.map(projects_data, fn project ->
+    %{
+      "title" => Map.get(project, :title, Map.get(project, :name, "")),
+      "description" => Map.get(project, :description, ""),
+      "role" => Map.get(project, :role, ""),
+      "client" => Map.get(project, :client, ""),
+      "start_date" => format_import_date(Map.get(project, :start_date)),
+      "end_date" => format_import_date(Map.get(project, :end_date)),
+      "status" => Map.get(project, :status, "Completed"),
+      "technologies" => normalize_list(Map.get(project, :technologies, [])),
+      "features" => normalize_list(Map.get(project, :features, [])),
+      "live_url" => Map.get(project, :url, Map.get(project, :live_url, "")),
+      "repo_url" => Map.get(project, :github, Map.get(project, :repo_url, "")),
+      "outcomes" => Map.get(project, :outcomes, ""),
+      "challenges" => Map.get(project, :challenges, "")
+    }
+  end)
+
+  content = %{
+    "items" => normalized_items,
+    "display_style" => "grid"
+  }
+
+  case EnhancedSectionSystem.validate_section_content("projects", content) do
+    %{valid: true} ->
+      create_or_update_section(portfolio_id, "projects", "Projects & Portfolio", content)
+    %{valid: false, errors: errors} ->
+      {:error, "Projects validation failed: #{inspect(errors)}"}
+  end
+end
+
+# FIXED: Certifications import (as a generic section for now)
+defp import_certifications_with_validation(portfolio_id, certifications_data) do
+  # For now, import as a simple content section
+  # Could be enhanced to use a dedicated certifications section type
+  content_text = certifications_data
+  |> Enum.map(fn cert ->
+    name = Map.get(cert, :name, Map.get(cert, :title, ""))
+    issuer = Map.get(cert, :issuer, "")
+    date = format_import_date(Map.get(cert, :date))
+
+    "#{name}" <> (if issuer != "", do: " - #{issuer}", else: "") <> (if date != "", do: " (#{date})", else: "")
+  end)
+  |> Enum.join("\n")
+
+  content = %{
+    "content" => content_text
+  }
+
+  create_or_update_section(portfolio_id, "certifications", "Certifications", content)
+end
+
 
   # Section update functions (enhanced from your originals)
   defp update_contact_section(portfolio_id, personal_info) do
@@ -765,6 +1126,189 @@ defmodule FrestylWeb.PortfolioLive.ResumeParser do
       sections -> Enum.map(sections, & &1.position) |> Enum.max() |> Kernel.+(1)
     end
   end
+
+  defp handle_custom_fields_for_import(portfolio_id, section_type, parsed_data, imported_content) do
+  # Find data that wasn't imported into standard fields
+  standard_fields = get_standard_fields_for_section(section_type)
+  extra_data = find_extra_data(parsed_data, standard_fields)
+
+  if map_size(extra_data) > 0 do
+    create_custom_fields_for_extra_data(portfolio_id, section_type, extra_data)
+  end
+end
+
+defp get_standard_fields_for_section(section_type) do
+  case section_type do
+    "contact" -> [:email, :phone, :location, :website, :linkedin, :github]
+    "experience" -> [:title, :company, :location, :start_date, :end_date, :description, :achievements]
+    "education" -> [:degree, :field, :institution, :location, :start_date, :end_date, :gpa]
+    "skills" -> [:name, :category, :proficiency, :years_experience]
+    "projects" -> [:title, :description, :role, :technologies, :url, :github]
+    _ -> []
+  end
+end
+
+defp find_extra_data(parsed_data, standard_fields) do
+  if is_map(parsed_data) do
+    parsed_data
+    |> Enum.filter(fn {key, _value} -> key not in standard_fields end)
+    |> Enum.into(%{})
+  else
+    %{}
+  end
+end
+
+defp create_custom_fields_for_extra_data(portfolio_id, section_type, extra_data) do
+  # This would integrate with your CustomFieldDefinition system
+  Enum.each(extra_data, fn {key, value} ->
+    CustomFieldDefinition.create(%{
+      portfolio_id: portfolio_id,
+      section_type: section_type,
+      field_name: to_string(key),
+      field_type: infer_field_type(value),
+      display_name: humanize_field_name(key),
+      default_value: serialize_custom_field_value(value),
+      is_required: false,
+      validation_rules: %{},
+      created_from_import: true
+    })
+  end)
+end
+
+defp infer_field_type(value) do
+  cond do
+    is_boolean(value) -> "boolean"
+    is_integer(value) -> "number"
+    is_float(value) -> "number"
+    is_list(value) -> "list"
+    is_map(value) -> "map"
+    String.length(to_string(value)) > 100 -> "text"
+    true -> "text"
+  end
+end
+
+defp humanize_field_name(field_name) do
+  field_name
+  |> to_string()
+  |> String.replace("_", " ")
+  |> String.split(" ")
+  |> Enum.map(&String.capitalize/1)
+  |> Enum.join(" ")
+end
+
+defp serialize_custom_field_value(value) do
+  cond do
+    is_list(value) -> Enum.join(value, ", ")
+    is_map(value) -> Jason.encode!(value)
+    true -> to_string(value)
+  end
+rescue
+  _ -> to_string(value)
+end
+
+def import_sections_to_portfolio_enhanced(portfolio, parsed_data, section_selections) do
+  import_results = %{
+    successful: [],
+    failed: [],
+    total_attempted: 0,
+    custom_fields_created: 0
+  }
+
+  try do
+    results = Enum.reduce(section_selections, import_results, fn {section_type, selected}, acc ->
+      acc = Map.put(acc, :total_attempted, acc.total_attempted + 1)
+
+      if selected == "true" do
+        case import_section(portfolio, section_type, parsed_data) do
+          {:ok, section} ->
+            # Handle custom fields for extra data
+            section_data = get_section_data_from_parsed(parsed_data, section_type)
+            handle_custom_fields_for_import(portfolio.id, section_type, section_data, section.content)
+
+            %{acc | successful: [section_type | acc.successful]}
+
+          {:error, reason} ->
+            %{acc | failed: [{section_type, reason} | acc.failed]}
+        end
+      else
+        acc
+      end
+    end)
+
+    success_count = length(results.successful)
+
+    if success_count > 0 do
+      {:ok, %{
+        imported_sections: success_count,
+        failed_sections: length(results.failed),
+        failures: results.failed,
+        custom_fields: results.custom_fields_created
+      }}
+    else
+      {:error, "No sections were successfully imported. Errors: #{inspect(results.failed)}"}
+    end
+  rescue
+    error ->
+      {:error, "Import failed with error: #{Exception.message(error)}"}
+  end
+end
+
+defp get_section_data_from_parsed(parsed_data, section_type) do
+  case section_type do
+    "personal_info" -> parsed_data.personal_info || %{}
+    "professional_summary" -> parsed_data.professional_summary || %{}
+    "experience" -> parsed_data.work_experience || []
+    "education" -> parsed_data.education || []
+    "skills" -> parsed_data.skills || []
+    "projects" -> parsed_data.projects || []
+    "certifications" -> parsed_data.certifications || []
+    _ -> %{}
+  end
+end
+
+def validate_imported_content(section_type, content) do
+  case EnhancedSectionSystem.validate_section_content(section_type, content) do
+    %{valid: true} ->
+      {:ok, content}
+    %{valid: false, errors: errors} ->
+      {:error, "Validation failed: #{format_validation_errors(errors)}"}
+  end
+end
+
+defp format_validation_errors(errors) do
+  errors
+  |> Enum.map(fn {field, message} -> "#{field}: #{message}" end)
+  |> Enum.join(", ")
+end
+
+defp merge_imported_content(existing_content, new_content, section_type) do
+  case section_type do
+    type when type in ["experience", "education", "projects"] ->
+      # For array-based sections, merge items intelligently
+      existing_items = Map.get(existing_content, "items", [])
+      new_items = Map.get(new_content, "items", [])
+
+      # Simple append for now, but could be enhanced to detect duplicates
+      merged_items = existing_items ++ new_items
+      Map.put(new_content, "items", merged_items)
+
+    "skills" ->
+      # Merge skills categories
+      existing_categories = Map.get(existing_content, "categories", %{})
+      new_categories = Map.get(new_content, "categories", %{})
+
+      merged_categories = Map.merge(existing_categories, new_categories, fn _key, existing_list, new_list ->
+        (existing_list ++ new_list) |> Enum.uniq()
+      end)
+
+      Map.put(new_content, "categories", merged_categories)
+
+    _ ->
+      # For simple content, prefer new content but preserve custom fields
+      Map.merge(existing_content, new_content)
+  end
+end
+
 
   # Mock ATS optimization (replace with real AI service in production)
   defp optimize_resume_data(parsed_data, job_description) do

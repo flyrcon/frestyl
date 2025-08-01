@@ -189,41 +189,66 @@ end
     {:noreply, assign(socket, :show_create_dropdown, false)}
   end
 
-  @impl true
   def handle_event("create_section", %{"section_type" => section_type}, socket) do
     IO.puts("🆕 CREATE SECTION: #{section_type}")
 
-    section_attrs = %{
-      portfolio_id: socket.assigns.portfolio.id,
-      section_type: String.to_atom(section_type),
-      title: generate_default_section_title(section_type),
-      content: get_default_content_for_type(section_type),
-      visible: true,
-      position: length(socket.assigns.sections) + 1
-    }
+    {:noreply, socket
+      |> assign(:show_section_modal, true)
+      |> assign(:current_section_type, section_type)
+      |> assign(:editing_section, nil)
+      |> assign(:section_changeset_errors, [])
+      |> assign(:show_create_dropdown, false)}
+  end
 
-    case Portfolios.create_portfolio_section(section_attrs) do
-      {:ok, new_section} ->
-        IO.puts("✅ Section created: #{new_section.id}")
-        updated_sections = socket.assigns.sections ++ [new_section]
+  def handle_event("save_section", params, socket) do
+    IO.puts("🔥 SAVE SECTION: #{inspect(params["action"])}")
+    IO.puts("🔥 SAVE SECTION PARAMS: #{inspect(params)}")
 
-        # Single broadcast
-        broadcast_portfolio_update(
-          socket.assigns.portfolio.id,
-          updated_sections,
-          socket.assigns.customization,
-          :sections
-        )
-
-        {:noreply, socket
-          |> assign(:sections, updated_sections)
-          |> assign(:show_create_dropdown, false)
-          |> put_flash(:info, "✅ #{section_type} section created!")}
-
-      {:error, changeset} ->
-        IO.puts("❌ Failed to create section: #{inspect(changeset.errors)}")
-        {:noreply, put_flash(socket, :error, "Failed to create section")}
+    # For updates, we need to get the section_type from the existing section
+    enhanced_params = case params["action"] do
+      "update" ->
+        section_id = String.to_integer(params["section_id"])
+        case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
+          nil -> params
+          section -> Map.put(params, "section_type", to_string(section.section_type))
+        end
+      _ -> params
     end
+
+    IO.puts("🔥 ENHANCED PARAMS: #{inspect(enhanced_params)}")
+
+    # Pre-validate form data
+    case validate_section_params(enhanced_params) do
+      {:ok, validated_params} ->
+        IO.puts("✅ Validation passed: #{inspect(validated_params["validated_content"])}")
+        case params["action"] do
+          "create" -> create_section_with_validation(socket, validated_params)
+          "update" -> update_section_with_validation(socket, validated_params)
+          _ -> {:noreply, put_flash(socket, :error, "Invalid section action")}
+        end
+
+      {:error, validation_errors} ->
+        IO.puts("❌ Validation failed: #{inspect(validation_errors)}")
+        {:noreply, socket
+          |> assign(:section_changeset_errors, validation_errors)
+          |> put_flash(:error, "Please fix the form errors before saving")}
+    end
+  end
+
+  def handle_event("close_section_modal", _params, socket) do
+    {:noreply, socket
+      |> assign(:show_section_modal, false)
+      |> assign(:current_section_type, nil)
+      |> assign(:editing_section, nil)
+      |> assign(:section_changeset_errors, [])}
+  end
+
+  def handle_event("close_modal_on_escape", _params, socket) do
+    {:noreply, socket
+      |> assign(:show_section_modal, false)
+      |> assign(:current_section_type, nil)
+      |> assign(:editing_section, nil)
+      |> assign(:section_changeset_errors, [])}
   end
 
   defp create_section_with_modal(socket, params) do
@@ -254,32 +279,253 @@ end
   end
 
   @impl true
-  def handle_event("edit_section", %{"section_id" => section_id}, socket) do
-    section_id = String.to_integer(section_id)
-    section = Enum.find(socket.assigns.sections, &(&1.id == section_id))
+  def handle_info({:save_section, form_data, editing_section}, socket) do
+    IO.puts("🔧 SAVING SECTION with data: #{inspect(form_data)}")
 
-    if section do
-      {:noreply, socket
-        |> assign(:show_section_modal, true)
-        |> assign(:current_section_type, to_string(section.section_type))
-        |> assign(:editing_section, section)}
+    case editing_section do
+      nil ->
+        # Create new section
+        create_new_section(form_data, socket)
+
+      %{} = section ->
+        # Update existing section
+        update_existing_section(section, form_data, socket)
+    end
+  end
+
+    @impl true
+  def handle_info(:close_section_modal, socket) do
+    IO.puts("🔧 CLOSING SECTION MODAL")
+
+    socket = socket
+    |> assign(:show_section_modal, false)
+    |> assign(:editing_section, nil)
+    |> assign(:section_type, nil)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:auto_save, form_data}, socket) do
+    # Implement auto-save functionality
+    IO.puts("🔧 AUTO-SAVING FORM DATA")
+
+    # Debounce auto-save to avoid too frequent saves
+    Process.send_after(self(), {:delayed_auto_save, form_data}, 2000)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:delayed_auto_save, form_data}, socket) do
+    # Only auto-save if we're editing an existing section
+    if socket.assigns.editing_section do
+      IO.puts("🔧 EXECUTING DELAYED AUTO-SAVE")
+      update_existing_section(socket.assigns.editing_section, form_data, socket, :auto_save)
     else
-      {:noreply, put_flash(socket, :error, "Section not found")}
+      {:noreply, socket}
     end
   end
 
-  def handle_event("save_section", params, socket) do
-    IO.puts("🔥 SAVE SECTION: #{inspect(params["action"])}")
+  defp create_new_section(form_data, socket) do
+    IO.puts("🔧 CREATING NEW SECTION")
 
-    case params["action"] do
-      "create" ->
-        create_section_with_modal(socket, params)
-      "update" ->
-        update_section_with_validation(socket, params)
-      _ ->
-        {:noreply, put_flash(socket, :error, "Invalid section action")}
+    # Extract section type and prepare attributes
+    section_type = Map.get(form_data, "section_type", socket.assigns.section_type)
+
+    section_attrs = %{
+      portfolio_id: socket.assigns.portfolio.id,
+      section_type: section_type,
+      title: Map.get(form_data, "title", ""),
+      content: extract_section_content(form_data),
+      visible: Map.get(form_data, "visible", true),
+      position: get_next_section_position(socket.assigns.sections)
+    }
+
+    IO.puts("🔧 Section attributes: #{inspect(section_attrs)}")
+
+    case Portfolios.create_portfolio_section(section_attrs) do
+      {:ok, new_section} ->
+        IO.puts("🔧 Successfully created section: #{new_section.id}")
+
+        # Reload sections and close modal
+        updated_sections = socket.assigns.sections ++ [new_section]
+
+        # Broadcast update to preview
+        broadcast_portfolio_update(socket.assigns.portfolio.id, :section_created, new_section)
+
+        socket = socket
+        |> assign(:sections, updated_sections)
+        |> assign(:show_section_modal, false)
+        |> assign(:editing_section, nil)
+        |> assign(:section_type, nil)
+        |> put_flash(:info, "Section created successfully!")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("🔧 Failed to create section: #{inspect(changeset.errors)}")
+
+        socket = socket
+        |> put_flash(:error, "Failed to create section: #{format_changeset_errors(changeset)}")
+
+        {:noreply, socket}
     end
   end
+
+  defp extract_section_content(form_data) do
+    # Remove universal fields (title, visible, section_type, action)
+    content = form_data
+    |> Map.drop(["title", "visible", "section_type", "action", "section_id"])
+
+    IO.puts("🔧 Extracted content: #{inspect(content)}")
+    content
+  end
+
+  # Get next position for new section
+  defp get_next_section_position(sections) do
+    case Enum.max_by(sections, & &1.position, fn -> %{position: 0} end) do
+      %{position: max_pos} -> max_pos + 1
+      _ -> 1
+    end
+  end
+
+  defp format_changeset_errors(changeset) do
+    changeset.errors
+    |> Enum.map(fn {field, {message, _}} -> "#{field}: #{message}" end)
+    |> Enum.join(", ")
+  end
+
+  defp maybe_put_flash(socket, _type, nil), do: socket
+  defp maybe_put_flash(socket, type, message), do: put_flash(socket, type, message)
+
+  # Broadcast portfolio updates to preview
+  defp broadcast_portfolio_update(portfolio_id, event_type, section) do
+    IO.puts("🔧 Broadcasting #{event_type} for portfolio #{portfolio_id}")
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio_id}",
+      {:portfolio_updated, %{
+        event: event_type,
+        section: section,
+        portfolio_id: portfolio_id
+      }}
+    )
+  end
+
+    defp create_section_with_enhanced_processing(socket, params) do
+    section_type = params["section_type"]
+    title = params["title"]
+    visible = params["visible"] == "true"
+
+    IO.puts("🔧 CREATING SECTION: type=#{section_type}, title=#{title}, visible=#{visible}")
+
+    # FIXED: Extract content using enhanced content processor
+    content = extract_enhanced_content_from_params(section_type, params)
+    IO.puts("🔧 EXTRACTED CONTENT: #{inspect(content, pretty: true)}")
+
+    section_attrs = %{
+      title: title,
+      section_type: section_type,
+      content: content,
+      visible: visible,
+      portfolio_id: socket.assigns.portfolio.id,
+      position: length(socket.assigns.sections) + 1
+    }
+
+    IO.puts("🔧 SECTION ATTRS: #{inspect(section_attrs, pretty: true)}")
+
+    case Portfolios.create_portfolio_section(section_attrs) do
+      {:ok, section} ->
+        IO.puts("✅ SECTION CREATED SUCCESSFULLY")
+
+        updated_sections = socket.assigns.sections ++ [section]
+
+        # Update hero section if this is a hero section
+        hero_section = if section_type == "hero" do
+          section
+        else
+          socket.assigns.hero_section
+        end
+
+        # FIXED: Broadcast portfolio update with all necessary data
+        broadcast_comprehensive_portfolio_update(socket.assigns.portfolio.id, updated_sections, socket.assigns.customization)
+
+        {:noreply, socket
+        |> assign(:sections, updated_sections)
+        |> assign(:hero_section, hero_section)
+        |> assign(:show_section_modal, false)
+        |> assign(:current_section_type, nil)
+        |> assign(:editing_section, nil)
+        |> put_flash(:info, "#{title} section created successfully!")}
+
+      {:error, changeset} ->
+        IO.puts("❌ SECTION CREATION FAILED: #{inspect(changeset.errors)}")
+        error_messages = extract_changeset_errors(changeset)
+        error_message = Enum.join(error_messages, ", ")
+
+        {:noreply, socket
+        |> put_flash(:error, "Failed to create section: #{error_message}")
+        |> assign(:section_changeset_errors, changeset.errors)}
+    end
+  end
+
+  defp update_existing_section(section, form_data, socket, save_type \\ :manual) do
+    IO.puts("🔧 UPDATING EXISTING SECTION: #{section.id}")
+
+    section_attrs = %{
+      title: Map.get(form_data, "title", section.title),
+      content: extract_section_content(form_data),
+      visible: Map.get(form_data, "visible", section.visible)
+    }
+
+    IO.puts("🔧 Update attributes: #{inspect(section_attrs)}")
+
+    case Portfolios.update_portfolio_section(section, section_attrs) do
+      {:ok, updated_section} ->
+        IO.puts("🔧 Successfully updated section: #{updated_section.id}")
+
+        # Update sections list
+        updated_sections = Enum.map(socket.assigns.sections, fn s ->
+          if s.id == updated_section.id, do: updated_section, else: s
+        end)
+
+        # Broadcast update to preview
+        broadcast_portfolio_update(socket.assigns.portfolio.id, :section_updated, updated_section)
+
+        flash_message = case save_type do
+          :auto_save -> nil
+          :manual -> "Section updated successfully!"
+        end
+
+        socket = socket
+        |> assign(:sections, updated_sections)
+        |> assign(:editing_section, updated_section)
+        |> maybe_put_flash(:info, flash_message)
+
+        # Close modal if manual save
+        socket = if save_type == :manual do
+          socket
+          |> assign(:show_section_modal, false)
+          |> assign(:editing_section, nil)
+          |> assign(:section_type, nil)
+        else
+          socket
+        end
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("🔧 Failed to update section: #{inspect(changeset.errors)}")
+
+        socket = socket
+        |> put_flash(:error, "Failed to update section: #{format_changeset_errors(changeset)}")
+
+        {:noreply, socket}
+    end
+  end
+
 
   @impl true
   def handle_event("show_create_dropdown", _params, socket) do
@@ -326,111 +572,778 @@ end
     end
   end
 
-  @impl true
   def handle_event("edit_section", %{"section_id" => section_id}, socket) do
     section_id = String.to_integer(section_id)
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id))
 
-    case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
+    if section do
+      {:noreply, socket
+        |> assign(:show_section_modal, true)
+        |> assign(:current_section_type, to_string(section.section_type))
+        |> assign(:editing_section, section)
+        |> assign(:section_changeset_errors, [])}
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+    @impl true
+  def handle_event("open_section_modal", %{"section_type" => section_type}, socket) do
+    IO.puts("🔧 OPENING SECTION MODAL for type: #{section_type}")
+
+    # Validate section type exists
+    unless EnhancedSectionSystem.section_exists?(section_type) do
+      socket = put_flash(socket, :error, "Invalid section type")
+      {:noreply, socket}
+    else
+      socket = socket
+      |> assign(:show_section_modal, true)
+      |> assign(:section_type, section_type)
+      |> assign(:editing_section, nil)
+
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("edit_section_modal", %{"section_id" => section_id}, socket) do
+    IO.puts("🔧 OPENING EDIT SECTION MODAL for section: #{section_id}")
+
+    case Enum.find(socket.assigns.sections, &(&1.id == String.to_integer(section_id))) do
       nil ->
-        {:noreply, put_flash(socket, :error, "Section not found")}
+        socket = put_flash(socket, :error, "Section not found")
+        {:noreply, socket}
+
       section ->
-        {:noreply, socket
-          |> assign(:show_section_modal, true)
-          |> assign(:editing_section, section)
-          |> assign(:current_section_type, to_string(section.section_type))
-          |> assign(:section_changeset_errors, [])}
+        socket = socket
+        |> assign(:show_section_modal, true)
+        |> assign(:section_type, section.section_type)
+        |> assign(:editing_section, section)
+
+        {:noreply, socket}
     end
   end
 
   @impl true
   def handle_event("delete_section", %{"section_id" => section_id}, socket) do
-    section_id = String.to_integer(section_id)
-    IO.puts("🔥 DELETE SECTION: #{section_id}")
+    IO.puts("🔧 DELETING SECTION: #{section_id}")
 
-    case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
+    case Enum.find(socket.assigns.sections, &(&1.id == String.to_integer(section_id))) do
       nil ->
-        {:noreply, put_flash(socket, :error, "Section not found")}
+        socket = put_flash(socket, :error, "Section not found")
+        {:noreply, socket}
 
       section ->
         case Portfolios.delete_portfolio_section(section) do
-          {:ok, _} ->
-            updated_sections = Enum.filter(socket.assigns.sections, &(&1.id != section_id))
+          {:ok, _deleted_section} ->
+            IO.puts("🔧 Successfully deleted section: #{section_id}")
 
-            # Single broadcast
-            broadcast_portfolio_update(
-              socket.assigns.portfolio.id,
-              updated_sections,
-              socket.assigns.customization,
-              :sections
-            )
+            updated_sections = Enum.reject(socket.assigns.sections, &(&1.id == section.id))
 
-            {:noreply, socket
-              |> assign(:sections, updated_sections)
-              |> put_flash(:info, "Section deleted")}
+            # Broadcast update to preview
+            broadcast_portfolio_update(socket.assigns.portfolio.id, :section_deleted, section)
 
-          {:error, _changeset} ->
-            {:noreply, put_flash(socket, :error, "Failed to delete section")}
+            socket = socket
+            |> assign(:sections, updated_sections)
+            |> put_flash(:info, "Section deleted successfully!")
+
+            {:noreply, socket}
+
+          {:error, changeset} ->
+            IO.puts("🔧 Failed to delete section: #{inspect(changeset.errors)}")
+
+            socket = socket
+            |> put_flash(:error, "Failed to delete section")
+
+            {:noreply, socket}
         end
     end
   end
 
-  defp update_section_with_validation(socket, params) do
-    section_id = params["section_id"] |> String.to_integer()
+  @impl true
+  def handle_event("reorder_sections", %{"sections" => section_order}, socket) do
+    IO.puts("🔧 REORDERING SECTIONS: #{inspect(section_order)}")
 
-    IO.puts("🔧 UPDATING SECTION: id=#{section_id}")
+    # Update section positions based on new order
+    updated_sections = section_order
+    |> Enum.with_index(1)
+    |> Enum.map(fn {section_id_str, position} ->
+      section_id = String.to_integer(section_id_str)
+      section = Enum.find(socket.assigns.sections, &(&1.id == section_id))
 
-    case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
-      nil ->
-        IO.puts("❌ Section not found: #{section_id}")
-        {:noreply, put_flash(socket, :error, "Section not found")}
+      if section do
+        case Portfolios.update_portfolio_section(section, %{position: position}) do
+          {:ok, updated_section} -> updated_section
+          {:error, _} -> section
+        end
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(& &1.position)
 
-      section ->
-        case build_section_update_attrs(params, section) do
-          {:ok, update_attrs} ->
-            IO.puts("🔧 UPDATE ATTRS: #{inspect(update_attrs)}")
+    # Broadcast update to preview
+    broadcast_portfolio_update(socket.assigns.portfolio.id, :sections_reordered, updated_sections)
 
-            case Portfolios.update_portfolio_section(section, update_attrs) do
-              {:ok, updated_section} ->
-                IO.puts("✅ Section updated successfully")
-                IO.puts("✅ Updated section content: #{inspect(updated_section.content)}")
+    socket = socket
+    |> assign(:sections, updated_sections)
+    |> put_flash(:info, "Sections reordered successfully!")
 
-                # Update sections list in socket
-                updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+    {:noreply, socket}
+  end
 
-                # Broadcast to ALL views with proper data format
-                broadcast_portfolio_update(
-                  socket.assigns.portfolio.id,
-                  updated_sections,
-                  socket.assigns.customization
-                )
+  # Function to validate section data before saving
+  defp validate_section_data(section_type, content) do
+    case EnhancedSectionSystem.validate_section_content(section_type, content) do
+      %{valid: true} -> {:ok, content}
+      %{valid: false, errors: errors} -> {:error, errors}
+    end
+  end
 
-                # Update socket state
-                new_socket = socket
-                  |> assign(:sections, updated_sections)
-                  |> assign(:show_section_modal, false)
-                  |> assign(:editing_section, nil)
-                  |> assign(:section_changeset_errors, [])
-                  |> put_flash(:info, "✅ Section updated successfully!")
+  # Function to process file uploads in section content
+  defp process_section_uploads(content, section_type, uploads) do
+    # This would handle file uploads for sections
+    # Implementation depends on your file upload system
 
-                IO.puts("✅ Socket and broadcasts complete")
-                {:noreply, new_socket}
+    section_config = EnhancedSectionSystem.get_section_config(section_type)
+    fields = Map.get(section_config, :fields, %{})
 
-              {:error, changeset} ->
-                IO.puts("❌ SECTION UPDATE FAILED: #{inspect(changeset.errors)}")
-                error_messages = extract_changeset_errors(changeset)
-                error_message = Enum.join(error_messages, ", ")
+    # Process each field that might have file uploads
+    Enum.reduce(fields, content, fn {field_name, field_config}, acc_content ->
+      case Map.get(field_config, :type) do
+        :file ->
+          process_file_field(acc_content, field_name, uploads)
+        :items ->
+          process_items_file_fields(acc_content, field_name, field_config, uploads)
+        _ ->
+          acc_content
+      end
+    end)
+  end
 
-                {:noreply, socket
-                  |> put_flash(:error, "Failed to update section: #{error_message}")
-                  |> assign(:section_changeset_errors, changeset.errors)}
+  defp process_file_field(content, field_name, uploads) do
+    field_name_str = Atom.to_string(field_name)
+
+    case Map.get(uploads, field_name_str) do
+      nil -> content
+      upload_info ->
+        # Process the upload and get the file path
+        # This is a placeholder - implement based on your upload system
+        file_path = handle_file_upload(upload_info)
+        Map.put(content, field_name_str, file_path)
+    end
+  end
+
+  defp process_items_file_fields(content, field_name, field_config, uploads) do
+    # Process file uploads within items arrays
+    # This is more complex as it needs to handle file uploads for each item
+    field_name_str = Atom.to_string(field_name)
+    items = Map.get(content, field_name_str, %{})
+
+    case items do
+      %{"items" => item_list} when is_list(item_list) ->
+        updated_items = process_item_file_uploads(item_list, field_config, uploads, field_name_str)
+        Map.put(content, field_name_str, %{"items" => updated_items})
+      _ ->
+        content
+    end
+  end
+
+  defp process_item_file_uploads(items, field_config, uploads, base_field_name) do
+    item_schema = Map.get(field_config, :item_schema, %{})
+
+    Enum.with_index(items)
+    |> Enum.map(fn {item, index} ->
+      # Check each field in the item schema for file fields
+      Enum.reduce(item_schema, item, fn {item_field_name, item_field_config}, acc_item ->
+        case Map.get(item_field_config, :type) do
+          :file ->
+            upload_key = "#{base_field_name}[#{index}][#{item_field_name}]"
+            case Map.get(uploads, upload_key) do
+              nil -> acc_item
+              upload_info ->
+                file_path = handle_file_upload(upload_info)
+                Map.put(acc_item, Atom.to_string(item_field_name), file_path)
             end
-
-          {:error, reason} ->
-            IO.puts("❌ INVALID FORM DATA: #{reason}")
-            {:noreply, put_flash(socket, :error, "Invalid form data: #{reason}")}
+          _ ->
+            acc_item
         end
+      end)
+    end)
+  end
+
+  # Placeholder for file upload handling
+  defp handle_file_upload(upload_info) do
+    # Implement your file upload logic here
+    # This should return the final file path/URL
+    IO.puts("🔧 Processing file upload: #{inspect(upload_info)}")
+    "/uploads/placeholder_file.jpg"
+  end
+
+defp validate_section_params(params) do
+  section_type = params["section_type"]
+
+  # Use EnhancedSectionSystem to validate
+  case EnhancedSectionSystem.get_section_config(section_type) do
+    %{fields: fields} when is_map(fields) ->
+      content = extract_content_from_params_enhanced(section_type, params)
+
+      case EnhancedSectionSystem.validate_section_content(section_type, content) do
+        %{valid: true} -> {:ok, Map.put(params, "validated_content", content)}
+        %{valid: false, errors: errors} -> {:error, errors}
+      end
+
+    config when is_map(config) ->
+      # Section exists but has no fields - use basic validation
+      {:ok, Map.put(params, "validated_content", %{"content" => params["content"] || ""})}
+
+    nil ->
+      {:error, [{"section_type", "Unknown section type: #{section_type}"}]}
+  end
+end
+
+defp extract_content_from_params_enhanced(section_type, params) do
+  section_config = EnhancedSectionSystem.get_section_config(section_type)
+  fields = case section_config do
+    %{fields: fields} when is_map(fields) -> fields
+    _ -> %{}
+  end
+
+  if map_size(fields) == 0 do
+    # Fallback for sections without defined fields
+    %{"content" => params["content"] || ""}
+  else
+    Enum.reduce(fields, %{}, fn {field_name, field_config}, acc ->
+      field_key = Atom.to_string(field_name)
+      field_type = Map.get(field_config, :type, :string)
+
+      case field_type do
+        :array ->
+          value = extract_array_field(params, field_key, field_config)
+          Map.put(acc, field_key, value)
+
+        :map ->
+          value = extract_map_field(params, field_key, field_config)
+          Map.put(acc, field_key, value)
+
+        :boolean ->
+          Map.put(acc, field_key, params[field_key] == "true")
+
+        :integer ->
+          case Integer.parse(params[field_key] || "0") do
+            {int_val, _} -> Map.put(acc, field_key, int_val)
+            :error -> Map.put(acc, field_key, 0)
+          end
+
+        _ ->
+          Map.put(acc, field_key, params[field_key] || "")
+      end
+    end)
+  end
+end
+
+defp extract_array_field(params, field_key, field_config) do
+  item_fields = Map.get(field_config, :item_fields, %{})
+
+  if map_size(item_fields) > 0 do
+    # Complex array with item_fields
+    extract_complex_array_items(params, field_key, item_fields)
+  else
+    # Simple array - convert comma-separated string to list
+    case params[field_key] do
+      nil -> []
+      "" -> []
+      value when is_binary(value) ->
+        value
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.filter(&(&1 != ""))
+      value when is_list(value) -> value
+      _ -> []
     end
   end
+end
+
+defp extract_complex_array_items(params, field_key, item_fields) do
+  # Extract array items from form params like: field_name[0][item_field], field_name[1][item_field], etc.
+  params
+  |> Enum.filter(fn {key, _value} -> String.starts_with?(key, "#{field_key}[") end)
+  |> Enum.group_by(fn {key, _value} ->
+    # Extract index from field_name[index][subfield]
+    case Regex.run(~r/#{Regex.escape(field_key)}\[(\d+)\]/, key) do
+      [_, index] -> index
+      _ -> nil
+    end
+  end)
+  |> Enum.filter(fn {index, _fields} -> index != nil end)
+  |> Enum.sort_by(fn {index, _fields} -> String.to_integer(index) end)
+  |> Enum.map(fn {_index, fields} ->
+    Enum.reduce(fields, %{}, fn {key, value}, item_acc ->
+      # Extract subfield name from field_name[index][subfield]
+      case Regex.run(~r/#{Regex.escape(field_key)}\[\d+\]\[(.+)\]/, key) do
+        [_, subfield] ->
+          # Process the value based on the subfield type
+          processed_value = process_subfield_value(subfield, value, item_fields)
+          Map.put(item_acc, subfield, processed_value)
+        _ -> item_acc
+      end
+    end)
+  end)
+  |> Enum.filter(fn item ->
+    # Filter out completely empty items
+    Enum.any?(item, fn {_key, value} ->
+      case value do
+        "" -> false
+        [] -> false
+        nil -> false
+        _ -> true
+      end
+    end)
+  end)
+end
+
+defp process_subfield_value(subfield, value, item_fields) do
+  # Convert string to atom safely
+  subfield_atom = try do
+    String.to_existing_atom(subfield)
+  rescue
+    ArgumentError -> nil
+  end
+
+  if subfield_atom do
+    subfield_config = Map.get(item_fields, subfield_atom, %{})
+    subfield_type = Map.get(subfield_config, :type, :string)
+
+    case subfield_type do
+      :boolean -> value == "true"
+      :integer ->
+        case Integer.parse(value || "0") do
+          {int_val, _} -> int_val
+          :error -> 0
+        end
+      :array ->
+        if is_binary(value) do
+          value
+          |> String.split(",")
+          |> Enum.map(&String.trim/1)
+          |> Enum.filter(&(&1 != ""))
+        else
+          value || []
+        end
+      _ -> value || ""
+    end
+  else
+    # If subfield_atom doesn't exist, just return the raw value
+    value || ""
+  end
+end
+
+defp extract_map_field(params, field_key, _field_config) do
+  keys = params["#{field_key}_keys"] || []
+  values = params["#{field_key}_values"] || []
+
+  keys
+  |> Enum.zip(values)
+  |> Enum.filter(fn {key, value} -> key != "" and value != "" end)
+  |> Enum.into(%{})
+end
+
+
+defp create_section_with_validation(socket, params) do
+  section_type = params["section_type"]
+  title = params["title"] |> String.trim()
+  visible = params["visible"] == "true"
+  content = params["validated_content"]
+
+  # Handle empty title
+  final_title = if title == "", do: generate_default_section_title(section_type), else: title
+
+  section_attrs = %{
+    portfolio_id: socket.assigns.portfolio.id,
+    section_type: String.to_atom(section_type),
+    title: final_title,
+    content: content,
+    visible: visible,
+    position: length(socket.assigns.sections) + 1
+  }
+
+  IO.puts("🔧 Creating section with attrs: #{inspect(section_attrs)}")
+
+  case Portfolios.create_portfolio_section(section_attrs) do
+    {:ok, new_section} ->
+      IO.puts("✅ Section created: #{new_section.id}")
+      updated_sections = socket.assigns.sections ++ [new_section]
+
+      # Single broadcast
+      broadcast_portfolio_update(
+        socket.assigns.portfolio.id,
+        updated_sections,
+        socket.assigns.customization,
+        :sections
+      )
+
+      {:noreply, socket
+        |> assign(:sections, updated_sections)
+        |> assign(:show_section_modal, false)
+        |> assign(:current_section_type, nil)
+        |> assign(:editing_section, nil)
+        |> assign(:section_changeset_errors, [])
+        |> put_flash(:info, "✅ #{section_type} section created!")}
+
+    {:error, changeset} ->
+      IO.puts("❌ Failed to create section: #{inspect(changeset.errors)}")
+      {:noreply, socket
+        |> assign(:section_changeset_errors, changeset.errors)
+        |> put_flash(:error, "Failed to create section")}
+  end
+end
+
+defp update_section_with_validation(socket, params) do
+  section_id = String.to_integer(params["section_id"])
+
+  case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
+    nil ->
+      IO.puts("❌ SECTION NOT FOUND: #{section_id}")
+      {:noreply, put_flash(socket, :error, "Section not found")}
+
+    section ->
+      title = params["title"] |> String.trim()
+      visible = params["visible"] == "true"
+      content = params["validated_content"]
+
+      # Handle empty title
+      final_title = if title == "", do: generate_default_section_title(section.section_type), else: title
+
+      update_attrs = %{
+        title: final_title,
+        visible: visible,
+        content: content
+      }
+
+      IO.puts("🔧 Updating section #{section_id} with attrs: #{inspect(update_attrs)}")
+      IO.puts("🔧 Original section content: #{inspect(section.content)}")
+
+      case Portfolios.update_portfolio_section(section, update_attrs) do
+        {:ok, updated_section} ->
+          IO.puts("✅ Section updated: #{updated_section.id}")
+          IO.puts("✅ Updated section content: #{inspect(updated_section.content)}")
+          updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+          # Single broadcast
+          broadcast_portfolio_update(
+            socket.assigns.portfolio.id,
+            updated_sections,
+            socket.assigns.customization,
+            :sections
+          )
+
+          {:noreply, socket
+            |> assign(:sections, updated_sections)
+            |> assign(:show_section_modal, false)
+            |> assign(:current_section_type, nil)
+            |> assign(:editing_section, nil)
+            |> assign(:section_changeset_errors, [])
+            |> put_flash(:info, "✅ Section updated successfully!")}
+
+        {:error, changeset} ->
+          IO.puts("❌ SECTION UPDATE FAILED: #{inspect(changeset.errors)}")
+          {:noreply, socket
+            |> assign(:section_changeset_errors, changeset.errors)
+            |> put_flash(:error, "Failed to save section")}
+      end
+  end
+end
+
+    defp update_section_with_enhanced_processing(socket, params) do
+    section_id = String.to_integer(params["section_id"])
+    title = params["title"]
+    visible = params["visible"] == "true"
+
+    IO.puts("🔧 UPDATING SECTION: id=#{section_id}, title=#{title}, visible=#{visible}")
+
+    # Find the section
+    section = Enum.find(socket.assigns.sections, &(&1.id == section_id))
+
+    if section do
+      # FIXED: Extract content using enhanced content processor
+      content = extract_enhanced_content_from_params(to_string(section.section_type), params)
+      IO.puts("🔧 EXTRACTED CONTENT: #{inspect(content, pretty: true)}")
+
+      update_attrs = %{
+        title: title,
+        content: content,
+        visible: visible
+      }
+
+      IO.puts("🔧 UPDATE ATTRS: #{inspect(update_attrs, pretty: true)}")
+
+      case Portfolios.update_portfolio_section(section, update_attrs) do
+        {:ok, updated_section} ->
+          IO.puts("✅ SECTION UPDATED SUCCESSFULLY")
+
+          updated_sections = Enum.map(socket.assigns.sections, fn s ->
+            if s.id == section_id, do: updated_section, else: s
+          end)
+
+          # Update hero section if this is a hero section
+          hero_section = if to_string(section.section_type) == "hero" do
+            updated_section
+          else
+            socket.assigns.hero_section
+          end
+
+          # FIXED: Broadcast portfolio update with all necessary data
+          broadcast_comprehensive_portfolio_update(socket.assigns.portfolio.id, updated_sections, socket.assigns.customization)
+
+          {:noreply, socket
+          |> assign(:sections, updated_sections)
+          |> assign(:hero_section, hero_section)
+          |> assign(:show_section_modal, false)
+          |> assign(:current_section_type, nil)
+          |> assign(:editing_section, nil)
+          |> put_flash(:info, "#{title} section updated successfully!")}
+
+        {:error, changeset} ->
+          IO.puts("❌ SECTION UPDATE FAILED: #{inspect(changeset.errors)}")
+          error_messages = extract_changeset_errors(changeset)
+          error_message = Enum.join(error_messages, ", ")
+
+          {:noreply, socket
+          |> put_flash(:error, "Failed to update section: #{error_message}")
+          |> assign(:section_changeset_errors, changeset.errors)}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  defp broadcast_comprehensive_portfolio_update(portfolio_id, sections, customization) do
+    IO.puts("📡 BROADCASTING PORTFOLIO UPDATE")
+
+    # Convert sections to maps for JSON serialization
+    section_maps = Enum.map(sections, &convert_section_to_map/1)
+
+    update_data = %{
+      sections: section_maps,
+      customization: customization || %{},
+      timestamp: DateTime.utc_now()
+    }
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio_id}",
+      {:portfolio_updated, update_data}
+    )
+
+    IO.puts("📡 BROADCAST COMPLETE")
+  end
+
+  defp extract_enhanced_content_from_params(section_type, params) do
+    IO.puts("🔍 EXTRACTING CONTENT FOR SECTION TYPE: #{section_type}")
+    IO.puts("🔍 RAW PARAMS: #{inspect(params, pretty: true)}")
+
+    # Get the content parameters
+    content_params = Map.get(params, "content", %{})
+    IO.puts("🔍 CONTENT PARAMS: #{inspect(content_params, pretty: true)}")
+
+    # Get section configuration to understand field types
+    section_config = Frestyl.Portfolios.EnhancedSectionSystem.get_section_config(section_type)
+    fields_config = Map.get(section_config, :fields, %{})
+    IO.puts("🔍 FIELDS CONFIG: #{inspect(fields_config, pretty: true)}")
+
+    # Process each field according to its type
+    processed_content = Enum.reduce(fields_config, %{}, fn {field_name, field_config}, acc ->
+      field_name_str = to_string(field_name)
+      field_type = Map.get(field_config, :type, :string)
+      raw_value = Map.get(content_params, field_name_str)
+
+      IO.puts("🔍 PROCESSING FIELD: #{field_name_str} (#{field_type}) = #{inspect(raw_value)}")
+
+      processed_value = process_field_value(raw_value, field_type, field_config)
+      IO.puts("🔍 PROCESSED VALUE: #{inspect(processed_value)}")
+
+      if processed_value != nil do
+        Map.put(acc, field_name_str, processed_value)
+      else
+        acc
+      end
+    end)
+
+    # Also include any additional fields that might not be in the config
+    additional_content = content_params
+    |> Enum.filter(fn {key, _value} ->
+      not Map.has_key?(fields_config, String.to_atom(key))
+    end)
+    |> Enum.into(%{})
+
+    final_content = Map.merge(processed_content, additional_content)
+    IO.puts("🔍 FINAL CONTENT: #{inspect(final_content, pretty: true)}")
+
+    final_content
+  end
+
+  defp process_field_value(value, field_type, field_config) do
+    case field_type do
+      :string ->
+        process_string_value(value)
+
+      :text ->
+        process_text_value(value)
+
+      :integer ->
+        process_integer_value(value)
+
+      :boolean ->
+        process_boolean_value(value)
+
+      :array ->
+        process_array_value(value, field_config)  # Now uses the enhanced version
+
+      :map ->
+        process_map_value(value)
+
+      :select ->
+        process_select_value(value, field_config)
+
+      _ ->
+        # Default to string processing
+        process_string_value(value)
+    end
+  end
+
+    defp process_string_value(value) when is_binary(value) do
+    trimmed = String.trim(value)
+    if trimmed == "", do: nil, else: trimmed
+  end
+  defp process_string_value(_), do: nil
+
+  defp process_text_value(value) when is_binary(value) do
+    trimmed = String.trim(value)
+    if trimmed == "", do: nil, else: trimmed
+  end
+  defp process_text_value(_), do: nil
+
+  defp process_integer_value(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> int
+      _ -> nil
+    end
+  end
+  defp process_integer_value(value) when is_integer(value), do: value
+  defp process_integer_value(_), do: nil
+
+  defp process_boolean_value("true"), do: true
+  defp process_boolean_value("false"), do: false
+  defp process_boolean_value(true), do: true
+  defp process_boolean_value(false), do: false
+  defp process_boolean_value(_), do: false
+
+  defp process_array_value(value, field_config) when is_map(value) do
+    # Handle indexed array format from complex form fields
+    # Example: %{"0" => %{"title" => "Manager", "company" => "Company"}, "1" => %{...}}
+
+    if Map.keys(value) |> Enum.all?(&is_integer_string?/1) do
+      # This is an indexed array from complex form submission
+      value
+      |> Enum.sort_by(fn {index, _} -> String.to_integer(index) end)
+      |> Enum.map(fn {_index, item_data} -> process_complex_array_item(item_data, field_config) end)
+      |> Enum.filter(&(&1 != nil && &1 != %{}))
+    else
+      # This is a regular map, convert to single-item array
+      processed_item = process_complex_array_item(value, field_config)
+      if processed_item != nil && processed_item != %{}, do: [processed_item], else: []
+    end
+  end
+
+  defp process_array_value(value, field_config) when is_list(value) do
+    # Handle regular array
+    item_type = Map.get(field_config, :item_type, :string)
+
+    case item_type do
+      :string ->
+        # Filter out empty strings and nil values
+        value
+        |> Enum.map(&to_string/1)
+        |> Enum.map(&String.trim/1)
+        |> Enum.filter(&(&1 != "" and &1 != nil))
+
+      :map ->
+        # Process complex objects
+        value
+        |> Enum.map(&process_complex_array_item(&1, field_config))
+        |> Enum.filter(&(&1 != nil && &1 != %{}))
+
+      _ ->
+        # Default string processing
+        value
+        |> Enum.map(&to_string/1)
+        |> Enum.map(&String.trim/1)
+        |> Enum.filter(&(&1 != "" and &1 != nil))
+    end
+  end
+
+  defp process_array_value(_, _), do: []
+
+  defp process_complex_array_item(item_data, field_config) when is_map(item_data) do
+    item_fields = Map.get(field_config, :item_fields, %{})
+
+    if map_size(item_fields) > 0 do
+      # Process according to defined item fields
+      processed = Enum.reduce(item_fields, %{}, fn {field_name, field_spec}, acc ->
+        field_name_str = to_string(field_name)
+        field_type = Map.get(field_spec, :type, :string)
+        raw_value = Map.get(item_data, field_name_str)
+
+        processed_value = case field_type do
+          :string -> process_string_value(raw_value)
+          :text -> process_text_value(raw_value)
+          :integer -> process_integer_value(raw_value)
+          :boolean -> process_boolean_value(raw_value)
+          _ -> process_string_value(raw_value)
+        end
+
+        if processed_value != nil do
+          Map.put(acc, field_name_str, processed_value)
+        else
+          acc
+        end
+      end)
+
+      # Only return if we have meaningful data
+      if map_size(processed) > 0 && has_meaningful_content?(processed), do: processed, else: nil
+    else
+      # No item fields defined, process all string values
+      processed = item_data
+      |> Enum.filter(fn {_key, value} -> value != nil && value != "" end)
+      |> Enum.map(fn {key, value} -> {to_string(key), process_string_value(value)} end)
+      |> Enum.filter(fn {_key, value} -> value != nil end)
+      |> Enum.into(%{})
+
+      if map_size(processed) > 0, do: processed, else: nil
+    end
+  end
+
+  defp process_complex_array_item(item_data, _field_config) when is_binary(item_data) do
+    trimmed = String.trim(item_data)
+    if trimmed != "", do: %{"content" => trimmed}, else: nil
+  end
+
+  defp process_complex_array_item(_, _), do: nil
+
+  defp process_map_value(value) when is_map(value) do
+    # Process nested map values
+    processed = value
+    |> Enum.filter(fn {_key, val} -> val != nil and val != "" end)
+    |> Enum.into(%{})
+
+    if map_size(processed) > 0, do: processed, else: %{}
+  end
+  defp process_map_value(_), do: %{}
+
+  defp process_select_value(value, field_config) when is_binary(value) do
+    options = Map.get(field_config, :options, [])
+    if value in options, do: value, else: nil
+  end
+  defp process_select_value(_, _), do: nil
 
   defp update_section_with_modal_fixed(socket, params) do
     section_id = String.to_integer(params["section_id"])
@@ -521,6 +1434,14 @@ end
     end
   end
 
+  defp is_integer_string?(str) when is_binary(str) do
+    case Integer.parse(str) do
+      {_int, ""} -> true
+      _ -> false
+    end
+  end
+
+  defp is_integer_string?(_), do: false
 
   defp build_section_content(section_type, params) do
     IO.puts("🔧 BUILDING SECTION CONTENT: #{section_type}")
@@ -791,28 +1712,15 @@ end
   end)
 end
 
-defp extract_changeset_errors(%Ecto.Changeset{errors: errors}) do
-  Enum.map(errors, fn {field, {message, _details}} ->
-    "#{field} #{message}"
-  end)
-end
-defp extract_changeset_errors(_), do: ["Unknown error"]
-
-  @impl true
-  def handle_event("close_section_modal", _params, socket) do
-    {:noreply, socket
-    |> assign(:show_section_modal, false)
-    |> assign(:current_section_type, nil)
-    |> assign(:editing_section, nil)}
+  defp extract_changeset_errors(changeset_errors) do
+    changeset_errors
+    |> Enum.map(fn {field, {message, _details}} ->
+      field_name = field |> to_string() |> String.replace("_", " ") |> String.capitalize()
+      "#{field_name} #{message}"
+    end)
   end
+  defp extract_changeset_errors(_), do: ["Unknown error"]
 
-  @impl true
-  def handle_event("close_modal_on_escape", _params, socket) do
-    {:noreply, socket
-    |> assign(:show_section_modal, false)
-    |> assign(:current_section_type, nil)
-    |> assign(:editing_section, nil)}
-  end
 
   @impl true
   def handle_event("move_section_up", %{"section_id" => section_id}, socket) do
@@ -826,13 +1734,14 @@ defp extract_changeset_errors(_), do: ["Unknown error"]
 
   defp generate_default_section_title(section_type) do
     case to_string(section_type) do
-      "experience" -> "Work Experience"
+      "experience" -> "Professional Experience"
       "work_experience" -> "Work Experience"
       "education" -> "Education"
-      "skills" -> "Skills"
-      "projects" -> "Projects"
-      "about" -> "About"
-      "contact" -> "Contact"
+      "skills" -> "Skills & Expertise"
+      "projects" -> "Projects & Portfolio"
+      "about" -> "About Me"
+      "intro" -> "Introduction"
+      "contact" -> "Contact Information"
       "achievements" -> "Achievements"
       "certifications" -> "Certifications"
       _ -> "Portfolio Section"
@@ -880,22 +1789,15 @@ defp extract_changeset_errors(_), do: ["Unknown error"]
     end)
   end
 
-  defp update_section_in_list(sections, updated_section) do
-    IO.puts("🔄 Updating section #{updated_section.id} in list")
-    IO.puts("🔄 Updated section visibility: #{updated_section.visible}")
-
-    updated_list = Enum.map(sections, fn section ->
-      if section.id == updated_section.id do
-        IO.puts("🔄 Found matching section, replacing with updated data")
-        updated_section
-      else
-        section
-      end
-    end)
-
-    IO.puts("🔄 Section list updated")
-    updated_list
-  end
+defp update_section_in_list(sections, updated_section) do
+  Enum.map(sections, fn section ->
+    if section.id == updated_section.id do
+      updated_section
+    else
+      section
+    end
+  end)
+end
 
 
 
@@ -1130,25 +2032,19 @@ defp extract_changeset_errors(_), do: ["Unknown error"]
   end
 
   @impl true
-  def handle_event("add_array_item", %{"field" => field_name}, socket) do
-    # Update the component's internal state to add a new array item
-    current_data = Map.get(socket.assigns, :form_data, %{})
-    current_array = Map.get(current_data, field_name, [])
-    updated_array = current_array ++ [""]
-    updated_data = Map.put(current_data, field_name, updated_array)
-
-    {:noreply, assign(socket, :form_data, updated_data)}
+  def handle_info({:add_array_item, field_name}, socket) do
+    IO.puts("➕ Adding array item to field: #{field_name}")
+    # This could trigger a re-render of the modal with an additional empty field
+    # For now, we'll just acknowledge the event
+    {:noreply, socket}
   end
 
   @impl true
-  def handle_event("remove_array_item", %{"field" => field_name, "index" => index}, socket) do
-    current_data = Map.get(socket.assigns, :form_data, %{})
-    current_array = Map.get(current_data, field_name, [])
-    index = String.to_integer(index)
-    updated_array = List.delete_at(current_array, index)
-    updated_data = Map.put(current_data, field_name, updated_array)
-
-    {:noreply, assign(socket, :form_data, updated_data)}
+  def handle_info({:remove_array_item, field_name, index}, socket) do
+    IO.puts("➖ Removing array item from field: #{field_name} at index: #{index}")
+    # This could trigger a re-render of the modal with the item removed
+    # For now, we'll just acknowledge the event
+    {:noreply, socket}
   end
 
   @impl true
@@ -1530,7 +2426,7 @@ defp extract_changeset_errors(_), do: ["Unknown error"]
       id: section.id,
       title: section.title,
       section_type: section.section_type,
-      content: section.content,
+      content: section.content || %{},
       position: section.position,
       visible: section.visible,
       portfolio_id: section.portfolio_id,
@@ -2598,6 +3494,12 @@ end
             <p class="text-gray-600">
               Record a <%= get_max_video_duration_safe(assigns) %>-minute personal introduction
             </p>
+            <%= if has_video_intro?(portfolio) do %>
+              <p class="text-sm text-gray-500 mt-1">
+                Current format: <%= get_video_aspect_ratio_from_portfolio(portfolio) %>
+                (<%= get_aspect_ratio_description(get_video_aspect_ratio_from_portfolio(portfolio)) %>)
+              </p>
+            <% end %>
           </div>
           <button
             phx-click="toggle_video_intro_modal"
@@ -2612,58 +3514,37 @@ end
 
         <!-- Current Video Status -->
         <%= if has_video_intro?(portfolio) do %>
-          <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div class="flex items-start justify-between">
-              <div class="flex items-start">
-                <div class="w-16 h-12 bg-blue-200 rounded flex items-center justify-center mr-3 flex-shrink-0">
-                  <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m-8-4a9 9 0 118 0 9 9 0 01-8 0z"/>
-                  </svg>
-                </div>
+          <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <svg class="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
                 <div>
-                  <p class="font-medium text-blue-900">Video Introduction Active</p>
-                  <p class="text-sm text-blue-700 mt-1">
-                    Video uploaded successfully
+                  <p class="font-medium text-green-900">Video introduction active</p>
+                  <p class="text-sm text-green-700">
+                    Format: <%= get_video_aspect_ratio_from_portfolio(portfolio) %> •
+                    Display: <%= String.replace(get_video_display_mode_from_portfolio(portfolio), "_", " ") %>
                   </p>
-                  <div class="flex items-center mt-2 space-x-4">
-                    <span class="text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full">
-                      Active
-                    </span>
-                  </div>
                 </div>
               </div>
-              <div class="flex space-x-2">
-                <button
-                  phx-click="preview_video_intro"
-                  class="px-3 py-1 text-blue-600 hover:bg-blue-100 rounded text-sm font-medium">
-                  Preview
-                </button>
-                <button
-                  phx-click="remove_video_intro"
-                  phx-confirm="Are you sure you want to remove your video introduction?"
-                  class="px-3 py-1 text-red-600 hover:bg-red-50 rounded text-sm">
-                  Remove
-                </button>
-              </div>
+              <button
+                phx-click="delete_video_intro"
+                phx-data-confirm="Are you sure you want to delete your video introduction?"
+                class="text-red-600 hover:text-red-700 p-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+              </button>
             </div>
           </div>
         <% else %>
-          <div class="mt-4 p-6 border-2 border-dashed border-gray-300 rounded-lg text-center">
-            <svg class="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+            <svg class="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
             </svg>
-            <h4 class="text-lg font-medium text-gray-900 mb-2">Record Your Introduction</h4>
-            <p class="text-gray-600 mb-2">
-              Make a great first impression with a personal video introduction
-            </p>
-            <p class="text-sm text-blue-600 mb-4">
-              <%= get_account_tier_message_safe(assigns) %>
-            </p>
-            <button
-              phx-click="toggle_video_intro_modal"
-              class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-              Start Recording
-            </button>
+            <p class="text-gray-600 font-medium">No video introduction yet</p>
+            <p class="text-gray-500 text-sm">Record or upload a personal introduction to engage visitors</p>
           </div>
         <% end %>
       </div>
@@ -3053,11 +3934,11 @@ defp render_video_intro_modal(assigns) do
   """
 end
 
-@impl true
-def handle_event("switch_video_tab", %{"tab" => tab}, socket) do
-  IO.puts("🎬 Switching video tab to: #{tab}")
-  {:noreply, assign(socket, :video_tab, tab)}
-end
+  @impl true
+  def handle_event("switch_video_tab", %{"tab" => tab}, socket) do
+    IO.puts("🎬 Switching video tab to: #{tab}")
+    {:noreply, assign(socket, :video_tab, tab)}
+  end
 
   defp render_video_recording_tab(assigns) do
     ~H"""
@@ -3074,6 +3955,8 @@ end
         show_upload_option={false}
         on_video_saved="video_intro_saved"
         on_video_deleted="video_intro_deleted"
+        aspect_ratio={get_video_aspect_ratio_from_portfolio(@portfolio)}
+        display_mode={get_video_display_mode_from_portfolio(@portfolio)}
       />
 
       <!-- Recording Instructions -->
@@ -3086,54 +3969,79 @@ end
         </h5>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-800">
           <div>
-            <h6 class="font-medium mb-2">📸 Visual Setup:</h6>
+            <h6 class="font-medium mb-2">📸 Visual Setup</h6>
             <ul class="space-y-1">
               <li>• Ensure good lighting on your face</li>
               <li>• Position camera at eye level</li>
-              <li>• Clean, professional background</li>
-              <li>• Look directly at the camera</li>
+              <li>• Use a clean, professional background</li>
+              <li>• Check your framing for the selected aspect ratio</li>
             </ul>
           </div>
           <div>
-            <h6 class="font-medium mb-2">🎤 Audio & Content:</h6>
+            <h6 class="font-medium mb-2">🎤 Audio & Performance</h6>
             <ul class="space-y-1">
-              <li>• Speak clearly and at normal pace</li>
-              <li>• Keep introduction to 30-90 seconds</li>
-              <li>• Introduce yourself and your expertise</li>
-              <li>• End with a call-to-action</li>
+              <li>• Speak clearly and at a normal pace</li>
+              <li>• Look directly at the camera</li>
+              <li>• Keep introduction engaging and concise</li>
+              <li>• Practice your key points beforehand</li>
             </ul>
           </div>
+        </div>
+
+        <!-- Aspect Ratio Reminder -->
+        <div class="mt-4 p-3 bg-blue-100 rounded-lg border border-blue-200">
+          <p class="text-sm text-blue-800">
+            <strong>Current format:</strong> <%= get_video_aspect_ratio_from_portfolio(@portfolio) %>
+            (<%= get_aspect_ratio_description(get_video_aspect_ratio_from_portfolio(@portfolio)) %>)
+          </p>
         </div>
       </div>
     </div>
     """
   end
 
-
-defp render_video_upload_tab(assigns) do
-  ~H"""
-  <div class="p-6">
-    <div class="max-w-2xl mx-auto">
-      <!-- Upload Tips -->
-      <div class="mt-8 bg-green-50 border border-green-200 rounded-xl p-4">
-        <h5 class="font-semibold text-green-900 mb-2 flex items-center">
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          💡 Upload Tips
-        </h5>
-        <ul class="text-sm text-green-800 space-y-1">
-          <li>• Upload your video to YouTube, Vimeo, or a file hosting service first</li>
-          <li>• Ensure your video is publicly accessible (not private)</li>
-          <li>• Test the URL in a browser before adding it here</li>
-          <li>• HD quality (720p or higher) recommended for best results</li>
-        </ul>
+  defp render_video_upload_tab(assigns) do
+    ~H"""
+    <div class="p-6">
+      <div class="max-w-2xl mx-auto">
+        <!-- Upload Tips -->
+        <div class="mt-8 bg-green-50 border border-green-200 rounded-xl p-4">
+          <h5 class="font-semibold text-green-900 mb-2 flex items-center">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            💡 Upload Tips
+          </h5>
+          <ul class="text-sm text-green-800 space-y-1">
+            <li>• Upload your video to YouTube, Vimeo, or a file hosting service first</li>
+            <li>• Ensure your video is publicly accessible (not private)</li>
+            <li>• Test the URL in a browser before adding it here</li>
+            <li>• HD quality (720p or higher) recommended for best results</li>
+          </ul>
+        </div>
       </div>
     </div>
-  </div>
-  """
-end
+    """
+  end
 
+  defp get_video_aspect_ratio_from_portfolio(portfolio) do
+    portfolio.customization
+    |> Map.get("video_aspect_ratio", "16:9")
+  end
+
+  defp get_video_display_mode_from_portfolio(portfolio) do
+    portfolio.customization
+    |> Map.get("video_display_mode", "original")
+  end
+
+  defp get_aspect_ratio_description(ratio) do
+    case ratio do
+      "16:9" -> "Professional landscape format"
+      "9:16" -> "Mobile-friendly vertical format"
+      "1:1" -> "Social media optimized format"
+      _ -> "Standard format"
+    end
+  end
 
   @impl true
   def handle_event("start_recording", _params, socket) do
@@ -3152,12 +4060,13 @@ end
     {:noreply, assign(socket, :show_upload_option, false)}
   end
 
-  @impl true
   def handle_event("upload_video_intro", params, socket) do
     video_data = %{
       "video_url" => params["video_url"],
       "video_source" => "upload",
-      "video_uploaded_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+      "video_uploaded_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
+      "video_aspect_ratio" => Map.get(params, "aspect_ratio", "16:9"),
+      "video_display_mode" => Map.get(params, "display_mode", "original")
     }
 
     case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, video_data) do
@@ -3180,31 +4089,35 @@ end
     end
   end
 
-@impl true
-def handle_event("video_intro_saved", %{"video_data" => video_data}, socket) do
-  IO.puts("🎬 Video intro saved successfully")
+  def handle_event("video_intro_saved", %{"video_data" => video_data}, socket) do
+    IO.puts("🎬 Video intro saved successfully")
 
-  # Update portfolio with video data
-  case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, video_data) do
-    {:ok, updated_portfolio} ->
-      # Single broadcast
-      broadcast_portfolio_update(
-        updated_portfolio.id,
-        socket.assigns.sections,
-        updated_portfolio.customization,
-        :customization
-      )
+    # Merge aspect ratio data with video data
+    enhanced_video_data = video_data
+    |> Map.put("video_aspect_ratio", Map.get(video_data, "aspect_ratio", "16:9"))
+    |> Map.put("video_display_mode", Map.get(video_data, "display_mode", "original"))
 
-      {:noreply, socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_portfolio.customization)
-        |> assign(:show_video_intro_modal, false)
-        |> put_flash(:info, "🎉 Video introduction saved successfully!")}
+    # Update portfolio with enhanced video data
+    case Portfolios.update_portfolio_customization_by_id(socket.assigns.portfolio.id, enhanced_video_data) do
+      {:ok, updated_portfolio} ->
+        # Single broadcast
+        broadcast_portfolio_update(
+          updated_portfolio.id,
+          socket.assigns.sections,
+          updated_portfolio.customization,
+          :customization
+        )
 
-    {:error, _changeset} ->
-      {:noreply, put_flash(socket, :error, "Failed to save video introduction")}
+        {:noreply, socket
+          |> assign(:portfolio, updated_portfolio)
+          |> assign(:customization, updated_portfolio.customization)
+          |> assign(:show_video_intro_modal, false)
+          |> put_flash(:info, "🎉 Video introduction saved successfully!")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to save video introduction")}
+    end
   end
-end
 
   @impl true
   def handle_event("video_intro_deleted", _params, socket) do
@@ -3915,20 +4828,21 @@ end
   end
 
   # Check if item has meaningful content
-  defp has_meaningful_content?(item) when is_map(item) do
-    item
+  defp has_meaningful_content?(processed_item) when is_map(processed_item) do
+    processed_item
     |> Map.values()
     |> Enum.any?(fn value ->
       case value do
-        str when is_binary(str) -> String.trim(str) != ""
-        list when is_list(list) -> length(list) > 0
-        bool when is_boolean(bool) -> true
-        _ -> false
+        nil -> false
+        "" -> false
+        [] -> false
+        %{} -> false
+        _ -> true
       end
     end)
   end
-  defp has_meaningful_content?(_), do: false
 
+  defp has_meaningful_content?(_), do: false
   # Update the existing extract_content_from_params function to use the new build_section_content
   defp extract_content_from_params(section_type, params) do
     build_section_content(section_type, params)
@@ -4311,6 +5225,32 @@ end
     end)
 
     {:noreply, assign(socket, :sections, proper_sections)}
+  end
+
+  @impl true
+  def handle_info({:add_complex_array_item, field_name}, socket) do
+    IO.puts("➕ Adding complex array item to field: #{field_name}")
+    # For now, just acknowledge - the form will handle the UI updates
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:remove_complex_array_item, field_name, index}, socket) do
+    IO.puts("➖ Removing complex array item from field: #{field_name} at index: #{index}")
+    # For now, just acknowledge - the form will handle the UI updates
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:add_map_item, field_name}, socket) do
+    IO.puts("➕ Adding map item to field: #{field_name}")
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:remove_map_item, field_name, key}, socket) do
+    IO.puts("➖ Removing map item from field: #{field_name}, key: #{key}")
+    {:noreply, socket}
   end
 
   defp debug_socket_state(socket, label) do

@@ -16,7 +16,7 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
   # MAIN HERO SECTION RENDERER
   # ============================================================================
 
-  def render_enhanced_hero(portfolio, sections, color_scheme \\ "blue") do
+  def render_enhanced_hero(portfolio, sections, color_scheme \\ "blue", display_options \\ %{}) do
     # Extract hero content from portfolio and sections
     hero_data = extract_hero_data(portfolio, sections)
 
@@ -28,10 +28,10 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
 
     # Render based on determined layout with enhanced features
     case hero_layout do
-      :video_primary -> render_enhanced_video_primary_hero(hero_data, theme_config)
-      :social_primary -> render_enhanced_social_primary_hero(hero_data, theme_config)
-      :content_only -> render_enhanced_content_only_hero(hero_data, theme_config)
-      :minimal -> render_enhanced_minimal_hero(hero_data, theme_config)
+      :video_primary -> render_enhanced_video_primary_hero(hero_data, theme_config, display_options)
+      :social_primary -> render_enhanced_social_primary_hero(hero_data, theme_config, display_options)
+      :content_only -> render_enhanced_content_only_hero(hero_data, theme_config, display_options)
+      :minimal -> render_enhanced_minimal_hero(hero_data, theme_config, display_options)
     end
   end
 
@@ -235,11 +235,30 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
     end)
   end
 
+  defp get_video_aspect_ratio_class(display_options \\ %{}) do
+    aspect_ratio = Map.get(display_options, :aspect_ratio, "16/9")
+    case aspect_ratio do
+      "16/9" -> "aspect-video"
+      "9/16" -> "aspect-[9/16]"
+      "1/1" -> "aspect-square"
+      _ -> "aspect-video"
+    end
+  end
+
+  defp get_video_object_fit(display_options \\ %{}) do
+    display_mode = Map.get(display_options, :display_mode, "original")
+    case display_mode do
+      "original" -> "object-contain"
+      "crop_" <> _ -> "object-cover"
+      _ -> "object-cover"
+    end
+  end
+
   # ============================================================================
   # ENHANCED VIDEO-PRIMARY HERO LAYOUT (from temp_show.ex)
   # ============================================================================
 
-  defp render_enhanced_video_primary_hero(hero_data, theme_config) do
+  defp render_enhanced_video_primary_hero(hero_data, theme_config, display_options) do
     video = hero_data.video.primary_video
     profile = hero_data.profile.data
     social = hero_data.social
@@ -253,8 +272,8 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
         <div class="absolute bottom-20 left-32 w-24 h-24 bg-white bg-opacity-10 rounded-full animate-pulse delay-2000"></div>
       </div>
 
-      <!-- Enhanced Video Background (if available) -->
-      #{if video.url, do: render_enhanced_video_background(video.url), else: ""}
+      <!-- Enhanced Video Background (if available) with display options -->
+      #{if video.url, do: render_enhanced_video_background(video.url, display_options), else: ""}
 
       <!-- Hero Overlay with Enhanced Gradient -->
       <div class="hero-overlay absolute inset-0 bg-gradient-to-br from-black/30 via-black/20 to-transparent"></div>
@@ -263,7 +282,6 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
       <div class="relative z-10 min-h-screen flex items-center">
         <div class="max-w-7xl mx-auto px-6 py-20">
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-
             <!-- Enhanced Left Column: Content -->
             <div class="#{theme_config.text_primary}">
               <!-- Status Indicator -->
@@ -272,87 +290,42 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
                 Available for opportunities
               </div>
 
-              #{if profile.name != "", do: "<h1 class='text-5xl lg:text-6xl font-bold mb-6 leading-tight'>#{profile.name}</h1>", else: ""}
-              #{if profile.headline != "", do: "<p class='text-xl lg:text-2xl mb-8 #{theme_config.text_secondary} leading-relaxed'>#{profile.headline}</p>", else: ""}
-              #{if profile.tagline != "", do: "<p class='text-lg #{theme_config.text_muted} mb-6'>#{profile.tagline}</p>", else: ""}
-              #{if profile.summary != "", do: "<div class='#{theme_config.text_body} leading-relaxed mb-8 max-w-3xl'>#{String.slice(profile.summary, 0, 300)}#{if String.length(profile.summary) > 300, do: "...", else: ""}</div>", else: ""}
+              <h1 class="text-4xl lg:text-6xl font-bold mb-6 leading-tight">
+                #{profile.name || "Professional Portfolio"}
+              </h1>
 
-              <!-- Enhanced Quick Stats -->
-              <div class="grid grid-cols-3 gap-6 mb-8">
-                <div class="text-center">
-                  <div class="text-2xl font-bold">#{get_experience_years(hero_data.portfolio)}</div>
-                  <div class="text-sm opacity-75">Years Exp</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-2xl font-bold">#{get_projects_count(hero_data.portfolio)}</div>
-                  <div class="text-sm opacity-75">Projects</div>
-                </div>
-                <div class="text-center">
-                  <div class="text-2xl font-bold">100%</div>
-                  <div class="text-sm opacity-75">Success</div>
-                </div>
-              </div>
-
-              <!-- Enhanced Video Introduction CTA -->
-              #{if video.url do
-                """
-                <div class="mb-8">
-                  <button class="enhanced-video-cta inline-flex items-center px-8 py-4 bg-white bg-opacity-20 backdrop-blur-sm rounded-xl #{theme_config.text_primary} font-semibold hover:bg-opacity-30 transition-all duration-300 transform hover:scale-105" onclick="openVideoModal()">
-                    <svg class="w-6 h-6 mr-3" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z"/>
-                    </svg>
-                    Watch Introduction
-                  </button>
-                  <p class="text-sm #{theme_config.text_muted} mt-2">#{video.title || "Personal introduction video"}</p>
-                </div>
-                """
-              else
-                ""
-              end}
-
-              <!-- Enhanced Social Links -->
-              #{if social.has_social, do: render_enhanced_hero_social_links(social, theme_config), else: ""}
+              <p class="text-xl lg:text-2xl #{theme_config.text_secondary} mb-8 leading-relaxed">
+                #{profile.title || "Creating exceptional digital experiences"}
+              </p>
 
               <!-- Enhanced CTA Buttons -->
-              <div class="flex flex-col sm:flex-row gap-4 mb-8">
-                <button class="enhanced-primary-cta #{theme_config.primary_button} px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105">
+              <div class="flex flex-col sm:flex-row gap-4">
+                <button class="enhanced-primary-cta #{theme_config.primary_button} px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105">
                   View My Work
                 </button>
-                <button class="enhanced-secondary-cta #{theme_config.secondary_button} px-8 py-4 rounded-xl font-semibold transition-all duration-300">
+                <button class="enhanced-secondary-cta #{theme_config.secondary_button} px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300">
                   Get In Touch
                 </button>
               </div>
             </div>
 
             <!-- Enhanced Right Column: Video Player -->
-            <div class="lg:block hidden">
-              <div class="enhanced-video-container relative">
-                #{render_enhanced_video_player(video, theme_config)}
-              </div>
+            <div class="lg:order-last">
+              #{render_enhanced_video_player(video, theme_config, display_options)}
             </div>
-
           </div>
         </div>
       </div>
-
-      <!-- Enhanced Scroll Indicator -->
-      <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 #{theme_config.text_primary} animate-bounce">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
-        </svg>
-      </div>
-
-      <!-- Enhanced Video Modal -->
-      #{render_enhanced_video_modal(video, theme_config)}
     </section>
     """
   end
+
 
   # ============================================================================
   # ENHANCED SOCIAL-PRIMARY HERO LAYOUT (from temp_show.ex)
   # ============================================================================
 
-  defp render_enhanced_social_primary_hero(hero_data, theme_config) do
+  defp render_enhanced_social_primary_hero(hero_data, theme_config, display_options \\ %{}) do
     profile = hero_data.profile.data
     social = hero_data.social
     contact = hero_data.contact
@@ -402,7 +375,7 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
   # ENHANCED CONTENT-ONLY HERO LAYOUT (from temp_show.ex)
   # ============================================================================
 
-  defp render_enhanced_content_only_hero(hero_data, theme_config) do
+  defp render_enhanced_content_only_hero(hero_data, theme_config, display_options \\ %{}) do
     profile = hero_data.profile.data
     social = hero_data.social
 
@@ -450,7 +423,7 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
   # ENHANCED MINIMAL HERO LAYOUT (from temp_show.ex)
   # ============================================================================
 
-  defp render_enhanced_minimal_hero(hero_data, theme_config) do
+  defp render_enhanced_minimal_hero(hero_data, theme_config, display_options \\ %{}) do
     portfolio = hero_data.portfolio
 
     """
@@ -491,19 +464,21 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
   # ENHANCED COMPONENT RENDERERS (from temp_show.ex)
   # ============================================================================
 
-  defp render_enhanced_video_player(video, theme_config) do
+  defp render_enhanced_video_player(video, theme_config, display_options \\ %{}) do
     case video.type do
-      :youtube -> render_enhanced_youtube_embed(video.url, theme_config)
-      :vimeo -> render_enhanced_vimeo_embed(video.url, theme_config)
-      :direct -> render_enhanced_direct_video(video.url, theme_config)
-      _ -> render_enhanced_video_placeholder(video.title, theme_config)
+      :youtube -> render_enhanced_youtube_embed(video.url, theme_config, display_options)
+      :vimeo -> render_enhanced_vimeo_embed(video.url, theme_config, display_options)
+      :direct -> render_enhanced_direct_video(video.url, theme_config, display_options)
+      _ -> render_enhanced_video_placeholder(video.title, theme_config, display_options)
     end
   end
 
-  defp render_enhanced_youtube_embed(url, theme_config) do
+  defp render_enhanced_youtube_embed(url, theme_config, display_options \\ %{}) do
     embed_id = extract_youtube_id(url)
+    aspect_class = get_video_aspect_ratio_class(display_options)
+
     """
-    <div class="enhanced-video-wrapper aspect-video bg-gray-900 rounded-xl overflow-hidden shadow-2xl">
+    <div class="enhanced-video-wrapper #{aspect_class} bg-gray-900 rounded-xl overflow-hidden shadow-2xl">
       <iframe
         src="https://www.youtube.com/embed/#{embed_id}?rel=0&modestbranding=1&autoplay=0"
         frameborder="0"
@@ -515,10 +490,12 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
     """
   end
 
-  defp render_enhanced_vimeo_embed(url, theme_config) do
+  defp render_enhanced_vimeo_embed(url, theme_config, display_options \\ %{}) do
     embed_id = extract_vimeo_id(url)
+    aspect_class = get_video_aspect_ratio_class(display_options)
+
     """
-    <div class="enhanced-video-wrapper aspect-video bg-gray-900 rounded-xl overflow-hidden shadow-2xl">
+    <div class="enhanced-video-wrapper #{aspect_class} bg-gray-900 rounded-xl overflow-hidden shadow-2xl">
       <iframe
         src="https://player.vimeo.com/video/#{embed_id}?badge=0&autopause=0&player_id=0&app_id=58479"
         frameborder="0"
@@ -530,10 +507,13 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
     """
   end
 
-  defp render_enhanced_direct_video(url, theme_config) do
+  defp render_enhanced_direct_video(url, theme_config, display_options \\ %{}) do
+    aspect_class = get_video_aspect_ratio_class(display_options)
+    object_fit = get_video_object_fit(display_options)
+
     """
-    <div class="enhanced-video-wrapper aspect-video bg-gray-900 rounded-xl overflow-hidden shadow-2xl">
-      <video controls class="w-full h-full object-cover" preload="metadata">
+    <div class="enhanced-video-wrapper #{aspect_class} bg-gray-900 rounded-xl overflow-hidden shadow-2xl">
+      <video controls class="w-full h-full #{object_fit}" preload="metadata">
         <source src="#{url}" type="video/mp4">
         <source src="#{url}" type="video/webm">
         <source src="#{url}" type="video/ogg">
@@ -543,9 +523,11 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
     """
   end
 
-  defp render_enhanced_video_placeholder(title, theme_config) do
+  defp render_enhanced_video_placeholder(title, theme_config, display_options \\ %{}) do
+    aspect_class = get_video_aspect_ratio_class(display_options)
+
     """
-    <div class="enhanced-video-placeholder aspect-video #{theme_config.card_background} rounded-xl border-2 border-dashed #{theme_config.border_color} flex items-center justify-center">
+    <div class="enhanced-video-placeholder #{aspect_class} #{theme_config.card_background} rounded-xl border-2 border-dashed #{theme_config.border_color} flex items-center justify-center">
       <div class="text-center">
         <svg class="w-16 h-16 #{theme_config.text_muted} mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
@@ -556,6 +538,7 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
     </div>
     """
   end
+
 
   defp render_enhanced_profile_avatar(avatar_url, theme_config) do
     """
@@ -685,12 +668,19 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
     end
   end
 
-  defp render_enhanced_video_background(video_url) do
+  defp render_enhanced_video_background(url, display_options \\ %{}) do
+    aspect_class = get_video_aspect_ratio_class(display_options)
+    object_fit = get_video_object_fit(display_options)
+
     """
-    <video autoplay muted loop class="absolute inset-0 w-full h-full object-cover opacity-20" preload="metadata">
-      <source src="#{video_url}" type="video/mp4">
-      <source src="#{video_url}" type="video/webm">
-    </video>
+    <div class="absolute inset-0 #{aspect_class} overflow-hidden">
+      <video autoplay muted loop playsinline class="w-full h-full #{object_fit}">
+        <source src="#{url}" type="video/mp4">
+        <source src="#{url}" type="video/webm">
+        Your browser does not support video backgrounds.
+      </video>
+      <div class="absolute inset-0 bg-black bg-opacity-40"></div>
+    </div>
     """
   end
 
@@ -1797,18 +1787,6 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer do
       };
     </script>
     """
-  end
-
-  # ============================================================================
-  # COMPREHENSIVE RENDER FUNCTION (combining CSS + JS)
-  # ============================================================================
-
-  def render_enhanced_hero_with_assets(portfolio, sections, color_scheme \\ "blue") do
-    hero_html = render_enhanced_hero(portfolio, sections, color_scheme)
-    css_html = add_enhanced_css_animations()
-    js_html = add_enhanced_javascript()
-
-    hero_html <> css_html <> js_html
   end
 
 end
