@@ -13,7 +13,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
   alias Frestyl.ResumeExporter
   alias FrestylWeb.PortfolioLive.Components.{EnhancedHeroRenderer,
     DynamicSectionModal,
-    EnhancedSectionRenderer,
+    EnhancedSectionRenderer, EnhancedLayoutRenderer
 
   }
 
@@ -109,7 +109,7 @@ defmodule FrestylWeb.PortfolioLive.Show do
     |> assign(:page_title, portfolio.title)
     |> assign(:portfolio, portfolio)
     |> assign(:owner, get_portfolio_owner_safe(portfolio))
-    |> assign(:sections, filtered_sections)
+    |> assign(:sections, sections)           # Use the actual loaded sections
     |> assign(:all_sections, sections)
     |> assign(:customization, customization)
     |> assign(:theme, theme)
@@ -1313,6 +1313,7 @@ end
   end
 
   def render(assigns) do
+    IO.puts("🔍 SECTIONS IN SHOW: #{inspect(@sections, pretty: true)}")
     # Extract layout settings with proper defaults
     layout_style = Map.get(assigns.customization, "layout_style", "single")
     color_scheme = Map.get(assigns.customization, "color_scheme", "professional")

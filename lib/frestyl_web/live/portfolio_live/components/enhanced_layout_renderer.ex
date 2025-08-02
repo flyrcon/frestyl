@@ -11,15 +11,18 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer do
   import FrestylWeb.CoreComponents
   import Phoenix.HTML, only: [raw: 1]
 
-  alias FrestylWeb.PortfolioLive.Components.EnhancedContentRenderer
   alias FrestylWeb.PortfolioLive.Components.EnhancedHeroRenderer
   alias FrestylWeb.PortfolioLive.Components.EnhancedSectionCards
+  alias FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer
 
   # ============================================================================
   # MAIN LAYOUT RENDERER - Updated Interface
   # ============================================================================
 
   def render_portfolio_layout(portfolio, sections, layout_type, color_scheme, theme) do
+    IO.puts("📊 LAYOUT RENDERER RECEIVED:")
+    IO.puts("  - Sections count: #{length(sections || [])}")
+    IO.puts("  - First section: #{inspect(List.first(sections || []), limit: 2)}")
     IO.puts("🎨 ENHANCED LAYOUT RENDERER called")
     IO.puts("🎨 Layout: #{layout_type}")
     IO.puts("🎨 Color scheme: #{color_scheme}")
@@ -1428,38 +1431,6 @@ end
     |> Enum.filter(fn {_platform, url} -> url && String.length(String.trim(url)) > 0 end)
   end
 
-  defp extract_contact_info_from_portfolio(portfolio, sections) do
-    # Primary: Extract from portfolio customization (SocialContactEditor integration)
-    customization = portfolio.customization || %{}
-
-    # SocialContactEditor typically stores contact info in customization
-    contact_info = %{
-      email: Map.get(customization, "contact_email") || Map.get(customization, "email"),
-      phone: Map.get(customization, "contact_phone") || Map.get(customization, "phone"),
-      location: Map.get(customization, "location"),
-      website: Map.get(customization, "website")
-    }
-
-    # Fallback: Check for contact section if customization is empty
-    if !contact_info.email && !contact_info.phone do
-      contact_section = Enum.find(sections, &(&1.section_type == "contact" && &1.visible))
-
-      if contact_section do
-        content = contact_section.content || %{}
-        %{
-          email: Map.get(content, "email"),
-          phone: Map.get(content, "phone"),
-          location: Map.get(content, "location") || Map.get(content, "address"),
-          website: Map.get(content, "website")
-        }
-      else
-        contact_info
-      end
-    else
-      contact_info
-    end
-  end
-
   defp get_primary_sections(sections) do
     # Get the most important sections for main content area
     sections
@@ -1603,22 +1574,24 @@ end
   # ============================================================================
 
   defp render_section_content_safe(section) do
-    content = section.content || %{}
+    alias FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer
 
-    case to_string(section.section_type) do
-      "about" -> render_about_content(content)
-      "intro" -> render_about_content(content)
-      "experience" -> render_experience_content(content)
-      "work_experience" -> render_experience_content(content)
-      "projects" -> render_projects_content(content)
-      "portfolio" -> render_projects_content(content)
-      "skills" -> render_skills_content(content)
-      "contact" -> render_contact_content(content)
-      "education" -> render_education_content(content)
-      "certifications" -> render_certifications_content(content)
-      "achievements" -> render_achievements_content(content)
-      "testimonials" -> render_testimonials_content(content)
-      _ -> render_default_content(content)
+    try do
+      # Use our enhanced renderer with safe content handling
+      EnhancedSectionRenderer.render_section_content_static(section, %{})
+    rescue
+      error ->
+        IO.puts("❌ Enhanced renderer error for #{section.section_type}: #{inspect(error)}")
+
+        # Fallback - extract basic content safely
+        content = section.content || %{}
+        basic_content = case Map.get(content, "content") do
+          {:safe, safe_content} -> safe_content
+          content when is_binary(content) -> content
+          _ -> "No content available"
+        end
+
+        "<div class=\"text-gray-700\">#{basic_content}</div>"
     end
   end
 
@@ -1682,52 +1655,6 @@ end
     end
   end
 
-  defp render_projects_content(content) do
-    items = Map.get(content, "items", [])
-    if length(items) > 0 do
-      projects_html = items
-      |> Enum.map(fn item ->
-        title = Map.get(item, "title", "")
-        description = Map.get(item, "description", "")
-        technologies = Map.get(item, "technologies", [])
-        url = Map.get(item, "url", "")
-
-        """
-        <div class="mb-6 pb-6 border-b border-gray-100 last:border-b-0 last:mb-0 last:pb-0">
-          <div class="flex items-start justify-between mb-2">
-            <h4 class="font-semibold text-gray-900">#{title}</h4>
-            #{if String.length(url) > 0 do
-              "<a href=\"#{url}\" target=\"_blank\" class=\"text-blue-600 hover:text-blue-800 text-sm\">
-                View →
-              </a>"
-            else
-              ""
-            end}
-          </div>
-          #{if String.length(description) > 0 do
-            "<p class=\"text-gray-700 text-sm leading-relaxed mb-3\">#{description}</p>"
-          else
-            ""
-          end}
-          #{if length(technologies) > 0 do
-            tech_tags = technologies |> Enum.take(5) |> Enum.map(fn tech ->
-              "<span class=\"inline-block bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded mr-2 mb-1\">#{tech}</span>"
-            end) |> Enum.join("")
-            "<div class=\"technologies\">#{tech_tags}</div>"
-          else
-            ""
-          end}
-        </div>
-        """
-      end)
-      |> Enum.join("")
-
-      "<div class=\"projects-list\">#{projects_html}</div>"
-    else
-      "<p class=\"text-gray-500 italic\">No projects listed</p>"
-    end
-  end
-
   defp render_skills_content(content) do
     items = Map.get(content, "items", [])
     if length(items) > 0 do
@@ -1752,200 +1679,6 @@ end
       "<div class=\"skills-list\">#{skills_html}</div>"
     else
       "<p class=\"text-gray-500 italic\">No skills listed</p>"
-    end
-  end
-
-  defp render_contact_content(content) do
-    email = Map.get(content, "email", "")
-    phone = Map.get(content, "phone", "")
-    address = Map.get(content, "address", "")
-
-    """
-    <div class="space-y-3">
-      #{if String.length(email) > 0 do
-        "<div class=\"flex items-center gap-3\">
-          <svg class=\"w-5 h-5 text-gray-400\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z\"/>
-          </svg>
-          <a href=\"mailto:#{email}\" class=\"text-gray-700 hover:text-gray-900\">#{email}</a>
-        </div>"
-      else
-        ""
-      end}
-      #{if String.length(phone) > 0 do
-        "<div class=\"flex items-center gap-3\">
-          <svg class=\"w-5 h-5 text-gray-400\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z\"/>
-          </svg>
-          <a href=\"tel:#{phone}\" class=\"text-gray-700 hover:text-gray-900\">#{phone}</a>
-        </div>"
-      else
-        ""
-      end}
-      #{if String.length(address) > 0 do
-        "<div class=\"flex items-start gap-3\">
-          <svg class=\"w-5 h-5 text-gray-400 mt-0.5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z\"/>
-            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M15 11a3 3 0 11-6 0 3 3 0 016 0z\"/>
-          </svg>
-          <span class=\"text-gray-700\">#{address}</span>
-        </div>"
-      else
-        ""
-      end}
-    </div>
-    """
-  end
-
-  defp render_education_content(content) do
-    items = Map.get(content, "items", [])
-    if length(items) > 0 do
-      education_html = items
-      |> Enum.map(fn item ->
-        degree = Map.get(item, "degree", "")
-        institution = Map.get(item, "institution", "")
-        year = Map.get(item, "year", "")
-
-        """
-        <div class="mb-4 pb-4 border-b border-gray-100 last:border-b-0 last:mb-0 last:pb-0">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h4 class="font-semibold text-gray-900">#{degree}</h4>
-              <p class="text-gray-600">#{institution}</p>
-            </div>
-            #{if String.length(year) > 0 do
-              "<span class=\"text-sm text-gray-500 mt-1 sm:mt-0\">#{year}</span>"
-            else
-              ""
-            end}
-          </div>
-        </div>
-        """
-      end)
-      |> Enum.join("")
-
-      "<div class=\"education-list\">#{education_html}</div>"
-    else
-      "<p class=\"text-gray-500 italic\">No education listed</p>"
-    end
-  end
-
-  defp render_certifications_content(content) do
-    items = Map.get(content, "items", [])
-    if length(items) > 0 do
-      cert_html = items
-      |> Enum.map(fn item ->
-        name = Map.get(item, "name", "")
-        issuer = Map.get(item, "issuer", "")
-        date = Map.get(item, "date", "")
-
-        """
-        <div class="mb-3 pb-3 border-b border-gray-100 last:border-b-0 last:mb-0 last:pb-0">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h4 class="font-medium text-gray-900">#{name}</h4>
-              #{if String.length(issuer) > 0 do
-                "<p class=\"text-sm text-gray-600\">#{issuer}</p>"
-              else
-                ""
-              end}
-            </div>
-            #{if String.length(date) > 0 do
-              "<span class=\"text-xs text-gray-500 mt-1 sm:mt-0\">#{date}</span>"
-            else
-              ""
-            end}
-          </div>
-        </div>
-        """
-      end)
-      |> Enum.join("")
-
-      "<div class=\"certifications-list\">#{cert_html}</div>"
-    else
-      "<p class=\"text-gray-500 italic\">No certifications listed</p>"
-    end
-  end
-
-  defp render_achievements_content(content) do
-    items = Map.get(content, "items", [])
-    if length(items) > 0 do
-      achievement_html = items
-      |> Enum.map(fn item ->
-        title = Map.get(item, "title", "")
-        description = Map.get(item, "description", "")
-        date = Map.get(item, "date", "")
-
-        """
-        <div class="mb-4 pb-4 border-b border-gray-100 last:border-b-0 last:mb-0 last:pb-0">
-          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between">
-            <div class="flex-1">
-              <h4 class="font-medium text-gray-900">#{title}</h4>
-              #{if String.length(description) > 0 do
-                "<p class=\"text-sm text-gray-600 mt-1\">#{description}</p>"
-              else
-                ""
-              end}
-            </div>
-            #{if String.length(date) > 0 do
-              "<span class=\"text-xs text-gray-500 mt-1 sm:mt-0 sm:ml-4\">#{date}</span>"
-            else
-              ""
-            end}
-          </div>
-        </div>
-        """
-      end)
-      |> Enum.join("")
-
-      "<div class=\"achievements-list\">#{achievement_html}</div>"
-    else
-      "<p class=\"text-gray-500 italic\">No achievements listed</p>"
-    end
-  end
-
-  defp render_testimonials_content(content) do
-    items = Map.get(content, "items", [])
-    if length(items) > 0 do
-      testimonial_html = items
-      |> Enum.map(fn item ->
-        quote = Map.get(item, "quote", "")
-        author = Map.get(item, "author", "")
-        position = Map.get(item, "position", "")
-        company = Map.get(item, "company", "")
-
-        """
-        <div class="mb-6 pb-6 border-b border-gray-100 last:border-b-0 last:mb-0 last:pb-0">
-          #{if String.length(quote) > 0 do
-            "<blockquote class=\"text-gray-700 italic mb-3\">\"#{quote}\"</blockquote>"
-          else
-            ""
-          end}
-          <div class="text-sm text-gray-600">
-            #{if String.length(author) > 0 do
-              "<span class=\"font-medium\">#{author}</span>"
-            else
-              ""
-            end}
-            #{if String.length(position) > 0 do
-              "<span>, #{position}</span>"
-            else
-              ""
-            end}
-            #{if String.length(company) > 0 do
-              "<span> at #{company}</span>"
-            else
-              ""
-            end}
-          </div>
-        </div>
-        """
-      end)
-      |> Enum.join("")
-
-      "<div class=\"testimonials-list\">#{testimonial_html}</div>"
-    else
-      "<p class=\"text-gray-500 italic\">No testimonials available</p>"
     end
   end
 
@@ -2033,33 +1766,6 @@ end
       "" -> nil
       url -> url
     end
-  end
-
-  defp extract_social_links_from_portfolio(portfolio) do
-    customization = portfolio.customization || %{}
-    social_links = Map.get(customization, "social_links", %{})
-
-    # Convert string keys to atoms and filter out empty values
-    social_links
-    |> Enum.filter(fn {_key, value} -> value && value != "" end)
-    |> Enum.map(fn {key, value} -> {String.to_atom(key), value} end)
-  end
-
-  defp extract_contact_info_from_portfolio(portfolio, sections) do
-    # Try to get contact info from portfolio customization first
-    customization = portfolio.customization || %{}
-
-    contact_email = Map.get(customization, "contact_email") ||
-                    Map.get(customization, "email")
-
-    # If not found, look in contact sections
-    contact_email = contact_email || find_contact_email_in_sections(sections)
-
-    %{
-      email: contact_email,
-      phone: Map.get(customization, "phone"),
-      location: Map.get(customization, "location")
-    }
   end
 
   defp find_contact_email_in_sections(sections) do
@@ -2225,26 +1931,6 @@ end
   # SECTION CONTENT RENDERING FUNCTIONS
   # ============================================================================
 
-  defp render_section_content_safe(section) do
-    content = section.content || %{}
-
-    case to_string(section.section_type) do
-      "about" -> render_about_content(content)
-      "intro" -> render_about_content(content)
-      "experience" -> render_experience_content(content)
-      "work_experience" -> render_experience_content(content)
-      "education" -> render_education_content(content)
-      "skills" -> render_skills_content(content)
-      "projects" -> render_projects_content(content)
-      "portfolio" -> render_projects_content(content)
-      "contact" -> render_contact_content(content)
-      "testimonials" -> render_testimonials_content(content)
-      "certifications" -> render_certifications_content(content)
-      "achievements" -> render_achievements_content(content)
-      _ -> render_generic_content(content)
-    end
-  end
-
   defp render_about_content(content) do
     """
     #{Map.get(content, "content", Map.get(content, "description", ""))}
@@ -2271,25 +1957,6 @@ end
     end
   end
 
-  defp render_education_content(content) do
-    education = Map.get(content, "education", [])
-
-    if Enum.empty?(education) do
-      Map.get(content, "content", "")
-    else
-      education
-      |> Enum.map(fn edu ->
-        """
-        <div class="mb-4">
-          <h4 class="font-semibold text-gray-900">#{Map.get(edu, "degree", "Degree")}</h4>
-          <p class="text-gray-600">#{Map.get(edu, "institution", "Institution")} • #{Map.get(edu, "year", "Year")}</p>
-        </div>
-        """
-      end)
-      |> Enum.join("\n")
-    end
-  end
-
   defp render_skills_content(content) do
     skills = Map.get(content, "skills", [])
 
@@ -2309,165 +1976,4 @@ end
     end
   end
 
-  defp render_projects_content(content) do
-    projects = Map.get(content, "projects", [])
-
-    if Enum.empty?(projects) do
-      Map.get(content, "content", "")
-    else
-      projects
-      |> Enum.map(fn project ->
-        """
-        <div class="mb-6 pb-6 border-b border-gray-200 last:border-b-0">
-          <h4 class="font-semibold text-gray-900 mb-2">#{Map.get(project, "title", "Project")}</h4>
-          <p class="text-gray-700 mb-3">#{Map.get(project, "description", "")}</p>
-          #{if Map.get(project, "url") do
-            "<a href=\"#{Map.get(project, "url")}\" target=\"_blank\" class=\"text-blue-600 hover:text-blue-800 text-sm\">View Project →</a>"
-          else
-            ""
-          end}
-        </div>
-        """
-      end)
-      |> Enum.join("\n")
-    end
-  end
-
-  defp render_contact_content(content) do
-    """
-    <div class="space-y-4">
-      #{if Map.get(content, "email") do
-        "<p class=\"flex items-center text-gray-700\">
-          <svg class=\"w-4 h-4 mr-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z\"/>
-          </svg>
-          <a href=\"mailto:#{Map.get(content, "email")}\" class=\"text-blue-600 hover:text-blue-800\">#{Map.get(content, "email")}</a>
-        </p>"
-      else
-        ""
-      end}
-
-      #{if Map.get(content, "phone") do
-        "<p class=\"flex items-center text-gray-700\">
-          <svg class=\"w-4 h-4 mr-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-            <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z\"/>
-          </svg>
-          #{Map.get(content, "phone")}
-        </p>"
-      else
-        ""
-      end}
-
-      #{Map.get(content, "content", "")}
-    </div>
-    """
-  end
-
-  defp render_testimonials_content(content) do
-    testimonials = Map.get(content, "testimonials", [])
-
-    if Enum.empty?(testimonials) do
-      Map.get(content, "content", "")
-    else
-      testimonials
-      |> Enum.map(fn testimonial ->
-        """
-        <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-          <p class="text-gray-700 italic mb-3">"#{Map.get(testimonial, "quote", "")}"</p>
-          <p class="text-gray-600 text-sm">— #{Map.get(testimonial, "author", "Anonymous")}</p>
-        </div>
-        """
-      end)
-      |> Enum.join("\n")
-    end
-  end
-
-  defp render_certifications_content(content) do
-    certifications = Map.get(content, "certifications", [])
-
-    if Enum.empty?(certifications) do
-      Map.get(content, "content", "")
-    else
-      certifications
-      |> Enum.map(fn cert ->
-        """
-        <div class="mb-4">
-          <h4 class="font-semibold text-gray-900">#{Map.get(cert, "name", "Certification")}</h4>
-          <p class="text-gray-600">#{Map.get(cert, "issuer", "Issuer")} • #{Map.get(cert, "date", "Date")}</p>
-        </div>
-        """
-      end)
-      |> Enum.join("\n")
-    end
-  end
-
-  defp render_achievements_content(content) do
-    achievements = Map.get(content, "achievements", [])
-
-    if Enum.empty?(achievements) do
-      Map.get(content, "content", "")
-    else
-      """
-      <ul class="space-y-3">
-        #{achievements
-          |> Enum.map(fn achievement ->
-            achievement_text = if is_map(achievement), do: Map.get(achievement, "title", achievement), else: achievement
-            "<li class=\"flex items-start\">
-              <span class=\"text-green-500 mr-2 mt-1\">✓</span>
-              <span class=\"text-gray-700\">#{achievement_text}</span>
-            </li>"
-          end)
-          |> Enum.join("\n")}
-      </ul>
-      """
-    end
-  end
-
-  defp render_generic_content(content) do
-    Map.get(content, "content", Map.get(content, "description", "No content available"))
-  end
-
-  # ============================================================================
-  # LAYOUT SCRIPTS
-  # ============================================================================
-
-  defp render_layout_scripts() do
-    """
-    <script>
-      // Smooth scrolling
-      function scrollToSection(sectionId) {
-        const element = document.getElementById('section-' + sectionId) || document.getElementById(sectionId);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }
-
-      // Mobile navigation toggle
-      function toggleFloatingNav() {
-        console.log('Toggle mobile navigation');
-      }
-
-      // Contact modal
-      function openContactModal() {
-        window.dispatchEvent(new CustomEvent('phx:open_contact_modal'));
-      }
-
-      // Initialize layout
-      document.addEventListener('DOMContentLoaded', function() {
-        console.log('Portfolio layout initialized');
-
-        // Add smooth scroll behavior to all nav links
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-          anchor.addEventListener('click', function (e) {
-            e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-              target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-          });
-        });
-      });
-    </script>
-    """
-  end
 end
