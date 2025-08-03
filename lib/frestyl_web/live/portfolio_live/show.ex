@@ -68,88 +68,60 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+defp mount_portfolio(portfolio, socket) do
+  IO.puts("📁 MOUNTING PORTFOLIO DATA: #{portfolio.title}")
 
-  defp mount_portfolio(portfolio, socket) do
-    IO.puts("📁 MOUNTING PORTFOLIO DATA: #{portfolio.title}")
+  # Load sections with comprehensive error handling
+  sections = case load_portfolio_sections_comprehensive(portfolio.id) do
+    {:ok, sections} when is_list(sections) ->
+      IO.puts("📁 Loaded #{length(sections)} sections successfully")
+      sections
+      |> Enum.map(&normalize_section_for_display/1)
+      |> Enum.filter(&valid_section?/1)
+      |> Enum.sort_by(&Map.get(&1, :position, 999))
 
-    # Subscribe to live updates from editor
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio.id}")
-    end
+    {:error, reason} ->
+      IO.puts("📁 Error loading sections: #{inspect(reason)}")
+      []
 
-    # Track portfolio visit safely
-    track_portfolio_visit_safe(portfolio, socket)
-
-    # Load portfolio sections safely
-    sections = load_portfolio_sections_safe(portfolio.id)
-    IO.puts("📋 Loaded #{length(sections)} sections")
-
-    # Extract intro video if present
-    {intro_video, filtered_sections} = extract_intro_video_and_filter_sections(sections)
-
-    # ENHANCED: Extract theme settings for enhanced components
-    theme = portfolio.theme || "professional"
-    customization = portfolio.customization || %{}
-    layout_type = Map.get(customization, "layout", "standard")
-    color_scheme = Map.get(customization, "color_scheme", "blue")
-
-    # NEW: Extract video display settings
-    video_aspect_ratio = Map.get(customization, "video_aspect_ratio", "16:9")
-    video_display_mode = Map.get(customization, "video_display_mode", "original")
-
-    # Create display options for video rendering
-    video_display_options = %{
-      aspect_ratio: video_aspect_ratio,
-      display_mode: video_display_mode
-    }
-
-    # ENHANCED: Generate complete theme CSS using our enhanced system
-    # Basic assignments with enhanced theme data
-    socket = socket
-    |> assign(:page_title, portfolio.title)
-    |> assign(:portfolio, portfolio)
-    |> assign(:owner, get_portfolio_owner_safe(portfolio))
-    |> assign(:sections, sections)           # Use the actual loaded sections
-    |> assign(:all_sections, sections)
-    |> assign(:customization, customization)
-    |> assign(:theme, theme)
-    |> assign(:layout_type, layout_type)
-    |> assign(:color_scheme, color_scheme)
-    |> assign(:use_enhanced_display, true)  # FIXED: Enable enhanced display
-    |> assign(:video_display_options, video_display_options)  # NEW: Video display settings
-
-    |> assign(:intro_video, intro_video)
-    |> assign(:intro_video_section, intro_video)
-    |> assign(:has_intro_video, intro_video != nil)
-    |> assign(:video_url, get_video_url_safe(intro_video))
-    |> assign(:video_content, get_video_content_safe(intro_video))
-    |> assign(:show_contact_modal, false)
-    |> assign(:show_share_modal, false)
-    |> assign(:show_export_modal, false)
-    |> assign(:show_video_modal, false)
-    |> assign(:show_mobile_nav, false)
-    |> assign(:active_lightbox_media, nil)
-    |> assign(:seo_title, portfolio.title)
-    |> assign(:seo_image, "/images/default-portfolio.jpg")
-    |> assign(:seo_description, portfolio.description || "Professional portfolio")
-    |> assign(:canonical_url, "/p/#{portfolio.slug}")
-    |> assign(:show_floating_actions, true)  # ADDED: Enable floating actions
-    |> assign(:template_class, "template-#{theme}")  # ADDED: Template class
-    |> assign(:public_view_settings, %{
-      show_contact_info: true,
-      show_social_links: true,
-      show_download_resume: false,
-      enable_animations: true,
-      show_visitor_count: false,
-      allow_comments: false,
-      enable_back_to_top: true,
-      sticky_header: true,
-      show_progress_bar: true,
-      enable_smooth_scroll: true
-    })
-
-    {:ok, socket}
+    _ ->
+      IO.puts("📁 No sections found, using empty list")
+      []
   end
+
+  # Load portfolio customization with defaults
+  customization = load_portfolio_customization_comprehensive(portfolio)
+
+  # Load intro video with enhanced metadata
+  intro_video = load_intro_video_comprehensive(portfolio.id)
+
+  # Create enhanced video display options
+  video_display_options = create_enhanced_video_display_options(intro_video, customization)
+
+  # Load additional portfolio metadata
+  portfolio_metadata = load_portfolio_metadata(portfolio)
+
+  # Create social links from portfolio and contact sections
+  social_links = extract_social_links_comprehensive(portfolio, sections)
+
+  # Determine if portfolio has resume/download capabilities
+  has_resume = Map.get(portfolio, :resume_url) != nil
+
+  # Build comprehensive assigns for enhanced rendering
+  {:ok, socket
+  |> assign(:portfolio, enhance_portfolio_data(portfolio, portfolio_metadata))
+  |> assign(:sections, sections)
+  |> assign(:customization, customization)
+  |> assign(:intro_video, intro_video)
+  |> assign(:video_display_options, video_display_options)
+  |> assign(:social_links, social_links)
+  |> assign(:has_resume, has_resume)
+  |> assign(:show_video_modal, false)
+  |> assign(:video_url, get_video_url_safe(intro_video))
+  |> assign(:view_type, :public)
+  |> assign(:loading, false)
+  |> assign(:error_state, nil)}
+end
 
   defp mount_public_portfolio(slug, socket) do
     IO.puts("🌍 MOUNTING PUBLIC PORTFOLIO: /p/#{slug}")
@@ -287,10 +259,253 @@ defmodule FrestylWeb.PortfolioLive.Show do
     end
   end
 
+defp load_portfolio_sections_comprehensive(portfolio_id) do
+  try do
+    case Portfolios.list_portfolio_sections(portfolio_id) do
+      sections when is_list(sections) ->
+        {:ok, sections}
 
-# GROUP 6: Preview System Fix
-# File: lib/frestyl_web/live/portfolio_live/show.ex
-# Fix preview system to handle portfolio updates correctly
+      {:ok, sections} when is_list(sections) ->
+        {:ok, sections}
+
+      {:error, reason} ->
+        {:error, reason}
+
+      _ ->
+        {:ok, []}
+    end
+  rescue
+    error ->
+      IO.puts("❌ Critical error loading sections: #{inspect(error)}")
+      {:error, :database_error}
+  end
+end
+
+defp load_portfolio_customization_comprehensive(portfolio) do
+  base_customization = %{
+    "color_scheme" => "blue",
+    "typography" => "modern",
+    "layout" => "single",
+    "theme" => "light",
+    "spacing" => "comfortable",
+    "animations" => true,
+    "shadows" => "enhanced"
+  }
+
+  try do
+    portfolio_customization = case Map.get(portfolio, :customization) do
+      nil -> %{}
+      customization when is_map(customization) -> customization
+      _ -> %{}
+    end
+
+    Map.merge(base_customization, portfolio_customization)
+  rescue
+    _ -> base_customization
+  end
+end
+
+  defp load_intro_video_comprehensive(portfolio_id) do
+    try do
+      # Since get_portfolio_intro_video doesn't exist, check for video in sections
+      case Portfolios.list_portfolio_sections(portfolio_id) do
+        sections when is_list(sections) ->
+          video_section = Enum.find(sections, fn section ->
+            section.section_type == :video || section.section_type == "video" ||
+            section.section_type == :hero || section.section_type == "hero"
+          end)
+
+          if video_section do
+            extract_video_from_section(video_section)
+          else
+            nil
+          end
+
+        _ -> nil
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error loading intro video: #{inspect(error)}")
+        nil
+    end
+  end
+
+    defp extract_video_from_section(section) do
+    content = section.content || %{}
+
+    video_url = Map.get(content, "video_url") || Map.get(content, "url")
+
+    if video_url && String.trim(video_url) != "" do
+      %{
+        url: normalize_safe_content_value(video_url),
+        aspect_ratio: Map.get(content, "aspect_ratio", "16:9"),
+        autoplay: Map.get(content, "autoplay", false),
+        loop: Map.get(content, "loop", false),
+        thumbnail_url: normalize_safe_content_value(Map.get(content, "thumbnail_url"))
+      }
+    else
+      nil
+    end
+  end
+
+  defp normalize_safe_content_value({:safe, content}) when is_binary(content), do: content
+  defp normalize_safe_content_value({:safe, content}) when is_list(content), do: Enum.join(content, "")
+  defp normalize_safe_content_value(content), do: content
+
+defp enhance_video_metadata(video) when is_map(video) do
+  video
+  |> Map.put_new(:aspect_ratio, "16:9")
+  |> Map.put_new(:duration, nil)
+  |> Map.put_new(:thumbnail_url, nil)
+  |> Map.put_new(:autoplay, false)
+  |> Map.put_new(:loop, false)
+end
+
+defp enhance_video_metadata(_), do: nil
+
+# Enhanced video display options with comprehensive settings
+defp create_enhanced_video_display_options(intro_video, customization) do
+  if intro_video do
+    %{
+      show_in_hero: Map.get(customization, "show_video_in_hero", true),
+      aspect_ratio: Map.get(intro_video, :aspect_ratio, "16:9"),
+      autoplay: Map.get(intro_video, :autoplay, false),
+      loop: Map.get(intro_video, :loop, false),
+      controls: true,
+      muted: Map.get(intro_video, :autoplay, false), # Mute if autoplay
+      thumbnail: Map.get(intro_video, :thumbnail_url),
+      quality: "hd"
+    }
+  else
+    %{
+      show_in_hero: false,
+      has_video: false
+    }
+  end
+end
+
+defp load_portfolio_metadata(portfolio) do
+  %{
+    created_at: Map.get(portfolio, :inserted_at),
+    updated_at: Map.get(portfolio, :updated_at),
+    view_count: Map.get(portfolio, :view_count, 0),
+    is_public: Map.get(portfolio, :is_public, true),
+    slug: Map.get(portfolio, :slug),
+    seo_title: Map.get(portfolio, :seo_title),
+    seo_description: Map.get(portfolio, :seo_description)
+  }
+end
+
+# Extract social links from portfolio and contact sections
+defp extract_social_links_comprehensive(portfolio, sections) do
+  # Get social links from portfolio
+  portfolio_social = Map.get(portfolio, :social_links, %{})
+
+  # Get social links from contact section
+  contact_section = Enum.find(sections, &(&1.section_type == :contact || &1.section_type == "contact"))
+  contact_social = if contact_section do
+    contact_content = contact_section.content || %{}
+    Map.get(contact_content, "social_links", %{})
+  else
+    %{}
+  end
+
+  # Merge and clean social links
+  Map.merge(portfolio_social, contact_social)
+  |> Enum.filter(fn {_platform, url} -> url && String.trim(url) != "" end)
+  |> Enum.into(%{})
+end
+
+# Enhance portfolio data with metadata
+defp enhance_portfolio_data(portfolio, metadata) do
+  portfolio
+  |> Map.put(:metadata, metadata)
+  |> Map.put_new(:tagline, extract_tagline_from_description(portfolio))
+  |> Map.put_new(:resume_url, nil)
+end
+
+defp extract_tagline_from_description(portfolio) do
+  description = Map.get(portfolio, :description, "")
+
+  # Extract first sentence as tagline if no explicit tagline
+  case String.split(description, ". ", parts: 2) do
+    [first_sentence | _] ->
+      sentence_length = String.length(first_sentence)
+      if sentence_length > 10 and sentence_length < 100 do
+        first_sentence
+      else
+        nil
+      end
+    _ ->
+      nil
+  end
+end
+
+# Safe video URL extraction
+defp get_video_url_safe(intro_video) do
+  if intro_video do
+    Map.get(intro_video, :url) || Map.get(intro_video, "url")
+  else
+    nil
+  end
+end
+
+# Enhanced section normalization for consistent display
+defp normalize_section_for_display(section) do
+  section
+  |> Map.put_new(:content, %{})
+  |> Map.put_new(:visible, true)
+  |> Map.put_new(:position, 0)
+  |> ensure_section_title()
+  |> ensure_section_type()
+  |> clean_section_content()
+end
+
+defp ensure_section_title(section) do
+  if Map.get(section, :title) && String.trim(section.title) != "" do
+    section
+  else
+    title = case section.section_type do
+      :skills -> "Skills"
+      :projects -> "Projects"
+      :experience -> "Experience"
+      :education -> "Education"
+      :contact -> "Contact"
+      :about -> "About"
+      :intro -> "Introduction"
+      :hero -> "Hero"
+      _ -> "Section"
+    end
+    Map.put(section, :title, title)
+  end
+end
+
+defp ensure_section_type(section) do
+  if Map.get(section, :section_type) do
+    section
+  else
+    Map.put(section, :section_type, :about)
+  end
+end
+
+defp clean_section_content(section) do
+  content = section.content || %{}
+
+  # Clean any malformed content
+  clean_content = content
+  |> Enum.filter(fn {_key, value} -> value != nil end)
+  |> Enum.into(%{})
+
+  Map.put(section, :content, clean_content)
+end
+
+# Enhanced section validation
+defp valid_section?(section) do
+  Map.get(section, :id) != nil &&
+  Map.get(section, :section_type) != nil &&
+  Map.get(section, :title) != nil &&
+  String.trim(section.title) != ""
+end
 
 # Update the handle_info function to properly handle all message types
 @impl true
@@ -527,17 +742,28 @@ defp load_portfolio_safe(portfolio_id) do
   end
 end
 
-# Enhanced error handling for section loading
-defp load_portfolio_sections_safe(portfolio_id) do
-  try do
-    case Portfolios.list_portfolio_sections(portfolio_id) do
-      sections when is_list(sections) -> sections
-      _ -> []
+  defp load_portfolio_sections_safe(portfolio_id) do
+    try do
+      case Portfolios.list_portfolio_sections(portfolio_id) do
+        sections when is_list(sections) ->
+          # Ensure each section has required fields for rendering
+          sections
+          |> Enum.map(&normalize_section_for_display/1)
+          |> Enum.filter(&valid_section?/1)
+
+        {:ok, sections} when is_list(sections) ->
+          sections
+          |> Enum.map(&normalize_section_for_display/1)
+          |> Enum.filter(&valid_section?/1)
+
+        _ -> []
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error loading sections: #{inspect(error)}")
+        []
     end
-  rescue
-    _ -> []
   end
-end
 
   defp can_view_portfolio_safe?(portfolio, user) do
     case portfolio.visibility do
@@ -605,52 +831,41 @@ end
   @impl true
   def handle_info(msg, socket) do
     case msg do
-      # Handle preview updates from editor
       {:preview_update, data} when is_map(data) ->
         IO.puts("🔄 SHOW: Handling preview_update")
 
-        sections = Map.get(data, :sections, socket.assigns.sections)
-        customization = Map.get(data, :customization, socket.assigns.customization)
+        # Clean sections from update
+        raw_sections = Map.get(data, :sections, socket.assigns.sections)
+        clean_sections = raw_sections
+        |> Enum.map(&normalize_section_for_display/1)
+        |> Enum.filter(&valid_section?/1)
 
-        # Update socket with new data
-        socket = socket
-        |> assign(:sections, sections)
-        |> assign(:customization, customization)
-        |> push_event("update_preview_content", %{
-          sections: sections,
-          customization: customization
-        })
-
-        {:noreply, socket}
-
-      # Handle section updates
-      {:sections_updated, sections} ->
-        IO.puts("🔄 SHOW: Handling sections_updated")
-
-        socket = socket
-        |> assign(:sections, sections)
-        |> push_event("update_sections", %{sections: sections})
-
-        {:noreply, socket}
-
-      # Handle portfolio sections changed (comprehensive update)
-      {:portfolio_sections_changed, data} when is_map(data) ->
-        IO.puts("🔄 SHOW: Handling portfolio_sections_changed")
-
-        sections = Map.get(data, :sections, socket.assigns.sections)
         customization = Map.get(data, :customization, socket.assigns.customization)
 
         socket = socket
-        |> assign(:sections, sections)
+        |> assign(:sections, clean_sections)
         |> assign(:customization, customization)
         |> push_event("comprehensive_update", %{
-          sections: sections,
+          sections: clean_sections,
           customization: customization
         })
 
         {:noreply, socket}
 
-      # Handle customization updates
+      {:section_visibility_changed, data} when is_map(data) ->
+        IO.puts("🔄 SHOW: Handling section_visibility_changed")
+
+        raw_sections = Map.get(data, :sections, socket.assigns.sections)
+        clean_sections = raw_sections
+        |> Enum.map(&normalize_section_for_display/1)
+        |> Enum.filter(&valid_section?/1)
+
+        socket = socket
+        |> assign(:sections, clean_sections)
+        |> push_event("update_section_visibility", %{sections: clean_sections})
+
+        {:noreply, socket}
+
       {:customization_updated, customization} ->
         IO.puts("🔄 SHOW: Handling customization_updated")
 
@@ -660,71 +875,9 @@ end
 
         {:noreply, socket}
 
-      # Handle section visibility changes
-      {:section_visibility_changed, data} when is_map(data) ->
-        IO.puts("🔄 SHOW: Handling section_visibility_changed")
-
-        sections = Map.get(data, :sections, socket.assigns.sections)
-
-        socket = socket
-        |> assign(:sections, sections)
-        |> push_event("update_section_visibility", %{sections: sections})
-
-        {:noreply, socket}
-
-      # Handle design updates
-      {:design_update, data} when is_map(data) ->
-        IO.puts("🔄 SHOW: Handling design_update")
-        handle_design_update(data, socket)
-
-      {:design_complete_update, data} when is_map(data) ->
-        IO.puts("🔄 SHOW: Handling design_complete_update")
-        handle_design_update(data, socket)
-
-      # Handle layout changes
-      {:layout_changed, layout_name, customization} ->
-        IO.puts("🔄 SHOW: Handling layout_changed")
-
-        socket = socket
-        |> assign(:portfolio_layout, Map.get(customization, "layout", "minimal"))
-        |> assign(:customization, customization)
-        |> push_event("layout_changed", %{layout: layout_name})
-
-        {:noreply, socket}
-
-      # Handle content updates for individual sections
-      {:content_update, section} ->
-        IO.puts("🔄 SHOW: Handling content_update")
-
-        sections = update_section_in_list(socket.assigns.sections, section)
-
-        socket = socket
-        |> assign(:sections, sections)
-        |> push_event("update_section_content", %{
-          section_id: section.id,
-          content: section.content
-        })
-
-        {:noreply, socket}
-
-      # Handle portfolio updates (legacy)
-      {:portfolio_updated, updated_portfolio} ->
-        IO.puts("🔄 SHOW: Handling portfolio_updated")
-
-        socket = socket
-        |> assign(:portfolio, updated_portfolio)
-        |> assign(:customization, updated_portfolio.customization || %{})
-
-        {:noreply, socket}
-
-      # Handle viewport changes
-      {:viewport_change, mobile_view} ->
-        socket = assign(socket, :mobile_view, mobile_view)
-        {:noreply, socket}
-
-      # Catch-all for unhandled messages
-      unknown_msg ->
-        IO.puts("⚠️ SHOW: Unhandled message: #{inspect(unknown_msg)}")
+      # Catch-all for other messages
+      msg ->
+        IO.puts("🔄 SHOW: Unhandled message: #{inspect(msg)}")
         {:noreply, socket}
     end
   end
@@ -748,6 +901,46 @@ end
     {:noreply, socket}
   end
 
+  defp load_portfolio_customization_safe(portfolio) do
+    try do
+      case Map.get(portfolio, :customization) do
+        nil -> %{}
+        customization when is_map(customization) -> customization
+        _ -> %{}
+      end
+    rescue
+      _ -> %{}
+    end
+  end
+
+    defp load_intro_video_safe(portfolio_id) do
+    try do
+      # Your existing intro video loading logic
+      nil
+    rescue
+      _ -> nil
+    end
+  end
+
+  defp create_video_display_options(intro_video) do
+    if intro_video do
+      %{
+        show_in_hero: true,
+        aspect_ratio: "16:9",
+        autoplay: false
+      }
+    else
+      %{}
+    end
+  end
+
+  defp get_video_url(intro_video) do
+    if intro_video do
+      Map.get(intro_video, :url)
+    else
+      nil
+    end
+  end
 
   defp load_portfolio_by_slug(slug) do
     try do
@@ -834,20 +1027,6 @@ end
     end
   end
 
-
-  defp load_portfolio_sections_safe(portfolio_id) do
-    try do
-      sections = Portfolios.list_portfolio_sections(portfolio_id)
-      IO.puts("📋 Found #{length(sections)} sections for portfolio #{portfolio_id}")
-      sections
-    rescue
-      e ->
-        IO.puts("❌ Error loading sections for portfolio #{portfolio_id}: #{inspect(e)}")
-        []
-    end
-  end
-
-
   defp get_portfolio_account(portfolio) do
     case portfolio do
       %{account: %{} = account} -> account
@@ -890,14 +1069,6 @@ end
 
     # Always assign sections to socket - this prevents the KeyError
     assign(socket, :sections, sections || [])
-  end
-
-  defp load_portfolio_sections_safe(portfolio_id) do
-    try do
-      Portfolios.list_portfolio_sections(portfolio_id)
-    rescue
-      _ -> []
-    end
   end
 
   defp default_brand_settings do
@@ -994,9 +1165,6 @@ end
         {enhanced_section, filtered_sections}
     end
   end
-
-  defp get_video_url_safe(nil), do: nil
-  defp get_video_url_safe(intro_video), do: Map.get(intro_video, :url)
 
   defp get_video_content_safe(nil), do: nil
   defp get_video_content_safe(intro_video), do: intro_video
@@ -1992,14 +2160,6 @@ end
     end
   end
 
-  # Safe video URL extraction
-  defp get_video_url_safe(intro_video) do
-    case intro_video do
-      %{content: %{"video_url" => url}} when is_binary(url) -> url
-      _ -> nil
-    end
-  end
-
   # Format video duration
   defp format_video_duration(seconds) when is_integer(seconds) and seconds > 0 do
     minutes = div(seconds, 60)
@@ -2063,5 +2223,44 @@ end
     rescue
       _ -> "Section"
     end
+  end
+
+  # Add these functions to show.ex
+  # Place them near the end of the file, before the final `end`
+
+  # Recursively normalize {:safe, content} tuples in nested data structures
+  defp normalize_safe_content_recursive(data) when is_map(data) do
+    data
+    |> Enum.map(fn {key, value} ->
+      {key, normalize_safe_content_recursive(value)}
+    end)
+    |> Enum.into(%{})
+  end
+
+  defp normalize_safe_content_recursive(data) when is_list(data) do
+    Enum.map(data, &normalize_safe_content_recursive/1)
+  end
+
+  defp normalize_safe_content_recursive({:safe, content}) when is_binary(content) do
+    content
+  end
+
+  defp normalize_safe_content_recursive({:safe, content}) when is_list(content) do
+    Enum.join(content, "")
+  end
+
+  defp normalize_safe_content_recursive(data), do: data
+
+  # Pre-normalize section data to handle {:safe, content} tuples
+  defp pre_normalize_section_data(section) do
+    # Normalize the content field specifically
+    normalized_content = if section.content do
+      normalize_safe_content_recursive(section.content)
+    else
+      %{}
+    end
+
+    # Return section with normalized content
+    Map.put(section, :content, normalized_content)
   end
 end
