@@ -10,11 +10,12 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   def mount(socket) do
     socket = socket
     |> assign(:recording_state, :setup)
-    |> assign(:countdown, 0)
-    |> assign(:recording_time, 0)
+    |> assign(:countdown, nil)
+    |> assign(:recording_duration, 0)
     |> assign(:camera_ready, false)
+    |> assign(:camera_status, :initializing)
     |> assign(:video_blob, nil)
-    |> assign(:camera_error, nil)
+    |> assign(:error_message, nil)
     |> assign(:is_saving, false)
     |> assign(:upload_progress, 0)
     |> assign(:processing_video, false)
@@ -37,19 +38,6 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
       %{value: "9:16", label: "Portrait", description: "Mobile-friendly vertical format"},
       %{value: "1:1", label: "Square", description: "Social media optimized format"}
     ])
-
-    {:ok, socket}
-  end
-
-  @impl true
-  def update(assigns, socket) do
-    socket = socket
-    |> assign(assigns)
-    |> assign(:recording_state, :idle)
-    |> assign(:countdown, nil)
-    |> assign(:recording_duration, 0)
-    |> assign(:camera_status, :initializing)
-    |> assign(:error_message, nil)
 
     {:ok, socket}
   end
@@ -113,14 +101,13 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   # EVENT HANDLERS - RECORDING CONTROLS
   # ============================================================================
 
-  @impl true
   def handle_event("camera_initialized", _params, socket) do
     IO.puts("📹 Camera initialized successfully")
 
     socket = socket
     |> assign(:camera_status, :ready)
-    |> assign(:camera_ready, true)  # FIXED: Set both status fields
-    |> assign(:recording_state, :ready)  # FIXED: Set recording state
+    |> assign(:camera_ready, true)
+    |> assign(:recording_state, :setup)  # <-- Changed to :setup
     |> assign(:error_message, nil)
 
     {:noreply, socket}
@@ -138,21 +125,75 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   end
 
   @impl true
-  def handle_event("start_countdown", _params, socket) do
-    if socket.assigns.camera_status == :ready do
-      IO.puts("⏰ Starting countdown...")
+  def handle_event("start_recording", _params, socket) do
+    IO.puts("🎬 Start recording button clicked")
 
-      # Start the countdown process
-      socket = socket
-      |> assign(:recording_state, :countdown)
-      |> assign(:countdown, 3)
+    cond do
+      not socket.assigns.camera_ready ->
+        socket = put_flash(socket, :error, "Camera not ready. Please allow camera access.")
+        {:noreply, socket}
 
-      # Send countdown update event to hook
-      send(self(), {:countdown_tick, socket.assigns.id})
+      socket.assigns.camera_status != :ready ->
+        socket = put_flash(socket, :error, "Camera is still initializing. Please wait.")
+        {:noreply, socket}
 
-      {:noreply, socket}
-    else
-      {:noreply, put_flash(socket, :error, "Camera not ready")}
+      true ->
+        IO.puts("🎬 Starting countdown with JavaScript...")
+
+        socket = socket
+        |> assign(:recording_state, :countdown)
+        |> assign(:countdown, 3)
+        |> assign(:error_message, nil)
+
+        # Send event to JavaScript to handle countdown
+        socket = push_event(socket, "start_countdown", %{
+          component_id: socket.assigns.id,
+          initial_count: 3
+        })
+
+        {:noreply, socket}
+    end
+  end
+
+
+  @impl true
+  def handle_event("stop_recording", _params, socket) do
+    IO.puts("⏹️ Stop recording button clicked")
+
+    socket = socket
+    |> assign(:recording_state, :setup)  # <-- Changed from :processing to :setup
+    |> assign(:recording_duration, 0)
+    |> assign(:countdown, nil)
+
+    # Send stop recording event to hook
+    {:noreply, push_event(socket, "stop-recording", %{component_id: socket.assigns.id})}
+  end
+
+  @impl true
+  def handle_event("start_recording", _params, socket) do
+    IO.puts("🎬 Start recording button clicked")
+
+    cond do
+      not socket.assigns.camera_ready ->
+        socket = put_flash(socket, :error, "Camera not ready. Please allow camera access.")
+        {:noreply, socket}
+
+      socket.assigns.camera_status != :ready ->
+        socket = put_flash(socket, :error, "Camera is still initializing. Please wait.")
+        {:noreply, socket}
+
+      true ->
+        IO.puts("🎬 Starting countdown...")
+
+        socket = socket
+        |> assign(:recording_state, :countdown)
+        |> assign(:countdown, 3)
+        |> assign(:error_message, nil)
+
+        # CRITICAL: Start the countdown timer
+        Process.send_after(self(), {:countdown_tick, socket.assigns.id}, 1000)
+
+        {:noreply, socket}
     end
   end
 
@@ -167,9 +208,44 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     {:noreply, socket}
   end
 
+  def handle_event("close_modal", _params, socket) do
+    # Try multiple ways to close the modal
+    send(self(), {:close_video_modal})
+    send(self(), {:close_video_intro_modal})
+
+    # Also try direct assignment if the parent uses an assign
+    socket = assign(socket, :show_video_intro_modal, false)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("cancel_recording", _params, socket) do
+    IO.puts("❌ Cancel recording button clicked")
+
+    socket = socket
+    |> assign(:recording_state, :setup)  # <-- Changed from :idle to :setup
+    |> assign(:countdown, nil)
+    |> assign(:recording_duration, 0)
+    |> assign(:error_message, nil)
+
+    # Stop any active recording
+    {:noreply, push_event(socket, "stop-recording", %{component_id: socket.assigns.id})}
+  end
+
+  @impl true
+  def handle_event("countdown_update", %{"count" => count}, socket) do
+    IO.puts("🎬 Elixir: Countdown update received: #{count}")
+
+    socket = socket
+    |> assign(:countdown, count)
+    |> assign(:force_update, :rand.uniform(1000))  # Force re-render
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_event("countdown_complete", _params, socket) do
-    IO.puts("🎬 Countdown complete, starting recording")
+    IO.puts("🎬 Elixir: Countdown complete received")
 
     socket = socket
     |> assign(:recording_state, :recording)
@@ -177,21 +253,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     |> assign(:recording_duration, 0)
 
     # Send recording start event to hook
-    send(self(), {:start_recording, socket.assigns.id})
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("stop_recording", _params, socket) do
-    IO.puts("⏹️ Stopping recording")
-
-    socket = socket
-    |> assign(:recording_state, :idle)
-    |> assign(:recording_duration, 0)
-
-    # Send stop recording event to hook
-    send(self(), {:stop_recording, socket.assigns.id})
+    socket = push_event(socket, "start-recording", %{component_id: socket.assigns.id})
 
     {:noreply, socket}
   end
@@ -202,22 +264,68 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("recording_started", _params, socket) do
+    IO.puts("🎬 Recording started successfully")
+    socket = assign(socket, :recording_state, :recording)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("recording_complete", params, socket) do
+    IO.puts("🎬 Recording completed: #{inspect(params)}")
+
+    socket = socket
+    |> assign(:recording_state, :preview)
+    |> assign(:video_blob, params["videoUrl"])
+    |> assign(:recording_duration, params["duration"] || 0)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("recording_error", %{"error" => error}, socket) do
+    IO.puts("❌ Recording error: #{error}")
+
+    socket = socket
+    |> assign(:recording_state, :setup)
+    |> assign(:error_message, "Recording failed: #{error}")
+    |> assign(:recording_duration, 0)
+
+    {:noreply, socket}
+  end
+
   # Handle countdown tick messages
   @impl true
   def handle_info({:countdown_tick, component_id}, socket) do
+    IO.puts("🎬 COUNTDOWN TICK received for component #{component_id}, current component: #{socket.assigns.id}")
+    IO.puts("🎬 Current recording_state: #{socket.assigns.recording_state}")
+    IO.puts("🎬 Current countdown: #{socket.assigns.countdown}")
+
     if socket.assigns.id == component_id && socket.assigns.recording_state == :countdown do
       current_countdown = socket.assigns.countdown
 
       if current_countdown > 1 do
         # Continue countdown
+        IO.puts("🎬 Continuing countdown: #{current_countdown - 1}")
         socket = assign(socket, :countdown, current_countdown - 1)
         Process.send_after(self(), {:countdown_tick, component_id}, 1000)
         {:noreply, socket}
       else
         # Countdown finished, start recording
-        handle_event("countdown_complete", %{}, socket)
+        IO.puts("🎬 Countdown complete, starting recording")
+
+        socket = socket
+        |> assign(:recording_state, :recording)
+        |> assign(:countdown, nil)
+        |> assign(:recording_duration, 0)
+
+        # Send recording start event to hook
+        socket = push_event(socket, "start-recording", %{component_id: socket.assigns.id})
+        {:noreply, socket}
       end
     else
+      IO.puts("🎬 COUNTDOWN TICK ignored - component mismatch or wrong state")
       {:noreply, socket}
     end
   end
@@ -241,12 +349,6 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     IO.puts("🎬 Triggering file upload")
     # Trigger file input or upload modal
     {:noreply, push_event(socket, "trigger_file_upload", %{})}
-  end
-
-  def handle_event("close_modal", _params, socket) do
-    # Send event to parent to close modal
-    send(self(), {:close_video_modal})
-    {:noreply, socket}
   end
 
   @impl true
@@ -298,7 +400,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         socket = put_flash(socket, :error, "Camera not ready. Please allow camera access.")
         {:noreply, socket}
 
-      socket.assigns.camera_status != "ready" ->
+      socket.assigns.camera_status != :ready ->
         socket = put_flash(socket, :error, "Camera is still initializing. Please wait.")
         {:noreply, socket}
 
@@ -316,16 +418,52 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   end
 
   @impl true
-  def update(%{camera_status: :ready} = _assigns, socket) do
-    IO.puts("🔥 Video component: Camera ready, transitioning to ready state")
-    {:ok, socket
-    |> assign(:camera_ready, true)
-    |> assign(:recording_state, :ready)}
+  def update(%{action: :countdown_tick} = _assigns, socket) do
+    IO.puts("🎬 Countdown tick received! Current countdown: #{socket.assigns.countdown}")
+
+    if socket.assigns.recording_state == :countdown do
+      current_countdown = socket.assigns.countdown
+
+      if current_countdown > 1 do
+        # Continue countdown
+        new_countdown = current_countdown - 1
+        IO.puts("🎬 Continuing countdown: #{new_countdown}")
+
+        # Schedule next tick
+        send_update_after(self(), __MODULE__, %{id: socket.assigns.id, action: :countdown_tick}, 1000)
+
+        {:ok, assign(socket, :countdown, new_countdown)}
+      else
+        # Countdown finished, start recording
+        IO.puts("🎬 Countdown complete, starting recording")
+
+        socket = socket
+        |> assign(:recording_state, :recording)
+        |> assign(:countdown, nil)
+        |> assign(:recording_duration, 0)
+
+        # Send recording start event to hook
+        send(self(), {:push_js_event, "start-recording", %{component_id: socket.assigns.id}})
+
+        {:ok, socket}
+      end
+    else
+      IO.puts("🎬 Countdown tick ignored - not in countdown state")
+      {:ok, socket}
+    end
   end
 
+  # Make sure your regular update function handles other cases
   @impl true
   def update(assigns, socket) do
-    {:ok, assign(socket, assigns)}
+    # Only process normal assigns, ignore timer actions
+    if Map.has_key?(assigns, :action) do
+      # This is a timer action, handled above
+      {:ok, socket}
+    else
+      # Normal update
+      {:ok, assign(socket, assigns)}
+    end
   end
 
   # ============================================================================
@@ -339,7 +477,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     socket = socket
     |> assign(:camera_status, :ready)
     |> assign(:camera_ready, true)
-    |> assign(:recording_state, :ready)
+    |> assign(:recording_state, :setup)
     |> assign(:error_message, nil)
 
     {:noreply, socket}
@@ -381,29 +519,10 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     end
   end
 
-  @impl true
-  def handle_event("stop_recording", _params, socket) do
-    IO.puts("🔥 Stopping video recording")
-    {:noreply, assign(socket, :recording_state, :processing)}
-  end
 
   @impl true
   def handle_event("recording_progress", %{"elapsed" => elapsed}, socket) do
     socket = assign(socket, :elapsed_time, elapsed)
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("countdown_update", %{"count" => count}, socket) do
-    socket = if count == 0 do
-      socket
-      |> assign(:recording_state, :recording)
-      |> assign(:countdown_value, 0)
-      |> assign(:elapsed_time, 0)
-    else
-      assign(socket, :countdown_value, count)
-    end
-
     {:noreply, socket}
   end
 
@@ -1016,6 +1135,15 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         <% end %>
       </div>
 
+      <!-- DEBUG STATE INFO -->
+      <div class="bg-yellow-100 p-4 text-xs">
+        <strong>DEBUG:</strong><br>
+        recording_state: <%= @recording_state %><br>
+        camera_ready: <%= @camera_ready %><br>
+        camera_status: <%= @camera_status %><br>
+        countdown: <%= @countdown %>
+      </div>
+
       <!-- Start Recording Button -->
       <div class="text-center">
         <button phx-click="start_recording" phx-target={@myself}
@@ -1147,7 +1275,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
 
       <!-- Recording Controls -->
       <div class="flex items-center justify-center space-x-4">
-        <%= if Map.get(assigns, :recording_state, :setup) == :setup do %>
+        <%= if @recording_state == :setup do %>
           <button
             phx-click="start_recording"
             phx-target={@myself}
@@ -1188,7 +1316,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
         <ul class="text-sm text-blue-800 space-y-1">
           <li>• Ensure good lighting on your face</li>
           <li>• Speak clearly and at a normal pace</li>
-          <li>• Keep your introduction to 30-90 seconds</li>
+          <li>• Keep your introduction to engaging and concise</li>
           <li>• Look directly at the camera</li>
           <li>• Current format: <%= @aspect_ratio %></li>
         </ul>
@@ -1730,12 +1858,6 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   defp get_position_description(:footer), do: "Closing video at the bottom of your portfolio"
   defp get_position_description(_), do: "Standard placement in your portfolio"
 
-  # Missing event handlers for completeness
-  @impl true
-  def handle_event("cancel_recording", _params, socket) do
-    send(self(), {:close_video_intro_modal, %{}})
-    {:noreply, socket}
-  end
 
   @impl true
   def handle_event("retake_video", _params, socket) do

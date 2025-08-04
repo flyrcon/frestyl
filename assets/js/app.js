@@ -252,62 +252,6 @@ Hooks.ThemePicker = {
     });
   }
 };
-/*
-Hooks.VideoCapture = {
-  mounted() {
-    // Get the actual component ID from the data attribute
-    this.componentId = this.el.dataset.componentId;
-    console.log('VideoCapture hook mounted with component ID:', this.componentId);
-    
-    // Wait for LiveView to be fully connected
-    setTimeout(() => {
-      this.initializeCamera();
-    }, 200);
-  },
-  
-  async initializeCamera() {
-    try {
-      console.log('Initializing camera for component:', this.componentId);
-      
-      const video = this.el;
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          width: { ideal: 1280 }, 
-          height: { ideal: 720 },
-          facingMode: 'user'
-        }, 
-        audio: true 
-      });
-      
-      video.srcObject = stream;
-      this.stream = stream;
-      
-      console.log('Camera stream attached, pushing camera_ready event');
-      
-      // Send the actual component ID with the event
-      this.pushEvent("camera_ready", {
-        componentId: this.componentId,
-        portfolioId: this.el.dataset.portfolioId
-      });
-      
-    } catch (error) {
-      console.error("Camera initialization failed:", error);
-      
-      this.pushEvent("camera_error", { 
-        error: error.message,
-        componentId: this.componentId,
-        portfolioId: this.el.dataset.portfolioId
-      });
-    }
-  },
-  
-  destroyed() {
-    console.log('VideoCapture hook destroyed for component:', this.componentId);
-    if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
-    }
-  }
-};*/
 
 console.log("🔥 All hooks defined:", Object.keys(Hooks))
 

@@ -1,7 +1,7 @@
 // assets/js/hooks/video_capture.js
-// PATCH: Fix event names and add retry functionality
+// FIXED: Proper timing and state management for camera initialization
 
-window.VideoCapture = {
+const VideoCapture = {
   mounted() {
     console.log("📹 VideoCapture hook mounted");
     this.componentId = this.el.dataset.componentId;
@@ -10,9 +10,18 @@ window.VideoCapture = {
     this.stream = null;
     this.retryCount = 0;
     this.maxRetries = 3;
+    this.initializationTimer = null;
+
+    // Listen for countdown start event
+    this.handleEvent("start_countdown", (data) => {
+      console.log("🎬 JS: Starting countdown", data);
+      this.startCountdown(data.initial_count);
+    });
     
-    // Initialize camera on mount
-    this.initializeCamera();
+    // FIXED: Wait for DOM and LiveView to be fully ready
+    this.waitForLiveViewReady(() => {
+      this.initializeCamera();
+    });
     
     // Listen for recording events
     this.handleEvent("start-recording", (data) => {
@@ -27,13 +36,36 @@ window.VideoCapture = {
       }
     });
 
-    // FIXED: Listen for retry camera event
+    // Listen for retry camera event
     this.handleEvent("retry_camera", () => {
       this.retryCamera();
     });
   },
 
+  // FIXED: Better timing for LiveView readiness
+  waitForLiveViewReady(callback) {
+    // Check if the element is properly connected and LiveView is ready
+    const checkReady = () => {
+      if (this.el && this.el.isConnected && this.pushEvent) {
+        console.log("📹 LiveView ready, initializing camera");
+        callback();
+      } else {
+        console.log("📹 Waiting for LiveView to be ready...");
+        setTimeout(checkReady, 100);
+      }
+    };
+    
+    // Start checking after a brief delay
+    setTimeout(checkReady, 200);
+  },
+
   async initializeCamera() {
+    // Clear any existing timer
+    if (this.initializationTimer) {
+      clearTimeout(this.initializationTimer);
+      this.initializationTimer = null;
+    }
+
     try {
       console.log("📹 Initializing camera...");
       
@@ -49,14 +81,38 @@ window.VideoCapture = {
       
       this.stream = await navigator.mediaDevices.getUserMedia(constraints);
       
+      // FIXED: Ensure video element is ready before setting stream
+      if (!this.el) {
+        throw new Error("Video element not available");
+      }
+
       // Set video element source
       this.el.srcObject = this.stream;
+      
+      // FIXED: Wait for video to be ready before notifying component
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Video loading timeout"));
+        }, 5000);
+
+        this.el.onloadedmetadata = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+
+        this.el.onerror = (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        };
+      });
+
+      // Start video playback
       await this.el.play();
       
       console.log("✅ Camera initialized successfully");
       
       // FIXED: Send camera_initialized event (matches component expectations)
-      this.pushEvent("camera_initialized", {});
+      this.pushEventTo(this.el, "camera_initialized", {});
       
       // Reset retry count on success
       this.retryCount = 0;
@@ -67,11 +123,11 @@ window.VideoCapture = {
       let errorMessage = this.getErrorMessage(error);
       
       // FIXED: Send camera_error event with proper error message
-      this.pushEvent("camera_error", { error: errorMessage });
+      this.pushEventTo(this.el, "camera_error", { error: errorMessage });
     }
   },
 
-  // FIXED: Add retry functionality
+  // FIXED: Improved retry functionality
   async retryCamera() {
     if (this.retryCount >= this.maxRetries) {
       console.error("❌ Max camera retry attempts reached");
@@ -85,22 +141,34 @@ window.VideoCapture = {
     console.log(`📹 Retrying camera initialization (attempt ${this.retryCount}/${this.maxRetries})`);
     
     // Clean up existing stream if any
-    if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
-      this.stream = null;
-    }
+    this.cleanupStream();
     
-    // Wait a bit before retrying
+    // Wait before retrying
     setTimeout(() => {
       this.initializeCamera();
-    }, 1000);
+    }, 1000 * this.retryCount); // Exponential backoff
+  },
+
+  // FIXED: Better cleanup method
+  cleanupStream() {
+    if (this.stream) {
+      this.stream.getTracks().forEach(track => {
+        track.stop();
+        console.log("📹 Stopped track:", track.kind);
+      });
+      this.stream = null;
+    }
+
+    if (this.el && this.el.srcObject) {
+      this.el.srcObject = null;
+    }
   },
 
   // FIXED: Better error message handling
   getErrorMessage(error) {
     switch (error.name) {
       case "NotAllowedError":
-        return "Camera access denied by user. Please allow camera access and try again.";
+        return "Camera access denied. Please allow camera access and try again.";
       case "NotFoundError":
         return "No camera found on this device.";
       case "NotReadableError":
@@ -217,10 +285,51 @@ window.VideoCapture = {
     this.recordedChunks = [];
   },
 
+  startCountdown(count) {
+    console.log(`🎬 JS: Countdown starting at ${count}`);
+    
+    // Clear any existing countdown
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+    }
+    
+    let currentCount = count;
+    
+    // Send initial count
+    this.pushEvent("countdown_update", { count: currentCount });
+    
+    // Start interval
+    this.countdownInterval = setInterval(() => {
+      currentCount--;
+      console.log(`🎬 JS: Countdown tick: ${currentCount}`);
+      
+      if (currentCount > 0) {
+        // Send countdown update
+        this.pushEvent("countdown_update", { count: currentCount });
+      } else {
+        // Countdown finished
+        console.log("🎬 JS: Countdown complete!");
+        clearInterval(this.countdownInterval);
+        this.countdownInterval = null;
+        
+        // Notify component that countdown is done
+        this.pushEvent("countdown_complete", {});
+      }
+    }, 1000);
+  },
+
   destroyed() {
     console.log("📹 VideoCapture hook destroyed");
     
-    // Clean up intervals
+    // Clear timers
+    if (this.initializationTimer) {
+      clearTimeout(this.initializationTimer);
+    }
+
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+    }
+    
     if (this.durationInterval) {
       clearInterval(this.durationInterval);
     }
@@ -231,12 +340,7 @@ window.VideoCapture = {
     }
     
     // Release camera stream
-    if (this.stream) {
-      this.stream.getTracks().forEach(track => {
-        track.stop();
-      });
-      this.stream = null;
-    }
+    this.cleanupStream();
   }
 };
 

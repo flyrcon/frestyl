@@ -128,6 +128,18 @@ defp assign_modal_states(socket) do
   |> assign(:show_create_dropdown, false)
   |> assign(:show_resume_import_modal, false)
   |> assign(:video_tab, "record")
+  # Add resume import states
+  |> assign(:processing, false)
+  |> assign(:processing_stage, :idle)
+  |> assign(:processing_message, "")
+  |> assign(:parsing_progress, 0)
+  |> assign(:error_message, nil)
+  |> assign(:parsed_data, nil)
+  |> assign(:sections_to_import, %{})
+  |> allow_upload(:resume,
+      accept: ~w(.pdf .doc .docx .txt .rtf),
+      max_entries: 1,
+      max_file_size: 10 * 1_048_576)
 end
 
 defp assign_ui_states(socket) do
@@ -137,6 +149,7 @@ defp assign_ui_states(socket) do
   |> assign(:preview_device, "desktop")
   |> assign(:current_section_type, nil)
   |> assign(:editing_section, nil)
+  |> assign(:expanded_categories, MapSet.new())
 end
 
 defp assign_editor_states(socket) do
@@ -262,7 +275,7 @@ end
     new_section = %{
       id: :rand.uniform(10000),
       title: title,
-      section_type: String.to_atom(section_type),
+      section_type: String.to_atom(map_section_type_to_db(section_type)),
       content: content,
       position: length(socket.assigns.sections) + 1,
       visible: visible
@@ -280,16 +293,15 @@ end
 
   @impl true
   def handle_info({:save_section, form_data, editing_section}, socket) do
-    IO.puts("🔧 SAVING SECTION with data: #{inspect(form_data)}")
+    IO.puts("🔧 SAVING SECTION with cleaned data: #{inspect(form_data)}")
 
     case editing_section do
       nil ->
-        # Create new section
-        create_new_section(form_data, socket)
-
+        # Create new section with proper section type mapping
+        create_new_section_with_mapping(form_data, socket)
       %{} = section ->
         # Update existing section
-        update_existing_section(section, form_data, socket)
+        update_existing_section_with_mapping(section, form_data, socket)
     end
   end
 
@@ -327,51 +339,281 @@ end
     end
   end
 
-  defp create_new_section(form_data, socket) do
-    IO.puts("🔧 CREATING NEW SECTION")
+  @impl true
+  def handle_info({:parsing_progress, stage, message, progress}, socket) do
+    socket = assign(socket,
+      processing_stage: stage,
+      processing_message: message,
+      parsing_progress: progress
+    )
+    {:noreply, socket}
+  end
 
-    # Extract section type and prepare attributes
-    section_type = Map.get(form_data, "section_type", socket.assigns.section_type)
+  # Handle parsing completion
+  @impl true
+  def handle_info({:parsing_complete, parsed_data}, socket) do
+    socket = assign(socket,
+      processing: false,
+      processing_stage: :complete,
+      processing_message: "Resume processed successfully!",
+      parsing_progress: 100,
+      parsed_data: parsed_data,
+      sections_to_import: initialize_section_selections(parsed_data)
+    )
+    {:noreply, socket}
+  end
+
+  # Handle parsing errors
+  @impl true
+  def handle_info({:parsing_error, reason}, socket) do
+    socket = assign(socket,
+      processing: false,
+      processing_stage: :error,
+      error_message: reason,
+      parsing_progress: 0
+    )
+    {:noreply, socket}
+  end
+
+  # Handle import completion
+  @impl true
+  def handle_info({:resume_import_complete, {:ok, new_sections}}, socket) do
+    updated_sections = socket.assigns.sections ++ new_sections
+
+    # Broadcast update
+    broadcast_portfolio_update(
+      socket.assigns.portfolio.id,
+      updated_sections,
+      socket.assigns.customization
+    )
+
+    socket = socket
+    |> assign(:sections, updated_sections)
+    |> assign(:show_resume_import_modal, false)
+    |> assign(:processing, false)
+    |> assign(:processing_stage, :idle)
+    |> put_flash(:info, "Successfully imported #{length(new_sections)} sections!")
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:resume_import_complete, {:error, reason}}, socket) do
+    socket = assign(socket,
+      processing: false,
+      processing_stage: :error,
+      error_message: "Import failed: #{reason}"
+    )
+    {:noreply, socket}
+  end
+
+  defp create_new_section_with_mapping(form_data, socket) do
+    IO.puts("🔧 CREATING NEW SECTION WITH MAPPING")
+
+    # Map section type to valid database enum
+    section_type = Map.get(form_data, "section_type")
+    mapped_section_type = map_section_type_to_db(section_type)
+
+    # Extract title with fallback
+    title = case Map.get(form_data, "title", "") do
+      "" -> get_default_section_title(section_type)
+      title -> title
+    end
+
+    # Extract content (removing metadata fields)
+    content = form_data
+      |> Map.drop(["section_type", "title", "visible", "action"])
+      |> ensure_content_structure(section_type)
 
     section_attrs = %{
       portfolio_id: socket.assigns.portfolio.id,
-      section_type: section_type,
-      title: Map.get(form_data, "title", ""),
-      content: extract_section_content(form_data),
+      section_type: String.to_atom(mapped_section_type),
+      title: title,
+      content: content,
       visible: Map.get(form_data, "visible", true),
       position: get_next_section_position(socket.assigns.sections)
     }
 
     IO.puts("🔧 Section attributes: #{inspect(section_attrs)}")
 
-    case Portfolios.create_portfolio_section(section_attrs) do
+    case Portfolios.create_section(section_attrs) do
       {:ok, new_section} ->
-        IO.puts("🔧 Successfully created section: #{new_section.id}")
+        IO.puts("✅ Successfully created section: #{new_section.id}")
 
-        # Reload sections and close modal
         updated_sections = socket.assigns.sections ++ [new_section]
 
-        # Broadcast update to preview
+        # Update hero section if needed
+        hero_section = if mapped_section_type == "hero" do
+          new_section
+        else
+          socket.assigns.hero_section
+        end
+
+        # Broadcast update
         broadcast_portfolio_update(socket.assigns.portfolio.id, :section_created, new_section)
 
-        socket = socket
-        |> assign(:sections, updated_sections)
-        |> assign(:show_section_modal, false)
-        |> assign(:editing_section, nil)
-        |> assign(:section_type, nil)
-        |> put_flash(:info, "Section created successfully!")
-
-        {:noreply, socket}
+        {:noreply, socket
+          |> assign(:sections, updated_sections)
+          |> assign(:hero_section, hero_section)
+          |> assign(:show_section_modal, false)
+          |> assign(:current_section_type, nil)
+          |> assign(:editing_section, nil)
+          |> put_flash(:info, "#{title} created successfully!")}
 
       {:error, changeset} ->
-        IO.puts("🔧 Failed to create section: #{inspect(changeset.errors)}")
-
-        socket = socket
-        |> put_flash(:error, "Failed to create section: #{format_changeset_errors(changeset)}")
-
-        {:noreply, socket}
+        IO.puts("❌ SECTION CREATION FAILED: #{inspect(changeset.errors)}")
+        {:noreply, socket
+          |> put_flash(:error, "Failed to create section: #{format_changeset_errors(changeset)}")}
     end
   end
+
+  defp create_new_section(form_data, socket) do
+    IO.puts("🔧 CREATING NEW SECTION - FIXED VERSION")
+
+    # FIXED: Extract section_type from form_data (now always present)
+    section_type = Map.get(form_data, "section_type")
+
+    if is_nil(section_type) do
+      IO.puts("❌ CRITICAL ERROR: section_type missing from form_data")
+      IO.puts("❌ Available keys: #{inspect(Map.keys(form_data))}")
+
+      {:noreply, socket
+        |> put_flash(:error, "Section type is required but missing from form data")
+      }
+    else
+      IO.puts("✅ Section type found: #{section_type}")
+
+      # FIXED: Extract title with proper scoping
+      title = Map.get(form_data, "title", "")
+      final_title = if title == "" or is_nil(title) do
+        get_default_section_title(section_type)
+      else
+        title
+      end
+
+      # FIXED: Extract content by removing metadata fields
+      content = form_data
+        |> Map.drop(["section_type", "title", "visible", "action"])
+        |> ensure_content_structure(section_type)
+        |> fix_nested_items_structure()
+
+      section_attrs = %{
+        portfolio_id: socket.assigns.portfolio.id,
+        section_type: String.to_atom(section_type),  # ← CONVERT STRING TO ATOM
+        title: final_title,
+        content: content,
+        visible: Map.get(form_data, "visible", true),
+        position: get_next_section_position(socket.assigns.sections)
+      }
+
+      IO.puts("🔧 Section attributes: #{inspect(section_attrs)}")
+
+      case Portfolios.create_section(section_attrs) do
+        {:ok, new_section} ->
+          IO.puts("✅ Successfully created section: #{new_section.id}")
+
+          updated_sections = socket.assigns.sections ++ [new_section]
+
+          # Update hero section if this is a hero section
+          hero_section = if section_type == "hero" do
+            new_section
+          else
+            socket.assigns.hero_section
+          end
+
+          # Broadcast update to preview
+          broadcast_portfolio_update(socket.assigns.portfolio.id, :section_created, new_section)
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:hero_section, hero_section)
+          |> assign(:show_section_modal, false)
+          |> assign(:current_section_type, nil)
+          |> assign(:editing_section, nil)
+          |> put_flash(:info, "#{final_title} created successfully!")
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          IO.puts("❌ SECTION CREATION FAILED: #{inspect(changeset.errors)}")
+          error_messages = extract_changeset_errors(changeset)
+          error_message = Enum.join(error_messages, ", ")
+
+          {:noreply, socket
+            |> put_flash(:error, "Failed to create section: #{error_message}")
+            |> assign(:section_changeset_errors, changeset.errors)}
+      end
+    end
+  end
+
+  defp fix_nested_items_structure(content) do
+    case Map.get(content, "items") do
+      %{"items" => actual_items} when is_list(actual_items) ->
+        # Fix double-nested structure: %{"items" => %{"items" => [...]}} -> %{"items" => [...]}
+        Map.put(content, "items", actual_items)
+      _ ->
+        content
+    end
+  end
+
+  defp get_default_section_title(section_type) do
+    case section_type do
+      "hero" -> "Welcome"
+      "video_hero" -> "Video Introduction"
+      "contact" -> "Contact Information"
+      "intro" -> "About Me"
+      "story" -> "My Story"
+      "about" -> "About"
+      "experience" -> "Work Experience"
+      "education" -> "Education"
+      "skills" -> "Skills & Expertise"
+      "projects" -> "Projects"
+      "featured_project" -> "Featured Project"
+      "case_study" -> "Case Study"
+      "achievements" -> "Achievements & Awards"
+      "testimonials" -> "Testimonials"
+      "testimonial" -> "Testimonial"
+      "certifications" -> "Certifications"
+      "services" -> "Services"
+      "published_articles" -> "Published Articles"
+      "writing" -> "Published Articles"
+      "blog" -> "Blog"
+      "collaborations" -> "Collaborations"
+      "media_showcase" -> "Media Portfolio"
+      "code_showcase" -> "Code Portfolio"
+      "gallery" -> "Gallery"
+      "timeline" -> "Timeline"
+      "narrative" -> "My Narrative"
+      "journey" -> "My Journey"
+      "pricing" -> "Pricing"
+      "custom" -> "Custom Section"
+      _ -> String.capitalize(to_string(section_type))
+    end
+  end
+
+  defp ensure_content_structure(content, section_type) do
+    case section_type do
+      "contact" ->
+        # Ensure social_links structure
+        social_links = Map.get(content, "social_links", %{})
+        Map.put(content, "social_links", social_links)
+
+      "hero" ->
+        # Ensure hero fields
+        content
+        |> Map.put_new("social_links", %{})
+        |> Map.put_new("contact_info", %{})
+
+      section_type when section_type in ["experience", "education", "skills", "projects", "testimonials", "certifications", "services", "published_articles", "collaborations", "achievements"] ->
+        # Ensure items array
+        items = Map.get(content, "items", [])
+        Map.put(content, "items", items)
+
+      _ ->
+        content
+    end
+  end
+
 
   defp extract_section_content(form_data) do
     # Remove universal fields (title, visible, section_type, action)
@@ -384,15 +626,16 @@ end
 
   # Get next position for new section
   defp get_next_section_position(sections) do
-    case Enum.max_by(sections, & &1.position, fn -> %{position: 0} end) do
+    case Enum.max_by(sections, &(&1.position), fn -> %{position: 0} end) do
       %{position: max_pos} -> max_pos + 1
       _ -> 1
     end
   end
 
+
   defp format_changeset_errors(changeset) do
     changeset.errors
-    |> Enum.map(fn {field, {message, _}} -> "#{field}: #{message}" end)
+    |> Enum.map(fn {field, {message, _}} -> "#{field} #{message}" end)
     |> Enum.join(", ")
   end
 
@@ -472,19 +715,35 @@ end
   end
 
   defp update_existing_section(section, form_data, socket, save_type \\ :manual) do
-    IO.puts("🔧 UPDATING EXISTING SECTION: #{section.id}")
+    IO.puts("🔧 UPDATING EXISTING SECTION: #{section.id} - FIXED VERSION")
+
+    # Extract title and content properly
+    title = Map.get(form_data, "title", section.title)
+
+    # FIXED: Ensure title is never empty (database validation requirement)
+    final_title = if title == "" or is_nil(title) do
+      get_default_section_title(to_string(section.section_type))
+    else
+      title
+    end
+
+    # FIXED: Extract content by removing metadata fields
+    content = form_data
+      |> Map.drop(["section_type", "title", "visible", "action", "section_id"])
+      |> ensure_content_structure(to_string(section.section_type))
+      |> fix_nested_items_structure()
 
     section_attrs = %{
-      title: Map.get(form_data, "title", section.title),
-      content: extract_section_content(form_data),
+      title: final_title,
+      content: content,
       visible: Map.get(form_data, "visible", section.visible)
     }
 
     IO.puts("🔧 Update attributes: #{inspect(section_attrs)}")
 
-    case Portfolios.update_portfolio_section(section, section_attrs) do
+        case Portfolios.update_portfolio_section(section, section_attrs) do
       {:ok, updated_section} ->
-        IO.puts("🔧 Successfully updated section: #{updated_section.id}")
+        IO.puts("✅ Successfully updated section: #{updated_section.id}")
 
         # Update sections list
         updated_sections = Enum.map(socket.assigns.sections, fn s ->
@@ -517,7 +776,7 @@ end
         {:noreply, socket}
 
       {:error, changeset} ->
-        IO.puts("🔧 Failed to update section: #{inspect(changeset.errors)}")
+        IO.puts("❌ Failed to update section: #{inspect(changeset.errors)}")
 
         socket = socket
         |> put_flash(:error, "Failed to update section: #{format_changeset_errors(changeset)}")
@@ -526,6 +785,23 @@ end
     end
   end
 
+  @impl true
+  def handle_event("expand_category", %{"category" => category}, socket) do
+    expanded_categories = MapSet.put(socket.assigns.expanded_categories, category)
+    {:noreply, assign(socket, :expanded_categories, expanded_categories)}
+  end
+
+  @impl true
+  def handle_event("collapse_category", %{"category" => category}, socket) do
+    expanded_categories = MapSet.delete(socket.assigns.expanded_categories, category)
+    {:noreply, assign(socket, :expanded_categories, expanded_categories)}
+  end
+
+  # Also make sure you have the close dropdown handler:
+  @impl true
+  def handle_event("close_section_dropdown", _params, socket) do
+    {:noreply, assign(socket, :show_section_dropdown, false)}
+  end
 
   @impl true
   def handle_event("show_create_dropdown", _params, socket) do
@@ -1053,7 +1329,7 @@ defp update_section_with_validation(socket, params) do
   end
 end
 
-    defp update_section_with_enhanced_processing(socket, params) do
+  defp update_section_with_enhanced_processing(socket, params) do
     section_id = String.to_integer(params["section_id"])
     title = params["title"]
     visible = params["visible"] == "true"
@@ -1210,7 +1486,7 @@ end
     end
   end
 
-    defp process_string_value(value) when is_binary(value) do
+  defp process_string_value(value) when is_binary(value) do
     trimmed = String.trim(value)
     if trimmed == "", do: nil, else: trimmed
   end
@@ -1345,6 +1621,97 @@ end
   end
   defp process_select_value(_, _), do: nil
 
+  # RESUME IMPORT
+
+  defp process_resume_file_async(socket, file_path, filename) do
+    Task.start(fn ->
+      try do
+        # Update progress
+        send(self(), {:parsing_progress, :parsing, "Analyzing resume content...", 30})
+
+        # Simulate resume parsing (replace with actual parser)
+        :timer.sleep(1000)
+        send(self(), {:parsing_progress, :parsing, "Extracting sections...", 60})
+
+        # Parse the file (you'll need to implement this based on your ResumeParser)
+        parsed_data = parse_resume_file(file_path, filename)
+
+        send(self(), {:parsing_progress, :finalizing, "Finalizing...", 90})
+        :timer.sleep(500)
+
+        send(self(), {:parsing_complete, parsed_data})
+      rescue
+        error ->
+          send(self(), {:parsing_error, Exception.message(error)})
+      end
+    end)
+
+    {:noreply, socket}
+  end
+
+  defp parse_resume_file(file_path, filename) do
+    # This is a mock implementation - replace with your actual resume parser
+    %{
+      personal_info: %{
+        name: "John Doe",
+        email: "john@example.com",
+        phone: "+1 (555) 123-4567",
+        location: "San Francisco, CA"
+      },
+      experience: [
+        %{
+          title: "Software Engineer",
+          company: "Tech Corp",
+          start_date: "2022-01",
+          end_date: "Present",
+          description: "Developed web applications using modern technologies.",
+          is_current: true
+        }
+      ],
+      education: [
+        %{
+          degree: "Bachelor of Science in Computer Science",
+          institution: "University of Technology",
+          graduation_date: "2021-05",
+          gpa: "3.8"
+        }
+      ],
+      skills: [
+        %{skill_name: "JavaScript", proficiency: "Advanced", category: "Programming Languages"},
+        %{skill_name: "React", proficiency: "Advanced", category: "Frameworks"},
+        %{skill_name: "Node.js", proficiency: "Intermediate", category: "Backend"}
+      ]
+    }
+  end
+
+  defp import_resume_sections_to_portfolio(portfolio, parsed_data, selected_sections) do
+    try do
+      new_sections = Enum.map(selected_sections, fn section_type ->
+        create_section_from_resume_data(portfolio, section_type, parsed_data)
+      end)
+      |> Enum.reject(&is_nil/1)
+
+      {:ok, new_sections}
+    rescue
+      error -> {:error, Exception.message(error)}
+    end
+  end
+
+  defp create_section_from_resume_data(portfolio, section_type, parsed_data) do
+    case section_type do
+      "experience" ->
+        create_experience_section(portfolio, Map.get(parsed_data, :experience, []))
+      "education" ->
+        create_education_section(portfolio, Map.get(parsed_data, :education, []))
+      "skills" ->
+        create_skills_section(portfolio, Map.get(parsed_data, :skills, []))
+      "contact" ->
+        create_contact_section(portfolio, Map.get(parsed_data, :personal_info, %{}))
+      _ -> nil
+    end
+  end
+
+
   defp update_section_with_modal_fixed(socket, params) do
     section_id = String.to_integer(params["section_id"])
     title = params["title"]
@@ -1392,6 +1759,54 @@ end
     else
       IO.puts("❌ SECTION NOT FOUND: #{section_id}")
       {:noreply, put_flash(socket, :error, "Section not found")}
+    end
+  end
+
+  defp map_section_type_to_db(section_type) do
+    case section_type do
+      # Direct mappings
+      "hero" -> "hero"
+      "contact" -> "contact"
+      "intro" -> "intro"
+      "story" -> "story"
+      "about" -> "about"
+      "experience" -> "experience"
+      "education" -> "education"
+      "skills" -> "skills"
+      "projects" -> "projects"
+      "testimonials" -> "testimonials"
+      "services" -> "services"
+      "custom" -> "custom"
+      "certifications" -> "certifications"
+      "achievements" -> "achievements"
+      "gallery" -> "gallery"
+      "pricing" -> "pricing"
+      "timeline" -> "timeline"
+      "narrative" -> "narrative"
+      "journey" -> "journey"
+
+      # Mappings that need conversion
+      "writing" -> "published_articles"
+      "articles" -> "published_articles"
+      "blog_posts" -> "blog"
+      "blog" -> "blog"
+      "case_studies" -> "case_study"
+      "case_study" -> "case_study"
+      "media" -> "media_showcase"
+      "media_showcase" -> "media_showcase"
+      "video" -> "video_hero"
+      "video_hero" -> "video_hero"
+      "code" -> "code_showcase"
+      "code_showcase" -> "code_showcase"
+      "volunteer" -> "collaborations"
+      "collaborations" -> "collaborations"
+      "featured_project" -> "featured_project"
+      "testimonial" -> "testimonial"
+
+      # Fallback
+      unknown_type ->
+        IO.puts("⚠️ Unknown section type: #{unknown_type}, mapping to 'custom'")
+        "custom"
     end
   end
 
@@ -1703,23 +2118,20 @@ end
   end
 
   defp update_section_in_list(sections, updated_section) do
-  Enum.map(sections, fn section ->
-    if section.id == updated_section.id do
-      updated_section
-    else
-      section
-    end
-  end)
-end
-
-  defp extract_changeset_errors(changeset_errors) do
-    changeset_errors
-    |> Enum.map(fn {field, {message, _details}} ->
-      field_name = field |> to_string() |> String.replace("_", " ") |> String.capitalize()
-      "#{field_name} #{message}"
+    Enum.map(sections, fn section ->
+      if section.id == updated_section.id do
+        updated_section
+      else
+        section
+      end
     end)
   end
-  defp extract_changeset_errors(_), do: ["Unknown error"]
+
+  defp extract_changeset_errors(changeset) do
+    Enum.map(changeset.errors, fn {field, {message, _}} ->
+      "#{field} #{message}"
+    end)
+  end
 
 
   @impl true
@@ -2192,38 +2604,85 @@ end
 
   @impl true
   def handle_event("show_import_resume", _params, socket) do
-    {:noreply, assign(socket, :show_import_resume_modal, true)}
+    {:noreply, assign(socket, :show_resume_import_modal, true)}
   end
 
   @impl true
   def handle_event("close_import_resume_modal", _params, socket) do
-    {:noreply, assign(socket, :show_import_resume_modal, false)}
+    {:noreply, assign(socket, :show_resume_import_modal, false)}
   end
 
   @impl true
-  def handle_event("import_resume_data", params, socket) do
-    IO.puts("📄 IMPORTING RESUME DATA: #{inspect(params)}")
+  def handle_event("validate_resume", _params, socket) do
+    {:noreply, socket}
+  end
 
-    case process_resume_import(params, socket) do
-      {:ok, new_sections} ->
-        updated_sections = socket.assigns.sections ++ new_sections
+  @impl true
+  def handle_event("upload_resume", _params, socket) do
+    socket = assign(socket,
+      processing: true,
+      processing_stage: :uploading,
+      processing_message: "Uploading your resume...",
+      parsing_progress: 10,
+      error_message: nil
+    )
 
-        # Broadcast the update
-        broadcast_portfolio_update(
-          socket.assigns.portfolio.id,
-          updated_sections,
-          socket.assigns.customization
-        )
+    case uploaded_entries(socket, :resume) do
+      {[entry], _} ->
+        # Process the resume file
+        consume_uploaded_entry(socket, entry, fn %{path: path} ->
+          process_resume_file_async(socket, path, entry.client_name)
+        end)
 
-        {:noreply, socket
-        |> assign(:sections, updated_sections)
-        |> assign(:show_import_resume_modal, false)
-        |> put_flash(:info, "Resume imported successfully! Added #{length(new_sections)} sections.")}
-
-      {:error, reason} ->
-        {:noreply, socket
-        |> put_flash(:error, "Failed to import resume: #{reason}")}
+      _ ->
+        {:noreply,
+        socket
+        |> assign(:processing, false)
+        |> assign(:error_message, "Please upload a resume file.")
+        |> put_flash(:error, "Please upload a resume file.")}
     end
+  end
+
+  @impl true
+  def handle_event("cancel_upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :resume, ref)}
+  end
+
+  @impl true
+  def handle_event("import_selected_sections", %{"sections" => selected_sections}, socket) do
+    if socket.assigns.parsed_data do
+      socket = assign(socket,
+        processing: true,
+        processing_stage: :importing,
+        processing_message: "Creating portfolio sections..."
+      )
+
+      # Import sections in background
+      Task.start(fn ->
+        result = import_resume_sections_to_portfolio(
+          socket.assigns.portfolio,
+          socket.assigns.parsed_data,
+          selected_sections
+        )
+        send(self(), {:resume_import_complete, result})
+      end)
+
+      {:noreply, socket}
+    else
+      {:noreply, put_flash(socket, :error, "No resume data available to import.")}
+    end
+  end
+
+  @impl true
+  def handle_event("retry_processing", _params, socket) do
+    socket = assign(socket,
+      processing: false,
+      processing_stage: :idle,
+      parsed_data: nil,
+      error_message: nil,
+      parsing_progress: 0
+    )
+    {:noreply, socket}
   end
 
   # Process resume import data
@@ -3157,41 +3616,182 @@ defp render_sections_tab(assigns) do
   """
 end
 
-  defp render_resume_import_modal(assigns) do
-    ~H"""
-    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-        <!-- Modal Header -->
-        <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-blue-50">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="text-xl font-bold text-gray-900">Import from Resume</h3>
-              <p class="text-gray-600 mt-1">Upload your resume to automatically create portfolio sections</p>
+defp render_resume_import_modal(assigns) do
+  ~H"""
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+       phx-window-keydown="close_import_resume_modal"
+       phx-key="Escape">
+    <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden"
+         phx-click={JS.exec("event.stopPropagation()")}>
+
+      <!-- Modal Header -->
+      <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-blue-50">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-xl font-bold text-gray-900">Import from Resume</h3>
+            <p class="text-gray-600 mt-1">Upload your resume to automatically create portfolio sections</p>
+          </div>
+          <button
+            phx-click="close_import_resume_modal"
+            class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-white hover:shadow-sm transition-all">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Content -->
+      <div class="p-6 max-h-[75vh] overflow-y-auto">
+        <%= render_resume_import_content(assigns) %>
+      </div>
+    </div>
+  </div>
+  """
+end
+
+defp render_resume_import_content(assigns) do
+  ~H"""
+  <div class="space-y-6">
+    <!-- Upload Section -->
+    <div class="bg-gray-50 rounded-lg p-6">
+      <h4 class="text-lg font-semibold text-gray-900 mb-3">Step 1: Upload Your Resume</h4>
+      <form phx-submit="upload_resume" phx-change="validate_resume" class="space-y-4">
+
+        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
+          <.live_file_input upload={@uploads.resume} class="hidden" id="resume-upload" />
+
+          <label for="resume-upload" class="cursor-pointer">
+            <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+            <p class="text-lg font-medium text-gray-700 mb-2">Drop your resume here or click to upload</p>
+            <p class="text-sm text-gray-500">
+              Supports: PDF, DOC, DOCX, TXT, RTF (Max 10MB)
+            </p>
+          </label>
+        </div>
+
+        <!-- Show uploaded files -->
+        <%= for entry <- @uploads.resume.entries do %>
+          <div class="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div class="flex items-center">
+              <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <span class="text-sm font-medium text-blue-900"><%= entry.client_name %></span>
             </div>
-            <button
-              phx-click="close_import_resume"
-              class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-white hover:shadow-sm transition-all">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button type="button" phx-click="cancel_upload" phx-value-ref={entry.ref} class="text-red-600 hover:text-red-700">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
           </div>
-        </div>
 
-        <!-- Modal Content -->
-        <div class="p-6">
-          <!-- Resume Parser Component -->
-          <.live_component
-            module={FrestylWeb.PortfolioLive.ResumeParser}
-            id="resume-import"
-            portfolio={@portfolio}
-            current_user={@current_user}
-            target={@myself} />
+          <!-- Progress bar -->
+          <div class="w-full bg-gray-200 rounded-full h-2">
+            <div class="bg-blue-600 h-2 rounded-full transition-all" style={"width: #{entry.progress}%"}></div>
+          </div>
+        <% end %>
+
+        <!-- Upload errors -->
+        <%= for err <- upload_errors(@uploads.resume) do %>
+          <div class="text-red-600 text-sm">
+            <%= error_to_string(err) %>
+          </div>
+        <% end %>
+
+        <!-- Process button -->
+        <%= if length(@uploads.resume.entries) > 0 do %>
+          <button type="submit"
+                  disabled={!Enum.empty?(upload_errors(@uploads.resume)) || Map.get(assigns, :processing, false)}
+                  class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+            <%= if Map.get(assigns, :processing, false), do: "Processing...", else: "Process Resume" %>
+          </button>
+        <% end %>
+      </form>
+    </div>
+
+    <!-- Processing Status -->
+    <%= if Map.get(assigns, :processing, false) do %>
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
+        <div class="flex items-center">
+          <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <div>
+            <p class="text-blue-900 font-medium"><%= Map.get(assigns, :processing_message, "") %></p>
+            <div class="w-64 bg-blue-200 rounded-full h-2 mt-2">
+              <div class="bg-blue-600 h-2 rounded-full transition-all" style={"width: #{Map.get(assigns, :parsing_progress, 0)}%"}></div>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-    """
-  end
+    <% end %>
+
+    <!-- Results Section -->
+    <%= if Map.get(assigns, :parsed_data) do %>
+      <div class="bg-green-50 border border-green-200 rounded-lg p-6">
+        <h4 class="text-lg font-semibold text-green-900 mb-3">Step 2: Select Sections to Import</h4>
+
+        <form phx-submit="import_selected_sections">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <%= for {section_type, data} <- get_importable_sections(Map.get(assigns, :parsed_data)) do %>
+              <% item_count = get_section_item_count(data) %>
+              <%= if item_count > 0 do %>
+                <label class="flex items-center p-4 bg-white border border-green-200 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <input type="checkbox"
+                         name="sections[]"
+                         value={section_type}
+                         checked={Map.get(Map.get(assigns, :sections_to_import, %{}), section_type, true)}
+                         class="mr-3 h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500" />
+                  <div class="flex-1">
+                    <div class="font-medium text-gray-900"><%= humanize_section_name(section_type) %></div>
+                    <div class="text-sm text-gray-600"><%= item_count %> items found</div>
+                  </div>
+                </label>
+              <% end %>
+            <% end %>
+          </div>
+
+          <div class="flex justify-end space-x-3">
+            <button type="button"
+                    phx-click="close_import_resume_modal"
+                    class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+              Cancel
+            </button>
+            <button type="submit"
+                    class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+              Import Selected Sections
+            </button>
+          </div>
+        </form>
+      </div>
+    <% end %>
+
+    <!-- Error State -->
+    <%= if Map.get(assigns, :error_message) do %>
+      <div class="bg-red-50 border border-red-200 rounded-lg p-6">
+        <div class="flex items-center">
+          <svg class="w-5 h-5 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <div>
+            <h4 class="text-red-900 font-medium">Processing Error</h4>
+            <p class="text-red-700 text-sm mt-1"><%= Map.get(assigns, :error_message) %></p>
+          </div>
+        </div>
+        <button type="button"
+                phx-click="retry_processing"
+                class="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+          Try Again
+        </button>
+      </div>
+    <% end %>
+  </div>
+  """
+end
 
   defp render_design_tab(assigns) do
     ~H"""
@@ -3685,254 +4285,846 @@ end
   end
   defp format_date(_), do: "Recently"
 
-  # Section Creation Dropdown
+  # ============================================================================
+  # SECTION CREATION WITH MAPPING
+  # ============================================================================
+
+  defp create_new_section_with_mapping(form_data, socket) do
+    IO.puts("🔧 CREATING NEW SECTION WITH MAPPING")
+    IO.puts("🔧 Form data: #{inspect(form_data, pretty: true)}")
+
+    # Extract and map section type
+    section_type_raw = Map.get(form_data, "section_type")
+    section_type_mapped = map_section_type_to_db(section_type_raw)
+
+    IO.puts("🔧 Section type: #{section_type_raw} -> #{section_type_mapped}")
+
+    if is_nil(section_type_mapped) do
+      IO.puts("❌ CRITICAL ERROR: section_type mapping failed")
+
+      {:noreply, socket
+        |> put_flash(:error, "Invalid section type. Please try again.")
+      }
+    else
+      # Extract title with fallback
+      title = case Map.get(form_data, "title", "") do
+        "" -> get_default_section_title(section_type_raw)
+        title when is_binary(title) -> String.trim(title)
+        _ -> get_default_section_title(section_type_raw)
+      end
+
+      # Extract and structure content properly
+      content = extract_and_structure_content(form_data, section_type_raw)
+
+      section_attrs = %{
+        portfolio_id: socket.assigns.portfolio.id,
+        section_type: String.to_atom(section_type_mapped),
+        title: title,
+        content: content,
+        visible: Map.get(form_data, "visible", true),
+        position: get_next_section_position(socket.assigns.sections)
+      }
+
+      IO.puts("🔧 Final section attributes: #{inspect(section_attrs, pretty: true)}")
+
+      case Portfolios.create_section(section_attrs) do
+        {:ok, new_section} ->
+          IO.puts("✅ Successfully created section: #{new_section.id}")
+
+          updated_sections = socket.assigns.sections ++ [new_section]
+
+          # Update hero section if this is a hero section
+          hero_section = if section_type_mapped in ["hero", "video_hero"] do
+            new_section
+          else
+            socket.assigns.hero_section
+          end
+
+          # Broadcast update to preview
+          broadcast_portfolio_update(socket.assigns.portfolio.id, :section_created, new_section)
+
+          socket = socket
+          |> assign(:sections, updated_sections)
+          |> assign(:hero_section, hero_section)
+          |> assign(:show_section_modal, false)
+          |> assign(:current_section_type, nil)
+          |> assign(:editing_section, nil)
+          |> put_flash(:info, "#{title} created successfully!")
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          IO.puts("❌ SECTION CREATION FAILED: #{inspect(changeset.errors)}")
+          error_messages = extract_changeset_errors(changeset)
+          error_message = Enum.join(error_messages, ", ")
+
+          {:noreply, socket
+            |> put_flash(:error, "Failed to create section: #{error_message}")
+            |> assign(:section_changeset_errors, changeset.errors)}
+      end
+    end
+  end
+
+  # ============================================================================
+  # SECTION UPDATE WITH MAPPING
+  # ============================================================================
+
+  defp update_existing_section_with_mapping(section, form_data, socket) do
+    IO.puts("🔧 UPDATING EXISTING SECTION WITH MAPPING: #{section.id}")
+    IO.puts("🔧 Form data: #{inspect(form_data, pretty: true)}")
+    IO.puts("🔧 Original section: #{inspect(section, pretty: true)}")
+
+    # Extract title with fallback to current section title
+    title = case Map.get(form_data, "title", "") do
+      "" -> section.title || get_default_section_title(to_string(section.section_type))
+      title when is_binary(title) -> String.trim(title)
+      _ -> section.title
+    end
+
+    # Extract and structure content properly
+    content = extract_and_structure_content(form_data, to_string(section.section_type))
+
+    # Merge with existing content to preserve any fields not in the form
+    merged_content = case section.content do
+      existing_content when is_map(existing_content) ->
+        Map.merge(existing_content, content)
+      _ ->
+        content
+    end
+
+    section_attrs = %{
+      title: title,
+      content: merged_content,
+      visible: Map.get(form_data, "visible", section.visible)
+    }
+
+    IO.puts("🔧 Update attributes: #{inspect(section_attrs, pretty: true)}")
+
+    case Portfolios.update_portfolio_section(section, section_attrs) do
+      {:ok, updated_section} ->
+        IO.puts("✅ Successfully updated section: #{updated_section.id}")
+
+        # Update sections list
+        updated_sections = Enum.map(socket.assigns.sections, fn s ->
+          if s.id == updated_section.id, do: updated_section, else: s
+        end)
+
+        # Update hero section if this is a hero section
+        hero_section = if to_string(updated_section.section_type) in ["hero", "video_hero"] do
+          updated_section
+        else
+          socket.assigns.hero_section
+        end
+
+        # Broadcast update to preview
+        broadcast_portfolio_update(socket.assigns.portfolio.id, :section_updated, updated_section)
+
+        socket = socket
+        |> assign(:sections, updated_sections)
+        |> assign(:hero_section, hero_section)
+        |> assign(:show_section_modal, false)
+        |> assign(:editing_section, nil)
+        |> assign(:current_section_type, nil)
+        |> put_flash(:info, "#{title} updated successfully!")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        IO.puts("❌ Failed to update section: #{inspect(changeset.errors)}")
+
+        error_messages = extract_changeset_errors(changeset)
+        error_message = Enum.join(error_messages, ", ")
+
+        socket = socket
+        |> put_flash(:error, "Failed to update section: #{error_message}")
+
+        {:noreply, socket}
+    end
+  end
+
+  # ============================================================================
+  # CONTENT EXTRACTION & STRUCTURING
+  # ============================================================================
+
+  defp extract_and_structure_content(form_data, section_type) do
+    IO.puts("🔧 EXTRACTING CONTENT FOR: #{section_type}")
+
+    # Remove metadata fields that shouldn't be in content
+    content_data = form_data
+    |> Map.drop(["section_type", "title", "visible", "action", "section_id"])
+
+    # Structure content based on section type
+    structured_content = case section_type do
+      "hero" ->
+        structure_hero_content(content_data)
+      "video_hero" ->
+        structure_video_hero_content(content_data)
+      "contact" ->
+        structure_contact_content(content_data)
+      "intro" ->
+        structure_intro_content(content_data)
+      "story" ->
+        structure_story_content(content_data)
+      "about" ->
+        structure_about_content(content_data)
+      section_type when section_type in ["experience", "education", "skills", "projects", "testimonials", "certifications", "services", "published_articles", "collaborations", "achievements"] ->
+        structure_items_content(content_data, section_type)
+      "media_showcase" ->
+        structure_media_showcase_content(content_data)
+      "gallery" ->
+        structure_gallery_content(content_data)
+      "pricing" ->
+        structure_pricing_content(content_data)
+      "blog" ->
+        structure_blog_content(content_data)
+      "timeline" ->
+        structure_timeline_content(content_data)
+      "custom" ->
+        structure_custom_content(content_data)
+      _ ->
+        # Generic content structure
+        structure_generic_content(content_data)
+    end
+
+    IO.puts("🔧 Structured content: #{inspect(structured_content, pretty: true)}")
+    structured_content
+  end
+
+  # ============================================================================
+  # SECTION-SPECIFIC CONTENT STRUCTURING
+  # ============================================================================
+
+  defp structure_hero_content(content_data) do
+    %{
+      "headline" => Map.get(content_data, "headline", ""),
+      "tagline" => Map.get(content_data, "tagline", ""),
+      "description" => Map.get(content_data, "description", ""),
+      "cta_text" => Map.get(content_data, "cta_text", ""),
+      "cta_link" => Map.get(content_data, "cta_link", ""),
+      "social_links" => Map.get(content_data, "social_links", %{}),
+      "contact_info" => Map.get(content_data, "contact_info", %{}),
+      "background_image" => Map.get(content_data, "background_image", ""),
+      "text_alignment" => Map.get(content_data, "text_alignment", "center"),
+      "overlay_opacity" => Map.get(content_data, "overlay_opacity", "50")
+    }
+  end
+
+  defp structure_video_hero_content(content_data) do
+    %{
+      "headline" => Map.get(content_data, "headline", ""),
+      "subtitle" => Map.get(content_data, "subtitle", ""),
+      "video_url" => Map.get(content_data, "video_url", ""),
+      "video_type" => Map.get(content_data, "video_type", "upload"),
+      "poster_image" => Map.get(content_data, "poster_image", ""),
+      "autoplay" => Map.get(content_data, "autoplay", false),
+      "show_controls" => Map.get(content_data, "show_controls", true),
+      "overlay_text" => Map.get(content_data, "overlay_text", true),
+      "video_settings" => Map.get(content_data, "video_settings", %{
+        "muted" => true,
+        "loop" => false,
+        "playsinline" => true
+      })
+    }
+  end
+
+  defp structure_contact_content(content_data) do
+    %{
+      "email" => Map.get(content_data, "email", ""),
+      "phone" => Map.get(content_data, "phone", ""),
+      "location" => Map.get(content_data, "location", ""),
+      "website" => Map.get(content_data, "website", ""),
+      "availability" => Map.get(content_data, "availability", ""),
+      "timezone" => Map.get(content_data, "timezone", ""),
+      "preferred_contact" => Map.get(content_data, "preferred_contact", "Email"),
+      "social_links" => Map.get(content_data, "social_links", %{}),
+      "contact_info" => Map.get(content_data, "contact_info", %{}),
+      "show_map" => Map.get(content_data, "show_map", false),
+      "contact_form_endpoint" => Map.get(content_data, "contact_form_endpoint", ""),
+      "auto_response" => Map.get(content_data, "auto_response", "")
+    }
+  end
+
+  defp structure_intro_content(content_data) do
+    %{
+      "story" => Map.get(content_data, "story", ""),
+      "highlights" => normalize_array_field(Map.get(content_data, "highlights", [])),
+      "personality_traits" => normalize_array_field(Map.get(content_data, "personality_traits", [])),
+      "fun_facts" => normalize_array_field(Map.get(content_data, "fun_facts", []))
+    }
+  end
+
+  defp structure_story_content(content_data) do
+    %{
+      "story" => Map.get(content_data, "story", ""),
+      "key_moments" => normalize_array_field(Map.get(content_data, "key_moments", [])),
+      "lessons_learned" => normalize_array_field(Map.get(content_data, "lessons_learned", [])),
+      "personal_values" => normalize_array_field(Map.get(content_data, "personal_values", []))
+    }
+  end
+
+  defp structure_about_content(content_data) do
+    %{
+      "summary" => Map.get(content_data, "summary", ""),
+      "background" => Map.get(content_data, "background", ""),
+      "interests" => normalize_array_field(Map.get(content_data, "interests", [])),
+      "specialties" => normalize_array_field(Map.get(content_data, "specialties", [])),
+      "philosophy" => Map.get(content_data, "philosophy", "")
+    }
+  end
+
+  defp structure_items_content(content_data, section_type) do
+    items = Map.get(content_data, "items", [])
+
+    # Normalize items to ensure visibility field
+    normalized_items = Enum.map(items, fn item ->
+      case item do
+        item when is_map(item) ->
+          Map.put_new(item, "visible", true)
+        _ ->
+          %{"visible" => true}
+      end
+    end)
+
+    base_content = %{
+      "items" => normalized_items,
+      "display_style" => get_default_display_style(section_type),
+      "show_details" => true
+    }
+
+    # Add section-specific fields
+    case section_type do
+      "services" ->
+        Map.merge(base_content, %{
+          "show_pricing" => Map.get(content_data, "show_pricing", true),
+          "currency" => Map.get(content_data, "currency", "USD"),
+          "enable_booking" => Map.get(content_data, "enable_booking", false)
+        })
+      "published_articles" ->
+        Map.merge(base_content, %{
+          "show_metrics" => Map.get(content_data, "show_metrics", true),
+          "max_articles" => Map.get(content_data, "max_articles", 12),
+          "sort_by" => Map.get(content_data, "sort_by", "published_date")
+        })
+      _ ->
+        base_content
+    end
+  end
+
+  defp structure_media_showcase_content(content_data) do
+    %{
+      "items" => Map.get(content_data, "items", []),
+      "display_style" => Map.get(content_data, "display_style", "grid"),
+      "media_types" => ["image", "video", "audio", "document", "code"],
+      "show_captions" => Map.get(content_data, "show_captions", true),
+      "enable_download" => Map.get(content_data, "enable_download", false),
+      "lazy_loading" => Map.get(content_data, "lazy_loading", true)
+    }
+  end
+
+  defp structure_gallery_content(content_data) do
+    %{
+      "items" => Map.get(content_data, "items", []),
+      "display_style" => Map.get(content_data, "display_style", "grid"),
+      "show_captions" => Map.get(content_data, "show_captions", true),
+      "enable_download" => Map.get(content_data, "enable_download", false),
+      "items_per_page" => Map.get(content_data, "items_per_page", 12),
+      "thumbnail_size" => Map.get(content_data, "thumbnail_size", "medium"),
+      "transition_effect" => Map.get(content_data, "transition_effect", "fade")
+    }
+  end
+
+  defp structure_pricing_content(content_data) do
+    %{
+      "items" => Map.get(content_data, "items", []),
+      "currency" => Map.get(content_data, "currency", "USD"),
+      "billing_model" => Map.get(content_data, "billing_model", "one_time"),
+      "description" => Map.get(content_data, "description", ""),
+      "payment_methods" => normalize_array_field(Map.get(content_data, "payment_methods", [])),
+      "terms" => Map.get(content_data, "terms", "")
+    }
+  end
+
+  defp structure_blog_content(content_data) do
+    %{
+      "blog_url" => Map.get(content_data, "blog_url", ""),
+      "auto_sync" => Map.get(content_data, "auto_sync", false),
+      "description" => Map.get(content_data, "description", ""),
+      "featured_tags" => normalize_array_field(Map.get(content_data, "featured_tags", [])),
+      "max_posts" => Map.get(content_data, "max_posts", 6)
+    }
+  end
+
+  defp structure_timeline_content(content_data) do
+    %{
+      "items" => Map.get(content_data, "items", []),
+      "timeline_type" => Map.get(content_data, "timeline_type", "chronological"),
+      "description" => Map.get(content_data, "description", ""),
+      "show_dates" => Map.get(content_data, "show_dates", true),
+      "compact_view" => Map.get(content_data, "compact_view", false)
+    }
+  end
+
+  defp structure_custom_content(content_data) do
+    %{
+      "section_title" => Map.get(content_data, "section_title", ""),
+      "items" => Map.get(content_data, "items", []),
+      "custom_fields" => Map.drop(content_data, ["section_title", "items"])
+    }
+  end
+
+  defp structure_generic_content(content_data) do
+    # For any section type not specifically handled
+    content_data
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS
+  # ============================================================================
+
+  defp normalize_array_field(value) do
+    case value do
+      list when is_list(list) -> list
+      string when is_binary(string) ->
+        string |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+      _ -> []
+    end
+  end
+
+  defp get_default_display_style(section_type) do
+    case section_type do
+      "skills" -> "categorized"
+      "projects" -> "grid"
+      "testimonials" -> "cards"
+      "services" -> "cards"
+      "published_articles" -> "list"
+      _ -> "list"
+    end
+  end
+
+  # Comprehensive section type mapping
+  defp map_section_type_to_db(section_type) do
+    case section_type do
+      # Direct mappings (EnhancedSectionSystem -> Database)
+      "hero" -> "hero"
+      "contact" -> "contact"
+      "intro" -> "intro"
+      "experience" -> "experience"
+      "education" -> "education"
+      "skills" -> "skills"
+      "projects" -> "projects"
+      "certifications" -> "certifications"
+      "testimonials" -> "testimonials"
+      "services" -> "services"
+      "custom" -> "custom"
+      "about" -> "about"
+      "story" -> "story"
+      "timeline" -> "timeline"
+      "narrative" -> "narrative"
+      "journey" -> "journey"
+      "pricing" -> "pricing"
+      "gallery" -> "gallery"
+      "blog" -> "blog"
+
+      # Mappings that need conversion
+      "writing" -> "published_articles"
+      "articles" -> "published_articles"
+      "published_articles" -> "published_articles"
+      "blog_posts" -> "blog"
+      "case_studies" -> "case_study"
+      "case_study" -> "case_study"
+      "media" -> "media_showcase"
+      "media_showcase" -> "media_showcase"
+      "video" -> "video_hero"
+      "video_hero" -> "video_hero"
+      "about_me" -> "about"
+      "my_story" -> "story"
+      "resume" -> "timeline"
+      "achievements" -> "achievements"
+      "volunteer" -> "collaborations"
+      "collaborations" -> "collaborations"
+      "featured_project" -> "featured_project"
+      "code_showcase" -> "code_showcase"
+      "testimonial" -> "testimonial"
+
+      # Fallback for unknown types
+      unknown_type ->
+        IO.puts("⚠️ Unknown section type: #{unknown_type}, mapping to 'custom'")
+        "custom"
+    end
+  end
+
+  defp get_default_section_title(section_type) do
+    case section_type do
+      "hero" -> "Welcome"
+      "video_hero" -> "Video Introduction"
+      "contact" -> "Contact Information"
+      "intro" -> "About Me"
+      "story" -> "My Story"
+      "about" -> "About"
+      "experience" -> "Work Experience"
+      "education" -> "Education"
+      "skills" -> "Skills & Expertise"
+      "projects" -> "Projects"
+      "featured_project" -> "Featured Project"
+      "case_study" -> "Case Study"
+      "achievements" -> "Achievements & Awards"
+      "testimonials" -> "Testimonials"
+      "testimonial" -> "Testimonial"
+      "certifications" -> "Certifications"
+      "services" -> "Services"
+      "published_articles" -> "Published Articles"
+      "writing" -> "Writing"
+      "blog" -> "Blog"
+      "collaborations" -> "Collaborations"
+      "media_showcase" -> "Media Portfolio"
+      "code_showcase" -> "Code Portfolio"
+      "gallery" -> "Gallery"
+      "timeline" -> "Timeline"
+      "narrative" -> "My Narrative"
+      "journey" -> "My Journey"
+      "pricing" -> "Pricing"
+      "custom" -> "Custom Section"
+      _ -> String.capitalize(to_string(section_type))
+    end
+  end
+
+  defp get_next_section_position(sections) do
+    case Enum.max_by(sections, &(&1.position), fn -> %{position: 0} end) do
+      %{position: max_pos} -> max_pos + 1
+      _ -> 1
+    end
+  end
+
+  defp extract_changeset_errors(changeset) do
+    Enum.map(changeset.errors, fn {field, {message, _}} ->
+      "#{field} #{message}"
+    end)
+  end
+
+    # Section Creation Dropdown
   defp render_section_creation_dropdown(assigns) do
-    # Get organized categories in priority order
-    organized_categories = get_organized_section_categories()
-    assigns = Map.put(assigns, :organized_categories, organized_categories)
+    # Organized sections by category with priority ordering
+    available_sections = [
+      # Essential Sections (most commonly needed)
+      %{type: "hero", name: "Hero Section", icon: "🏠", category: "Essential"},
+      %{type: "contact", name: "Contact", icon: "📞", category: "Essential"},
+      %{type: "intro", name: "About Me", icon: "👋", category: "Essential"},
+
+      # Professional Experience
+      %{type: "experience", name: "Experience", icon: "💼", category: "Professional"},
+      %{type: "education", name: "Education", icon: "🎓", category: "Professional"},
+      %{type: "skills", name: "Skills", icon: "🛠️", category: "Professional"},
+      %{type: "certifications", name: "Certifications", icon: "🏆", category: "Professional"},
+
+      # Portfolio & Projects
+      %{type: "projects", name: "Projects", icon: "🚀", category: "Portfolio"},
+      %{type: "featured_project", name: "Featured Project", icon: "⭐", category: "Portfolio"},
+      %{type: "case_study", name: "Case Study", icon: "📊", category: "Portfolio"},
+      %{type: "code_showcase", name: "Code Showcase", icon: "💻", category: "Portfolio"},
+      %{type: "gallery", name: "Gallery", icon: "🖼️", category: "Portfolio"},
+      %{type: "media_showcase", name: "Media", icon: "🎬", category: "Portfolio"},
+
+      # Content & Writing
+      %{type: "published_articles", name: "Articles", icon: "✍️", category: "Content"},
+      %{type: "blog", name: "Blog", icon: "📝", category: "Content"},
+      %{type: "testimonials", name: "Testimonials", icon: "💬", category: "Content"},
+
+      # Business & Services
+      %{type: "services", name: "Services", icon: "🔧", category: "Business"},
+      %{type: "pricing", name: "Pricing", icon: "💰", category: "Business"},
+
+      # Personal & Story
+      %{type: "about", name: "About (Detailed)", icon: "👤", category: "Personal"},
+      %{type: "timeline", name: "Timeline", icon: "📅", category: "Personal"},
+      %{type: "story", name: "My Story", icon: "📖", category: "Personal"},
+      %{type: "achievements", name: "Achievements", icon: "🏆", category: "Personal"},
+      %{type: "collaborations", name: "Collaborations", icon: "🤝", category: "Personal"},
+
+      # Advanced
+      %{type: "custom", name: "Custom Section", icon: "⚙️", category: "Advanced"}
+    ]
+
+    # Group by category and define limits for initial display
+    grouped_sections = Enum.group_by(available_sections, & &1.category)
+
+    # Define category display rules (how many to show initially vs "View All")
+    categories = [
+      %{key: "Essential", name: "Essential", limit: 3, accent: "bg-blue-500"},
+      %{key: "Professional", name: "Professional", limit: 4, accent: "bg-emerald-500"},
+      %{key: "Portfolio", name: "Portfolio", limit: 4, accent: "bg-purple-500"},
+      %{key: "Content", name: "Content", limit: 3, accent: "bg-orange-500"},
+      %{key: "Business", name: "Business", limit: 2, accent: "bg-amber-500"},
+      %{key: "Personal", name: "Personal", limit: 3, accent: "bg-indigo-500"},
+      %{key: "Advanced", name: "Advanced", limit: 1, accent: "bg-slate-500"}
+    ]
+
+    # Get expanded categories from assigns (default to empty set)
+    expanded_categories = Map.get(assigns, :expanded_categories, MapSet.new())
+      # Make sure expanded_categories is available in assigns
+    #assigns = assign_new(assigns, :expanded_categories, fn -> MapSet.new() end)
+    assigns = assign(assigns,
+      grouped_sections: grouped_sections,
+      categories: categories,
+      expanded_categories: expanded_categories
+    )
 
     ~H"""
-    <div class="fixed inset-0 bg-black bg-opacity-25 flex items-start justify-center pt-20 z-50"
-        phx-click="close_create_dropdown">
-      <div class="bg-white rounded-xl shadow-2xl max-w-5xl w-full mx-4 max-h-[85vh] overflow-hidden"
-          phx-click-away="close_create_dropdown">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 lg:hidden"
+        phx-click="close_section_dropdown"
+        phx-window-keydown="close_section_dropdown"
+        phx-key="Escape">
+    </div>
 
-        <!-- Enhanced Header -->
-        <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
+    <!-- Modern dropdown -->
+    <div class="fixed bottom-0 left-0 right-0 bg-white inset-0 shadow-2xl z-50 max-h-[75vh] overflow-hidden lg:absolute lg:top-full lg:left-0 lg:bottom-auto lg:right-auto lg:w-[90vw] lg:max-w-5xl lg:mt-1 lg:rounded-2xl lg:border lg:border-gray-200/50 lg:shadow-xl"
+        phx-window-keydown="close_section_dropdown"
+        phx-key="Escape"
+        phx-click={JS.exec("event.stopPropagation()")}>
+
+      <!-- Clean header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white lg:rounded-t-2xl bg-gradient-to-r from-pink-50 to-purple-50">
+        <div>
+          <h4 class="text-xl font-semibold text-gray-900">Add Section</h4>
+          <p class="text-sm text-gray-600 mt-0.5">Choose a section type for your portfolio</p>
+        </div>
+        <button
+          phx-click="close_section_dropdown"
+          class="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Categories with horizontal scroll -->
+      <div class="overflow-y-auto bg-gray-50/50" style="max-height: calc(75vh - 88px);">
+        <%= for category <- @categories do %>
+          <% sections = Map.get(@grouped_sections, category.key, []) %>
+          <%= if length(sections) > 0 do %>
+            <% is_expanded = MapSet.member?(@expanded_categories, category.key) %>
+            <% sections_to_show = if is_expanded, do: sections, else: Enum.take(sections, category.limit) %>
+            <% has_more = length(sections) > category.limit %>
+
+            <div class="py-6 px-6 bg-white border-b border-gray-100 last:border-b-0">
+              <!-- Clean category header -->
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center">
+                  <div class={"w-1 h-6 #{category.accent} rounded-full mr-4"}></div>
+                  <h5 class="text-base font-semibold text-gray-900">
+                    <%= category.name %>
+                  </h5>
+                  <span class="ml-3 px-2 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-full">
+                    <%= length(sections) %>
+                  </span>
+                </div>
+
+                <%= if has_more do %>
+                  <button
+                    phx-click={if is_expanded, do: "collapse_category", else: "expand_category"}
+                    phx-value-category={category.key}
+                    class="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors">
+                    <%= if is_expanded, do: "Show Less", else: "View All" %>
+                  </button>
+                <% end %>
+              </div>
+
+              <!-- Clean horizontal scrolling sections -->
+              <div class={"flex gap-4 overflow-x-auto pb-2 scrollbar-none #{if is_expanded, do: "flex-wrap", else: ""}"}>
+                <%= for section <- sections_to_show do %>
+                  <div class="flex-shrink-0">
+                    <button
+                      phx-click="create_section"
+                      phx-value-section_type={section.type}
+                      class="group w-36 p-4 text-center rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-100/50 transition-all duration-200 bg-white hover:bg-blue-50/50">
+
+                      <div class="text-2xl mb-3 group-hover:scale-110 transition-transform duration-200">
+                        <%= section.icon %>
+                      </div>
+
+                      <div class="text-sm font-medium text-gray-900 group-hover:text-blue-700 transition-colors leading-snug">
+                        <%= section.name %>
+                      </div>
+
+                      <!-- Subtle capability indicators -->
+                      <div class="mt-3 flex justify-center gap-1.5">
+                        <%= if supports_multiple_items?(section.type) do %>
+                          <div class="w-1.5 h-1.5 bg-blue-400 rounded-full opacity-60" title="Multiple items"></div>
+                        <% end %>
+                        <%= if supports_media?(section.type) do %>
+                          <div class="w-1.5 h-1.5 bg-orange-400 rounded-full opacity-60" title="Media support"></div>
+                        <% end %>
+                        <%= if is_essential_section?(section.type) do %>
+                          <div class="w-1.5 h-1.5 bg-emerald-400 rounded-full opacity-60" title="Recommended"></div>
+                        <% end %>
+                      </div>
+                    </button>
+                  </div>
+                <% end %>
+
+                <!-- Show more indicator if there are hidden items and not expanded -->
+                <%= if has_more and not is_expanded do %>
+                  <div class="flex-shrink-0 flex items-center">
+                    <button
+                      phx-click="expand_category"
+                      phx-value-category={category.key}
+                      class="w-36 h-full p-4 text-center rounded-xl border border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50/30 transition-all duration-200 text-gray-500 hover:text-blue-600">
+                      <div class="text-lg mb-2">+<%= length(sections) - category.limit %></div>
+                      <div class="text-xs font-medium">More</div>
+                    </button>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+
+      <!-- Clean footer -->
+      <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 lg:rounded-b-2xl">
+        <div class="flex items-center justify-between text-sm">
+          <div class="flex items-center text-gray-600">
+            <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>Start with Essential sections for best results</span>
+          </div>
+          <div class="hidden lg:flex items-center text-gray-500">
+            <kbd class="px-2 py-1 bg-white border border-gray-200 rounded text-xs font-mono mr-2">Esc</kbd>
+            <span class="text-xs">to close</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      .scrollbar-none {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .scrollbar-none::-webkit-scrollbar {
+        display: none;
+      }
+    </style>
+    """
+  end
+
+  # Helper functions for the dropdown
+  defp supports_multiple_items?(section_type) do
+    section_type in [
+      "experience", "education", "skills", "projects", "testimonials",
+      "certifications", "services", "published_articles", "achievements",
+      "collaborations", "pricing", "code_showcase"
+    ]
+  end
+
+  defp supports_media?(section_type) do
+    section_type in [
+      "hero", "gallery", "projects", "featured_project", "case_study",
+      "media_showcase", "code_showcase", "services", "published_articles",
+      "blog", "testimonials", "achievements", "collaborations"
+    ]
+  end
+
+  defp is_essential_section?(section_type) do
+    section_type in ["hero", "contact", "intro"]
+  end
+
+  defp render_video_intro_modal(assigns) do
+    ~H"""
+    <div
+      id="video-modal-overlay"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      style="z-index: 9999;"
+      phx-click="modal_overlay_clicked"
+      phx-window-keydown="modal_keydown"
+      phx-key="Escape">
+
+      <div
+        id="video-modal-content"
+        class="bg-white rounded-xl max-w-4xl w-full mx-4 max-h-[95vh] overflow-hidden"
+        phx-click="modal_content_clicked">
+
+        <!-- Modal Header -->
+        <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-red-50 to-blue-50">
           <div class="flex items-center justify-between">
             <div>
-              <h3 class="text-xl font-bold text-gray-900">Add New Section</h3>
-              <p class="text-gray-600 mt-1">Choose from our organized collection of portfolio sections</p>
+              <h3 class="text-xl font-bold text-gray-900 flex items-center">
+                <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
+                  <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                  </svg>
+                </div>
+                Video Introduction
+              </h3>
+              <p class="text-gray-600 mt-1">
+                Record or upload a <%= get_max_video_duration_safe(assigns) %>-minute introduction video
+              </p>
             </div>
-            <button phx-click="close_create_dropdown"
-                    class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-white hover:shadow-sm transition-all">
+            <button
+              phx-click="close_video_intro_modal"
+              class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-all">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
           </div>
 
-          <!-- Quick Stats -->
-          <div class="flex items-center mt-4 space-x-6 text-sm text-gray-600">
-            <div class="flex items-center">
-              <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-              <span><%= get_total_section_count() %> section types available</span>
-            </div>
-            <div class="flex items-center">
-              <div class="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-              <span>Organized into <%= length(@organized_categories) %> categories</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Category Navigation (Optional - for large collections) -->
-        <div class="px-6 py-3 bg-gray-50 border-b border-gray-200">
-          <div class="flex items-center space-x-4 overflow-x-auto">
-            <%= for {category_key, category_data} <- @organized_categories do %>
-              <button class="flex-shrink-0 px-3 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-white rounded-lg transition-all"
-                      onclick={"document.getElementById('category-#{category_key}').scrollIntoView({behavior: 'smooth'})"}>
-                <span class="mr-1"><%= category_data.icon %></span>
-                <%= category_data.name %>
-                <span class="ml-1 text-xs text-gray-400">(<%= length(category_data.sections) %>)</span>
-              </button>
-            <% end %>
-          </div>
-        </div>
-
-        <!-- Main Content Area -->
-        <div class="p-6 overflow-y-auto max-h-[60vh] bg-gray-25">
-          <%= for {category_key, category_data} <- @organized_categories do %>
-            <div class="mb-8" id={"category-#{category_key}"}>
-              <!-- Enhanced Category Header -->
-              <div class="flex items-center mb-6">
-                <div class="w-12 h-12 rounded-xl flex items-center justify-center mr-4"
-                    style={"background: linear-gradient(135deg, #{category_data.color} 0%, #{darken_color(category_data.color)} 100%)"}>
-                  <span class="text-white text-xl"><%= category_data.icon %></span>
-                </div>
-                <div class="flex-1">
-                  <div class="flex items-center">
-                    <h4 class="text-lg font-bold text-gray-900"><%= category_data.name %></h4>
-                    <%= if category_data.badge do %>
-                      <span class="ml-3 px-2 py-1 text-xs font-semibold bg-green-100 text-green-800 rounded-full">
-                        <%= category_data.badge %>
-                      </span>
-                    <% end %>
-                  </div>
-                  <p class="text-sm text-gray-600 mt-1"><%= category_data.description %></p>
-                </div>
-              </div>
-
-              <!-- Section Cards Grid -->
-              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <%= for {section_key, section_config} <- category_data.sections do %>
-                  <button phx-click="create_section"
-                          phx-value-section_type={section_key}
-                          class="section-type-card text-left p-4 border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200 group bg-white">
-                    <div class="flex items-start">
-                      <!-- Enhanced Icon -->
-                      <div class="w-11 h-11 rounded-xl flex items-center justify-center mr-3 group-hover:scale-110 transition-transform"
-                          style={"background: linear-gradient(135deg, #{category_data.color} 0%, #{darken_color(category_data.color)} 100%)"}>
-                        <span class="text-white text-lg"><%= section_config.icon %></span>
-                      </div>
-
-                      <!-- Content -->
-                      <div class="flex-1 min-w-0">
-                        <h5 class="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors text-sm">
-                          <%= section_config.name %>
-                        </h5>
-                        <p class="text-xs text-gray-600 mt-1 line-clamp-2 leading-relaxed">
-                          <%= section_config.description %>
-                        </p>
-
-                        <!-- Enhanced Features/Tags -->
-                        <div class="flex items-center mt-2 space-x-1">
-                          <%= if Map.get(section_config, :supports_video) do %>
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                              📹
-                            </span>
-                          <% end %>
-                          <%= if Map.get(section_config, :supports_media) do %>
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                              🖼️
-                            </span>
-                          <% end %>
-                          <%= if Map.get(section_config, :is_hero) do %>
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                              ⭐
-                            </span>
-                          <% end %>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- Hover Effect Arrow -->
-                    <div class="opacity-0 group-hover:opacity-100 transition-opacity mt-3 flex justify-end">
-                      <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
-                      </svg>
-                    </div>
-                  </button>
-                <% end %>
-              </div>
-            </div>
-          <% end %>
-
-          <!-- Help Footer -->
-          <div class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-            <div class="flex items-start">
-              <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <!-- Account Tier Info -->
+          <div class="mt-4 flex items-center justify-between">
+            <div class="flex items-center text-sm text-gray-600">
+              <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
-              <div>
-                <h5 class="font-medium text-blue-900 mb-1">Need help choosing?</h5>
-                <p class="text-sm text-blue-800">
-                  Start with <strong>Essential</strong> sections, then add <strong>Professional</strong> sections to showcase your expertise.
-                  <strong>Business</strong> sections are great for freelancers and agencies.
-                </p>
-              </div>
+              <%= get_account_tier_message_safe(assigns) %>
+            </div>
+            <div class="text-sm text-green-600 font-medium">
+              HD Quality • <%= get_max_video_duration_safe(assigns) %> min max
             </div>
           </div>
+        </div>
+
+        <!-- NEW FEATURE: Tab Navigation -->
+        <div class="border-b border-gray-200">
+          <nav class="flex">
+            <button
+              phx-click="switch_video_tab"
+              phx-value-tab="record"
+              class={[
+                "px-6 py-3 font-medium text-sm border-b-2 transition-colors",
+                if(Map.get(assigns, :video_tab, "record") == "record",
+                  do: "border-red-500 text-red-600 bg-red-50",
+                  else: "border-transparent text-gray-500 hover:text-gray-700")
+              ]}>
+              🎥 Record New
+            </button>
+            <button
+              phx-click="switch_video_tab"
+              phx-value-tab="upload"
+              class={[
+                "px-6 py-3 font-medium text-sm border-b-2 transition-colors",
+                if(Map.get(assigns, :video_tab, "record") == "upload",
+                  do: "border-blue-500 text-blue-600 bg-blue-50",
+                  else: "border-transparent text-gray-500 hover:text-gray-700")
+              ]}>
+              📤 Upload Existing
+            </button>
+          </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="overflow-y-auto max-h-[70vh]">
+          <%= case Map.get(assigns, :video_tab, "record") do %>
+            <% "record" -> %>
+              <%= render_video_recording_tab(assigns) %>
+            <% "upload" -> %>
+              <%= render_video_upload_tab(assigns) %>
+          <% end %>
         </div>
       </div>
     </div>
     """
   end
-
-defp render_video_intro_modal(assigns) do
-  ~H"""
-  <div
-    id="video-modal-overlay"
-    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-    style="z-index: 9999;"
-    phx-click="modal_overlay_clicked"
-    phx-window-keydown="modal_keydown"
-    phx-key="Escape">
-
-    <div
-      id="video-modal-content"
-      class="bg-white rounded-xl max-w-4xl w-full mx-4 max-h-[95vh] overflow-hidden"
-      phx-click="modal_content_clicked">
-
-      <!-- Modal Header -->
-      <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-red-50 to-blue-50">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="text-xl font-bold text-gray-900 flex items-center">
-              <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
-                <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                </svg>
-              </div>
-              Video Introduction
-            </h3>
-            <p class="text-gray-600 mt-1">
-              Record or upload a <%= get_max_video_duration_safe(assigns) %>-minute introduction video
-            </p>
-          </div>
-          <button
-            phx-click="close_video_intro_modal"
-            class="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-all">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-
-        <!-- Account Tier Info -->
-        <div class="mt-4 flex items-center justify-between">
-          <div class="flex items-center text-sm text-gray-600">
-            <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-            <%= get_account_tier_message_safe(assigns) %>
-          </div>
-          <div class="text-sm text-green-600 font-medium">
-            HD Quality • <%= get_max_video_duration_safe(assigns) %> min max
-          </div>
-        </div>
-      </div>
-
-      <!-- NEW FEATURE: Tab Navigation -->
-      <div class="border-b border-gray-200">
-        <nav class="flex">
-          <button
-            phx-click="switch_video_tab"
-            phx-value-tab="record"
-            class={[
-              "px-6 py-3 font-medium text-sm border-b-2 transition-colors",
-              if(Map.get(assigns, :video_tab, "record") == "record",
-                do: "border-red-500 text-red-600 bg-red-50",
-                else: "border-transparent text-gray-500 hover:text-gray-700")
-            ]}>
-            🎥 Record New
-          </button>
-          <button
-            phx-click="switch_video_tab"
-            phx-value-tab="upload"
-            class={[
-              "px-6 py-3 font-medium text-sm border-b-2 transition-colors",
-              if(Map.get(assigns, :video_tab, "record") == "upload",
-                do: "border-blue-500 text-blue-600 bg-blue-50",
-                else: "border-transparent text-gray-500 hover:text-gray-700")
-            ]}>
-            📤 Upload Existing
-          </button>
-        </nav>
-      </div>
-
-      <!-- Main Content -->
-      <div class="overflow-y-auto max-h-[70vh]">
-        <%= case Map.get(assigns, :video_tab, "record") do %>
-          <% "record" -> %>
-            <%= render_video_recording_tab(assigns) %>
-          <% "upload" -> %>
-            <%= render_video_upload_tab(assigns) %>
-        <% end %>
-      </div>
-    </div>
-  </div>
-  """
-end
 
   @impl true
   def handle_event("switch_video_tab", %{"tab" => tab}, socket) do
@@ -3958,44 +5150,6 @@ end
         aspect_ratio={get_video_aspect_ratio_from_portfolio(@portfolio)}
         display_mode={get_video_display_mode_from_portfolio(@portfolio)}
       />
-
-      <!-- Recording Instructions -->
-      <div class="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <h5 class="font-semibold text-blue-900 mb-3 flex items-center">
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          📹 Recording Tips for Success
-        </h5>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-800">
-          <div>
-            <h6 class="font-medium mb-2">📸 Visual Setup</h6>
-            <ul class="space-y-1">
-              <li>• Ensure good lighting on your face</li>
-              <li>• Position camera at eye level</li>
-              <li>• Use a clean, professional background</li>
-              <li>• Check your framing for the selected aspect ratio</li>
-            </ul>
-          </div>
-          <div>
-            <h6 class="font-medium mb-2">🎤 Audio & Performance</h6>
-            <ul class="space-y-1">
-              <li>• Speak clearly and at a normal pace</li>
-              <li>• Look directly at the camera</li>
-              <li>• Keep introduction engaging and concise</li>
-              <li>• Practice your key points beforehand</li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Aspect Ratio Reminder -->
-        <div class="mt-4 p-3 bg-blue-100 rounded-lg border border-blue-200">
-          <p class="text-sm text-blue-800">
-            <strong>Current format:</strong> <%= get_video_aspect_ratio_from_portfolio(@portfolio) %>
-            (<%= get_aspect_ratio_description(get_video_aspect_ratio_from_portfolio(@portfolio)) %>)
-          </p>
-        </div>
-      </div>
     </div>
     """
   end
@@ -5130,6 +6284,157 @@ end
       _ -> "#4B5563"
     end
   end
+
+  defp create_experience_section(portfolio, experience_data) do
+    content = %{
+      "items" => Enum.map(experience_data, fn exp ->
+        %{
+          "title" => Map.get(exp, :title, ""),
+          "company" => Map.get(exp, :company, ""),
+          "start_date" => Map.get(exp, :start_date, ""),
+          "end_date" => Map.get(exp, :end_date, ""),
+          "is_current" => Map.get(exp, :is_current, false),
+          "description" => Map.get(exp, :description, ""),
+          "location" => Map.get(exp, :location, ""),
+          "employment_type" => Map.get(exp, :employment_type, "Full-time")
+        }
+      end)
+    }
+
+    case Portfolios.create_portfolio_section(%{
+      portfolio_id: portfolio.id,
+      section_type: :experience,
+      title: "Work Experience",
+      content: content,
+      position: get_next_position(portfolio),
+      visible: true
+    }) do
+      {:ok, section} -> section
+      {:error, _} -> nil
+    end
+  end
+
+  defp create_education_section(portfolio, education_data) do
+    content = %{
+      "items" => Enum.map(education_data, fn edu ->
+        %{
+          "degree" => Map.get(edu, :degree, ""),
+          "institution" => Map.get(edu, :institution, ""),
+          "graduation_date" => Map.get(edu, :graduation_date, ""),
+          "gpa" => Map.get(edu, :gpa, ""),
+          "description" => Map.get(edu, :description, ""),
+          "field_of_study" => Map.get(edu, :field_of_study, "")
+        }
+      end)
+    }
+
+    case Portfolios.create_portfolio_section(%{
+      portfolio_id: portfolio.id,
+      section_type: :education,
+      title: "Education",
+      content: content,
+      position: get_next_position(portfolio),
+      visible: true
+    }) do
+      {:ok, section} -> section
+      {:error, _} -> nil
+    end
+  end
+
+  defp create_skills_section(portfolio, skills_data) do
+    content = %{
+      "items" => Enum.map(skills_data, fn skill ->
+        %{
+          "skill_name" => Map.get(skill, :skill_name, ""),
+          "proficiency" => Map.get(skill, :proficiency, "Intermediate"),
+          "category" => Map.get(skill, :category, "Technical"),
+          "years_experience" => Map.get(skill, :years_experience, 0)
+        }
+      end)
+    }
+
+    case Portfolios.create_portfolio_section(%{
+      portfolio_id: portfolio.id,
+      section_type: :skills,
+      title: "Skills & Expertise",
+      content: content,
+      position: get_next_position(portfolio),
+      visible: true
+    }) do
+      {:ok, section} -> section
+      {:error, _} -> nil
+    end
+  end
+
+  defp create_contact_section(portfolio, personal_info) do
+    content = %{
+      "email" => Map.get(personal_info, :email, ""),
+      "phone" => Map.get(personal_info, :phone, ""),
+      "location" => Map.get(personal_info, :location, ""),
+      "website" => Map.get(personal_info, :website, ""),
+      "social_links" => %{}
+    }
+
+    case Portfolios.create_portfolio_section(%{
+      portfolio_id: portfolio.id,
+      section_type: :contact,
+      title: "Contact Information",
+      content: content,
+      position: get_next_position(portfolio),
+      visible: true
+    }) do
+      {:ok, section} -> section
+      {:error, _} -> nil
+    end
+  end
+
+  # Helper functions
+  defp get_next_position(portfolio) do
+    # Get highest position and add 1
+    case Portfolios.get_portfolio_sections(portfolio.id) do
+      [] -> 1
+      sections ->
+        sections
+        |> Enum.map(& &1.position)
+        |> Enum.max()
+        |> Kernel.+(1)
+    end
+  end
+
+  defp get_importable_sections(parsed_data) do
+    [
+      {"experience", Map.get(parsed_data, :experience, [])},
+      {"education", Map.get(parsed_data, :education, [])},
+      {"skills", Map.get(parsed_data, :skills, [])},
+      {"contact", Map.get(parsed_data, :personal_info, %{})}
+    ]
+  end
+
+  defp get_section_item_count(data) when is_list(data), do: length(data)
+  defp get_section_item_count(data) when is_map(data) and map_size(data) > 0, do: 1
+  defp get_section_item_count(_), do: 0
+
+  defp initialize_section_selections(parsed_data) do
+    get_importable_sections(parsed_data)
+    |> Enum.reduce(%{}, fn {section_type, data}, acc ->
+      Map.put(acc, section_type, get_section_item_count(data) > 0)
+    end)
+  end
+
+  defp humanize_section_name(section_type) do
+    case section_type do
+      "experience" -> "Work Experience"
+      "education" -> "Education"
+      "skills" -> "Skills & Expertise"
+      "contact" -> "Contact Information"
+      _ -> String.capitalize(section_type)
+    end
+  end
+
+  defp error_to_string(:too_large), do: "File is too large (max 10MB)"
+  defp error_to_string(:too_many_files), do: "Only one file allowed"
+  defp error_to_string(:not_accepted), do: "File type not supported"
+  defp error_to_string(err), do: "Upload error: #{inspect(err)}"
 
   defp get_section_type_name(section_type) do
     case EnhancedSectionSystem.get_section_config(to_string(section_type)) do
