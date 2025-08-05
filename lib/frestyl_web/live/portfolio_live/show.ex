@@ -11,9 +11,8 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   alias FrestylWeb.PortfolioLive.EnhancedPortfolioEditor
   alias Frestyl.ResumeExporter
-  alias FrestylWeb.PortfolioLive.Components.{EnhancedHeroRenderer,
-    DynamicSectionModal,
-    EnhancedSectionRenderer, EnhancedLayoutRenderer
+  alias FrestylWeb.PortfolioLive.Components.{DynamicSectionModal,
+    EnhancedSectionRenderer, EnhancedLayoutRenderer, PortfolioLayoutEngine
 
   }
 

@@ -291,18 +291,33 @@ end
     |> put_flash(:info, "Section created successfully!")}
   end
 
-  @impl true
-  def handle_info({:save_section, form_data, editing_section}, socket) do
-    IO.puts("🔧 SAVING SECTION with cleaned data: #{inspect(form_data)}")
+  def handle_info({:save_section, cleaned_params, editing_section}, socket) do
+    IO.puts("🔧 HANDLE_INFO: save_section")
+    IO.puts("🔧 Editing section: #{inspect(editing_section != nil)}")
 
-    case editing_section do
+    socket = case editing_section do
       nil ->
-        # Create new section with proper section type mapping
-        create_new_section_with_mapping(form_data, socket)
-      %{} = section ->
-        # Update existing section
-        update_existing_section_with_mapping(section, form_data, socket)
+        # Creating new section
+        create_section_with_validation(socket, cleaned_params)
+
+      section ->
+        # Updating existing section
+        update_section_with_validation(socket, section, cleaned_params)
     end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:close_section_modal, socket) do
+    IO.puts("🔧 HANDLE_INFO: close_section_modal")
+
+    socket = socket
+    |> assign(:show_section_modal, false)
+    |> assign(:current_section_type, nil)
+    |> assign(:editing_section, nil)
+    |> assign(:section_changeset_errors, [])
+
+    {:noreply, socket}
   end
 
     @impl true
@@ -785,16 +800,25 @@ end
     end
   end
 
-  @impl true
   def handle_event("expand_category", %{"category" => category}, socket) do
-    expanded_categories = MapSet.put(socket.assigns.expanded_categories, category)
-    {:noreply, assign(socket, :expanded_categories, expanded_categories)}
+    current_expanded = Map.get(socket.assigns, :expanded_categories, MapSet.new())
+    updated_expanded = MapSet.put(current_expanded, category)
+
+    {:noreply, assign(socket, :expanded_categories, updated_expanded)}
   end
 
-  @impl true
   def handle_event("collapse_category", %{"category" => category}, socket) do
-    expanded_categories = MapSet.delete(socket.assigns.expanded_categories, category)
-    {:noreply, assign(socket, :expanded_categories, expanded_categories)}
+    current_expanded = Map.get(socket.assigns, :expanded_categories, MapSet.new())
+    updated_expanded = MapSet.delete(current_expanded, category)
+
+    {:noreply, assign(socket, :expanded_categories, updated_expanded)}
+  end
+
+  def handle_event("show_media_helper", _params, socket) do
+    # You can implement a media helper modal or guide users to appropriate sections
+    socket = put_flash(socket, :info, "Choose Gallery for images/videos, Blog for articles with media, or Projects for project demos")
+
+    {:noreply, socket}
   end
 
   # Also make sure you have the close dropdown handler:
@@ -1223,111 +1247,173 @@ defp extract_map_field(params, field_key, _field_config) do
   |> Enum.into(%{})
 end
 
+  defp update_section_with_validation(socket, section, cleaned_params) do
+    IO.puts("🔧 UPDATE_SECTION_WITH_VALIDATION")
+    IO.puts("🔧 Section ID: #{section.id}")
+    IO.puts("🔧 Cleaned params: #{inspect(cleaned_params, pretty: true)}")
 
-defp create_section_with_validation(socket, params) do
-  section_type = params["section_type"]
-  title = params["title"] |> String.trim()
-  visible = params["visible"] == "true"
-  content = params["validated_content"]
+    # Prepare section attributes for update
+    section_attrs = %{
+      title: Map.get(cleaned_params, "title", section.title),
+      visible: Map.get(cleaned_params, "visible", true),
+      content: Map.drop(cleaned_params, ["title", "visible", "section_type", "section_id", "action"])
+    }
 
-  # Handle empty title
-  final_title = if title == "", do: generate_default_section_title(section_type), else: title
+    IO.puts("🔧 Section attributes: #{inspect(section_attrs, pretty: true)}")
 
-  section_attrs = %{
-    portfolio_id: socket.assigns.portfolio.id,
-    section_type: String.to_atom(section_type),
-    title: final_title,
-    content: content,
-    visible: visible,
-    position: length(socket.assigns.sections) + 1
-  }
+    case Frestyl.Portfolios.update_portfolio_section(section, section_attrs) do
+      {:ok, updated_section} ->
+        IO.puts("✅ SECTION UPDATED SUCCESSFULLY")
+        IO.puts("✅ Successfully updated section: #{updated_section.id}")
 
-  IO.puts("🔧 Creating section with attrs: #{inspect(section_attrs)}")
+        # Update the sections list in socket
+        updated_sections = Enum.map(socket.assigns.sections, fn s ->
+          if s.id == updated_section.id, do: updated_section, else: s
+        end)
 
-  case Portfolios.create_portfolio_section(section_attrs) do
-    {:ok, new_section} ->
-      IO.puts("✅ Section created: #{new_section.id}")
-      updated_sections = socket.assigns.sections ++ [new_section]
+        # Broadcast the update
+        portfolio_id = socket.assigns.portfolio.id
+        IO.puts("🔧 Broadcasting section_updated for portfolio #{portfolio_id}")
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio_preview:#{portfolio_id}",
+          {:section_updated, updated_section}
+        )
 
-      # Single broadcast
-      broadcast_portfolio_update(
-        socket.assigns.portfolio.id,
-        updated_sections,
-        socket.assigns.customization,
-        :sections
-      )
-
-      {:noreply, socket
+        socket
         |> assign(:sections, updated_sections)
         |> assign(:show_section_modal, false)
         |> assign(:current_section_type, nil)
         |> assign(:editing_section, nil)
-        |> assign(:section_changeset_errors, [])
-        |> put_flash(:info, "✅ #{section_type} section created!")}
+        |> put_flash(:info, "Section updated successfully!")
 
-    {:error, changeset} ->
-      IO.puts("❌ Failed to create section: #{inspect(changeset.errors)}")
-      {:noreply, socket
-        |> assign(:section_changeset_errors, changeset.errors)
-        |> put_flash(:error, "Failed to create section")}
+      {:error, changeset} ->
+        IO.puts("❌ SECTION UPDATE FAILED")
+        IO.puts("❌ Changeset errors: #{inspect(changeset.errors)}")
+
+        socket
+        |> assign(:section_changeset_errors, extract_changeset_errors(changeset))
+        |> put_flash(:error, "Failed to update section. Please check the form.")
+    end
   end
-end
 
-defp update_section_with_validation(socket, params) do
-  section_id = String.to_integer(params["section_id"])
 
-  case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
-    nil ->
-      IO.puts("❌ SECTION NOT FOUND: #{section_id}")
-      {:noreply, put_flash(socket, :error, "Section not found")}
+  defp create_section_with_validation(socket, cleaned_params) do
+    IO.puts("🔧 CREATE_SECTION_WITH_VALIDATION")
+    IO.puts("🔧 Cleaned params: #{inspect(cleaned_params, pretty: true)}")
 
-    section ->
-      title = params["title"] |> String.trim()
-      visible = params["visible"] == "true"
-      content = params["validated_content"]
+    portfolio_id = socket.assigns.portfolio.id
 
-      # Handle empty title
-      final_title = if title == "", do: generate_default_section_title(section.section_type), else: title
+    # Get next position for ordering
+    next_position = case socket.assigns.sections do
+      [] -> 1
+      sections ->
+        max_position = Enum.max_by(sections, &(&1.position), fn -> %{position: 0} end).position
+        max_position + 1
+    end
 
-      update_attrs = %{
-        title: final_title,
-        visible: visible,
-        content: content
-      }
+    # Prepare section attributes for creation
+    section_attrs = %{
+      portfolio_id: portfolio_id,
+      title: Map.get(cleaned_params, "title", "New Section"),
+      section_type: Map.get(cleaned_params, "section_type", "custom"),
+      visible: Map.get(cleaned_params, "visible", true),
+      position: next_position,
+      content: Map.drop(cleaned_params, ["title", "visible", "section_type", "portfolio_id", "action"])
+    }
 
-      IO.puts("🔧 Updating section #{section_id} with attrs: #{inspect(update_attrs)}")
-      IO.puts("🔧 Original section content: #{inspect(section.content)}")
+    IO.puts("🔧 Section attributes: #{inspect(section_attrs, pretty: true)}")
 
-      case Portfolios.update_portfolio_section(section, update_attrs) do
-        {:ok, updated_section} ->
-          IO.puts("✅ Section updated: #{updated_section.id}")
-          IO.puts("✅ Updated section content: #{inspect(updated_section.content)}")
-          updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+    case Frestyl.Portfolios.create_portfolio_section(section_attrs) do
+      {:ok, new_section} ->
+        IO.puts("✅ SECTION CREATED SUCCESSFULLY")
+        IO.puts("✅ Successfully created section: #{new_section.id}")
 
-          # Single broadcast
-          broadcast_portfolio_update(
-            socket.assigns.portfolio.id,
-            updated_sections,
-            socket.assigns.customization,
-            :sections
-          )
+        # Add to sections list
+        updated_sections = socket.assigns.sections ++ [new_section]
 
-          {:noreply, socket
-            |> assign(:sections, updated_sections)
-            |> assign(:show_section_modal, false)
-            |> assign(:current_section_type, nil)
-            |> assign(:editing_section, nil)
-            |> assign(:section_changeset_errors, [])
-            |> put_flash(:info, "✅ Section updated successfully!")}
+        # Broadcast the creation
+        IO.puts("🔧 Broadcasting section_created for portfolio #{portfolio_id}")
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio_preview:#{portfolio_id}",
+          {:section_created, new_section}
+        )
 
-        {:error, changeset} ->
-          IO.puts("❌ SECTION UPDATE FAILED: #{inspect(changeset.errors)}")
-          {:noreply, socket
-            |> assign(:section_changeset_errors, changeset.errors)
-            |> put_flash(:error, "Failed to save section")}
-      end
+        socket
+        |> assign(:sections, updated_sections)
+        |> assign(:show_section_modal, false)
+        |> assign(:current_section_type, nil)
+        |> assign(:editing_section, nil)
+        |> put_flash(:info, "Section created successfully!")
+
+      {:error, changeset} ->
+        IO.puts("❌ SECTION CREATION FAILED")
+        IO.puts("❌ Changeset errors: #{inspect(changeset.errors)}")
+
+        socket
+        |> assign(:section_changeset_errors, extract_changeset_errors(changeset))
+        |> put_flash(:error, "Failed to create section. Please check the form.")
+    end
   end
-end
+
+
+
+  defp update_section_with_validation(socket, params) do
+    section_id = String.to_integer(params["section_id"])
+
+    case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
+      nil ->
+        IO.puts("❌ SECTION NOT FOUND: #{section_id}")
+        {:noreply, put_flash(socket, :error, "Section not found")}
+
+      section ->
+        title = params["title"] |> String.trim()
+        visible = params["visible"] == "true"
+        content = params["validated_content"]
+
+        # Handle empty title
+        final_title = if title == "", do: generate_default_section_title(section.section_type), else: title
+
+        update_attrs = %{
+          title: final_title,
+          visible: visible,
+          content: content
+        }
+
+        IO.puts("🔧 Updating section #{section_id} with attrs: #{inspect(update_attrs)}")
+        IO.puts("🔧 Original section content: #{inspect(section.content)}")
+
+        case Portfolios.update_portfolio_section(section, update_attrs) do
+          {:ok, updated_section} ->
+            IO.puts("✅ Section updated: #{updated_section.id}")
+            IO.puts("✅ Updated section content: #{inspect(updated_section.content)}")
+            updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+            # Single broadcast
+            broadcast_portfolio_update(
+              socket.assigns.portfolio.id,
+              updated_sections,
+              socket.assigns.customization,
+              :sections
+            )
+
+            {:noreply, socket
+              |> assign(:sections, updated_sections)
+              |> assign(:show_section_modal, false)
+              |> assign(:current_section_type, nil)
+              |> assign(:editing_section, nil)
+              |> assign(:section_changeset_errors, [])
+              |> put_flash(:info, "✅ Section updated successfully!")}
+
+          {:error, changeset} ->
+            IO.puts("❌ SECTION UPDATE FAILED: #{inspect(changeset.errors)}")
+            {:noreply, socket
+              |> assign(:section_changeset_errors, changeset.errors)
+              |> put_flash(:error, "Failed to save section")}
+        end
+    end
+  end
 
   defp update_section_with_enhanced_processing(socket, params) do
     section_id = String.to_integer(params["section_id"])
@@ -4803,65 +4889,56 @@ end
 
     # Section Creation Dropdown
   defp render_section_creation_dropdown(assigns) do
-    # Organized sections by category with priority ordering
+    # Updated sections aligned with consolidated 17 section types
     available_sections = [
-      # Essential Sections (most commonly needed)
-      %{type: "hero", name: "Hero Section", icon: "🏠", category: "Essential"},
-      %{type: "contact", name: "Contact", icon: "📞", category: "Essential"},
-      %{type: "intro", name: "About Me", icon: "👋", category: "Essential"},
+      # Essentials (3)
+      %{type: "hero", name: "Hero Section", icon: "🏠", category: "Essentials", description: "Main landing page introduction"},
+      %{type: "contact", name: "Contact", icon: "📞", category: "Essentials", description: "Contact info and social links"},
+      %{type: "intro", name: "About Me", icon: "👋", category: "Essentials", description: "Professional introduction"},
 
-      # Professional Experience
-      %{type: "experience", name: "Experience", icon: "💼", category: "Professional"},
-      %{type: "education", name: "Education", icon: "🎓", category: "Professional"},
-      %{type: "skills", name: "Skills", icon: "🛠️", category: "Professional"},
-      %{type: "certifications", name: "Certifications", icon: "🏆", category: "Professional"},
+      # Professional (5)
+      %{type: "experience", name: "Experience", icon: "💼", category: "Professional", description: "Work history and roles"},
+      %{type: "education", name: "Education", icon: "🎓", category: "Professional", description: "Academic background"},
+      %{type: "skills", name: "Skills", icon: "🛠️", category: "Professional", description: "Technical and soft skills"},
+      %{type: "certifications", name: "Certifications", icon: "🏆", category: "Professional", description: "Credentials and licenses"},
+      %{type: "achievements", name: "Achievements", icon: "🏅", category: "Professional", description: "Awards and recognition"},
 
-      # Portfolio & Projects
-      %{type: "projects", name: "Projects", icon: "🚀", category: "Portfolio"},
-      %{type: "featured_project", name: "Featured Project", icon: "⭐", category: "Portfolio"},
-      %{type: "case_study", name: "Case Study", icon: "📊", category: "Portfolio"},
-      %{type: "code_showcase", name: "Code Showcase", icon: "💻", category: "Portfolio"},
-      %{type: "gallery", name: "Gallery", icon: "🖼️", category: "Portfolio"},
-      %{type: "media_showcase", name: "Media", icon: "🎬", category: "Portfolio"},
+      # Showcase (4)
+      %{type: "projects", name: "Projects", icon: "🚀", category: "Showcase", description: "Portfolio projects"},
+      %{type: "gallery", name: "Gallery", icon: "🖼️", category: "Showcase", description: "Visual media showcase"},
+      %{type: "code_showcase", name: "Code Samples", icon: "💻", category: "Showcase", description: "Code demonstrations"},
+      %{type: "collaborations", name: "Collaborations", icon: "🤝", category: "Showcase", description: "Joint projects and partnerships"},
 
-      # Content & Writing
-      %{type: "published_articles", name: "Articles", icon: "✍️", category: "Content"},
-      %{type: "blog", name: "Blog", icon: "📝", category: "Content"},
-      %{type: "testimonials", name: "Testimonials", icon: "💬", category: "Content"},
+      # Storytelling (3)
+      %{type: "published_articles", name: "Articles", icon: "✍️", category: "Storytelling", description: "Published writing"},
+      %{type: "blog", name: "Blog", icon: "📝", category: "Storytelling", description: "Blog posts and content"},
+      %{type: "timeline", name: "Timeline", icon: "📅", category: "Storytelling", description: "Career journey"},
 
-      # Business & Services
-      %{type: "services", name: "Services", icon: "🔧", category: "Business"},
-      %{type: "pricing", name: "Pricing", icon: "💰", category: "Business"},
+      # Business (3)
+      %{type: "services", name: "Services", icon: "⚡", category: "Business", description: "Services offered"},
+      %{type: "pricing", name: "Pricing", icon: "💰", category: "Business", description: "Pricing and packages"},
+      %{type: "testimonials", name: "Testimonials", icon: "💬", category: "Business", description: "Client feedback"},
 
-      # Personal & Story
-      %{type: "about", name: "About (Detailed)", icon: "👤", category: "Personal"},
-      %{type: "timeline", name: "Timeline", icon: "📅", category: "Personal"},
-      %{type: "story", name: "My Story", icon: "📖", category: "Personal"},
-      %{type: "achievements", name: "Achievements", icon: "🏆", category: "Personal"},
-      %{type: "collaborations", name: "Collaborations", icon: "🤝", category: "Personal"},
-
-      # Advanced
-      %{type: "custom", name: "Custom Section", icon: "⚙️", category: "Advanced"}
+      # Advanced (1)
+      %{type: "custom", name: "Custom Section", icon: "⚙️", category: "Advanced", description: "Create your own section"}
     ]
 
-    # Group by category and define limits for initial display
+    # Group by category with updated structure
     grouped_sections = Enum.group_by(available_sections, & &1.category)
 
-    # Define category display rules (how many to show initially vs "View All")
+    # Updated category configuration with better icons and colors
     categories = [
-      %{key: "Essential", name: "Essential", limit: 3, accent: "bg-blue-500"},
-      %{key: "Professional", name: "Professional", limit: 4, accent: "bg-emerald-500"},
-      %{key: "Portfolio", name: "Portfolio", limit: 4, accent: "bg-purple-500"},
-      %{key: "Content", name: "Content", limit: 3, accent: "bg-orange-500"},
-      %{key: "Business", name: "Business", limit: 2, accent: "bg-amber-500"},
-      %{key: "Personal", name: "Personal", limit: 3, accent: "bg-indigo-500"},
-      %{key: "Advanced", name: "Advanced", limit: 1, accent: "bg-slate-500"}
+      %{key: "Essentials", name: "🏠 Essentials", limit: 3, accent: "bg-blue-500", description: "Start here - core portfolio sections"},
+      %{key: "Professional", name: "💼 Professional", limit: 5, accent: "bg-emerald-500", description: "Career and expertise sections"},
+      %{key: "Showcase", name: "⭐ Showcase", limit: 4, accent: "bg-purple-500", description: "Highlight your best work"},
+      %{key: "Storytelling", name: "📖 Storytelling", limit: 3, accent: "bg-orange-500", description: "Share your narrative"},
+      %{key: "Business", name: "💰 Business", limit: 3, accent: "bg-amber-500", description: "Services and client relations"},
+      %{key: "Advanced", name: "⚙️ Advanced", limit: 1, accent: "bg-slate-500", description: "Custom solutions"}
     ]
 
     # Get expanded categories from assigns (default to empty set)
     expanded_categories = Map.get(assigns, :expanded_categories, MapSet.new())
-      # Make sure expanded_categories is available in assigns
-    #assigns = assign_new(assigns, :expanded_categories, fn -> MapSet.new() end)
+
     assigns = assign(assigns,
       grouped_sections: grouped_sections,
       categories: categories,
@@ -4869,141 +4946,222 @@ end
     )
 
     ~H"""
-    <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 lg:hidden"
+    <!-- FIXED: Centered modal backdrop instead of mobile bottom-sheet -->
+    <div class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
         phx-click="close_section_dropdown"
         phx-window-keydown="close_section_dropdown"
         phx-key="Escape">
-    </div>
 
-    <!-- Modern dropdown -->
-    <div class="fixed bottom-0 left-0 right-0 bg-white inset-0 shadow-2xl z-50 max-h-[75vh] overflow-hidden lg:absolute lg:top-full lg:left-0 lg:bottom-auto lg:right-auto lg:w-[90vw] lg:max-w-5xl lg:mt-1 lg:rounded-2xl lg:border lg:border-gray-200/50 lg:shadow-xl"
-        phx-window-keydown="close_section_dropdown"
-        phx-key="Escape"
-        phx-click={JS.exec("event.stopPropagation()")}>
+      <!-- FIXED: Centered modal container -->
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden"
+          phx-click={JS.exec("event.stopPropagation()")}>
 
-      <!-- Clean header -->
-      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white lg:rounded-t-2xl bg-gradient-to-r from-pink-50 to-purple-50">
-        <div>
-          <h4 class="text-xl font-semibold text-gray-900">Add Section</h4>
-          <p class="text-sm text-gray-600 mt-0.5">Choose a section type for your portfolio</p>
+        <!-- Enhanced header with media helper -->
+        <div class="flex items-center justify-between px-8 py-6 border-b border-gray-100 bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50">
+          <div class="flex-1">
+            <h4 class="text-2xl font-bold text-gray-900">Add Section to Portfolio</h4>
+            <p class="text-gray-600 mt-1">Choose a section type to enhance your portfolio</p>
+          </div>
+
+          <!-- ENHANCEMENT: Prominent Media Helper Button -->
+          <div class="flex items-center space-x-4">
+            <button
+              phx-click="show_media_helper"
+              class="group flex items-center px-4 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl hover:from-purple-600 hover:to-pink-600 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+              <span class="text-lg mr-2 group-hover:scale-110 transition-transform">📎</span>
+              <span class="font-semibold">Upload Media</span>
+            </button>
+
+            <button
+              phx-click="close_section_dropdown"
+              class="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
         </div>
-        <button
-          phx-click="close_section_dropdown"
-          class="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
-      </div>
 
-      <!-- Categories with horizontal scroll -->
-      <div class="overflow-y-auto bg-gray-50/50" style="max-height: calc(75vh - 88px);">
-        <%= for category <- @categories do %>
-          <% sections = Map.get(@grouped_sections, category.key, []) %>
-          <%= if length(sections) > 0 do %>
-            <% is_expanded = MapSet.member?(@expanded_categories, category.key) %>
-            <% sections_to_show = if is_expanded, do: sections, else: Enum.take(sections, category.limit) %>
-            <% has_more = length(sections) > category.limit %>
+        <!-- ENHANCEMENT: Quick start recommendation -->
+        <div class="px-8 py-4 bg-blue-50 border-b border-blue-100">
+          <div class="flex items-center text-blue-800">
+            <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-sm font-medium">Recommended flow: Essentials → Professional → Showcase</span>
+          </div>
+        </div>
 
-            <div class="py-6 px-6 bg-white border-b border-gray-100 last:border-b-0">
-              <!-- Clean category header -->
-              <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center">
-                  <div class={"w-1 h-6 #{category.accent} rounded-full mr-4"}></div>
-                  <h5 class="text-base font-semibold text-gray-900">
-                    <%= category.name %>
-                  </h5>
-                  <span class="ml-3 px-2 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-full">
-                    <%= length(sections) %>
-                  </span>
+        <!-- Categories with enhanced scrolling -->
+        <div class="overflow-y-auto" style="max-height: calc(90vh - 200px);">
+          <%= for category <- @categories do %>
+            <% sections = Map.get(@grouped_sections, category.key, []) %>
+            <%= if length(sections) > 0 do %>
+              <% is_expanded = MapSet.member?(@expanded_categories, category.key) %>
+              <% sections_to_show = if is_expanded, do: sections, else: Enum.take(sections, category.limit) %>
+              <% has_more = length(sections) > category.limit %>
+              <% is_essential = category.key == "Essentials" %>
+
+              <div class={"py-8 px-8 border-b border-gray-100 last:border-b-0 #{if is_essential, do: "bg-blue-50/30", else: "bg-white"}"}>
+                <!-- Enhanced category header -->
+                <div class="flex items-center justify-between mb-6">
+                  <div class="flex items-center">
+                    <div class={"w-1.5 h-8 #{category.accent} rounded-full mr-4 shadow-sm"}></div>
+                    <div>
+                      <h5 class="text-xl font-bold text-gray-900 flex items-center">
+                        <%= category.name %>
+                        <%= if is_essential do %>
+                          <span class="ml-3 px-2 py-1 text-xs font-bold text-blue-700 bg-blue-200 rounded-full">START HERE</span>
+                        <% end %>
+                      </h5>
+                      <p class="text-sm text-gray-600 mt-1"><%= category.description %></p>
+                    </div>
+                    <span class="ml-4 px-3 py-1.5 text-sm font-semibold text-gray-600 bg-gray-100 rounded-full">
+                      <%= length(sections) %> <%= if length(sections) == 1, do: "option", else: "options" %>
+                    </span>
+                  </div>
+
+                  <%= if has_more do %>
+                    <button
+                      phx-click={if is_expanded, do: "collapse_category", else: "expand_category"}
+                      phx-value-category={category.key}
+                      class="flex items-center px-4 py-2 text-sm font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all">
+                      <%= if is_expanded do %>
+                        <span>Show Less</span>
+                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                        </svg>
+                      <% else %>
+                        <span>View All</span>
+                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                      <% end %>
+                    </button>
+                  <% end %>
                 </div>
 
-                <%= if has_more do %>
-                  <button
-                    phx-click={if is_expanded, do: "collapse_category", else: "expand_category"}
-                    phx-value-category={category.key}
-                    class="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors">
-                    <%= if is_expanded, do: "Show Less", else: "View All" %>
-                  </button>
-                <% end %>
-              </div>
-
-              <!-- Clean horizontal scrolling sections -->
-              <div class={"flex gap-4 overflow-x-auto pb-2 scrollbar-none #{if is_expanded, do: "flex-wrap", else: ""}"}>
-                <%= for section <- sections_to_show do %>
-                  <div class="flex-shrink-0">
+                <!-- Enhanced section grid -->
+                <div class={"grid gap-4 #{if is_expanded, do: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4", else: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"}"}>
+                  <%= for section <- sections_to_show do %>
                     <button
                       phx-click="create_section"
                       phx-value-section_type={section.type}
-                      class="group w-36 p-4 text-center rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-100/50 transition-all duration-200 bg-white hover:bg-blue-50/50">
+                      class="group relative p-6 text-left rounded-2xl border-2 border-gray-200 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-100/30 transition-all duration-300 bg-white hover:bg-gradient-to-br hover:from-blue-50 hover:to-purple-50 transform hover:-translate-y-1">
 
-                      <div class="text-2xl mb-3 group-hover:scale-110 transition-transform duration-200">
+                      <!-- Section icon with animation -->
+                      <div class="text-3xl mb-4 group-hover:scale-125 transition-transform duration-300 flex items-center justify-center w-12 h-12 rounded-xl bg-gray-50 group-hover:bg-white group-hover:shadow-md">
                         <%= section.icon %>
                       </div>
 
-                      <div class="text-sm font-medium text-gray-900 group-hover:text-blue-700 transition-colors leading-snug">
-                        <%= section.name %>
+                      <!-- Section info -->
+                      <div>
+                        <h6 class="text-base font-bold text-gray-900 group-hover:text-blue-700 transition-colors mb-2">
+                          <%= section.name %>
+                        </h6>
+                        <p class="text-sm text-gray-600 group-hover:text-gray-700 transition-colors leading-relaxed">
+                          <%= section.description %>
+                        </p>
                       </div>
 
-                      <!-- Subtle capability indicators -->
-                      <div class="mt-3 flex justify-center gap-1.5">
+                      <!-- Enhanced capability indicators -->
+                      <div class="mt-4 flex items-center gap-2">
                         <%= if supports_multiple_items?(section.type) do %>
-                          <div class="w-1.5 h-1.5 bg-blue-400 rounded-full opacity-60" title="Multiple items"></div>
+                          <div class="flex items-center px-2 py-1 bg-blue-100 text-blue-700 rounded-full" title="Supports multiple items">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                            </svg>
+                            <span class="text-xs font-medium">Multi</span>
+                          </div>
                         <% end %>
                         <%= if supports_media?(section.type) do %>
-                          <div class="w-1.5 h-1.5 bg-orange-400 rounded-full opacity-60" title="Media support"></div>
+                          <div class="flex items-center px-2 py-1 bg-orange-100 text-orange-700 rounded-full" title="Supports media uploads">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2z"/>
+                            </svg>
+                            <span class="text-xs font-medium">Media</span>
+                          </div>
                         <% end %>
                         <%= if is_essential_section?(section.type) do %>
-                          <div class="w-1.5 h-1.5 bg-emerald-400 rounded-full opacity-60" title="Recommended"></div>
+                          <div class="flex items-center px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full" title="Recommended for all portfolios">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"/>
+                            </svg>
+                            <span class="text-xs font-medium">Core</span>
+                          </div>
                         <% end %>
                       </div>
-                    </button>
-                  </div>
-                <% end %>
 
-                <!-- Show more indicator if there are hidden items and not expanded -->
-                <%= if has_more and not is_expanded do %>
-                  <div class="flex-shrink-0 flex items-center">
+                      <!-- Hover effect overlay -->
+                      <div class="absolute inset-0 rounded-2xl bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                    </button>
+                  <% end %>
+
+                  <!-- Show more indicator for collapsed categories -->
+                  <%= if has_more and not is_expanded do %>
                     <button
                       phx-click="expand_category"
                       phx-value-category={category.key}
-                      class="w-36 h-full p-4 text-center rounded-xl border border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50/30 transition-all duration-200 text-gray-500 hover:text-blue-600">
-                      <div class="text-lg mb-2">+<%= length(sections) - category.limit %></div>
-                      <div class="text-xs font-medium">More</div>
+                      class="group p-6 text-center rounded-2xl border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50/50 transition-all duration-300 text-gray-500 hover:text-blue-600 transform hover:-translate-y-1">
+                      <div class="text-2xl mb-3 group-hover:scale-110 transition-transform duration-300">+</div>
+                      <div class="text-sm font-semibold">
+                        <%= length(sections) - category.limit %> More
+                      </div>
+                      <div class="text-xs text-gray-400 mt-1">Click to expand</div>
                     </button>
-                  </div>
-                <% end %>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+          <% end %>
+        </div>
+
+        <!-- Enhanced footer with tips -->
+        <div class="px-8 py-6 bg-gradient-to-r from-gray-50 to-gray-100 border-t border-gray-200">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-6 text-sm">
+              <div class="flex items-center text-gray-700">
+                <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span class="font-medium">Tip: Start with Essentials, then add Professional sections</span>
+              </div>
+              <div class="flex items-center text-gray-600">
+                <span class="w-3 h-3 bg-blue-400 rounded-full mr-2"></span>
+                <span class="text-xs">Multiple items</span>
+              </div>
+              <div class="flex items-center text-gray-600">
+                <span class="w-3 h-3 bg-orange-400 rounded-full mr-2"></span>
+                <span class="text-xs">Media support</span>
+              </div>
+              <div class="flex items-center text-gray-600">
+                <span class="w-3 h-3 bg-emerald-400 rounded-full mr-2"></span>
+                <span class="text-xs">Recommended</span>
               </div>
             </div>
-          <% end %>
-        <% end %>
-      </div>
-
-      <!-- Clean footer -->
-      <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 lg:rounded-b-2xl">
-        <div class="flex items-center justify-between text-sm">
-          <div class="flex items-center text-gray-600">
-            <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-            <span>Start with Essential sections for best results</span>
-          </div>
-          <div class="hidden lg:flex items-center text-gray-500">
-            <kbd class="px-2 py-1 bg-white border border-gray-200 rounded text-xs font-mono mr-2">Esc</kbd>
-            <span class="text-xs">to close</span>
+            <div class="flex items-center text-gray-500">
+              <kbd class="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs font-mono mr-2 shadow-sm">Esc</kbd>
+              <span class="text-xs">to close</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
     <style>
-      .scrollbar-none {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
-      .scrollbar-none::-webkit-scrollbar {
-        display: none;
+
+      .animate-fade-in-up {
+        animation: fadeInUp 0.3s ease-out;
       }
     </style>
     """

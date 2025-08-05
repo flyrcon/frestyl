@@ -10,6 +10,8 @@ defmodule FrestylWeb.PortfolioLive.Components.PortfolioLayoutEngine do
   import FrestylWeb.CoreComponents
   import Phoenix.HTML, only: [raw: 1]
 
+  alias FrestylWeb.PortfolioLive.Components.DynamicSectionModal
+
   # ============================================================================
   # MAIN LAYOUT RENDERER
   # ============================================================================

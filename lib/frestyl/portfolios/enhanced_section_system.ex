@@ -2,69 +2,107 @@
 
 defmodule Frestyl.Portfolios.EnhancedSectionSystem do
   @moduledoc """
-  Enhanced section system with categorized sections for resume export
-  and improved field definitions with proper multi-item support.
+  Consolidated section system with 17 core section types.
+  Provides configuration, validation, and default content for portfolio sections.
   """
 
-  # Complete section type definitions with categories
+
+  # ============================================================================
+  # CONSOLIDATED SECTION TYPES - 17 Core Types
+  # ============================================================================
+
   @section_types %{
-    # ESSENTIAL SECTIONS (Resume Export Priority)
+    # ESSENTIAL SECTIONS
     "hero" => %{
       name: "Hero Section",
-      description: "Main introduction with contact info and professional title",
+      description: "Main landing page section with video support, CTAs, and social links",
       icon: "🏠",
       category: "essential",
-      supports_video: true,
-      supports_media: [:video, :image],
-      supports_multiple: false,
       is_hero: true,
-      fields: %{
-        headline: %{type: :string, required: true, placeholder: "Your Name"},
-        tagline: %{type: :string, required: true, placeholder: "Professional Title"},
-        description: %{type: :text, placeholder: "Brief introduction about yourself"},
-        cta_text: %{type: :string, placeholder: "Get In Touch"},
-        cta_link: %{type: :string, placeholder: "mailto:you@example.com"},
-        video_url: %{type: :string, placeholder: "Video introduction URL"},
-        video_type: %{type: :select, options: ["none", "upload", "youtube", "vimeo"], default: "none"},
-        background_image: %{type: :file, accepts: "image/*"},
-        social_links: %{type: :map, default: %{"linkedin" => "", "github" => "", "twitter" => "", "website" => ""}},
-        contact_info: %{type: :map, default: %{"email" => "", "phone" => "", "location" => ""}}
-      }
-    },
-
-    "contact" => %{
-      name: "Contact Information",
-      description: "Essential contact details and social links",
-      icon: "📞",
-      category: "essential",
       supports_multiple: false,
+      supports_media: ["image", "video"],
       fields: %{
-        email: %{type: :string, required: true, placeholder: "your@email.com"},
-        phone: %{type: :string, placeholder: "+1 (555) 123-4567"},
-        location: %{type: :string, placeholder: "City, State"},
-        availability: %{type: :text, placeholder: "Available for new projects"},
-        timezone: %{type: :string, placeholder: "EST, PST, etc."},
-        preferred_contact: %{type: :select, options: ["Email", "Phone", "LinkedIn"], default: "Email"},
+        headline: %{type: :string, required: true, placeholder: "Welcome to My Portfolio"},
+        tagline: %{type: :string, required: true, placeholder: "Your professional tagline"},
+        description: %{type: :text, placeholder: "Brief description of what you do"},
+        cta_text: %{type: :string, placeholder: "Get Started"},
+        cta_link: %{type: :string, placeholder: "#contact"},
+        video_url: %{type: :string, placeholder: "YouTube/Vimeo URL or upload"},
+        video_type: %{type: :select, options: ["none", "youtube", "vimeo", "upload"], default: "none"},
+        background_image: %{type: :file, accepts: "image/*"},
         social_links: %{
           type: :map,
-          default: %{
-            "linkedin" => "",
-            "github" => "",
-            "twitter" => "",
-            "website" => "",
-            "behance" => "",
-            "dribbble" => ""
+          fields: %{
+            linkedin: %{type: :string, placeholder: "LinkedIn URL"},
+            github: %{type: :string, placeholder: "GitHub URL"},
+            twitter: %{type: :string, placeholder: "Twitter URL"},
+            website: %{type: :string, placeholder: "Personal website"}
+          }
+        },
+        contact_info: %{
+          type: :map,
+          fields: %{
+            email: %{type: :string, placeholder: "your@email.com"},
+            phone: %{type: :string, placeholder: "+1 (555) 123-4567"},
+            location: %{type: :string, placeholder: "City, State"}
           }
         }
       }
     },
 
+    "intro" => %{
+      name: "Introduction",
+      description: "Personal and professional story, background, and key highlights",
+      icon: "👋",
+      category: "essential",
+      supports_multiple: false,
+      supports_media: ["image"],
+      fields: %{
+        story: %{type: :text, required: true, placeholder: "Tell your professional story..."},
+        highlights: %{type: :array, placeholder: "Key achievements, separated by commas"},
+        personality_traits: %{type: :array, placeholder: "Creative, analytical, collaborative"},
+        fun_facts: %{type: :array, placeholder: "Interesting facts about you"},
+        specialties: %{type: :array, placeholder: "Areas of expertise"},
+        years_experience: %{type: :integer, placeholder: "Years of experience"},
+        current_focus: %{type: :string, placeholder: "What you're working on now"}
+      }
+    },
+
+    "contact" => %{
+      name: "Contact Information",
+      description: "Contact details, social media, and communication preferences",
+      icon: "📞",
+      category: "essential",
+      supports_multiple: false,
+      supports_media: [],
+      fields: %{
+        email: %{type: :string, required: true, placeholder: "your@email.com"},
+        phone: %{type: :string, placeholder: "+1 (555) 123-4567"},
+        location: %{type: :string, placeholder: "City, State, Country"},
+        availability: %{type: :string, placeholder: "Available for new projects"},
+        social_links: %{
+          type: :map,
+          fields: %{
+            linkedin: %{type: :string, placeholder: "LinkedIn profile"},
+            github: %{type: :string, placeholder: "GitHub profile"},
+            twitter: %{type: :string, placeholder: "Twitter handle"},
+            website: %{type: :string, placeholder: "Personal website"},
+            behance: %{type: :string, placeholder: "Behance portfolio"},
+            dribbble: %{type: :string, placeholder: "Dribbble profile"}
+          }
+        },
+        preferred_contact: %{type: :select, options: ["email", "phone", "linkedin"], default: "email"}
+      }
+    },
+
+    # PROFESSIONAL SECTIONS
     "experience" => %{
       name: "Work Experience",
-      description: "Professional work history with detailed accomplishments",
+      description: "Professional work history, roles, and achievements",
       icon: "💼",
-      category: "essential",
+      category: "professional",
       supports_multiple: true,
+      supports_media: ["image"],
       fields: %{
         items: %{
           type: :items,
@@ -72,13 +110,13 @@ defmodule Frestyl.Portfolios.EnhancedSectionSystem do
           item_schema: %{
             title: %{type: :string, required: true, placeholder: "Job Title"},
             company: %{type: :string, required: true, placeholder: "Company Name"},
+            location: %{type: :string, placeholder: "City, State"},
             start_date: %{type: :date, required: true, placeholder: "MM/YYYY"},
             end_date: %{type: :date, placeholder: "MM/YYYY or 'Present'"},
-            location: %{type: :string, placeholder: "City, State"},
-            description: %{type: :text, placeholder: "Role description and key achievements"},
-            technologies: %{type: :array, placeholder: "Technologies, tools, frameworks used"},
-            achievements: %{type: :array, placeholder: "Specific accomplishments and results"},
-            employment_type: %{type: :select, options: ["Full-time", "Part-time", "Contract", "Freelance", "Internship"], default: "Full-time"}
+            description: %{type: :text, required: true, placeholder: "What you accomplished in this role"},
+            technologies: %{type: :array, placeholder: "Technologies used"},
+            achievements: %{type: :array, placeholder: "Key achievements"},
+            company_url: %{type: :string, placeholder: "Company website"}
           }
         }
       }
@@ -86,23 +124,24 @@ defmodule Frestyl.Portfolios.EnhancedSectionSystem do
 
     "education" => %{
       name: "Education",
-      description: "Academic background and qualifications",
+      description: "Academic background, degrees, and relevant coursework",
       icon: "🎓",
-      category: "essential",
+      category: "professional",
       supports_multiple: true,
+      supports_media: ["image"],
       fields: %{
         items: %{
           type: :items,
           required: true,
           item_schema: %{
-            degree: %{type: :string, required: true, placeholder: "Degree Title"},
-            institution: %{type: :string, required: true, placeholder: "School/University Name"},
-            field_of_study: %{type: :string, placeholder: "Major/Field of Study"},
+            degree: %{type: :string, required: true, placeholder: "Bachelor of Science"},
+            field: %{type: :string, required: true, placeholder: "Computer Science"},
+            institution: %{type: :string, required: true, placeholder: "University Name"},
+            location: %{type: :string, placeholder: "City, State"},
             graduation_date: %{type: :date, placeholder: "MM/YYYY"},
-            gpa: %{type: :string, placeholder: "3.8/4.0 (optional)"},
-            honors: %{type: :array, placeholder: "Dean's List, Magna Cum Laude, etc."},
-            relevant_coursework: %{type: :array, placeholder: "Key courses relevant to your career"},
-            activities: %{type: :array, placeholder: "Clubs, societies, leadership roles"}
+            gpa: %{type: :string, placeholder: "3.8/4.0"},
+            honors: %{type: :array, placeholder: "Magna Cum Laude, Dean's List"},
+            relevant_coursework: %{type: :array, placeholder: "Advanced algorithms, machine learning"}
           }
         }
       }
@@ -110,209 +149,280 @@ defmodule Frestyl.Portfolios.EnhancedSectionSystem do
 
     "skills" => %{
       name: "Skills & Expertise",
-      description: "Technical and professional skills with proficiency levels",
-      icon: "⚡",
-      category: "essential",
-      supports_multiple: true,
+      description: "Technical and soft skills with proficiency levels",
+      icon: "🛠️",
+      category: "professional",
+      supports_multiple: false,
+      supports_media: [],
       fields: %{
         items: %{
           type: :items,
           required: true,
           item_schema: %{
-            skill_name: %{type: :string, required: true, placeholder: "Skill name"},
-            proficiency: %{type: :select, required: true, options: ["Beginner", "Intermediate", "Advanced", "Expert"], default: "Intermediate"},
-            category: %{type: :select, options: ["Technical", "Soft Skills", "Tools", "Languages", "Frameworks"], default: "Technical"},
+            name: %{type: :string, required: true, placeholder: "JavaScript"},
+            category: %{type: :select, options: ["frontend", "backend", "database", "devops", "design", "soft_skills", "tools", "other"], required: true},
+            proficiency: %{type: :select, options: ["beginner", "intermediate", "advanced", "expert"], default: "intermediate"},
             years_experience: %{type: :integer, placeholder: "Years using this skill"},
-            last_used: %{type: :date, placeholder: "MM/YYYY"},
-            certification: %{type: :string, placeholder: "Related certification (optional)"}
+            description: %{type: :string, placeholder: "Brief description or context"}
           }
         }
       }
     },
 
-    # PROFESSIONAL SECTIONS
     "projects" => %{
-      name: "Portfolio Projects",
-      description: "Showcase of work and projects with code examples",
+      name: "Projects",
+      description: "Portfolio projects, case studies, and notable work",
       icon: "🚀",
       category: "professional",
       supports_multiple: true,
-      supports_media: [:image, :video],
+      supports_media: ["image", "video"],
       fields: %{
         items: %{
           type: :items,
           required: true,
           item_schema: %{
             title: %{type: :string, required: true, placeholder: "Project Name"},
-            description: %{type: :text, required: true, placeholder: "Detailed project description"},
-            technologies: %{type: :array, placeholder: "Tech stack: React, Node.js, PostgreSQL"},
-            project_url: %{type: :string, placeholder: "https://live-demo.com"},
-            github_url: %{type: :string, placeholder: "https://github.com/user/repo"},
-            image: %{type: :file, accepts: "image/*"},
+            description: %{type: :text, required: true, placeholder: "What this project does and why it matters"},
+            technologies: %{type: :array, placeholder: "React, Node.js, PostgreSQL"},
+            project_url: %{type: :string, placeholder: "Live demo URL"},
+            github_url: %{type: :string, placeholder: "GitHub repository"},
             start_date: %{type: :date, placeholder: "MM/YYYY"},
             end_date: %{type: :date, placeholder: "MM/YYYY"},
-            status: %{type: :select, options: ["Completed", "In Progress", "Planned", "Archived"], default: "Completed"},
-            client: %{type: :string, placeholder: "Client name (if applicable)"},
+            status: %{type: :select, options: ["completed", "in_progress", "planned"], default: "completed"},
             role: %{type: :string, placeholder: "Your role in the project"},
-            methodology: %{type: :select, options: ["Agile", "Scrum", "Kanban", "Waterfall", "Lean", "Custom"], placeholder: "Project methodology"},
-            code_excerpt: %{type: :text, placeholder: "Key code snippet or algorithm (optional)"},
-            code_language: %{type: :string, placeholder: "JavaScript, Python, etc."},
-            project_type: %{type: :select, options: ["Web App", "Mobile App", "API", "Library", "Tool", "Website", "Desktop App", "Game", "Other"], placeholder: "Project type"}
+            team_size: %{type: :integer, placeholder: "Number of team members"},
+            featured_image: %{type: :file, accepts: "image/*"}
           }
         }
       }
     },
 
     "certifications" => %{
-      name: "Certifications & Awards",
-      description: "Professional certifications, awards, and recognition",
+      name: "Certifications",
+      description: "Professional certifications, licenses, and credentials",
       icon: "🏆",
       category: "professional",
       supports_multiple: true,
+      supports_media: ["image"],
       fields: %{
         items: %{
           type: :items,
           required: true,
           item_schema: %{
-            title: %{type: :string, required: true, placeholder: "Certification/Award Title"},
-            issuing_organization: %{type: :string, required: true, placeholder: "Issuing Organization"},
+            name: %{type: :string, required: true, placeholder: "AWS Certified Solutions Architect"},
+            issuer: %{type: :string, required: true, placeholder: "Amazon Web Services"},
             issue_date: %{type: :date, placeholder: "MM/YYYY"},
-            expiry_date: %{type: :date, placeholder: "MM/YYYY (if applicable)"},
-            credential_id: %{type: :string, placeholder: "Certificate ID/Number"},
-            credential_url: %{type: :string, placeholder: "Verification URL"},
-            badge_image: %{type: :file, accepts: "image/*"},
-            description: %{type: :text, placeholder: "Additional details about the certification"},
-            skills_covered: %{type: :array, placeholder: "Skills/topics covered"}
+            expiration_date: %{type: :date, placeholder: "MM/YYYY"},
+            credential_id: %{type: :string, placeholder: "Credential ID"},
+            verification_url: %{type: :string, placeholder: "Verification URL"},
+            description: %{type: :text, placeholder: "What this certification demonstrates"}
           }
         }
       }
     },
 
     "services" => %{
-      name: "Services Offered",
-      description: "Professional services you provide to clients",
-      icon: "🛠️",
+      name: "Services",
+      description: "Services offered, pricing, and packages",
+      icon: "⚡",
       category: "professional",
       supports_multiple: true,
+      supports_media: ["image"],
       fields: %{
         items: %{
           type: :items,
           required: true,
           item_schema: %{
-            title: %{type: :string, required: true, placeholder: "Service Name"},
-            description: %{type: :text, required: true, placeholder: "Detailed service description"},
-            pricing: %{type: :string, placeholder: "Starting at $X or 'Contact for quote'"},
-            duration: %{type: :string, placeholder: "Timeline estimate"},
-            features: %{type: :array, placeholder: "What's included in this service"},
-            icon: %{type: :string, placeholder: "Icon class or emoji"},
-            category: %{type: :string, placeholder: "Service category"},
-            delivery_method: %{type: :select, options: ["Remote", "On-site", "Hybrid"], default: "Remote"}
+            name: %{type: :string, required: true, placeholder: "Web Development"},
+            description: %{type: :text, required: true, placeholder: "What this service includes"},
+            price: %{type: :string, placeholder: "$5,000 - $15,000"},
+            duration: %{type: :string, placeholder: "2-4 weeks"},
+            deliverables: %{type: :array, placeholder: "Responsive website, admin panel, documentation"},
+            technologies: %{type: :array, placeholder: "Technologies used"},
+            package_type: %{type: :select, options: ["basic", "standard", "premium"], default: "standard"}
           }
         }
       }
     },
 
-    # PERSONAL SECTIONS
-    "intro" => %{
-      name: "About/Introduction",
-      description: "Personal story, background, and professional narrative",
-      icon: "👋",
-      category: "personal",
-      supports_multiple: false,
-      supports_media: [:image],
+    # CONTENT SECTIONS
+    "achievements" => %{
+      name: "Achievements & Awards",
+      description: "Recognition, awards, and notable accomplishments",
+      icon: "🏅",
+      category: "content",
+      supports_multiple: true,
+      supports_media: ["image"],
       fields: %{
-        story: %{type: :text, required: true, placeholder: "Tell your professional story..."},
-        highlights: %{type: :array, placeholder: "Key career highlights and achievements"},
-        years_experience: %{type: :integer, placeholder: "Total years of experience"},
-        specialties: %{type: :array, placeholder: "Areas of expertise and focus"},
-        personal_photo: %{type: :file, accepts: "image/*"},
-        mission_statement: %{type: :text, placeholder: "Your professional mission or vision"},
-        fun_facts: %{type: :array, placeholder: "Interesting personal facts"}
+        items: %{
+          type: :items,
+          required: true,
+          item_schema: %{
+            title: %{type: :string, required: true, placeholder: "Best Developer Award"},
+            issuer: %{type: :string, required: true, placeholder: "Tech Conference 2024"},
+            date: %{type: :date, placeholder: "MM/YYYY"},
+            description: %{type: :text, placeholder: "What you achieved and why it matters"},
+            category: %{type: :select, options: ["award", "recognition", "competition", "publication", "speaking"], default: "award"},
+            url: %{type: :string, placeholder: "Link to announcement or details"}
+          }
+        }
       }
     },
 
     "testimonials" => %{
-      name: "Client Testimonials",
-      description: "Reviews and recommendations from clients and colleagues",
+      name: "Testimonials",
+      description: "Client testimonials, recommendations, and feedback",
       icon: "💬",
-      category: "personal",
+      category: "content",
       supports_multiple: true,
+      supports_media: ["image"],
       fields: %{
         items: %{
           type: :items,
           required: true,
           item_schema: %{
-            content: %{type: :text, required: true, placeholder: "Testimonial content"},
-            author_name: %{type: :string, required: true, placeholder: "Client/Colleague Name"},
-            author_title: %{type: :string, placeholder: "Their job title"},
-            author_company: %{type: :string, placeholder: "Their company"},
-            author_photo: %{type: :file, accepts: "image/*"},
-            project_name: %{type: :string, placeholder: "Related project (optional)"},
-            rating: %{type: :integer, placeholder: "1-5 star rating (optional)"},
+            quote: %{type: :text, required: true, placeholder: "What the client said about working with you"},
+            author: %{type: :string, required: true, placeholder: "Client Name"},
+            title: %{type: :string, placeholder: "Client's Job Title"},
+            company: %{type: :string, placeholder: "Client's Company"},
+            project: %{type: :string, placeholder: "Project you worked on together"},
+            rating: %{type: :select, options: ["5", "4", "3", "2", "1"], default: "5"},
             date: %{type: :date, placeholder: "MM/YYYY"},
-            relationship: %{type: :select, options: ["Client", "Colleague", "Manager", "Direct Report", "Vendor"], default: "Client"}
+            avatar: %{type: :file, accepts: "image/*"}
           }
         }
       }
     },
 
-    "volunteer" => %{
-      name: "Volunteer Experience",
-      description: "Community involvement and volunteer work",
-      icon: "🤝",
-      category: "personal",
+    "published_articles" => %{
+      name: "Publications & Writing",
+      description: "Published articles, blog posts, and written content",
+      icon: "📝",
+      category: "content",
       supports_multiple: true,
-      fields: %{
-        items: %{
-          type: :items,
-          required: true,
-          item_schema: %{
-            organization: %{type: :string, required: true, placeholder: "Organization Name"},
-            role: %{type: :string, required: true, placeholder: "Volunteer Role/Position"},
-            start_date: %{type: :date, placeholder: "MM/YYYY"},
-            end_date: %{type: :date, placeholder: "MM/YYYY or 'Present'"},
-            description: %{type: :text, placeholder: "What you did and how you contributed"},
-            cause: %{type: :string, placeholder: "Cause area (e.g., Education, Environment)"},
-            impact: %{type: :text, placeholder: "Impact you made or results achieved"},
-            hours: %{type: :string, placeholder: "Time commitment (e.g., '10 hours/month')"},
-            skills_used: %{type: :array, placeholder: "Skills you applied in this role"}
-          }
-        }
-      }
-    },
-
-    "writing" => %{
-      name: "Blog Posts & Articles",
-      description: "Published writing and thought leadership content",
-      icon: "✍️",
-      category: "personal",
-      supports_multiple: true,
+      supports_media: ["image"],
       fields: %{
         items: %{
           type: :items,
           required: true,
           item_schema: %{
             title: %{type: :string, required: true, placeholder: "Article Title"},
-            url: %{type: :string, required: true, placeholder: "Article URL"},
-            publication: %{type: :string, placeholder: "Publication/Platform name"},
+            publication: %{type: :string, required: true, placeholder: "Publication/Platform name"},
             publish_date: %{type: :date, placeholder: "MM/YYYY"},
+            url: %{type: :string, placeholder: "Article URL"},
             excerpt: %{type: :text, placeholder: "Brief summary or excerpt"},
             tags: %{type: :array, placeholder: "Topics, technologies, themes"},
             featured_image: %{type: :file, accepts: "image/*"},
-            read_time: %{type: :string, placeholder: "5 min read"},
-            views: %{type: :integer, placeholder: "View count (optional)"}
+            read_time: %{type: :string, placeholder: "5 min read"}
           }
         }
       }
     },
 
-    # FLEXIBLE SECTIONS
+    "collaborations" => %{
+      name: "Collaborations",
+      description: "Partnerships, collaborations, and joint projects",
+      icon: "🤝",
+      category: "content",
+      supports_multiple: true,
+      supports_media: ["image"],
+      fields: %{
+        items: %{
+          type: :items,
+          required: true,
+          item_schema: %{
+            title: %{type: :string, required: true, placeholder: "Collaboration Name"},
+            partner: %{type: :string, required: true, placeholder: "Partner/Organization"},
+            description: %{type: :text, required: true, placeholder: "What you accomplished together"},
+            start_date: %{type: :date, placeholder: "MM/YYYY"},
+            end_date: %{type: :date, placeholder: "MM/YYYY"},
+            role: %{type: :string, placeholder: "Your role in the collaboration"},
+            outcomes: %{type: :array, placeholder: "Key results and outcomes"},
+            url: %{type: :string, placeholder: "Project or partner URL"}
+          }
+        }
+      }
+    },
+
+    "timeline" => %{
+      name: "Timeline",
+      description: "Chronological journey, milestones, and career progression",
+      icon: "📅",
+      category: "content",
+      supports_multiple: false,
+      supports_media: ["image"],
+      fields: %{
+        items: %{
+          type: :items,
+          required: true,
+          item_schema: %{
+            date: %{type: :date, required: true, placeholder: "MM/YYYY"},
+            title: %{type: :string, required: true, placeholder: "Milestone Title"},
+            description: %{type: :text, required: true, placeholder: "What happened and why it matters"},
+            category: %{type: :select, options: ["career", "education", "personal", "achievement"], default: "career"},
+            location: %{type: :string, placeholder: "City, State"},
+            tags: %{type: :array, placeholder: "Relevant tags or themes"}
+          }
+        }
+      }
+    },
+
+    # MEDIA SECTIONS
+    "gallery" => %{
+      name: "Gallery",
+      description: "Visual portfolio, image galleries, and media showcase",
+      icon: "🖼️",
+      category: "media",
+      supports_multiple: true,
+      supports_media: ["image", "video"],
+      fields: %{
+        items: %{
+          type: :items,
+          required: true,
+          item_schema: %{
+            title: %{type: :string, required: true, placeholder: "Image/Video Title"},
+            description: %{type: :text, placeholder: "Description of the media"},
+            media_file: %{type: :file, accepts: "image/*,video/*", required: true},
+            category: %{type: :string, placeholder: "Category or tag"},
+            date: %{type: :date, placeholder: "MM/YYYY"},
+            tags: %{type: :array, placeholder: "Relevant tags"}
+          }
+        }
+      }
+    },
+
+    "blog" => %{
+      name: "Blog",
+      description: "Blog integration and recent posts",
+      icon: "📄",
+      category: "media",
+      supports_multiple: true,
+      supports_media: ["image"],
+      fields: %{
+        blog_url: %{type: :string, placeholder: "Your blog URL"},
+        rss_feed: %{type: :string, placeholder: "RSS feed URL"},
+        items: %{
+          type: :items,
+          item_schema: %{
+            title: %{type: :string, required: true, placeholder: "Blog Post Title"},
+            excerpt: %{type: :text, placeholder: "Post excerpt"},
+            url: %{type: :string, required: true, placeholder: "Post URL"},
+            publish_date: %{type: :date, placeholder: "MM/YYYY"},
+            tags: %{type: :array, placeholder: "Post tags"},
+            featured_image: %{type: :file, accepts: "image/*"}
+          }
+        }
+      }
+    },
+
+    # FLEXIBLE
     "custom" => %{
       name: "Custom Section",
       description: "User-defined section with flexible content structure",
-      icon: "🔧",
+      icon: "⚙️",
       category: "flexible",
       supports_multiple: true,
+      supports_media: ["image", "video"],
       fields: %{
         section_title: %{type: :string, required: true, placeholder: "Custom Section Name"},
         items: %{
@@ -332,7 +442,10 @@ defmodule Frestyl.Portfolios.EnhancedSectionSystem do
     }
   }
 
-  # Public API Functions
+  # ============================================================================
+  # PUBLIC API FUNCTIONS
+  # ============================================================================
+
   def get_section_config(section_type) when is_binary(section_type) do
     Map.get(@section_types, section_type, %{})
   end
@@ -360,7 +473,7 @@ defmodule Frestyl.Portfolios.EnhancedSectionSystem do
 
   def supports_media?(section_type) do
     case get_section_config(section_type) do
-      %{supports_media: media_types} when is_list(media_types) -> true
+      %{supports_media: media_types} when is_list(media_types) and length(media_types) > 0 -> true
       _ -> false
     end
   end
@@ -387,17 +500,39 @@ defmodule Frestyl.Portfolios.EnhancedSectionSystem do
     get_sections_by_category("essential")
   end
 
-  def get_resume_export_sections do
-    # Return sections in resume priority order
-    essential_sections = get_essential_sections()
-
-    # Specific order for resume export
-    resume_order = ["hero", "contact", "experience", "education", "skills"]
-
-    resume_order
-    |> Enum.map(fn section_type -> {section_type, Map.get(essential_sections, section_type)} end)
-    |> Enum.reject(fn {_type, config} -> is_nil(config) end)
-    |> Enum.into(%{})
+  def get_default_content(section_type) do
+    case section_type do
+      "hero" -> %{
+        "headline" => "Welcome to My Portfolio",
+        "tagline" => "Your Professional Tagline Here",
+        "description" => "Brief description of what you do and what makes you unique.",
+        "cta_text" => "Get Started",
+        "cta_link" => "#contact",
+        "video_type" => "none",
+        "social_links" => %{},
+        "contact_info" => %{}
+      }
+      "intro" -> %{
+        "story" => "Tell your professional story here...",
+        "highlights" => [],
+        "personality_traits" => [],
+        "fun_facts" => [],
+        "specialties" => [],
+        "years_experience" => 0,
+        "current_focus" => ""
+      }
+      "contact" -> %{
+        "email" => "",
+        "phone" => "",
+        "location" => "",
+        "availability" => "Available for new projects",
+        "social_links" => %{},
+        "preferred_contact" => "email"
+      }
+      _ -> %{
+        "items" => []
+      }
+    end
   end
 
   def validate_section_content(section_type, content) do
@@ -417,190 +552,11 @@ defmodule Frestyl.Portfolios.EnhancedSectionSystem do
     end)
   end
 
-  defp validate_field(nil, %{required: true}, _field_name), do: {:error, "is required"}
-  defp validate_field("", %{required: true}, _field_name), do: {:error, "is required"}
-  defp validate_field([], %{required: true}, _field_name), do: {:error, "is required"}
-  defp validate_field(%{"items" => []}, %{required: true}, _field_name), do: {:error, "must have at least one item"}
-
-  # Type validations
-  defp validate_field(value, %{type: :string}, _field_name) when not is_binary(value), do: {:error, "must be text"}
-  defp validate_field(value, %{type: :integer}, _field_name) when not is_integer(value) and not is_nil(value), do: {:error, "must be a number"}
-  defp validate_field(value, %{type: :boolean}, _field_name) when not is_boolean(value), do: {:error, "must be true or false"}
-  defp validate_field(value, %{type: :array}, _field_name) when not is_list(value), do: {:error, "must be a list"}
-  defp validate_field(value, %{type: :map}, _field_name) when not is_map(value), do: {:error, "must be a map"}
-
-  # Items validation
-  defp validate_field(%{"items" => items}, %{type: :items, item_schema: item_schema}, field_name) when is_list(items) do
-    validate_items(items, item_schema, field_name)
+  defp validate_field(value, %{required: true}, field_name) when value in [nil, ""] do
+    {:error, "#{field_name} is required"}
   end
-  defp validate_field(items, %{type: :items, item_schema: item_schema}, field_name) when is_list(items) do
-    validate_items(items, item_schema, field_name)
-  end
-  defp validate_field(_value, %{type: :items}, _field_name), do: {:error, "must be a list of items"}
-
-  # Default case - field is valid
   defp validate_field(_value, _config, _field_name), do: :ok
 
-  defp validate_items(items, item_schema, _field_name) do
-    validation_results = Enum.with_index(items)
-    |> Enum.map(fn {item, index} ->
-      validate_item(item, item_schema, index)
-    end)
-
-    errors = validation_results
-    |> Enum.flat_map(fn
-      {:error, errors} -> errors
-      :ok -> []
-    end)
-
-    if errors == [] do
-      :ok
-    else
-      {:error, "items validation failed: #{Enum.join(errors, ", ")}"}
-    end
-  end
-
-  defp validate_item(item, item_schema, index) when is_map(item) do
-    item_errors = Enum.reduce(item_schema, [], fn {item_field_name, item_field_config}, acc ->
-      item_field_value = Map.get(item, Atom.to_string(item_field_name))
-
-      case validate_field(item_field_value, item_field_config, item_field_name) do
-        :ok -> acc
-        {:error, message} -> ["item #{index} #{item_field_name}: #{message}" | acc]
-      end
-    end)
-
-    if item_errors == [] do
-      :ok
-    else
-      {:error, item_errors}
-    end
-  end
-  defp validate_item(_item, _item_schema, index), do: {:error, ["item #{index}: must be a map"]}
-
-  def get_default_content(section_type) do
-    fields = get_section_fields(section_type)
-
-    Enum.reduce(fields, %{}, fn {field_name, field_config}, acc ->
-      default_value = get_field_default_value(field_config)
-      Map.put(acc, Atom.to_string(field_name), default_value)
-    end)
-  end
-
-  defp get_field_default_value(field_config) do
-    case field_config do
-      %{default: default} -> default
-      %{type: :string} -> ""
-      %{type: :text} -> ""
-      %{type: :array} -> []
-      %{type: :map} -> %{}
-      %{type: :boolean} -> false
-      %{type: :integer} -> nil
-      %{type: :items} -> %{"items" => []}
-      %{type: :file} -> ""
-      %{type: :date} -> ""
-      %{type: :select, options: [first_option | _]} -> first_option
-      %{type: :select} -> ""
-      _ -> nil
-    end
-  end
-
-  def get_section_categories do
-    @section_types
-    |> Enum.map(fn {_key, config} -> Map.get(config, :category, "other") end)
-    |> Enum.uniq()
-    |> Enum.sort()
-  end
-
-  def get_category_display_name(category) do
-    case category do
-      "essential" -> "Essential"
-      "professional" -> "Professional"
-      "personal" -> "Personal"
-      "flexible" -> "Custom"
-      _ -> String.capitalize(category)
-    end
-  end
-
-  def get_category_description(category) do
-    case category do
-      "essential" -> "Core sections for resumes and professional profiles"
-      "professional" -> "Work-related sections showcasing expertise and achievements"
-      "personal" -> "Personal branding and community involvement sections"
-      "flexible" -> "Customizable sections for unique content"
-      _ -> "Additional portfolio sections"
-    end
-  end
-
-  def get_category_icon(category) do
-    case category do
-      "essential" -> "⭐"
-      "professional" -> "💼"
-      "personal" -> "👤"
-      "flexible" -> "🔧"
-      _ -> "📄"
-    end
-  end
-
-  # Helper function to determine if a section should be shown in resume export
-  def is_resume_section?(section_type) do
-    case get_section_config(section_type) do
-      %{category: "essential"} -> true
-      _ -> false
-    end
-  end
-
-  # Helper function to get sections in display order
-  def get_sections_in_display_order do
-    # Define preferred display order by category and within category
-    section_order = [
-      # Essential sections first (resume order)
-      "hero", "contact", "intro", "experience", "education", "skills",
-      # Professional sections
-      "projects", "certifications", "services",
-      # Personal sections
-      "testimonials", "volunteer", "writing",
-      # Flexible sections
-      "custom"
-    ]
-
-    section_order
-    |> Enum.map(fn section_type ->
-      {section_type, Map.get(@section_types, section_type)}
-    end)
-    |> Enum.reject(fn {_type, config} -> is_nil(config) end)
-    |> Enum.into(%{})
-  end
-
-  # Function to get field requirements for frontend validation
-  def get_field_requirements(section_type) do
-    fields = get_section_fields(section_type)
-
-    Enum.reduce(fields, %{}, fn {field_name, field_config}, acc ->
-      requirements = %{
-        type: Map.get(field_config, :type, :string),
-        required: Map.get(field_config, :required, false),
-        placeholder: Map.get(field_config, :placeholder, ""),
-        options: Map.get(field_config, :options, [])
-      }
-
-      # Add item schema for items fields
-      requirements = if Map.get(field_config, :type) == :items do
-        Map.put(requirements, :item_schema, Map.get(field_config, :item_schema, %{}))
-      else
-        requirements
-      end
-
-      Map.put(acc, field_name, requirements)
-    end)
-  end
-
-  # Function to check if a section type exists
-  def section_exists?(section_type) do
-    Map.has_key?(@section_types, to_string(section_type))
-  end
-
-  # Function to get section display priority (lower number = higher priority)
   def get_section_priority(section_type) do
     case section_type do
       "hero" -> 1
@@ -612,10 +568,14 @@ defmodule Frestyl.Portfolios.EnhancedSectionSystem do
       "projects" -> 7
       "certifications" -> 8
       "services" -> 9
-      "testimonials" -> 10
-      "volunteer" -> 11
-      "writing" -> 12
-      "custom" -> 13
+      "achievements" -> 10
+      "testimonials" -> 11
+      "published_articles" -> 12
+      "collaborations" -> 13
+      "timeline" -> 14
+      "gallery" -> 15
+      "blog" -> 16
+      "custom" -> 17
       _ -> 99
     end
   end

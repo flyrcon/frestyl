@@ -6,34 +6,32 @@ defmodule Frestyl.Portfolios.PortfolioSection do
   schema "portfolio_sections" do
     field :title, :string
     field :section_type, Ecto.Enum, values: [
-      :intro,
-      :experience,
-      :education,
-      :skills,
-      :projects,
-      :featured_project,
-      :case_study,
-      :achievements,
-      :testimonial,
-      :testimonials,
-      :media_showcase,
-      :code_showcase,
-      :contact,
-      :custom,
-      :story,
-      :timeline,
-      :narrative,
-      :journey,
-      :video_hero,
-      :collaborations,
-      :published_articles,
-      :certifications,
-      :services,
-      :blog,
-      :gallery,
-      :hero,
-      :about,
-      :pricing
+      # Essential sections
+      :hero,           # Main landing/introduction with video support
+      :intro,          # About me/professional summary
+      :contact,        # Contact information
+
+      # Professional sections
+      :experience,     # Work history
+      :education,      # Academic background
+      :skills,         # Skills and expertise
+      :projects,       # Portfolio projects
+      :certifications, # Certifications and credentials
+      :services,       # Services offered
+
+      # Content sections
+      :achievements,   # Awards and achievements
+      :testimonials,   # Client testimonials
+      :published_articles, # Writing and publications
+      :collaborations, # Partnerships and collaborations
+      :timeline,       # Chronological events/journey
+
+      # Media sections
+      :gallery,        # Media showcase
+      :blog,          # Blog integration
+
+      # Flexible
+      :custom         # User-defined sections
     ]
     field :content, :map
     field :position, :integer
@@ -555,9 +553,36 @@ defmodule Frestyl.Portfolios.PortfolioSection do
 
   # Validation for content structure based on section type
   defp validate_content_structure(changeset) do
-    case get_change(changeset, :section_type) do
-      nil -> changeset
-      section_type -> validate_content_for_type(changeset, section_type)
+    content = get_field(changeset, :content)
+    section_type = get_field(changeset, :section_type)
+
+    case {section_type, content} do
+      # ✅ FIX: Check for "items" not "education"
+      {:education, %{"items" => items}} when is_list(items) ->
+        changeset
+
+      {:education, _} ->
+        add_error(changeset, :content, "must contain an 'items' list for education sections")
+
+      {:experience, %{"items" => items}} when is_list(items) ->
+        changeset
+
+      {:experience, _} ->
+        add_error(changeset, :content, "must contain an 'items' list for experience sections")
+
+      {:skills, %{"items" => items}} when is_list(items) ->
+        changeset
+
+      {:skills, _} ->
+        add_error(changeset, :content, "must contain an 'items' list for skills sections")
+
+      # For simple content sections
+      {:hero, %{}} -> changeset
+      {:contact, %{}} -> changeset
+      {:intro, %{}} -> changeset
+      {:about, %{}} -> changeset
+
+      _ -> changeset
     end
   end
 
@@ -618,15 +643,6 @@ defmodule Frestyl.Portfolios.PortfolioSection do
           [{:content, "education at index #{index} must have degree and institution fields"}]
       end
     end)
-  end
-
-    defp validate_content_structure(changeset) do
-    case get_field(changeset, :section_type) do
-      :video_hero ->
-        validate_video_hero_content(changeset)
-      _ ->
-        changeset
-    end
   end
 
   defp validate_video_hero_content(changeset) do
