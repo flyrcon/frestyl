@@ -101,13 +101,14 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   # EVENT HANDLERS - RECORDING CONTROLS
   # ============================================================================
 
+  @impl true
   def handle_event("camera_initialized", _params, socket) do
-    IO.puts("📹 Camera initialized successfully")
+    IO.puts("🎬 Camera initialized successfully")
 
     socket = socket
     |> assign(:camera_status, :ready)
     |> assign(:camera_ready, true)
-    |> assign(:recording_state, :setup)  # <-- Changed to :setup
+    |> assign(:recording_state, :setup)
     |> assign(:error_message, nil)
 
     {:noreply, socket}
@@ -295,37 +296,72 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     {:noreply, socket}
   end
 
-  # Handle countdown tick messages
   @impl true
   def handle_info({:countdown_tick, component_id}, socket) do
-    IO.puts("🎬 COUNTDOWN TICK received for component #{component_id}, current component: #{socket.assigns.id}")
-    IO.puts("🎬 Current recording_state: #{socket.assigns.recording_state}")
+    IO.puts("🎬 COUNTDOWN TICK received - Component: #{component_id}, Socket: #{socket.assigns.id}")
+    IO.puts("🎬 Current state: #{socket.assigns.recording_state}")
     IO.puts("🎬 Current countdown: #{socket.assigns.countdown}")
 
     if socket.assigns.id == component_id && socket.assigns.recording_state == :countdown do
       current_countdown = socket.assigns.countdown
+      IO.puts("🎬 Processing countdown: #{current_countdown}")
 
       if current_countdown > 1 do
         # Continue countdown
-        IO.puts("🎬 Continuing countdown: #{current_countdown - 1}")
-        socket = assign(socket, :countdown, current_countdown - 1)
+        new_count = current_countdown - 1
+        IO.puts("🎬 Continuing countdown: #{new_count}")
+
+        socket = socket
+        |> assign(:countdown, new_count)
+        |> assign(:countdown_value, new_count)
+
+        # Schedule next tick
         Process.send_after(self(), {:countdown_tick, component_id}, 1000)
+
         {:noreply, socket}
       else
         # Countdown finished, start recording
-        IO.puts("🎬 Countdown complete, starting recording")
+        IO.puts("🎬 Countdown complete! Starting recording...")
 
         socket = socket
         |> assign(:recording_state, :recording)
         |> assign(:countdown, nil)
+        |> assign(:countdown_value, nil)
         |> assign(:recording_duration, 0)
 
-        # Send recording start event to hook
+        # Push event to JavaScript to start recording
         socket = push_event(socket, "start-recording", %{component_id: socket.assigns.id})
+
+        # Start recording duration timer
+        send(self(), {:recording_tick, socket.assigns.id})
+
         {:noreply, socket}
       end
     else
-      IO.puts("🎬 COUNTDOWN TICK ignored - component mismatch or wrong state")
+      IO.puts("🎬 COUNTDOWN TICK ignored - wrong component or state")
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:recording_tick, component_id}, socket) do
+    if socket.assigns.id == component_id && socket.assigns.recording_state == :recording do
+      current_duration = socket.assigns.recording_duration
+      max_duration = socket.assigns.max_duration
+
+      if current_duration < max_duration do
+        socket = assign(socket, :recording_duration, current_duration + 1)
+        Process.send_after(self(), {:recording_tick, component_id}, 1000)
+        {:noreply, socket}
+      else
+        # Auto-stop recording when max duration reached
+        socket = socket
+        |> assign(:recording_state, :preview)
+        |> push_event("stop-recording", %{component_id: component_id})
+
+        {:noreply, socket}
+      end
+    else
       {:noreply, socket}
     end
   end
@@ -395,24 +431,34 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
 
   @impl true
   def handle_event("start_countdown", _params, socket) do
+    IO.puts("🎬 START_COUNTDOWN event received")
+    IO.puts("🎬 Camera ready: #{socket.assigns.camera_ready}")
+    IO.puts("🎬 Camera status: #{socket.assigns.camera_status}")
+
     cond do
       not socket.assigns.camera_ready ->
+        IO.puts("🎬 Camera not ready, showing error")
         socket = put_flash(socket, :error, "Camera not ready. Please allow camera access.")
         {:noreply, socket}
 
       socket.assigns.camera_status != :ready ->
+        IO.puts("🎬 Camera not ready status, showing error")
         socket = put_flash(socket, :error, "Camera is still initializing. Please wait.")
         {:noreply, socket}
 
       true ->
-        socket =
-          socket
-          |> assign(:recording_state, :countdown)
-          |> assign(:countdown_timer, 3)
-          |> assign(:countdown_value, 3)
-          |> assign(:error_message, nil)
+        IO.puts("🎬 Starting countdown sequence...")
 
-        socket = push_event(socket, "start_countdown", %{})
+        socket = socket
+        |> assign(:recording_state, :countdown)
+        |> assign(:countdown, 3)
+        |> assign(:countdown_value, 3)  # Add this for display
+        |> assign(:error_message, nil)
+
+        # CRITICAL FIX: Send countdown tick immediately
+        send(self(), {:countdown_tick, socket.assigns.id})
+
+        IO.puts("🎬 Countdown state set, timer started")
         {:noreply, socket}
     end
   end
@@ -1325,7 +1371,6 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     """
   end
 
-  # Continue with other render functions...
   defp render_countdown_phase(assigns) do
     ~H"""
     <div class="text-center">
@@ -1336,8 +1381,9 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
 
         <div class="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
           <div class="text-center">
+            <!-- FIXED: Use countdown_value for display -->
             <div class="text-9xl font-black text-white mb-6 animate-pulse drop-shadow-2xl">
-              <%= @countdown_value %>
+              <%= @countdown_value || @countdown || 3 %>
             </div>
             <p class="text-white text-2xl font-semibold mb-4">Get ready to record...</p>
             <div class="flex justify-center">
@@ -1348,7 +1394,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
       </div>
 
       <div class="mt-6">
-        <button phx-click="cancel_recording" phx-target={@myself}
+        <button phx-click="cancel_countdown" phx-target={@myself}
                 class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
           Cancel Recording
         </button>
@@ -1356,6 +1402,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     </div>
     """
   end
+
 
   defp render_recording_phase(assigns) do
     ~H"""

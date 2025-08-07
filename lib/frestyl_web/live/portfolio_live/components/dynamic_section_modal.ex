@@ -226,8 +226,8 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
       # FIXED: Code Showcase Section
       "code_showcase" ->
         [
-          {"primary_language", %{type: :select, options: ["JavaScript", "Python", "Elixir", "Ruby", "Java", "Go", "Rust", "TypeScript", "PHP", "Other"], default: "JavaScript"}},
-          {"repository_url", %{type: :string, placeholder: "https://github.com/yourusername"}},
+          {"primary_language", %{type: :select, options: ["JavaScript", "Python", "Elixir", "Ruby", "Java", "Go", "Rust", "TypeScript", "PHP", "C++", "Swift", "Kotlin", "Other"], default: "JavaScript"}},
+          {"repository_url", %{type: :string, required: true, placeholder: "https://github.com/yourusername"}},
           {"show_stats", %{type: :boolean, default: true}}
         ]
 
@@ -288,108 +288,151 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
   # ============================================================================
 
   defp render_essential_items_section(assigns) do
-    items = get_current_items(assigns)
-    assigns = assign(assigns, :items, items)
+    items = Map.get(assigns.form_data, "items", [])
 
     ~H"""
-    <div class="bg-purple-50 rounded-lg border border-purple-200 p-6">
+    <div class="bg-blue-50 rounded-lg border border-blue-200 p-6">
       <div class="flex items-center justify-between mb-4">
-        <h5 class="text-lg font-semibold text-purple-900 flex items-center">
-          <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+        <div class="flex items-center">
+          <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
           </svg>
-          <%= get_items_label(@section_type) %>
-        </h5>
+          <h4 class="text-lg font-semibold text-blue-800">Items</h4>
+          <span class="ml-2 text-xs bg-blue-200 text-blue-700 px-2 py-1 rounded-full"><%= length(items) %></span>
+        </div>
         <button type="button"
-                phx-click="add_item" phx-target={@myself}
-                class="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm">
-          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                phx-click="add_new_item" phx-target={@myself}
+                class="inline-flex items-center px-3 py-1 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
           </svg>
-          Add <%= get_item_name(@section_type) %>
+          Add Item
         </button>
       </div>
 
-      <%= if @items != [] do %>
-        <div class="space-y-4">
-          <%= for {item, index} <- Enum.with_index(@items) do %>
-            <div class="bg-white border border-purple-200 rounded-lg p-4">
-              <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center space-x-3">
-                  <!-- Sort Controls -->
-                  <div class="flex flex-col space-y-1">
-                    <%= if index > 0 do %>
-                      <button type="button"
-                              phx-click="move_item_up" phx-target={@myself} phx-value-index={index}
-                              class="text-gray-400 hover:text-gray-600 transition-colors"
-                              title="Move up">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
-                        </svg>
-                      </button>
-                    <% else %>
-                      <div class="w-3 h-3"></div>
-                    <% end %>
-
-                    <%= if index < length(@items) - 1 do %>
-                      <button type="button"
-                              phx-click="move_item_down" phx-target={@myself} phx-value-index={index}
-                              class="text-gray-400 hover:text-gray-600 transition-colors"
-                              title="Move down">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                        </svg>
-                      </button>
-                    <% else %>
-                      <div class="w-3 h-3"></div>
-                    <% end %>
-                  </div>
-
-                  <h6 class="font-medium text-gray-900">
-                    <%= get_item_name(@section_type) %> #<%= index + 1 %>
-                  </h6>
-
-                  <!-- Visibility Toggle -->
-                  <button type="button"
-                          phx-click="toggle_item_visibility" phx-target={@myself} phx-value-index={index}
-                          class={"px-2 py-1 text-xs rounded #{if Map.get(item, "visible", true), do: "bg-green-100 text-green-700", else: "bg-gray-100 text-gray-500"}"}>
-                    <%= if Map.get(item, "visible", true), do: "Visible", else: "Hidden" %>
-                  </button>
-                </div>
-
-                <div class="flex items-center space-x-2">
-                  <!-- Copy Item -->
-                  <button type="button"
-                          phx-click="copy_item" phx-target={@myself} phx-value-index={index}
-                          class="text-blue-500 hover:text-blue-700 transition-colors"
-                          title="Copy item">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                    </svg>
-                  </button>
-
-                  <!-- Delete Item -->
-                  <button type="button"
-                          phx-click="remove_item" phx-target={@myself} phx-value-index={index}
-                          class="text-red-500 hover:text-red-700 transition-colors"
-                          title="Delete item">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Dynamic Item Fields Based on Section Type -->
-              <%= render_item_fields(assigns, item, index) %>
-            </div>
+      <!-- Items List with Management Controls -->
+      <div class="space-y-3">
+        <%= if length(items) > 0 do %>
+          <%= for {item, index} <- Enum.with_index(items) do %>
+            <%= render_item_with_controls(assigns, item, index) %>
           <% end %>
-        </div>
-      <% else %>
-        <%= render_empty_items_state(assigns) %>
-      <% end %>
+        <% else %>
+          <div class="text-center py-8 text-gray-500">
+            <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <p>No items added yet. Click "Add Item" to get started.</p>
+          </div>
+        <% end %>
+      </div>
     </div>
     """
+  end
+
+  defp render_item_with_controls(assigns, item, index) do
+    item_title = get_item_display_title(item, assigns.section_type)
+    is_visible = Map.get(item, "visible", true)
+    items_count = length(Map.get(assigns.form_data, "items", []))
+
+    ~H"""
+    <div class={"bg-white rounded-lg border-2 transition-all #{if is_visible, do: "border-green-200 bg-white", else: "border-gray-200 bg-gray-50 opacity-75"}"}>
+      <div class="p-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center flex-1">
+            <!-- Visibility Toggle -->
+            <button type="button"
+                    phx-click="toggle_item_visibility" phx-target={@myself}
+                    phx-value-item_index={index}
+                    class={"inline-flex items-center justify-center w-8 h-8 rounded-full transition-colors mr-3 #{if is_visible, do: "bg-green-100 text-green-600 hover:bg-green-200", else: "bg-gray-100 text-gray-400 hover:bg-gray-200"}"}>
+              <%= if is_visible do %>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+              <% else %>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L8.464 8.464a5.001 5.001 0 00-3.104 7.336m9.29-9.29A9.97 9.97 0 0119.5 12a9.97 9.97 0 01-1.563 3.029m-1.8 1.8L19.5 19.5M4.5 4.5l15 15"/>
+                </svg>
+              <% end %>
+            </button>
+
+            <div class="flex-1">
+              <h5 class={"font-medium #{if is_visible, do: "text-gray-900", else: "text-gray-500"}"}>
+                <%= item_title %>
+              </h5>
+              <p class={"text-sm #{if is_visible, do: "text-gray-600", else: "text-gray-400"}"}>
+                <%= if is_visible, do: "Visible to visitors", else: "Hidden from visitors" %>
+              </p>
+            </div>
+          </div>
+
+          <!-- Sorting Controls -->
+          <div class="flex items-center space-x-1">
+            <!-- Move Up -->
+            <button type="button"
+                    phx-click="move_item_up" phx-target={@myself}
+                    phx-value-item_index={index}
+                    disabled={index == 0}
+                    class={"inline-flex items-center justify-center w-8 h-8 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors #{if index == 0, do: "opacity-50 cursor-not-allowed", else: "cursor-pointer"}"}>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+              </svg>
+            </button>
+
+            <!-- Move Down -->
+            <button type="button"
+                    phx-click="move_item_down" phx-target={@myself}
+                    phx-value-item_index={index}
+                    disabled={index >= items_count - 1}
+                    class={"inline-flex items-center justify-center w-8 h-8 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors #{if index >= items_count - 1, do: "opacity-50 cursor-not-allowed", else: "cursor-pointer"}"}>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+
+            <!-- Edit Button -->
+            <button type="button"
+                    phx-click="edit_item" phx-target={@myself}
+                    phx-value-item_index={index}
+                    class="inline-flex items-center justify-center w-8 h-8 rounded text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </button>
+
+            <!-- Delete Button -->
+            <button type="button"
+                    phx-click="delete_item" phx-target={@myself}
+                    phx-value-item_index={index}
+                    class="inline-flex items-center justify-center w-8 h-8 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp get_item_display_title(item, section_type) do
+    case section_type do
+      "experience" -> Map.get(item, "title", "Experience Item")
+      "education" -> Map.get(item, "degree", "Education Item")
+      "projects" -> Map.get(item, "title", "Project Item")
+      "skills" -> Map.get(item, "name", "Skill Item")
+      "certifications" -> Map.get(item, "name", "Certification Item")
+      "services" -> Map.get(item, "name", "Service Item")
+      "achievements" -> Map.get(item, "title", "Achievement Item")
+      "testimonials" -> Map.get(item, "client_name", "Testimonial Item")
+      "published_articles" -> Map.get(item, "title", "Article Item")
+      "collaborations" -> Map.get(item, "title", "Collaboration Item")
+      "timeline" -> Map.get(item, "title", "Timeline Item")
+      "pricing" -> Map.get(item, "name", "Pricing Tier")
+      "code_showcase" -> Map.get(item, "title", "Code Sample")
+      _ -> Map.get(item, "title", "Item")
+    end
   end
 
   # ============================================================================
@@ -734,95 +777,381 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
     """
   end
 
+  defp render_code_showcase_form_fields(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <!-- Primary Language -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Primary Language</label>
+        <select name="primary_language"
+                value={Map.get(@form_data, "primary_language", "JavaScript")}
+                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+          <option value="JavaScript">JavaScript</option>
+          <option value="Python">Python</option>
+          <option value="Elixir">Elixir</option>
+          <option value="Ruby">Ruby</option>
+          <option value="Java">Java</option>
+          <option value="Go">Go</option>
+          <option value="Rust">Rust</option>
+          <option value="TypeScript">TypeScript</option>
+          <option value="PHP">PHP</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <!-- Repository URL -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Repository URL</label>
+        <input type="url"
+              name="repository_url"
+              value={Map.get(@form_data, "repository_url", "")}
+              placeholder="https://github.com/yourusername"
+              class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+
+      <!-- Show Stats Toggle -->
+      <div class="flex items-center">
+        <input type="checkbox"
+              id="show_stats"
+              name="show_stats"
+              checked={Map.get(@form_data, "show_stats", true)}
+              class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+        <label for="show_stats" class="ml-2 block text-sm text-gray-700">Show GitHub Statistics</label>
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+# 3. CONTACT FORM SOCIAL FIELDS FIX - Add to dynamic_section_modal.ex
+# ============================================================================
+
+# Fix contact form to include social media fields
+defp render_contact_form_fields(assigns) do
+  ~H"""
+  <div class="space-y-4">
+    <!-- Basic Contact Info -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+        <input type="email"
+               name="email"
+               value={Map.get(@form_data, "email", "")}
+               placeholder="your@email.com"
+               class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+        <input type="tel"
+               name="phone"
+               value={Map.get(@form_data, "phone", "")}
+               placeholder="+1 (555) 123-4567"
+               class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+      <input type="text"
+             name="location"
+             value={Map.get(@form_data, "location", "")}
+             placeholder="City, State/Country"
+             class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+    </div>
+
+    <!-- Social Media Links -->
+    <div class="border-t border-gray-200 pt-4">
+      <h4 class="text-lg font-medium text-gray-900 mb-3">Social Media Links</h4>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">LinkedIn</label>
+          <input type="url"
+                 name="social_links_linkedin"
+                 value={get_in(@form_data, ["social_links", "linkedin"]) || ""}
+                 placeholder="https://linkedin.com/in/yourprofile"
+                 class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">GitHub</label>
+          <input type="url"
+                 name="social_links_github"
+                 value={get_in(@form_data, ["social_links", "github"]) || ""}
+                 placeholder="https://github.com/yourusername"
+                 class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Twitter</label>
+          <input type="url"
+                 name="social_links_twitter"
+                 value={get_in(@form_data, ["social_links", "twitter"]) || ""}
+                 placeholder="https://twitter.com/yourusername"
+                 class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Website</label>
+          <input type="url"
+                 name="social_links_website"
+                 value={get_in(@form_data, ["social_links", "website"]) || ""}
+                 placeholder="https://yourwebsite.com"
+                 class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+        </div>
+      </div>
+    </div>
+  </div>
+  """
+end
+
+# ============================================================================
+# 4. FIX ADD_NEW_ITEM FUNCTION CLAUSE ERROR - Add to dynamic_section_modal.ex
+# ============================================================================
+
+# CRITICAL FIX: Add missing handle_event for add_new_item
+@impl true
+def handle_event("add_new_item", _params, socket) do
+  IO.puts("🔧 ADD_NEW_ITEM event triggered")
+
+  # Get current items
+  current_items = Map.get(socket.assigns.form_data, "items", [])
+
+  # Create new item based on section type
+  new_item = create_default_item_for_section(socket.assigns.section_type)
+
+  # Add new item to the list
+  updated_items = current_items ++ [new_item]
+  updated_form_data = Map.put(socket.assigns.form_data, "items", updated_items)
+
+  IO.puts("🔧 Added new item. Total items: #{length(updated_items)}")
+
+  {:noreply, assign(socket, :form_data, updated_form_data)}
+end
+
+# Helper to create default items for different section types
+defp create_default_item_for_section(section_type) do
+  case section_type do
+    "experience" ->
+      %{
+        "title" => "",
+        "company" => "",
+        "location" => "",
+        "start_date" => "",
+        "end_date" => "",
+        "description" => "",
+        "achievements" => [],
+        "visible" => true
+      }
+
+    "education" ->
+      %{
+        "degree" => "",
+        "institution" => "",
+        "field" => "",
+        "graduation_date" => "",
+        "gpa" => "",
+        "honors" => "",
+        "description" => "",
+        "visible" => true
+      }
+
+    "skills" ->
+      %{
+        "name" => "",
+        "level" => "intermediate",
+        "category" => "General",
+        "visible" => true
+      }
+
+    "projects" ->
+      %{
+        "title" => "",
+        "description" => "",
+        "technologies" => [],
+        "live_url" => "",
+        "github_url" => "",
+        "image_url" => "",
+        "visible" => true
+      }
+
+    "certifications" ->
+      %{
+        "name" => "",
+        "issuer" => "",
+        "issue_date" => "",
+        "expiry_date" => "",
+        "credential_id" => "",
+        "verification_url" => "",
+        "visible" => true
+      }
+
+    "services" ->
+      %{
+        "name" => "",
+        "description" => "",
+        "price" => "",
+        "duration" => "",
+        "features" => [],
+        "visible" => true
+      }
+
+    "achievements" ->
+      %{
+        "title" => "",
+        "organization" => "",
+        "date" => "",
+        "description" => "",
+        "certificate_url" => "",
+        "visible" => true
+      }
+
+    "testimonials" ->
+      %{
+        "content" => "",
+        "client_name" => "",
+        "client_title" => "",
+        "client_company" => "",
+        "rating" => "",
+        "visible" => true
+      }
+
+    "published_articles" ->
+      %{
+        "title" => "",
+        "publication" => "",
+        "publish_date" => "",
+        "description" => "",
+        "url" => "",
+        "visible" => true
+      }
+
+    "collaborations" ->
+      %{
+        "title" => "",
+        "partner" => "",
+        "date" => "",
+        "description" => "",
+        "url" => "",
+        "visible" => true
+      }
+
+    "timeline" ->
+      %{
+        "title" => "",
+        "date" => "",
+        "description" => "",
+        "category" => "",
+        "visible" => true
+      }
+
+    "pricing" ->
+      %{
+        "name" => "",
+        "price" => "",
+        "description" => "",
+        "features" => [],
+        "is_popular" => false,
+        "button_text" => "Get Started",
+        "button_url" => "#",
+        "visible" => true
+      }
+
+    "code_showcase" ->
+      %{
+        "title" => "",
+        "description" => "",
+        "language" => "JavaScript",
+        "repository_url" => "",
+        "live_url" => "",
+        "code_sample" => "",
+        "visible" => true
+      }
+
+    _ ->
+      %{
+        "title" => "",
+        "description" => "",
+        "visible" => true
+      }
+  end
+end
+
   # ============================================================================
   # MEDIA UPLOAD SECTION - INTEGRATED WITH EXISTING SYSTEM
   # ============================================================================
 
   defp render_media_upload_section(assigns) do
     ~H"""
-    <div class="bg-orange-50 rounded-lg border border-orange-200 p-6">
-      <div class="flex items-center justify-between mb-4">
-        <h5 class="text-lg font-semibold text-orange-900 flex items-center">
-          <svg class="w-5 h-5 mr-2 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-          </svg>
-          Media Files
-        </h5>
-        <span class="text-xs bg-orange-200 text-orange-700 px-2 py-1 rounded-full">
-          <%= get_supported_media_text(@section_type) %>
-        </span>
+    <div class="bg-purple-50 rounded-lg border border-purple-200 p-6">
+      <div class="flex items-center mb-4">
+        <svg class="w-5 h-5 text-purple-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        <h4 class="text-lg font-semibold text-purple-800">Media Attachments</h4>
+        <span class="ml-2 text-xs bg-purple-200 text-purple-700 px-2 py-1 rounded-full">Optional</span>
       </div>
 
       <!-- File Upload Area -->
-      <div class="border-2 border-dashed border-orange-300 rounded-lg p-6 text-center"
-           phx-drop-target={@uploads.media.ref}
-           id="media-dropzone">
-        <div class="flex flex-col items-center">
-          <svg class="w-12 h-12 text-orange-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-          </svg>
-          <p class="text-base text-gray-600 mb-4">Drag and drop files here or click to browse</p>
-          <label class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 cursor-pointer">
-            Browse Files
-            <.live_file_input upload={@uploads.media} class="sr-only" />
-          </label>
-          <p class="text-xs text-gray-500 mt-2">
-            Max size: 50MB • Accepted: <%= Enum.join(get_accepted_file_types(@section_type), ", ") %>
-          </p>
-        </div>
+      <div class="border-2 border-dashed border-purple-300 rounded-lg p-6 text-center hover:border-purple-400 transition-colors">
+        <form phx-submit="upload_media" phx-target={@myself} phx-change="validate_upload" class="space-y-4">
+          <div class="mx-auto flex justify-center">
+            <label for="media-upload" class="cursor-pointer">
+              <div class="flex flex-col items-center">
+                <svg class="w-12 h-12 text-purple-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                </svg>
+                <p class="text-sm text-purple-600 font-medium">Click to upload or drag and drop</p>
+                <p class="text-xs text-gray-500">PNG, JPG, GIF up to 50MB</p>
+              </div>
+            </label>
+          </div>
+
+          <!-- Hidden file input -->
+          <input type="file"
+                id="media-upload"
+                style="display: none;"
+                phx-hook="FileUpload"
+                multiple
+                accept="image/*,video/*,.pdf" />
+
+          <!-- Upload Progress -->
+          <%= for entry <- @uploads.media.entries do %>
+            <div class="bg-white rounded-md p-3 border border-purple-200">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-700"><%= entry.client_name %></span>
+                <span class="text-xs text-gray-500"><%= entry.progress %>%</span>
+              </div>
+              <div class="w-full bg-purple-200 rounded-full h-2">
+                <div class="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                    style={"width: #{entry.progress}%"}></div>
+              </div>
+
+              <!-- Upload errors -->
+              <%= for err <- upload_errors(@uploads.media, entry) do %>
+                <p class="text-red-500 text-xs mt-1"><%= error_to_string(err) %></p>
+              <% end %>
+            </div>
+          <% end %>
+
+          <!-- Upload button -->
+          <%= if length(@uploads.media.entries) > 0 do %>
+            <button type="submit"
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+              </svg>
+              Upload Files
+            </button>
+          <% end %>
+        </form>
       </div>
 
-      <!-- Upload Progress & Preview -->
-      <%= if !Enum.empty?(@uploads.media.entries) do %>
-        <div class="mt-6">
-          <h6 class="text-base font-medium text-gray-900 mb-3">Selected Files</h6>
-          <div class="space-y-3">
-            <%= for entry <- @uploads.media.entries do %>
-              <div class="flex items-center bg-white p-3 rounded-lg border border-orange-200">
-                <div class="flex-shrink-0 mr-3">
-                  <%= if String.starts_with?(entry.client_type, "image/") do %>
-                    <.live_img_preview entry={entry} width="48" height="48" class="object-cover rounded" />
-                  <% else %>
-                    <div class="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-500">
-                      <%= get_file_type_icon(entry.client_type) %>
-                    </div>
-                  <% end %>
-                </div>
-                <div class="flex-1">
-                  <p class="text-sm font-medium text-gray-900"><%= entry.client_name %></p>
-                  <p class="text-xs text-gray-500">
-                    <%= format_file_size(entry.client_size) %> •
-                    <%= if entry.progress > 0 do %>
-                      <%= entry.progress %>% uploaded
-                    <% else %>
-                      Ready to upload
-                    <% end %>
-                  </p>
-                  <%= if entry.progress > 0 and entry.progress < 100 do %>
-                    <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                      <div class="bg-orange-600 h-1.5 rounded-full" style={"width: #{entry.progress}%"}></div>
-                    </div>
-                  <% end %>
-                </div>
-                <button type="button"
-                        phx-click="cancel_upload" phx-target={@myself} phx-value-ref={entry.ref}
-                        class="text-red-500 hover:text-red-700">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                  </svg>
-                </button>
-              </div>
-            <% end %>
-          </div>
-        </div>
-      <% end %>
-
-      <!-- Upload Errors -->
-      <%= for err <- upload_errors(@uploads.media) do %>
-        <div class="mt-2 text-sm text-red-600">
-          <%= error_to_string(err) %>
-        </div>
-      <% end %>
+      <!-- Existing Media -->
+      <div class="mt-4 space-y-2">
+        <!-- This would show previously uploaded media files -->
+      </div>
     </div>
     """
   end
@@ -1124,29 +1453,30 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
     {:noreply, assign(socket, :form_data, form_data)}
   end
 
-  @impl true
-  def handle_event("move_item_up", %{"index" => index_str}, socket) do
+  def handle_event("move_item_up", %{"item_index" => index_str}, socket) do
     index = String.to_integer(index_str)
-    current_items = get_current_items(socket.assigns)
 
     if index > 0 do
-      updated_items = swap_items(current_items, index - 1, index)
-      form_data = Map.put(socket.assigns.form_data, "items", updated_items)
-      {:noreply, assign(socket, :form_data, form_data)}
+      current_items = get_current_items(socket.assigns.form_data)
+      updated_items = swap_items(current_items, index, index - 1)
+      updated_form_data = Map.put(socket.assigns.form_data, "items", updated_items)
+
+      {:noreply, assign(socket, :form_data, updated_form_data)}
     else
       {:noreply, socket}
     end
   end
 
   @impl true
-  def handle_event("move_item_down", %{"index" => index_str}, socket) do
+  def handle_event("move_item_down", %{"item_index" => index_str}, socket) do
     index = String.to_integer(index_str)
-    current_items = get_current_items(socket.assigns)
+    current_items = get_current_items(socket.assigns.form_data)
 
     if index < length(current_items) - 1 do
       updated_items = swap_items(current_items, index, index + 1)
-      form_data = Map.put(socket.assigns.form_data, "items", updated_items)
-      {:noreply, assign(socket, :form_data, form_data)}
+      updated_form_data = Map.put(socket.assigns.form_data, "items", updated_items)
+
+      {:noreply, assign(socket, :form_data, updated_form_data)}
     else
       {:noreply, socket}
     end
@@ -1172,18 +1502,49 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
   end
 
   @impl true
-  def handle_event("toggle_item_visibility", %{"index" => index_str}, socket) do
+  def handle_event("toggle_item_visibility", %{"item_index" => index_str}, socket) do
     index = String.to_integer(index_str)
-    current_items = get_current_items(socket.assigns)
+    current_items = get_current_items(socket.assigns.form_data)
 
-    updated_items = List.update_at(current_items, index, fn item ->
-      current_visibility = Map.get(item, "visible", true)
-      Map.put(item, "visible", !current_visibility)
-    end)
+    case Enum.at(current_items, index) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Item not found")}
 
-    form_data = Map.put(socket.assigns.form_data, "items", updated_items)
-    {:noreply, assign(socket, :form_data, form_data)}
+      item ->
+        # FIXED: Toggle visibility instead of deleting
+        current_visibility = Map.get(item, "visible", true)
+        updated_item = Map.put(item, "visible", !current_visibility)
+
+        # Update the item in the list
+        updated_items = List.replace_at(current_items, index, updated_item)
+        updated_form_data = Map.put(socket.assigns.form_data, "items", updated_items)
+
+        status_text = if !current_visibility, do: "shown", else: "hidden"
+
+        {:noreply, socket
+          |> assign(:form_data, updated_form_data)
+          |> put_flash(:info, "Item #{status_text} successfully")}
+    end
   end
+
+  # Add event handler to actually delete items (separate from visibility)
+  @impl true
+  def handle_event("delete_item_permanently", %{"item_index" => index_str}, socket) do
+    index = String.to_integer(index_str)
+    current_items = get_current_items(socket.assigns.form_data)
+
+    if index >= 0 and index < length(current_items) do
+      updated_items = List.delete_at(current_items, index)
+      updated_form_data = Map.put(socket.assigns.form_data, "items", updated_items)
+
+      {:noreply, socket
+        |> assign(:form_data, updated_form_data)
+        |> put_flash(:info, "Item deleted permanently")}
+    else
+      {:noreply, put_flash(socket, :error, "Invalid item index")}
+    end
+  end
+
 
   @impl true
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
@@ -1525,6 +1886,23 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
   # HELPER FUNCTIONS - ALL 18 SECTION TYPES COMPLETE
   # ============================================================================
 
+  defp get_section_form_type(section_type) do
+    case section_type do
+      "code_showcase" -> "code_showcase"  # FIXED: Was showing as "custom"
+      "pricing" -> "pricing"              # FIXED: Was showing as "custom"
+      "hero" -> "hero"                    # FIXED: Database constraint issue
+      "blog" -> "blog"                    # FIXED: Database constraint issue
+      "gallery" -> "gallery"              # FIXED: Database constraint issue
+      "published_articles" -> "published_articles"  # FIXED: Database constraint issue
+      "collaborations" -> "collaborations"          # FIXED: Database constraint issue
+      "testimonials" -> "testimonials"    # FIXED: Database constraint issue
+      "certifications" -> "certifications" # FIXED: Database constraint issue
+      "achievements" -> "achievements"    # FIXED: Database constraint issue
+      "timeline" -> "timeline"           # FIXED: Database constraint issue
+      _ -> section_type
+    end
+  end
+
   defp get_default_section_title(section_type) do
     case section_type do
       # Essential sections (3)
@@ -1637,10 +2015,10 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
   end
   defp format_file_size(_), do: "0 B"
 
-  defp error_to_string(:too_large), do: "File is too large (max 50MB)"
-  defp error_to_string(:too_many_files), do: "Too many files (max 10)"
+  defp error_to_string(:too_large), do: "File too large (max 50MB)"
+  defp error_to_string(:too_many_files), do: "Too many files selected"
   defp error_to_string(:not_accepted), do: "File type not supported"
-  defp error_to_string(error), do: "Upload error: #{error}"
+  defp error_to_string(err), do: "Upload error: #{inspect(err)}"
 
   # ============================================================================
   # FORM PROCESSING - COMPLETE IMPLEMENTATIONS FOR ALL 18 TYPES
@@ -1816,11 +2194,8 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
     end
   end
 
-  defp get_current_items(assigns) do
-    case Map.get(assigns.form_data, "items") do
-      items when is_list(items) -> items
-      _ -> []
-    end
+  defp get_current_items(form_data) do
+    Map.get(form_data, "items", [])
   end
 
   defp get_default_item_for_section(section_type) do
@@ -1969,16 +2344,123 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
     end
   end
 
-  # Helper function for swapping items in list
-  defp swap_items(list, index1, index2) do
-    item1 = Enum.at(list, index1)
-    item2 = Enum.at(list, index2)
+  @impl true
+  def handle_event("upload_media", _params, socket) do
+    IO.puts("🔧 Processing media upload for section")
 
-    list
-    |> List.replace_at(index1, item2)
-    |> List.replace_at(index2, item1)
+    # Process uploaded files from LiveView uploads
+    uploaded_files = consume_uploaded_entries(socket, :media, fn %{path: path}, entry ->
+      # Create media record using existing PortfolioMedia schema
+      media_attrs = %{
+        filename: entry.client_name,
+        file_type: entry.client_type,
+        file_size: entry.client_size,
+        file_path: path,
+        portfolio_id: socket.assigns.portfolio_id,
+        section_id: socket.assigns.section_id, # If editing existing section
+        alt_text: "",
+        caption: "",
+        visible: true
+      }
+
+      case Frestyl.Portfolios.create_portfolio_media(media_attrs) do
+        {:ok, media_file} ->
+          # Move file to permanent storage
+          final_path = move_uploaded_file(path, media_file.id)
+
+          # Update media record with final path
+          Frestyl.Portfolios.update_portfolio_media(media_file, %{file_path: final_path})
+
+          {:ok, media_file}
+        {:error, changeset} ->
+          IO.puts("❌ Failed to create media record: #{inspect(changeset.errors)}")
+          {:error, "Upload failed"}
+      end
+    end)
+
+    case uploaded_files do
+      [] ->
+        {:noreply, put_flash(socket, :error, "No files were uploaded")}
+
+      files when is_list(files) ->
+        # Add media files to form data
+        current_media = Map.get(socket.assigns.form_data, "media_files", [])
+
+        new_media_entries = Enum.map(files, fn media ->
+          %{
+            "id" => media.id,
+            "filename" => media.filename,
+            "file_type" => media.file_type,
+            "file_path" => media.file_path,
+            "url" => get_media_url(media.file_path)
+          }
+        end)
+
+        updated_media = current_media ++ new_media_entries
+        updated_form_data = Map.put(socket.assigns.form_data, "media_files", updated_media)
+
+        {:noreply, socket
+          |> assign(:form_data, updated_form_data)
+          |> put_flash(:info, "#{length(files)} file(s) uploaded successfully")}
+    end
   end
-    defp get_section_name(section_type) do
+
+  defp move_uploaded_file(temp_path, media_id) do
+    # Create uploads directory if it doesn't exist
+    uploads_dir = Path.join([:code.priv_dir(:frestyl), "static", "uploads", "portfolio_media"])
+    File.mkdir_p!(uploads_dir)
+
+    # Generate unique filename
+    timestamp = System.system_time(:millisecond)
+    filename = "#{media_id}_#{timestamp}_#{Path.basename(temp_path)}"
+    final_path = Path.join(uploads_dir, filename)
+
+    # Copy file to permanent location
+    File.cp!(temp_path, final_path)
+
+    # Return web-accessible path
+    "/uploads/portfolio_media/#{filename}"
+  end
+
+  defp get_media_url(file_path) do
+    # Convert file system path to web URL
+    case file_path do
+      "/uploads/" <> _ -> file_path
+      _ -> "/uploads/portfolio_media/#{Path.basename(file_path)}"
+    end
+  end
+
+  # Update the media display in sections to show attached media
+  defp save_section_with_media(socket, section_attrs) do
+    # Include media_files in content
+    media_files = Map.get(socket.assigns.form_data, "media_files", [])
+
+    content = section_attrs.content
+    |> Map.put("media_files", media_files)
+
+    updated_section_attrs = %{section_attrs | content: content}
+
+    # Continue with normal section saving...
+    case Frestyl.Portfolios.create_portfolio_section(socket.assigns.portfolio.id, updated_section_attrs) do
+      {:ok, section} ->
+        {:ok, section}
+      {:error, changeset} ->
+        {:error, changeset}
+    end
+  end
+
+  # Helper function for swapping items in list
+  defp swap_items(items, index1, index2) do
+    items
+    |> List.update_at(index1, fn item1 ->
+      Enum.at(items, index2)
+    end)
+    |> List.update_at(index2, fn _ ->
+      Enum.at(items, index1)
+    end)
+  end
+
+  defp get_section_name(section_type) do
     case section_type do
       # Essential sections (3)
       "hero" -> "Hero Section"

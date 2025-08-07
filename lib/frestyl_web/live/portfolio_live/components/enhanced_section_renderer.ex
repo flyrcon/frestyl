@@ -234,6 +234,83 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
     """
   end
 
+
+  def should_render_section?(section) do
+    case to_string(section.section_type) do
+      # Field-based sections (always show if section is visible)
+      type when type in ["hero", "intro", "contact"] ->
+        Map.get(section, :visible, true)
+
+      # Item-based sections (only show if has visible items)
+      type when type in ["experience", "education", "skills", "projects", "certifications",
+                        "services", "achievements", "testimonials", "published_articles",
+                        "collaborations", "timeline", "pricing", "code_showcase"] ->
+        section_visible = Map.get(section, :visible, true)
+        has_visible_items = has_visible_items?(section)
+
+        section_visible and has_visible_items
+
+      # Default: show if section is visible
+      _ ->
+        Map.get(section, :visible, true)
+    end
+  end
+
+  defp has_visible_items?(section) do
+    items = get_in(section.content, ["items"]) || []
+
+    visible_items = Enum.filter(items, fn item ->
+      Map.get(item, "visible", true)
+    end)
+
+    length(visible_items) > 0
+  end
+
+  defp filter_visible_sections(sections) do
+    sections
+    |> Enum.filter(&should_render_section?/1)
+  end
+
+  # Update enhanced_layout_renderer.ex to use the new filtering
+  defp normalize_sections_for_rendering(sections) do
+    sections
+    |> Enum.filter(fn section ->
+      section && Map.get(section, :id) && Map.get(section, :title)
+    end)
+    |> Enum.map(&normalize_section_data/1)
+    |> Enum.filter(&should_render_section?/1)  # Add this line
+  end
+
+  # Add this function to enhanced_section_renderer.ex
+  defp normalize_section_data(section) do
+    section
+    |> Map.put_new(:content, %{})
+    |> Map.put_new(:section_type, "custom")
+    |> Map.put_new(:title, "Untitled Section")
+    |> Map.put_new(:visible, true)
+    |> ensure_section_structure()
+  end
+
+  # Helper function to ensure proper section structure
+  defp ensure_section_structure(section) do
+    # Normalize section_type to string for consistency
+    section_type = case Map.get(section, :section_type) do
+      atom when is_atom(atom) -> to_string(atom)
+      string when is_binary(string) -> string
+      _ -> "custom"
+    end
+
+    # Ensure content is a map
+    content = case Map.get(section, :content) do
+      map when is_map(map) -> map
+      _ -> %{}
+    end
+
+    section
+    |> Map.put(:section_type, section_type)
+    |> Map.put(:content, content)
+  end
+
   # ============================================================================
   # WORKING SECTIONS - MAINTAIN EXISTING FUNCTIONALITY
   # ============================================================================
@@ -475,6 +552,7 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
     end
   end
 
+  # CRITICAL: Skills section with user's color palette
   defp render_skills_items_content(content, customization) do
     items = Map.get(content, "items", [])
 
@@ -527,8 +605,129 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
     end
   end
 
-  defp render_projects_items_content(content, _customization) do
+  # Add this function to enhanced_section_renderer.ex
+defp get_user_primary_color(customization) do
+  # Extract user's primary color from customization or use default
+  case customization do
+    %{} = custom when is_map(custom) ->
+      Map.get(custom, "primary_color", "#3B82F6")
+    _ ->
+      "#3B82F6"  # Default blue
+  end
+end
+
+defp render_skills_categorized_with_colors(items, show_categories, user_primary_color) do
+  visible_items = Enum.filter(items, fn item -> Map.get(item, "visible", true) end)
+
+  # Define color palette with user's primary color first
+  color_palette = [
+    user_primary_color,  # User's primary color
+    "#8B5CF6",          # Purple-500
+    "#06B6D4",          # Cyan-500
+    "#10B981",          # Emerald-500
+    "#F59E0B",          # Amber-500
+    "#EF4444",          # Red-500
+    "#6366F1"           # Indigo-500
+  ]
+
+  # Group by category and assign colors
+  grouped_skills = visible_items
+  |> Enum.group_by(fn item -> Map.get(item, "category", "General") end)
+  |> Enum.with_index()
+
+  html = """
+  <div class="skills-section py-12">
+    <div class="text-center mb-8">
+      <h3 class="text-2xl font-bold text-gray-900 mb-2">Skills & Expertise</h3>
+      <p class="text-gray-600">Technologies and tools I work with</p>
+    </div>
+    <div class="space-y-6">
+  """
+
+  categories_html = grouped_skills
+  |> Enum.map(fn {{category, skills}, color_index} ->
+    # Get color for this category (cycle through palette)
+    category_color = Enum.at(color_palette, rem(color_index, length(color_palette)))
+
+    # Subtle category header with color accent
+    category_header = if show_categories and category != "General" do
+      "<h4 class=\"text-sm font-medium text-gray-500 uppercase tracking-wide mb-3 border-b-2 pb-1\" style=\"border-color: #{category_color};\">#{safe_html_escape(category)}</h4>"
+    else
+      ""
+    end
+
+    skills_html = grouped_skills
+
+
+    "<div class=\"mb-6\">#{category_header}<div class=\"flex flex-wrap gap-2\">#{skills_html}</div></div>"
+  end)
+  |> Enum.join("")
+
+  html <> categories_html <> """
+    </div>
+  </div>
+  """
+end
+
+defp get_skill_colors_by_level(base_color, level) do
+  case level do
+    "beginner" ->
+      # Very light shade
+      {lighten_color(base_color, 0.9), darken_color(base_color, 0.3), lighten_color(base_color, 0.7)}
+
+    "intermediate" ->
+      # Medium light shade
+      {lighten_color(base_color, 0.7), darken_color(base_color, 0.2), lighten_color(base_color, 0.5)}
+
+    "advanced" ->
+      # Medium shade
+      {lighten_color(base_color, 0.5), "#ffffff", base_color}
+
+    "expert" ->
+      # Dark shade
+      {darken_color(base_color, 0.2), "#ffffff", darken_color(base_color, 0.1)}
+
+    _ ->
+      # Default intermediate
+      {lighten_color(base_color, 0.7), darken_color(base_color, 0.2), lighten_color(base_color, 0.5)}
+  end
+end
+
+defp get_level_indicator(level) do
+  case level do
+    "beginner" -> "●"
+    "intermediate" -> "●●"
+    "advanced" -> "●●●"
+    "expert" -> "●●●●"
+    _ -> "●●"
+  end
+end
+
+# Color manipulation helpers
+defp lighten_color(hex_color, amount) do
+  # Simple color lightening - would need proper color manipulation library
+  # This is a placeholder that returns increasingly lighter versions
+  case amount do
+    x when x >= 0.9 -> "#F8FAFC"  # Very light
+    x when x >= 0.7 -> "#F1F5F9"  # Light
+    x when x >= 0.5 -> "#E2E8F0"  # Medium light
+    _ -> hex_color
+  end
+end
+
+defp darken_color(hex_color, amount) do
+  # Simple color darkening - placeholder implementation
+  case amount do
+    x when x >= 0.3 -> "#1E293B"  # Dark
+    x when x >= 0.2 -> "#334155"  # Medium dark
+    x when x >= 0.1 -> "#475569"  # Slightly dark
+    _ -> hex_color
+  end
+end
+
+  defp render_projects_items_content(content, customization) do
     items = Map.get(content, "items", [])
+    display_style = Map.get(customization, "projects_display", "rows")
 
     if length(items) == 0 do
       render_empty_state_safe("No projects added yet")
@@ -536,15 +735,16 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
       html = """
       <div class="projects-section py-12">
         <div class="text-center mb-8">
-          <h3 class="text-2xl font-bold text-gray-900 mb-2">My Projects</h3>
-          <p class="text-gray-600">Featured work and portfolio pieces</p>
+          <h3 class="text-2xl font-bold text-gray-900 mb-2">Projects</h3>
+          <p class="text-gray-600">A showcase of my recent work</p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- FIXED: Single column layout using space-y-4 -->
+        <div class="space-y-4">
       """
 
       items_html = items
       |> Enum.filter(fn item -> Map.get(item, "visible", true) end)
-      |> Enum.map(&render_project_item_safe/1)
+      |> Enum.map(fn item -> render_project_item_safe(item) end)
       |> Enum.join("")
 
       html <> items_html <> """
@@ -554,6 +754,91 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
     end
   end
 
+
+  defp render_code_showcase_items_content(content, _customization) do
+    items = Map.get(content, "items", [])
+    primary_language = Map.get(content, "primary_language", "JavaScript")
+    repository_url = Map.get(content, "repository_url", "")
+    show_stats = Map.get(content, "show_stats", true)
+
+    if length(items) == 0 do
+      render_empty_state_safe("No code samples added yet")
+    else
+      html = """
+      <div class="code-showcase-section py-12">
+        <div class="text-center mb-8">
+          <h3 class="text-2xl font-bold text-gray-900 mb-2">Code Portfolio</h3>
+          <p class="text-gray-600">Examples of my work and coding style</p>
+          #{if repository_url != "" do
+            "<div class=\"mt-4\"><a href=\"#{repository_url}\" target=\"_blank\" class=\"inline-flex items-center px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors\"><svg class=\"w-4 h-4 mr-2\" fill=\"currentColor\" viewBox=\"0 0 20 20\"><path fill-rule=\"evenodd\" d=\"M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z\" clip-rule=\"evenodd\"/></svg>View Repository</a></div>"
+          else
+            ""
+          end}
+        </div>
+        <div class="space-y-6">
+      """
+
+      items_html = items
+      |> Enum.filter(fn item -> Map.get(item, "visible", true) end)
+      |> Enum.map(fn item -> render_code_showcase_item_safe(item, show_stats, primary_language) end)
+      |> Enum.join("")
+
+      html <> items_html <> """
+        </div>
+      </div>
+      """
+    end
+  end
+
+  defp render_code_showcase_item_safe(item, show_stats, primary_language) do
+    title = safe_map_get(item, "title", "")
+    description = safe_map_get(item, "description", "")
+    language = safe_map_get(item, "language", primary_language)
+    repository_url = safe_map_get(item, "repository_url", "")
+    live_url = safe_map_get(item, "live_url", "")
+    code_sample = safe_map_get(item, "code_sample", "")
+
+    """
+    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+      <div class="p-6">
+        <div class="flex items-start justify-between mb-4">
+          <div class="flex-1">
+            <h4 class="text-lg font-semibold text-gray-900 mb-2">#{safe_html_escape(title)}</h4>
+            <p class="text-gray-600 mb-3">#{safe_html_escape(description)}</p>
+            <div class="flex items-center space-x-4">
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                #{safe_html_escape(language)}
+              </span>
+              #{if repository_url != "" do
+                "<a href=\"#{repository_url}\" target=\"_blank\" class=\"text-gray-600 hover:text-gray-900\">
+                  <svg class=\"w-4 h-4\" fill=\"currentColor\" viewBox=\"0 0 20 20\"><path fill-rule=\"evenodd\" d=\"M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z\" clip-rule=\"evenodd\"/></svg>
+                </a>"
+              else
+                ""
+              end}
+              #{if live_url != "" do
+                "<a href=\"#{live_url}\" target=\"_blank\" class=\"text-blue-600 hover:text-blue-800\">
+                  <svg class=\"w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14\"/></svg>
+                </a>"
+              else
+                ""
+              end}
+            </div>
+          </div>
+        </div>
+        #{if code_sample != "" do
+          "<div class=\"bg-gray-900 rounded-md p-4 text-sm text-green-400 font-mono overflow-x-auto\">
+            <pre>#{safe_html_escape(code_sample)}</pre>
+          </div>"
+        else
+          ""
+        end}
+      </div>
+    </div>
+    """
+  end
+
+
   # ============================================================================
   # WORKING SECTION ITEM RENDERERS
   # ============================================================================
@@ -561,36 +846,53 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
   defp render_experience_item_safe(item) do
     title = safe_map_get(item, "title", "")
     company = safe_map_get(item, "company", "")
-    description = safe_map_get(item, "description", "")
+    location = safe_map_get(item, "location", "")
     start_date = safe_map_get(item, "start_date", "")
     end_date = safe_map_get(item, "end_date", "")
+    description = safe_map_get(item, "description", "")
+    achievements = safe_map_get(item, "achievements", [])
 
-    date_range = case {start_date, end_date} do
-      {"", ""} -> ""
-      {start, ""} -> start
-      {"", finish} -> "Until #{finish}"
-      {start, "Present"} -> "#{start} - Present"
-      {start, finish} -> "#{start} - #{finish}"
+    date_range = if safe_not_empty?(start_date) do
+      end_text = if safe_not_empty?(end_date), do: end_date, else: "Present"
+      "#{start_date} - #{end_text}"
+    else
+      ""
     end
 
+    achievements_html = if is_list(achievements) and length(achievements) > 0 do
+      achievements_list = achievements
+      |> Enum.map(fn achievement -> "<li class=\"mb-1\">#{safe_html_escape(to_string(achievement))}</li>" end)
+      |> Enum.join("")
+      "<ul class=\"list-disc list-inside text-gray-600 mt-3 space-y-1\">#{achievements_list}</ul>"
+    else
+      ""
+    end
+
+    # CRITICAL FIX: Remove border, add subtle shadow like Projects
     """
-    <div class="bg-white rounded-lg p-6 border border-gray-200">
+    <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
       <div class="flex justify-between items-start mb-3">
-        <div>
-          <h4 class="text-lg font-semibold text-gray-900">#{safe_html_escape(title)}</h4>
-          <div class="text-blue-600 font-medium">#{safe_html_escape(company)}</div>
+        <div class="flex-1">
+          <h4 class="text-lg font-semibold text-gray-900 mb-1">#{safe_html_escape(title)}</h4>
+          <div class="text-blue-600 font-medium mb-1">#{safe_html_escape(company)}</div>
+          #{if safe_not_empty?(location) do
+            "<div class=\"text-sm text-gray-500 mb-2\">#{safe_html_escape(location)}</div>"
+          else
+            ""
+          end}
         </div>
         #{if date_range != "" do
-          "<span class=\"inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700\">#{safe_html_escape(date_range)}</span>"
+          "<div class=\"text-sm text-gray-500 font-medium\">#{safe_html_escape(date_range)}</div>"
         else
           ""
         end}
       </div>
       #{if safe_not_empty?(description) do
-        "<p class=\"text-gray-700 leading-relaxed\">#{safe_html_escape(description)}</p>"
+        "<p class=\"text-gray-600 mb-3\">#{safe_html_escape(description)}</p>"
       else
         ""
       end}
+      #{achievements_html}
     </div>
     """
   end
@@ -598,38 +900,58 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
   defp render_education_item_safe(item) do
     degree = safe_map_get(item, "degree", "")
     institution = safe_map_get(item, "institution", "")
-    description = safe_map_get(item, "description", "")
-    start_date = safe_map_get(item, "start_date", "")
+    field = safe_map_get(item, "field", "")
     graduation_date = safe_map_get(item, "graduation_date", "")
+    gpa = safe_map_get(item, "gpa", "")
+    honors = safe_map_get(item, "honors", "")
+    description = safe_map_get(item, "description", "")
 
-    date_range = case {start_date, graduation_date} do
-      {"", ""} -> ""
-      {start, ""} -> start
-      {"", finish} -> "Graduated #{finish}"
-      {start, finish} -> "#{start} - #{finish}"
-    end
-
+    # CRITICAL FIX: Remove border, add subtle shadow like Projects
     """
-    <div class="bg-white rounded-lg shadow-md p-6 border-l-4 border-green-500">
+    <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
       <div class="flex justify-between items-start mb-3">
-        <div>
-          <h4 class="text-lg font-semibold text-gray-900">#{safe_html_escape(degree)}</h4>
-          <div class="text-green-600 font-medium">#{safe_html_escape(institution)}</div>
+        <div class="flex-1">
+          <h4 class="text-lg font-semibold text-gray-900 mb-1">#{safe_html_escape(degree)}</h4>
+          <div class="text-blue-600 font-medium mb-1">#{safe_html_escape(institution)}</div>
+          #{if safe_not_empty?(field) do
+            "<div class=\"text-gray-600 mb-2\">#{safe_html_escape(field)}</div>"
+          else
+            ""
+          end}
         </div>
-        #{if date_range != "" do
-          "<div class=\"text-sm text-gray-500\">#{safe_html_escape(date_range)}</div>"
+        #{if safe_not_empty?(graduation_date) do
+          "<div class=\"text-sm text-gray-500 font-medium\">#{safe_html_escape(graduation_date)}</div>"
         else
           ""
         end}
       </div>
+
+      <div class="flex flex-wrap gap-4 mb-3">
+        #{if safe_not_empty?(gpa) do
+          "<span class=\"inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800\">
+            GPA: #{safe_html_escape(gpa)}
+          </span>"
+        else
+          ""
+        end}
+        #{if safe_not_empty?(honors) do
+          "<span class=\"inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800\">
+            #{safe_html_escape(honors)}
+          </span>"
+        else
+          ""
+        end}
+      </div>
+
       #{if safe_not_empty?(description) do
-        "<p class=\"text-gray-700 leading-relaxed\">#{safe_html_escape(description)}</p>"
+        "<p class=\"text-gray-600\">#{safe_html_escape(description)}</p>"
       else
         ""
       end}
     </div>
     """
   end
+
 
   defp render_skill_pill_safe(item, base_color) do
     name = safe_map_get(item, "name", "")
@@ -664,50 +986,61 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
   defp render_project_item_safe(item) do
     title = safe_map_get(item, "title", "")
     description = safe_map_get(item, "description", "")
-    technologies = safe_map_get(item, "technologies", "")
-    url = safe_map_get(item, "url", "")
+    technologies = safe_map_get(item, "technologies", [])
+    live_url = safe_map_get(item, "live_url", "")
     github_url = safe_map_get(item, "github_url", "")
+    image_url = safe_map_get(item, "image_url", "")
 
+    tech_tags = if is_list(technologies) and length(technologies) > 0 do
+      technologies
+      |> Enum.take(4) # Limit to 4 tags
+      |> Enum.map(fn tech -> "<span class=\"inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-2 mb-2\">#{safe_html_escape(to_string(tech))}</span>" end)
+      |> Enum.join("")
+    else
+      ""
+    end
+
+    image_section = if image_url != "" do
+      "<div class=\"w-full h-48 bg-gray-200 rounded-lg overflow-hidden mb-4\">
+        <img src=\"#{safe_html_escape(image_url)}\" alt=\"#{safe_html_escape(title)}\" class=\"w-full h-full object-cover\">
+      </div>"
+    else
+      ""
+    end
+
+    links_section = if live_url != "" or github_url != "" do
+      live_link = if live_url != "" do
+        "<a href=\"#{safe_html_escape(live_url)}\" target=\"_blank\" class=\"inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors mr-2\">
+          <svg class=\"w-4 h-4 mr-1\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14\"/></svg>
+          Live Demo
+        </a>"
+      else
+        ""
+      end
+
+      github_link = if github_url != "" do
+        "<a href=\"#{safe_html_escape(github_url)}\" target=\"_blank\" class=\"inline-flex items-center px-3 py-2 text-sm font-medium text-gray-600 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors\">
+          <svg class=\"w-4 h-4 mr-1\" fill=\"currentColor\" viewBox=\"0 0 20 20\"><path fill-rule=\"evenodd\" d=\"M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z\" clip-rule=\"evenodd\"/></svg>
+          Code
+        </a>"
+      else
+        ""
+      end
+
+      "<div class=\"flex items-center space-x-2 mt-4\">#{live_link}#{github_link}</div>"
+    else
+      ""
+    end
+
+    # CRITICAL FIX: Remove border, add subtle shadow like Projects items
     """
-    <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-      <div class="p-6">
-        <h4 class="text-lg font-semibold text-gray-900 mb-3">#{safe_html_escape(title)}</h4>
-        #{if safe_not_empty?(description) do
-          "<p class=\"text-gray-700 mb-4 leading-relaxed\">#{safe_html_escape(description)}</p>"
-        else
-          ""
-        end}
-        #{if safe_not_empty?(technologies) do
-          tech_list = String.split(technologies, ",") |> Enum.map(&String.trim/1)
-          tech_html = Enum.map(tech_list, fn tech ->
-            "<span class=\"inline-block bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded mr-2 mb-2\">#{safe_html_escape(tech)}</span>"
-          end) |> Enum.join("")
-          "<div class=\"mb-4\">#{tech_html}</div>"
-        else
-          ""
-        end}
-        <div class="flex space-x-3">
-          #{if safe_not_empty?(url) do
-            "<a href=\"#{safe_html_escape(url)}\" target=\"_blank\" class=\"inline-flex items-center px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors\">
-              <svg class=\"w-4 h-4 mr-1\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14\"/>
-              </svg>
-              View Project
-            </a>"
-          else
-            ""
-          end}
-          #{if safe_not_empty?(github_url) do
-            "<a href=\"#{safe_html_escape(github_url)}\" target=\"_blank\" class=\"inline-flex items-center px-3 py-2 bg-gray-800 text-white text-sm font-medium rounded hover:bg-gray-900 transition-colors\">
-              <svg class=\"w-4 h-4 mr-1\" fill=\"currentColor\" viewBox=\"0 0 20 20\">
-                <path fill-rule=\"evenodd\" d=\"M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z\" clip-rule=\"evenodd\"/>
-              </svg>
-              Code
-            </a>"
-          else
-            ""
-          end}
-        </div>
+    <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
+      #{image_section}
+      <div>
+        <h4 class="text-xl font-semibold text-gray-900 mb-3">#{safe_html_escape(title)}</h4>
+        <p class="text-gray-600 mb-4">#{safe_html_escape(description)}</p>
+        #{if tech_tags != "", do: "<div class=\"mb-4\">#{tech_tags}</div>", else: ""}
+        #{links_section}
       </div>
     </div>
     """
@@ -923,10 +1256,12 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
 
   defp render_pricing_items_content(content, _customization) do
     items = Map.get(content, "items", [])
-    currency = safe_map_get(content, "currency", "USD")
+    currency = Map.get(content, "currency", "USD")
+    billing_period = Map.get(content, "billing_period", "project")
+    show_popular = Map.get(content, "show_popular", true)
 
     if length(items) == 0 do
-      render_empty_state_safe("No pricing packages added yet")
+      render_empty_state_safe("No pricing tiers added yet")
     else
       html = """
       <div class="pricing-section py-12">
@@ -939,7 +1274,7 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
 
       items_html = items
       |> Enum.filter(fn item -> Map.get(item, "visible", true) end)
-      |> Enum.map(fn item -> render_pricing_item_safe(item, currency) end)
+      |> Enum.map(fn item -> render_pricing_item_safe(item, currency, billing_period, show_popular) end)
       |> Enum.join("")
 
       html <> items_html <> """
@@ -948,6 +1283,7 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
       """
     end
   end
+
 
   defp render_custom_items_content(content, _customization) do
     items = Map.get(content, "items", [])
@@ -1050,134 +1386,143 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
 
   defp render_achievement_item_safe(item) do
     title = safe_map_get(item, "title", "")
-    description = safe_map_get(item, "description", "")
-    date = safe_map_get(item, "date", "")
-    type = safe_map_get(item, "type", "award")
     organization = safe_map_get(item, "organization", "")
+    date = safe_map_get(item, "date", "")
+    description = safe_map_get(item, "description", "")
+    certificate_url = safe_map_get(item, "certificate_url", "")
 
-    type_icon = case type do
-      "award" -> "🏆"
-      "recognition" -> "🌟"
-      "milestone" -> "📍"
-      "publication" -> "📝"
-      _ -> "🏅"
-    end
-
+    # CRITICAL FIX: Remove border, add subtle shadow like Projects
     """
-    <div class="bg-white rounded-lg shadow-md p-6 border-l-4 border-yellow-400">
-      <div class="flex items-start">
-        <div class="text-2xl mr-4 mt-1">#{type_icon}</div>
+    <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
+      <div class="flex justify-between items-start mb-3">
         <div class="flex-1">
-          <h4 class="text-lg font-semibold text-gray-900 mb-2">#{safe_html_escape(title)}</h4>
+          <h4 class="text-lg font-semibold text-gray-900 mb-1">#{safe_html_escape(title)}</h4>
           #{if safe_not_empty?(organization) do
             "<div class=\"text-blue-600 font-medium mb-2\">#{safe_html_escape(organization)}</div>"
           else
             ""
           end}
-          #{if safe_not_empty?(date) do
-            "<div class=\"text-sm text-gray-500 mb-2\">#{safe_html_escape(date)}</div>"
-          else
-            ""
-          end}
-          #{if safe_not_empty?(description) do
-            "<p class=\"text-gray-700 leading-relaxed\">#{safe_html_escape(description)}</p>"
-          else
-            ""
-          end}
         </div>
+        #{if safe_not_empty?(date) do
+          "<div class=\"text-sm text-gray-500 font-medium\">#{safe_html_escape(date)}</div>"
+        else
+          ""
+        end}
       </div>
+      #{if safe_not_empty?(description) do
+        "<p class=\"text-gray-600 mb-4\">#{safe_html_escape(description)}</p>"
+      else
+        ""
+      end}
+      #{if safe_not_empty?(certificate_url) do
+        "<div class=\"flex justify-end\">
+          <a href=\"#{safe_html_escape(certificate_url)}\" target=\"_blank\"
+            class=\"inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors\">
+            <svg class=\"w-4 h-4 mr-1\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
+              <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14\"/>
+            </svg>
+            View Certificate
+          </a>
+        </div>"
+      else
+        ""
+      end}
     </div>
     """
   end
 
   defp render_testimonial_item_safe(item) do
-    name = safe_map_get(item, "name", "")
-    title_company = safe_map_get(item, "title_company", "")
-    testimonial = safe_map_get(item, "testimonial", "")
+    content = safe_map_get(item, "content", "")
+    client_name = safe_map_get(item, "client_name", "")
+    client_title = safe_map_get(item, "client_title", "")
+    client_company = safe_map_get(item, "client_company", "")
     rating = safe_map_get(item, "rating", "")
-    project = safe_map_get(item, "project", "")
 
-    rating_html = case rating do
-      "5" -> "★★★★★"
-      "4" -> "★★★★☆"
-      "3" -> "★★★☆☆"
-      "2" -> "★★☆☆☆"
-      "1" -> "★☆☆☆☆"
-      _ -> ""
+    rating_stars = if safe_not_empty?(rating) do
+      rating_num = case Integer.parse(rating) do
+        {num, _} when num >= 1 and num <= 5 -> num
+        _ -> 0
+      end
+
+      if rating_num > 0 do
+        stars = for i <- 1..5 do
+          if i <= rating_num do
+            "<svg class=\"w-4 h-4 text-yellow-400 fill-current\" viewBox=\"0 0 24 24\"><path d=\"M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z\"/></svg>"
+          else
+            "<svg class=\"w-4 h-4 text-gray-300 fill-current\" viewBox=\"0 0 24 24\"><path d=\"M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z\"/></svg>"
+          end
+        end
+        "<div class=\"flex items-center mb-3\">#{Enum.join(stars, "")}</div>"
+      else
+        ""
+      end
+    else
+      ""
     end
 
+    # CRITICAL FIX: Remove border, add subtle shadow like Projects
     """
-    <div class="bg-white rounded-lg shadow-md p-6">
-      <div class="flex items-center mb-4">
-        <div class="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mr-4">
-          <span class="text-gray-500 font-semibold">#{String.first(name)}</span>
-        </div>
+    <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
+      #{rating_stars}
+      <blockquote class="text-gray-700 mb-4 italic">
+        "#{safe_html_escape(content)}"
+      </blockquote>
+      <div class="flex items-center">
         <div>
-          <h5 class="font-semibold text-gray-900">#{safe_html_escape(name)}</h5>
-          #{if safe_not_empty?(title_company) do
-            "<p class=\"text-sm text-gray-600\">#{safe_html_escape(title_company)}</p>"
+          <div class="font-semibold text-gray-900">#{safe_html_escape(client_name)}</div>
+          #{if safe_not_empty?(client_title) do
+            title_company = if safe_not_empty?(client_company) do
+              "#{client_title}, #{client_company}"
+            else
+              client_title
+            end
+            "<div class=\"text-sm text-gray-600\">#{safe_html_escape(title_company)}</div>"
           else
-            ""
+            if safe_not_empty?(client_company) do
+              "<div class=\"text-sm text-gray-600\">#{safe_html_escape(client_company)}</div>"
+            else
+              ""
+            end
           end}
         </div>
       </div>
-
-      #{if rating_html != "" do
-        "<div class=\"text-yellow-400 mb-3\">#{rating_html}</div>"
-      else
-        ""
-      end}
-
-      #{if safe_not_empty?(testimonial) do
-        "<blockquote class=\"text-gray-700 italic mb-3\">\"#{safe_html_escape(testimonial)}\"</blockquote>"
-      else
-        ""
-      end}
-
-      #{if safe_not_empty?(project) do
-        "<div class=\"text-xs text-gray-500\">Project: #{safe_html_escape(project)}</div>"
-      else
-        ""
-      end}
     </div>
     """
   end
 
-  defp render_service_item_safe(item, show_pricing) do
-    name = safe_map_get(item, "name", "")
-    description = safe_map_get(item, "description", "")
-    price = safe_map_get(item, "price", "")
-    duration = safe_map_get(item, "duration", "")
-    category = safe_map_get(item, "category", "")
+defp render_service_item_safe(item, show_pricing) do
+  name = safe_map_get(item, "name", "")
+  description = safe_map_get(item, "description", "")
+  price = safe_map_get(item, "price", "")
+  duration = safe_map_get(item, "duration", "")
+  features = safe_map_get(item, "features", [])
 
-    """
-    <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-      <div class="text-center">
-        <h4 class="text-xl font-semibold text-gray-900 mb-3">#{safe_html_escape(name)}</h4>
-        #{if safe_not_empty?(category) do
-          "<div class=\"inline-block bg-blue-100 text-blue-700 text-xs font-medium px-2 py-1 rounded-full mb-3\">#{safe_html_escape(String.capitalize(category))}</div>"
-        else
-          ""
-        end}
-        #{if safe_not_empty?(description) do
-          "<p class=\"text-gray-600 mb-4\">#{safe_html_escape(description)}</p>"
-        else
-          ""
-        end}
-        #{if show_pricing and safe_not_empty?(price) do
-          "<div class=\"text-2xl font-bold text-blue-600 mb-2\">#{safe_html_escape(price)}</div>"
-        else
-          ""
-        end}
-        #{if safe_not_empty?(duration) do
-          "<div class=\"text-sm text-gray-500\">#{safe_html_escape(duration)}</div>"
-        else
-          ""
-        end}
-      </div>
-    </div>
-    """
+  features_html = if is_list(features) and length(features) > 0 do
+    features_list = features
+    |> Enum.map(fn feature -> "<li class=\"flex items-center mb-1\"><svg class=\"w-4 h-4 text-green-500 mr-2 flex-shrink-0\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M5 13l4 4L19 7\"/></svg>#{safe_html_escape(to_string(feature))}</li>" end)
+    |> Enum.join("")
+    "<ul class=\"mb-4\">#{features_list}</ul>"
+  else
+    ""
   end
+
+  pricing_html = if show_pricing and safe_not_empty?(price) do
+    duration_text = if safe_not_empty?(duration), do: " / #{duration}", else: ""
+    "<div class=\"text-2xl font-bold text-blue-600 mb-2\">#{safe_html_escape(price)}#{duration_text}</div>"
+  else
+    ""
+  end
+
+  # CRITICAL FIX: Remove border, add subtle shadow like Projects
+  """
+  <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
+    <h4 class="text-xl font-semibold text-gray-900 mb-3">#{safe_html_escape(name)}</h4>
+    #{pricing_html}
+    <p class="text-gray-600 mb-4">#{safe_html_escape(description)}</p>
+    #{features_html}
+  </div>
+  """
+end
 
   defp render_article_item_safe(item) do
     title = safe_map_get(item, "title", "")
@@ -1320,54 +1665,50 @@ defmodule FrestylWeb.PortfolioLive.Components.EnhancedSectionRenderer do
     """
   end
 
-  defp render_pricing_item_safe(item, currency) do
+  defp render_pricing_item_safe(item, currency, billing_period, show_popular) do
     name = safe_map_get(item, "name", "")
-    description = safe_map_get(item, "description", "")
     price = safe_map_get(item, "price", "")
-    features = safe_map_get(item, "features", "")
-    popular = Map.get(item, "popular", false)
+    description = safe_map_get(item, "description", "")
+    features = safe_map_get(item, "features", [])
+    is_popular = Map.get(item, "is_popular", false) and show_popular
+    button_text = safe_map_get(item, "button_text", "Get Started")
+    button_url = safe_map_get(item, "button_url", "#")
 
-    popular_badge = if popular do
-      "<div class=\"absolute -top-3 left-1/2 transform -translate-x-1/2\">
-        <span class=\"bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full\">Most Popular</span>
+    popular_badge = if is_popular do
+      "<div class=\"absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2\">
+        <span class=\"inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-600 text-white\">
+          Most Popular
+        </span>
       </div>"
     else
       ""
     end
 
-    border_class = if popular, do: "border-blue-500 border-2", else: "border-gray-200"
+    border_class = if is_popular, do: "border-blue-500 border-2", else: "border-gray-200"
+
+    features_html = if is_list(features) and length(features) > 0 do
+      features_list = features
+      |> Enum.map(fn feature -> "<li class=\"flex items-center\"><svg class=\"w-4 h-4 text-green-500 mr-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M5 13l4 4L19 7\"/></svg>#{safe_html_escape(to_string(feature))}</li>" end)
+      |> Enum.join("")
+      "<ul class=\"space-y-2 mb-6\">#{features_list}</ul>"
+    else
+      ""
+    end
 
     """
-    <div class="relative bg-white rounded-lg shadow-md border #{border_class} p-6">
+    <div class="relative bg-white rounded-lg shadow-md #{border_class} p-6">
       #{popular_badge}
       <div class="text-center">
-        <h4 class="text-xl font-semibold text-gray-900 mb-3">#{safe_html_escape(name)}</h4>
-        #{if safe_not_empty?(price) do
-          "<div class=\"text-3xl font-bold text-blue-600 mb-4\">
-            <span class=\"text-sm text-gray-500\">#{currency}</span>#{safe_html_escape(price)}
-          </div>"
-        else
-          ""
-        end}
-        #{if safe_not_empty?(description) do
-          "<p class=\"text-gray-600 mb-4\">#{safe_html_escape(description)}</p>"
-        else
-          ""
-        end}
-        #{if safe_not_empty?(features) do
-          features_list = String.split(features, ",") |> Enum.map(&String.trim/1)
-          features_html = Enum.map(features_list, fn feature ->
-            "<div class=\"flex items-center justify-center mb-2\">
-              <svg class=\"w-4 h-4 text-green-500 mr-2\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M5 13l4 4L19 7\"/>
-              </svg>
-              <span class=\"text-sm text-gray-700\">#{safe_html_escape(feature)}</span>
-            </div>"
-          end) |> Enum.join("")
-          "<div class=\"mb-4\">#{features_html}</div>"
-        else
-          ""
-        end}
+        <h4 class="text-lg font-semibold text-gray-900 mb-2">#{safe_html_escape(name)}</h4>
+        <div class="mb-4">
+          <span class="text-3xl font-bold text-gray-900">#{currency} #{safe_html_escape(price)}</span>
+          <span class="text-gray-500">/ #{billing_period}</span>
+        </div>
+        <p class="text-gray-600 mb-6">#{safe_html_escape(description)}</p>
+        #{features_html}
+        <a href="#{safe_html_escape(button_url)}" class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+          #{safe_html_escape(button_text)}
+        </a>
       </div>
     </div>
     """

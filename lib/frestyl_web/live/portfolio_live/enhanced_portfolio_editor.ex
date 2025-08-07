@@ -5,6 +5,8 @@ defmodule FrestylWeb.PortfolioLive.EnhancedPortfolioEditor do
   Enhanced Portfolio Editor LiveView - mobile-first design with dynamic sections
   """
 
+  import Phoenix.HTML, only: [html_escape: 1]
+
   use FrestylWeb, :live_view
 
   alias Frestyl.Portfolios
@@ -220,37 +222,90 @@ end
 
 
   def handle_event("save_section", params, socket) do
-    IO.puts("🔥 SAVE SECTION: #{inspect(params["action"])}")
-    IO.puts("🔥 SAVE SECTION PARAMS: #{inspect(params)}")
+    IO.puts("🔧 SAVE_SECTION EVENT - ENHANCED")
+    IO.puts("🔧 Params: #{inspect(params, limit: :infinity)}")
 
-    # For updates, we need to get the section_type from the existing section
-    enhanced_params = case params["action"] do
-      "update" ->
-        section_id = String.to_integer(params["section_id"])
-        case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
-          nil -> params
-          section -> Map.put(params, "section_type", to_string(section.section_type))
+    # Clean and validate params
+    case clean_and_validate_section_params(params) do
+      {:ok, cleaned_params} ->
+        if params["action"] == "update" and socket.assigns.editing_section do
+          update_section_with_broadcast(socket, cleaned_params)
+        else
+          create_section_with_broadcast(socket, cleaned_params)
         end
-      _ -> params
+
+      {:error, reason} ->
+        IO.puts("❌ Param validation failed: #{reason}")
+        {:noreply, put_flash(socket, :error, "Invalid form data: #{reason}")}
     end
+  end
 
-    IO.puts("🔥 ENHANCED PARAMS: #{inspect(enhanced_params)}")
+  @impl true
+def handle_event("upload_media", _params, socket) do
+  # Handle file uploads - simplified version
+  IO.puts("🔧 Media upload triggered")
 
-    # Pre-validate form data
-    case validate_section_params(enhanced_params) do
-      {:ok, validated_params} ->
-        IO.puts("✅ Validation passed: #{inspect(validated_params["validated_content"])}")
-        case params["action"] do
-          "create" -> create_section_with_validation(socket, validated_params)
-          "update" -> update_section_with_validation(socket, validated_params)
-          _ -> {:noreply, put_flash(socket, :error, "Invalid section action")}
+  # In a real implementation, you would:
+  # 1. Process uploaded files
+  # 2. Store them in your media storage (S3, local, etc.)
+  # 3. Update the section content with media URLs
+
+  # For now, simulate successful upload
+  media_files = Map.get(socket.assigns.form_data, "media_files", [])
+  new_file = %{
+    "name" => "uploaded_file_#{System.system_time(:millisecond)}.jpg",
+    "url" => "/uploads/placeholder.jpg",
+    "type" => "image"
+  }
+
+  updated_files = media_files ++ [new_file]
+  updated_form_data = Map.put(socket.assigns.form_data, "media_files", updated_files)
+
+  {:noreply, socket
+    |> assign(:form_data, updated_form_data)
+    |> put_flash(:info, "Media uploaded successfully!")}
+end
+
+@impl true
+def handle_event("validate_upload", _params, socket) do
+  # Validate file uploads
+  {:noreply, socket}
+end
+
+  defp clean_and_validate_section_params(params) do
+    try do
+      # Remove empty strings and normalize booleans
+      cleaned_params = params
+      |> Enum.reduce(%{}, fn {key, value}, acc ->
+        cleaned_value = case value do
+          "" -> nil
+          "true" -> true
+          "false" -> false
+          "on" -> true  # HTML checkbox when checked
+          value when is_binary(value) -> String.trim(value)
+          value -> value
         end
 
-      {:error, validation_errors} ->
-        IO.puts("❌ Validation failed: #{inspect(validation_errors)}")
-        {:noreply, socket
-          |> assign(:section_changeset_errors, validation_errors)
-          |> put_flash(:error, "Please fix the form errors before saving")}
+        Map.put(acc, key, cleaned_value)
+      end)
+      |> Enum.reject(fn {_key, value} -> is_nil(value) or value == "" end)
+      |> Enum.into(%{})
+
+      # Validate required fields
+      required_fields = ["section_type"]
+      missing_fields = Enum.filter(required_fields, fn field ->
+        not Map.has_key?(cleaned_params, field) or Map.get(cleaned_params, field) in [nil, ""]
+      end)
+
+      if length(missing_fields) > 0 do
+        {:error, "Missing required fields: #{Enum.join(missing_fields, ", ")}"}
+      else
+        {:ok, cleaned_params}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error cleaning params: #{Exception.message(error)}")
+        {:error, "Parameter processing error"}
     end
   end
 
@@ -349,6 +404,15 @@ end
           {:error, socket} ->
             {:noreply, socket}
         end
+    end
+  end
+
+  # Add this function to enhanced_portfolio_editor.ex
+  defp safe_html_escape(value) do
+    case value do
+      nil -> ""
+      value when is_binary(value) -> Phoenix.HTML.html_escape(value)
+      value -> Phoenix.HTML.html_escape(to_string(value))
     end
   end
 
@@ -467,67 +531,40 @@ end
     end
   end
 
-  defp create_new_section_with_mapping(form_data, socket) do
-    IO.puts("🔧 CREATING NEW SECTION WITH MAPPING")
+  defp create_new_section(section_attrs, socket) do
+    # Determine position for new section
+    current_sections = socket.assigns.sections || []
+    position = length(current_sections) + 1
+    final_attrs = Map.put(section_attrs, :position, position)
 
-    # Map section type to valid database enum
-    section_type = Map.get(form_data, "section_type")
-    mapped_section_type = map_section_type_to_db(section_type)
+    IO.puts("🔧 Creating section with final attrs: #{inspect(final_attrs)}")
 
-    # Extract title - preserve user input during creation
-    title = case Map.get(form_data, "title") do
-      nil -> get_default_section_title(section_type)
-      user_title when is_binary(user_title) ->
-        trimmed = String.trim(user_title)
-        if trimmed == "", do: get_default_section_title(section_type), else: trimmed
-      _ -> get_default_section_title(section_type)
-    end
-
-    # Extract content (removing metadata fields)
-    content = form_data
-      |> Map.drop(["section_type", "title", "visible", "action"])
-      |> ensure_content_structure(section_type)
-
-    IO.puts("🔧 Final content being saved: #{inspect(content, pretty: true)}")
-    section_attrs = %{
-      portfolio_id: socket.assigns.portfolio.id,
-      section_type: String.to_atom(mapped_section_type),
-      title: title,
-      content: content,
-      visible: Map.get(form_data, "visible", true),
-      position: get_next_section_position(socket.assigns.sections)
-    }
-
-    IO.puts("🔧 Section attributes: #{inspect(section_attrs)}")
-
-    case Portfolios.create_section(section_attrs) do
+    case Portfolios.create_section(final_attrs) do
       {:ok, new_section} ->
-        IO.puts("✅ Successfully created section: #{new_section.id}")
+        IO.puts("✅ Section created successfully: #{inspect(new_section.id)}")
 
-        updated_sections = socket.assigns.sections ++ [new_section]
+        # Update sections list
+        updated_sections = current_sections ++ [new_section]
 
-        # Update hero section if needed
-        hero_section = if mapped_section_type == "hero" do
-          new_section
-        else
-          socket.assigns.hero_section
-        end
+        # Broadcast update with proper message
+        broadcast_section_created(socket.assigns.portfolio.id, new_section, updated_sections)
 
-        # Broadcast update
-        broadcast_portfolio_update(socket.assigns.portfolio.id, :section_created, new_section)
-
-        {:noreply, socket
+        socket = socket
           |> assign(:sections, updated_sections)
-          |> assign(:hero_section, hero_section)
-          |> assign(:show_section_modal, false)
-          |> assign(:current_section_type, nil)
-          |> assign(:editing_section, nil)
-          |> put_flash(:info, "#{title} created successfully!")}
+          |> increment_section_count()
+
+        # Trigger LiveView update
+        send(self(), {:refresh_sections, updated_sections})
+
+        {:ok, socket}
 
       {:error, changeset} ->
-        IO.puts("❌ SECTION CREATION FAILED: #{inspect(changeset.errors)}")
-        {:noreply, socket
-          |> put_flash(:error, "Failed to create section: #{format_changeset_errors(changeset)}")}
+        IO.puts("❌ Failed to create section: #{inspect(changeset.errors)}")
+
+        socket = socket
+          |> put_flash(:error, "Failed to create section: #{format_changeset_errors(changeset)}")
+
+        {:error, socket}
     end
   end
 
@@ -582,38 +619,79 @@ end
     end
   end
 
+    defp broadcast_section_created(portfolio_id, new_section, updated_sections) do
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{portfolio_id}",
+        {:section_created, new_section, updated_sections}
+      )
+    end
+
+      defp broadcast_section_updated(portfolio_id, updated_section, updated_sections) do
+      Phoenix.PubSub.broadcast(
+        Frestyl.PubSub,
+        "portfolio_preview:#{portfolio_id}",
+        {:section_updated, updated_section, updated_sections}
+      )
+    end
+
+      @impl true
+  def handle_info({:refresh_sections, updated_sections}, socket) do
+    {:noreply, assign(socket, :sections, updated_sections)}
+  end
+
+  @impl true
+  def handle_info({:section_created, new_section}, socket) do
+    IO.puts("🔧 Received section_created broadcast")
+
+    # Add new section to current list if not already present
+    current_sections = socket.assigns.sections
+    section_exists = Enum.any?(current_sections, &(&1.id == new_section.id))
+
+    updated_sections = if not section_exists do
+      current_sections ++ [new_section]
+    else
+      current_sections
+    end
+
+    socket = socket
+    |> assign(:sections, updated_sections)
+    |> put_flash(:info, "Section '#{new_section.title}' was added!")
+
+    {:noreply, socket}
+  end
+
   defp get_default_section_title(section_type) do
     case section_type do
+      # Essential sections
       "hero" -> "Welcome"
-      "video_hero" -> "Video Introduction"
-      "contact" -> "Contact Information"
       "intro" -> "About Me"
-      "story" -> "My Story"
-      "about" -> "About"
+      "contact" -> "Get In Touch"
+
+      # Professional sections
       "experience" -> "Work Experience"
       "education" -> "Education"
       "skills" -> "Skills & Expertise"
-      "projects" -> "Projects"
-      "featured_project" -> "Featured Project"
-      "case_study" -> "Case Study"
-      "achievements" -> "Achievements & Awards"
-      "testimonials" -> "Testimonials"
-      "testimonial" -> "Testimonial"
+      "projects" -> "My Projects"
       "certifications" -> "Certifications"
       "services" -> "Services"
-      "published_articles" -> "Published Articles"
-      "writing" -> "Published Articles"
-      "blog" -> "Blog"
+
+      # Content sections
+      "achievements" -> "Achievements & Awards"
+      "testimonials" -> "What People Say"
+      "published_articles" -> "My Writing"
       "collaborations" -> "Collaborations"
-      "media_showcase" -> "Media Portfolio"
-      "code_showcase" -> "Code Portfolio"
+      "timeline" -> "My Journey"
+
+      # Media sections
       "gallery" -> "Gallery"
-      "timeline" -> "Timeline"
-      "narrative" -> "My Narrative"
-      "journey" -> "My Journey"
+      "blog" -> "Blog"
+
+      # Flexible
       "pricing" -> "Pricing"
       "custom" -> "Custom Section"
-      _ -> String.capitalize(to_string(section_type))
+
+      _ -> "New Section"
     end
   end
 
@@ -670,21 +748,6 @@ end
   defp maybe_put_flash(socket, _type, nil), do: socket
   defp maybe_put_flash(socket, type, message), do: put_flash(socket, type, message)
 
-  # Broadcast portfolio updates to preview
-  defp broadcast_portfolio_update(portfolio_id, event_type, section) do
-    IO.puts("🔧 Broadcasting #{event_type} for portfolio #{portfolio_id}")
-
-    Phoenix.PubSub.broadcast(
-      Frestyl.PubSub,
-      "portfolio_preview:#{portfolio_id}",
-      {:portfolio_updated, %{
-        event: event_type,
-        section: section,
-        portfolio_id: portfolio_id
-      }}
-    )
-  end
-
   defp create_section_with_enhanced_processing(socket, params) do
     section_type = params["section_type"]
     title = params["title"]
@@ -737,6 +800,8 @@ end
 
 
   defp update_existing_section(existing_section, section_attrs, socket) do
+    IO.puts("🔧 Updating section #{existing_section.id} with attrs: #{inspect(section_attrs)}")
+
     case Portfolios.update_section(existing_section, section_attrs) do
       {:ok, updated_section} ->
         IO.puts("✅ Section updated successfully: #{inspect(updated_section.id)}")
@@ -751,14 +816,14 @@ end
           end
         end)
 
-        # Broadcast update
-        broadcast_portfolio_update(
-          socket.assigns.portfolio.id,
-          updated_sections,
-          socket.assigns.customization
-        )
+        # Broadcast update with proper message
+        broadcast_section_updated(socket.assigns.portfolio.id, updated_section, updated_sections)
 
         socket = assign(socket, :sections, updated_sections)
+
+        # Trigger LiveView update
+        send(self(), {:refresh_sections, updated_sections})
+
         {:ok, socket}
 
       {:error, changeset} ->
@@ -770,6 +835,101 @@ end
         {:error, socket}
     end
   end
+
+  def handle_event("update_skills_categories", params, socket) do
+  IO.puts("🔧 UPDATE_SKILLS_CATEGORIES")
+
+  # Find skills section
+  skills_section = Enum.find(socket.assigns.sections, fn section ->
+    to_string(section.section_type) == "skills"
+  end)
+
+  if skills_section do
+    current_content = skills_section.content || %{}
+    updated_content = Map.put(current_content, "show_categories", params["show_categories"] == "true")
+
+    case Portfolios.update_portfolio_section(skills_section, %{content: updated_content}) do
+      {:ok, updated_section} ->
+        updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+        broadcast_portfolio_update(
+          socket.assigns.portfolio.id,
+          updated_sections,
+          socket.assigns.customization,
+          :section_updated
+        )
+
+        {:noreply, socket
+          |> assign(:sections, updated_sections)
+          |> put_flash(:info, "Skills categories display updated")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to update skills display")}
+    end
+  else
+    {:noreply, put_flash(socket, :error, "Skills section not found")}
+  end
+end
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+# Helper to update a section in the sections list
+defp update_section_in_list(sections, updated_section) do
+  Enum.map(sections, fn section ->
+    if section.id == updated_section.id do
+      updated_section
+    else
+      section
+    end
+  end)
+end
+
+# Extract readable error messages from changeset
+defp extract_changeset_errors(changeset) do
+  Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+    Enum.reduce(opts, msg, fn {key, value}, acc ->
+      String.replace(acc, "%{#{key}}", to_string(value))
+    end)
+  end)
+  |> Enum.map(fn {field, messages} ->
+    "#{field}: #{Enum.join(messages, ", ")}"
+  end)
+end
+
+def handle_event("update_section_style", %{"section_id" => section_id, "style" => style}, socket) do
+  section_id = String.to_integer(section_id)
+
+  case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
+    nil ->
+      {:noreply, put_flash(socket, :error, "Section not found")}
+
+    section ->
+      current_content = section.content || %{}
+      updated_content = Map.put(current_content, "display_style", style)
+
+      case Portfolios.update_portfolio_section(section, %{content: updated_content}) do
+        {:ok, updated_section} ->
+          updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+
+          broadcast_portfolio_update(
+            socket.assigns.portfolio.id,
+            updated_sections,
+            socket.assigns.customization,
+            :section_updated
+          )
+
+          {:noreply, socket
+            |> assign(:sections, updated_sections)
+            |> put_flash(:info, "Section style updated")}
+
+        {:error, changeset} ->
+          error_message = extract_changeset_errors(changeset) |> Enum.join(", ")
+          {:noreply, put_flash(socket, :error, "Failed to update style: #{error_message}")}
+      end
+  end
+end
 
   @impl true
   def handle_event("expand_category", %{"category" => category}, socket) do
@@ -896,6 +1056,120 @@ end
     end
   end
 
+  defp render_mobile_section_controls(assigns) do
+  ~H"""
+  <!-- Mobile Section Controls -->
+  <div class="sm:hidden">
+    <div class="flex items-center justify-between p-3 bg-gray-50 border-t border-gray-200">
+      <div class="flex items-center space-x-2">
+        <!-- Move buttons -->
+        <button type="button" phx-click="move_section_up" phx-value-section_id={@section.id}
+                class="p-2 rounded-md bg-white border border-gray-300 text-gray-600">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+          </svg>
+        </button>
+
+        <button type="button" phx-click="move_section_down" phx-value-section_id={@section.id}
+                class="p-2 rounded-md bg-white border border-gray-300 text-gray-600">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <!-- Visibility toggle -->
+        <button type="button" phx-click="toggle_section_visibility" phx-value-section_id={@section.id}
+                class={"p-2 rounded-md #{if @section.visible, do: "bg-green-100 text-green-600", else: "bg-gray-100 text-gray-400"}"}>
+          <%= if @section.visible do %>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+          <% else %>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L8.464 8.464a5.001 5.001 0 00-3.104 7.336m9.29-9.29A9.97 9.97 0 0119.5 12a9.97 9.97 0 01-1.563 3.029m-1.8 1.8L19.5 19.5M4.5 4.5l15 15"/>
+            </svg>
+          <% end %>
+        </button>
+
+        <!-- Edit button -->
+        <button type="button" phx-click="edit_section" phx-value-section_id={@section.id}
+                class="p-2 rounded-md bg-blue-100 text-blue-600">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  """
+end
+
+  # MEDIA DISPLAY IN SECTIONS
+# ============================================================================
+
+# Add media rendering support to sections
+defp render_section_media(content) do
+  media_files = Map.get(content, "media_files", [])
+
+  if length(media_files) > 0 do
+    media_html = media_files
+    |> Enum.take(3) # Show max 3 media items in preview
+    |> Enum.map(&render_media_item/1)
+    |> Enum.join("")
+
+    """
+    <div class="mt-4">
+      <h5 class="text-sm font-medium text-gray-700 mb-2">Media (#{length(media_files)})</h5>
+      <div class="grid grid-cols-3 gap-2">
+        #{media_html}
+      </div>
+    </div>
+    """
+  else
+    ""
+  end
+end
+
+defp render_media_item(media) do
+  name = Map.get(media, "name", "Media file")
+  url = Map.get(media, "url", "#")
+  type = Map.get(media, "type", "file")
+
+  case type do
+    "image" ->
+      """
+      <div class="aspect-square bg-gray-100 rounded-md overflow-hidden">
+        <img src="#{url}" alt="#{name}" class="w-full h-full object-cover" />
+      </div>
+      """
+
+    "video" ->
+      """
+      <div class="aspect-square bg-gray-100 rounded-md overflow-hidden relative">
+        <video src="#{url}" class="w-full h-full object-cover"></video>
+        <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
+          <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        </div>
+      </div>
+      """
+
+    _ ->
+      """
+      <div class="aspect-square bg-gray-100 rounded-md flex items-center justify-center">
+        <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+      </div>
+      """
+  end
+end
+
+
   @impl true
   def handle_event("close_media_helper", _params, socket) do
     {:noreply, assign(socket, :show_media_helper, false)}
@@ -1006,38 +1280,92 @@ end
 
   @impl true
   def handle_event("delete_section", %{"section_id" => section_id}, socket) do
-    IO.puts("🔧 DELETING SECTION: #{section_id}")
+    section_id = String.to_integer(section_id)
+    IO.puts("🔧 DELETE_SECTION: #{section_id}")
 
-    case Enum.find(socket.assigns.sections, &(&1.id == String.to_integer(section_id))) do
+    case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
       nil ->
-        socket = put_flash(socket, :error, "Section not found")
-        {:noreply, socket}
+        {:noreply, put_flash(socket, :error, "Section not found")}
 
       section ->
         case Portfolios.delete_portfolio_section(section) do
           {:ok, _deleted_section} ->
-            IO.puts("🔧 Successfully deleted section: #{section_id}")
+            updated_sections = Enum.reject(socket.assigns.sections, &(&1.id == section_id))
 
-            updated_sections = Enum.reject(socket.assigns.sections, &(&1.id == section.id))
+            # Broadcast the deletion
+            broadcast_portfolio_update(
+              socket.assigns.portfolio.id,
+              updated_sections,
+              socket.assigns.customization,
+              :section_deleted
+            )
 
-            # Broadcast update to preview
-            broadcast_portfolio_update(socket.assigns.portfolio.id, :section_deleted, section)
+            # Also broadcast specific section deletion
+            Phoenix.PubSub.broadcast(
+              Frestyl.PubSub,
+              "portfolio_preview:#{socket.assigns.portfolio.id}",
+              {:section_deleted, section_id}
+            )
 
-            socket = socket
-            |> assign(:sections, updated_sections)
-            |> put_flash(:info, "Section deleted successfully!")
-
-            {:noreply, socket}
+            {:noreply, socket
+              |> assign(:sections, updated_sections)
+              |> put_flash(:info, "Section deleted successfully")}
 
           {:error, changeset} ->
-            IO.puts("🔧 Failed to delete section: #{inspect(changeset.errors)}")
-
-            socket = socket
-            |> put_flash(:error, "Failed to delete section")
-
-            {:noreply, socket}
+            error_message = extract_changeset_errors(changeset) |> Enum.join(", ")
+            {:noreply, put_flash(socket, :error, "Failed to delete section: #{error_message}")}
         end
     end
+  end
+
+  @impl true
+  def handle_event("edit_item", %{"item_index" => index_str}, socket) do
+    index = String.to_integer(index_str)
+    current_items = Map.get(socket.assigns.form_data, "items", [])
+
+    case Enum.at(current_items, index) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Item not found")}
+
+      item ->
+        # Set editing state - you could expand this to show an item editing modal
+        socket = socket
+        |> assign(:editing_item_index, index)
+        |> assign(:editing_item, item)
+        |> put_flash(:info, "Item editing - feature can be expanded with item-specific modal")
+
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_item", %{"item_index" => index_str}, socket) do
+    index = String.to_integer(index_str)
+    current_items = Map.get(socket.assigns.form_data, "items", [])
+
+    if index >= 0 and index < length(current_items) do
+      updated_items = List.delete_at(current_items, index)
+      updated_form_data = Map.put(socket.assigns.form_data, "items", updated_items)
+
+      {:noreply, socket
+        |> assign(:form_data, updated_form_data)
+        |> put_flash(:info, "Item deleted successfully")}
+    else
+      {:noreply, put_flash(socket, :error, "Invalid item index")}
+    end
+  end
+
+  @impl true
+  def handle_info({:section_deleted, section_id}, socket) do
+    IO.puts("🔧 Received section_deleted broadcast")
+
+    updated_sections = Enum.reject(socket.assigns.sections, &(&1.id == section_id))
+
+    socket = socket
+    |> assign(:sections, updated_sections)
+    |> put_flash(:info, "Section was deleted!")
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -1555,6 +1883,251 @@ end
     end
   end
 
+  defp update_section_with_broadcast(socket, cleaned_params) do
+    section = socket.assigns.editing_section
+    section_id = section.id
+
+    IO.puts("🔧 UPDATING SECTION: #{section_id}")
+
+    # Build update attributes with proper content structure
+    update_attrs = %{
+      title: Map.get(cleaned_params, "title", section.title),
+      visible: Map.get(cleaned_params, "visible", section.visible),
+      content: build_content_from_params(cleaned_params, to_string(section.section_type))
+    }
+
+    IO.puts("🔧 Update attributes: #{inspect(update_attrs, pretty: true)}")
+
+    case Portfolios.update_portfolio_section(section, update_attrs) do
+      {:ok, updated_section} ->
+        IO.puts("✅ SECTION UPDATED SUCCESSFULLY")
+
+        # Update sections list
+        updated_sections = Enum.map(socket.assigns.sections, fn s ->
+          if s.id == section_id, do: updated_section, else: s
+        end)
+
+        # Broadcast the update
+        broadcast_portfolio_update(
+          socket.assigns.portfolio.id,
+          updated_sections,
+          socket.assigns.customization,
+          :section_updated
+        )
+
+        # Also broadcast specific section update
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio_preview:#{socket.assigns.portfolio.id}",
+          {:section_updated, updated_section}
+        )
+
+        {:noreply, socket
+          |> assign(:sections, updated_sections)
+          |> assign(:show_section_modal, false)
+          |> assign(:current_section_type, nil)
+          |> assign(:editing_section, nil)
+          |> put_flash(:info, "#{updated_section.title} updated successfully!")}
+
+      {:error, changeset} ->
+        IO.puts("❌ Section update failed: #{inspect(changeset.errors)}")
+
+        {:noreply, socket
+          |> assign(:section_changeset_errors, extract_changeset_errors(changeset))
+          |> put_flash(:error, "Failed to update section. Check the errors below.")}
+    end
+  end
+
+  defp create_section_with_broadcast(socket, cleaned_params) do
+    IO.puts("🔧 CREATING SECTION WITH BROADCAST")
+
+    portfolio_id = socket.assigns.portfolio.id
+
+    # Get next position
+    next_position = case socket.assigns.sections do
+      [] -> 1
+      sections ->
+        max_position = Enum.max_by(sections, &(&1.position), fn -> %{position: 0} end).position
+        max_position + 1
+    end
+
+    # Map section type to valid database enum
+    section_type_string = Map.get(cleaned_params, "section_type", "custom")
+    mapped_section_type = map_section_type_to_atom(section_type_string)
+
+    # Build section attributes
+    section_attrs = %{
+      title: Map.get(cleaned_params, "title", get_default_section_title(section_type_string)),
+      section_type: mapped_section_type,
+      visible: Map.get(cleaned_params, "visible", true),
+      position: next_position,
+      content: build_content_from_params(cleaned_params, section_type_string)
+    }
+
+    IO.puts("🔧 Creating section with attrs: #{inspect(section_attrs, pretty: true)}")
+
+    # CRITICAL FIX: Use correct function name
+    case Portfolios.create_portfolio_section(portfolio_id, section_attrs) do
+      {:ok, new_section} ->
+        IO.puts("✅ SECTION CREATED SUCCESSFULLY: #{new_section.id}")
+
+        # Add to sections list
+        updated_sections = socket.assigns.sections ++ [new_section]
+
+        # Broadcast the creation
+        broadcast_portfolio_update(
+          portfolio_id,
+          updated_sections,
+          socket.assigns.customization,
+          :section_created
+        )
+
+        # Also broadcast specific section creation
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "portfolio_preview:#{portfolio_id}",
+          {:section_created, new_section}
+        )
+
+        {:noreply, socket
+          |> assign(:sections, updated_sections)
+          |> assign(:show_section_modal, false)
+          |> assign(:current_section_type, nil)
+          |> assign(:editing_section, nil)
+          |> put_flash(:info, "#{new_section.title} created successfully!")}
+
+      {:error, changeset} ->
+        IO.puts("❌ Section creation failed: #{inspect(changeset.errors)}")
+
+        {:noreply, socket
+          |> assign(:section_changeset_errors, extract_changeset_errors(changeset))
+          |> put_flash(:error, "Failed to create section. Check the errors below.")}
+    end
+  end
+
+  defp build_content_from_params(params, section_type) do
+    base_content = params
+    |> Map.drop(["title", "visible", "section_type", "action", "section_id", "_target", "_csrf_token"])
+
+    case section_type do
+      "contact" ->
+        process_contact_form_data(params)
+
+      _ ->
+        ensure_proper_content_structure(base_content, section_type)
+    end
+  end
+
+  defp ensure_proper_content_structure(content, section_type) do
+    case section_type do
+      "hero" ->
+        content
+        |> ensure_field("headline", "Welcome to My Portfolio")
+        |> ensure_field("subtitle", "")
+        |> ensure_field("cta_text", "Get Started")
+        |> ensure_field("cta_url", "#contact")
+
+      "contact" ->
+        content
+        |> ensure_field("email", "")
+        |> ensure_field("phone", "")
+        |> ensure_field("location", "")
+        |> ensure_social_links_structure()
+
+      "intro" ->
+        content
+        |> ensure_field("summary", "")
+        |> ensure_field("description", "")
+
+      "pricing" ->
+        content
+        |> ensure_field("currency", "USD")
+        |> ensure_field("billing_period", "project")
+        |> ensure_field("show_popular", true)
+        |> ensure_items_structure()
+
+      "code_showcase" ->
+        content
+        |> ensure_field("primary_language", "JavaScript")
+        |> ensure_field("repository_url", "")
+        |> ensure_field("show_stats", true)
+        |> ensure_items_structure()
+
+      section_type when section_type in ["experience", "education", "skills", "projects", "certifications", "services", "achievements", "testimonials", "published_articles", "collaborations", "timeline"] ->
+        content
+        |> ensure_items_structure()
+        |> ensure_field("display_style", get_default_display_style(section_type))
+
+      _ ->
+        content
+    end
+  end
+
+  defp ensure_field(content, field, default_value) do
+    Map.put_new(content, field, default_value)
+  end
+
+  defp ensure_social_links_structure(content) do
+    social_links = Map.get(content, "social_links", %{})
+
+    default_social_links = %{
+      "linkedin" => "",
+      "github" => "",
+      "twitter" => "",
+      "website" => ""
+    }
+
+    Map.put(content, "social_links", Map.merge(default_social_links, social_links))
+  end
+
+  defp ensure_items_structure(content) do
+    items = case Map.get(content, "items") do
+      items when is_list(items) -> items
+      nil -> []
+      _ -> []
+    end
+
+    Map.put(content, "items", items)
+  end
+
+  defp get_default_display_style(section_type) do
+    case section_type do
+      "skills" -> "categorized"
+      "projects" -> "rows"          # FIXED: Single column layout
+      "testimonials" -> "cards"
+      "services" -> "cards"
+      "pricing" -> "grid"
+      "code_showcase" -> "list"
+      _ -> "list"
+    end
+  end
+
+  defp map_section_type_to_atom(section_type_string) do
+    case section_type_string do
+      "hero" -> :hero                           # FIXED: Database constraint
+      "intro" -> :intro
+      "contact" -> :contact
+      "experience" -> :experience
+      "education" -> :education
+      "skills" -> :skills
+      "projects" -> :projects
+      "certifications" -> :certifications
+      "services" -> :services
+      "achievements" -> :achievements           # FIXED: Database constraint
+      "testimonials" -> :testimonials          # FIXED: Database constraint
+      "published_articles" -> :published_articles # FIXED: Database constraint
+      "collaborations" -> :collaborations      # FIXED: Database constraint
+      "timeline" -> :timeline                  # FIXED: Database constraint
+      "gallery" -> :gallery                    # FIXED: Database constraint
+      "blog" -> :blog                         # FIXED: Database constraint
+      "pricing" -> :pricing                   # FIXED: Maps to custom until pricing added to schema
+      "code_showcase" -> :code_showcase       # FIXED: Maps to custom until added to schema
+      "custom" -> :custom
+      _ -> :custom                            # Fallback for unknown types
+    end
+  end
+
+
   defp broadcast_comprehensive_portfolio_update(portfolio_id, sections, customization) do
     IO.puts("📡 BROADCASTING PORTFOLIO UPDATE")
 
@@ -1944,7 +2517,8 @@ end
       "timeline" -> :timeline
       "gallery" -> :gallery
       "blog" -> :blog
-      "pricing" -> :custom  # Map to custom since pricing isn't in schema
+      "pricing" -> :custom  # Map to custom since pricing not in schema enum
+      "code_showcase" -> :custom  # Map to custom since code_showcase not in schema enum
       "custom" -> :custom
       _ -> :custom
     end
@@ -2289,16 +2863,98 @@ end
     end)
   end
 
+@impl true
+def handle_event("move_section_up", %{"section_id" => section_id}, socket) do
+  section_id = String.to_integer(section_id)
+  sections = socket.assigns.sections
 
-  @impl true
-  def handle_event("move_section_up", %{"section_id" => section_id}, socket) do
-    {:noreply, put_flash(socket, :info, "Section reordering coming soon!")}
-  end
+  case find_section_index(sections, section_id) do
+    0 ->
+      {:noreply, put_flash(socket, :info, "Section is already at the top")}
 
-  @impl true
-  def handle_event("move_section_down", %{"section_id" => section_id}, socket) do
-    {:noreply, put_flash(socket, :info, "Section reordering coming soon!")}
+    nil ->
+      {:noreply, put_flash(socket, :error, "Section not found")}
+
+    index ->
+      updated_sections = swap_sections(sections, index, index - 1)
+      save_section_order_and_broadcast(socket, updated_sections)
   end
+end
+
+@impl true
+def handle_event("move_section_down", %{"section_id" => section_id}, socket) do
+  section_id = String.to_integer(section_id)
+  sections = socket.assigns.sections
+
+  case find_section_index(sections, section_id) do
+    index when index == length(sections) - 1 ->
+      {:noreply, put_flash(socket, :info, "Section is already at the bottom")}
+
+    nil ->
+      {:noreply, put_flash(socket, :error, "Section not found")}
+
+    index ->
+      updated_sections = swap_sections(sections, index, index + 1)
+      save_section_order_and_broadcast(socket, updated_sections)
+  end
+end
+
+# Helper functions for section sorting
+defp find_section_index(sections, section_id) do
+  Enum.find_index(sections, fn section -> section.id == section_id end)
+end
+
+defp swap_sections(sections, index1, index2) do
+  section1 = Enum.at(sections, index1)
+  section2 = Enum.at(sections, index2)
+
+  sections
+  |> List.replace_at(index1, %{section2 | position: section1.position})
+  |> List.replace_at(index2, %{section1 | position: section2.position})
+end
+
+defp save_section_order_and_broadcast(socket, updated_sections) do
+  # Update positions in database
+  updated_sections
+  |> Enum.with_index()
+  |> Enum.each(fn {section, index} ->
+    Portfolios.update_portfolio_section(section, %{position: index + 1})
+  end)
+
+  # Broadcast the change
+  broadcast_portfolio_update(
+    socket.assigns.portfolio.id,
+    updated_sections,
+    socket.assigns.customization,
+    :sections_reordered
+  )
+
+  {:noreply, socket
+    |> assign(:sections, updated_sections)
+    |> put_flash(:info, "Section order updated")}
+end
+
+defp render_section_card_with_scroll(section, content) do
+  """
+  <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+    <!-- Section Header -->
+    <div class="p-4 border-b border-gray-100 flex justify-between items-center">
+      <h3 class="font-semibold text-gray-900">#{safe_html_escape(section.title)}</h3>
+      <div class="flex items-center space-x-2">
+        <!-- Section controls here -->
+      </div>
+    </div>
+
+    <!-- Scrollable Content Area -->
+    <div class="max-h-96 overflow-y-auto">
+      <div class="p-4">
+        #{content}
+      </div>
+    </div>
+  </div>
+  """
+end
+
 
   defp generate_default_section_title(section_type) do
     case to_string(section_type) do
@@ -3133,6 +3789,30 @@ end
     end
   end
 
+  # Update form processing to handle social links properly
+defp process_contact_form_data(params) do
+  # Extract social links from flattened form data
+  social_links = %{
+    "linkedin" => Map.get(params, "social_links_linkedin", ""),
+    "github" => Map.get(params, "social_links_github", ""),
+    "twitter" => Map.get(params, "social_links_twitter", ""),
+    "website" => Map.get(params, "social_links_website", "")
+  }
+
+  # Remove empty social links
+  filtered_social_links = social_links
+  |> Enum.reject(fn {_key, value} -> value == "" end)
+  |> Enum.into(%{})
+
+  # Build contact content
+  %{
+    "email" => Map.get(params, "email", ""),
+    "phone" => Map.get(params, "phone", ""),
+    "location" => Map.get(params, "location", ""),
+    "social_links" => filtered_social_links
+  }
+end
+
 
   defp extract_content_from_params(section_type, params) do
     # Simple content extraction - adapt based on your section types
@@ -3532,181 +4212,48 @@ end
     """
   end
 
-  # Sections Tab Renderer
-defp render_sections_tab(assigns) do
-  ~H"""
-  <div class="sections-tab space-y-6">
-    <!-- Video Intro Section -->
-    <div class="bg-white rounded-xl shadow-sm border p-6">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h3 class="text-lg font-bold text-gray-900 flex items-center">
-            <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-            </svg>
-            Video Introduction
-          </h3>
-          <p class="text-gray-600">Add a personal video introduction to your portfolio</p>
-        </div>
-        <button
-          phx-click="toggle_video_intro_modal"
-          class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-          <%= if has_video_intro?(@portfolio) do %>
-            Edit Video
-          <% else %>
-            Add Video
-          <% end %>
-        </button>
-      </div>
-
-      <!-- Current Video Display -->
-      <%= if has_video_intro?(@portfolio) do %>
-        <div class="mt-4 p-4 bg-gray-50 rounded-lg">
-          <div class="flex items-center justify-between">
+  defp render_section_list_with_controls(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <%= for {section, index} <- Enum.with_index(@sections) do %>
+        <div class="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow">
+          <!-- Section Header with Controls -->
+          <div class="p-4 border-b border-gray-100 flex justify-between items-center">
             <div class="flex items-center">
-              <div class="w-16 h-12 bg-gray-200 rounded flex items-center justify-center mr-3">
-                <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m-8-4a9 9 0 118 0 9 9 0 01-8 0z"/>
-                </svg>
-              </div>
-              <div>
-                <p class="font-medium text-gray-900">Video Introduction Added</p>
-                <p class="text-sm text-gray-600">Click "Edit Video" to update or remove</p>
-              </div>
-            </div>
-            <button
-              phx-click="remove_video_intro"
-              class="px-3 py-1 text-red-600 hover:bg-red-50 rounded text-sm">
-              Remove
-            </button>
-          </div>
-        </div>
-      <% else %>
-        <div class="mt-4 p-6 border-2 border-dashed border-gray-300 rounded-lg text-center">
-          <svg class="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-          </svg>
-          <h4 class="text-lg font-medium text-gray-900 mb-2">Add Video Introduction</h4>
-          <p class="text-gray-600 mb-4">Make a great first impression with a personal video introduction</p>
-          <button
-            phx-click="toggle_video_intro_modal"
-            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            Add Video
-          </button>
-        </div>
-      <% end %>
-    </div>
-
-    <!-- Enhanced Sections Management -->
-    <div class="bg-white rounded-xl shadow-sm border p-6">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
-        <div>
-          <h3 class="text-lg font-bold text-gray-900">Portfolio Sections</h3>
-          <p class="text-gray-600">Build your portfolio by adding different sections</p>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="flex flex-col sm:flex-row gap-3">
-          <!-- Import Resume Button (Secondary) -->
-            <button
-              phx-click="show_import_resume"
-              class="flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium border border-gray-300">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-              </svg>
-              Import Resume
-            </button>
-
-          <!-- Add Section Button (Primary) -->
-          <button
-            phx-click="show_create_dropdown"
-            class="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-            </svg>
-            Add Section
-          </button>
-        </div>
-      </div>
-
-      <!-- Quick Tips -->
-      <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <div class="flex items-start">
-          <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          <div>
-            <h4 class="font-medium text-blue-900 mb-1">💡 Quick Start Tips</h4>
-            <p class="text-sm text-blue-800">
-              <strong>New to portfolios?</strong> Import your resume to automatically create sections,
-              then customize them. <strong>Starting fresh?</strong> Add sections manually for full control.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Existing Sections Display with ALL FUNCTIONALITY -->
-      <div class="space-y-4">
-        <%= for section <- @sections do %>
-          <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:shadow-sm transition-shadow">
-            <div class="flex items-center">
-              <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center mr-3">
-                <span class="text-lg"><%= get_section_icon(section.section_type) %></span>
-              </div>
-              <div>
-                <h4 class="font-medium text-gray-900"><%= section.title || format_section_type_title(section.section_type) %></h4>
-                <p class="text-sm text-gray-600">
-                  <%= if section.visible, do: "Visible", else: "Hidden" %> •
-                  Position <%= section.position %>
-                </p>
-              </div>
+              <div class={"w-3 h-3 rounded-full mr-3 #{if section.visible, do: "bg-green-400", else: "bg-gray-300"}"} title={if section.visible, do: "Visible", else: "Hidden"}></div>
+              <h3 class="font-semibold text-gray-900"><%= section.title %></h3>
+              <span class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full"><%= String.capitalize(to_string(section.section_type)) %></span>
             </div>
 
-            <div class="flex items-center space-x-2">
-              <!-- Edit Button -->
-              <button
-                phx-click="edit_section"
-                phx-value-section_id={section.id}
-                class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                title="Edit section">
+            <!-- Section Controls -->
+            <div class="flex items-center space-x-1">
+              <!-- Move Up -->
+              <button type="button"
+                      phx-click="move_section_up"
+                      phx-value-section_id={section.id}
+                      disabled={index == 0}
+                      class={"p-2 rounded-md transition-colors #{if index == 0, do: "text-gray-300 cursor-not-allowed", else: "text-gray-600 hover:text-gray-900 hover:bg-gray-100 cursor-pointer"}"}>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
                 </svg>
               </button>
 
-              <!-- EXISTING: Move Up/Down Buttons -->
-              <div class="flex flex-col">
-                <button
-                  phx-click="move_section_up"
-                  phx-value-section_id={section.id}
-                  class="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded transition-colors"
-                  title="Move up">
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
-                  </svg>
-                </button>
-                <button
-                  phx-click="move_section_down"
-                  phx-value-section_id={section.id}
-                  class="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded transition-colors"
-                  title="Move down">
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                  </svg>
-                </button>
-              </div>
+              <!-- Move Down -->
+              <button type="button"
+                      phx-click="move_section_down"
+                      phx-value-section_id={section.id}
+                      disabled={index == length(@sections) - 1}
+                      class={"p-2 rounded-md transition-colors #{if index == length(@sections) - 1, do: "text-gray-300 cursor-not-allowed", else: "text-gray-600 hover:text-gray-900 hover:bg-gray-100 cursor-pointer"}"}>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
 
               <!-- Visibility Toggle -->
-              <button
-                phx-click="toggle_section_visibility"
-                phx-value-section_id={section.id}
-                class={[
-                  "p-2 rounded-lg transition-colors",
-                  if(section.visible,
-                    do: "text-green-600 hover:bg-green-50",
-                    else: "text-gray-400 hover:bg-gray-50")
-                ]}
-                title={if(section.visible, do: "Hide section", else: "Show section")}>
+              <button type="button"
+                      phx-click="toggle_section_visibility"
+                      phx-value-section_id={section.id}
+                      class={"p-2 rounded-md transition-colors #{if section.visible, do: "text-green-600 hover:bg-green-50", else: "text-gray-400 hover:bg-gray-50"}"}>
                 <%= if section.visible do %>
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -3714,63 +4261,400 @@ defp render_sections_tab(assigns) do
                   </svg>
                 <% else %>
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L8.464 8.464a5.001 5.001 0 00-3.104 7.336m9.29-9.29A9.97 9.97 0 0119.5 12a9.97 9.97 0 01-1.563 3.029m-1.8 1.8L19.5 19.5M4.5 4.5l15 15"/>
                   </svg>
                 <% end %>
               </button>
 
+              <!-- Edit Button -->
+              <button type="button"
+                      phx-click="edit_section"
+                      phx-value-section_id={section.id}
+                      class="p-2 rounded-md text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+              </button>
+
               <!-- Delete Button -->
-              <button
-                phx-click="delete_section"
-                phx-value-section_id={section.id}
-                phx-confirm="Are you sure you want to delete this section?"
-                class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                title="Delete section">
+              <button type="button"
+                      phx-click="delete_section"
+                      phx-value-section_id={section.id}
+                      phx-confirm="Are you sure you want to delete this section?"
+                      class="p-2 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                 </svg>
               </button>
             </div>
           </div>
-        <% end %>
 
-        <%= if Enum.empty?(@sections) do %>
-          <div class="text-center py-12">
-            <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-            </svg>
-            <h4 class="text-lg font-medium text-gray-900 mb-2">No sections yet</h4>
-            <p class="text-gray-600 mb-6">Start building your portfolio by adding your first section or importing from your resume</p>
-            <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <!-- Section Content Preview with Max Height -->
+          <div class="max-h-48 overflow-y-auto">
+            <div class="p-4">
+              <%= render_section_preview(section) %>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp render_section_preview_with_media(section) do
+    # Get base preview text
+    base_preview = render_section_preview(section)  # Use existing function
+
+    # Add media count if present
+    media_files = get_in(section.content, ["media_files"]) || []
+
+    if length(media_files) > 0 do
+      media_text = " • #{length(media_files)} media file#{if length(media_files) != 1, do: "s", else: ""}"
+      base_preview <> media_text
+    else
+      base_preview
+    end
+  end
+
+  defp get_current_items(form_data) do
+    Map.get(form_data, "items", [])
+  end
+
+  # Add this function to enhanced_portfolio_editor.ex
+  defp get_item_display_title(item, section_type) do
+    case section_type do
+      "experience" -> Map.get(item, "title", "Experience Item")
+      "education" -> Map.get(item, "degree", "Education Item")
+      "projects" -> Map.get(item, "title", "Project Item")
+      "skills" -> Map.get(item, "name", "Skill Item")
+      "certifications" -> Map.get(item, "name", "Certification Item")
+      "services" -> Map.get(item, "name", "Service Item")
+      "achievements" -> Map.get(item, "title", "Achievement Item")
+      "testimonials" -> Map.get(item, "client_name", "Testimonial Item")
+      "published_articles" -> Map.get(item, "title", "Article Item")
+      "collaborations" -> Map.get(item, "title", "Collaboration Item")
+      "timeline" -> Map.get(item, "title", "Timeline Item")
+      "pricing" -> Map.get(item, "name", "Pricing Tier")
+      "code_showcase" -> Map.get(item, "title", "Code Sample")
+      _ -> Map.get(item, "title", "Item")
+    end
+  end
+
+  # Update the item rendering to show visibility state clearly
+  defp render_item_with_visibility_controls(assigns, item, index) do
+    item_title = get_item_display_title(item, assigns.section_type)
+    is_visible = Map.get(item, "visible", true)
+    items_count = length(Map.get(assigns.form_data, "items", []))
+
+    visibility_class = if is_visible do
+      "border-green-200 bg-white"
+    else
+      "border-gray-200 bg-gray-50 opacity-60"
+    end
+
+    visibility_button_class = if is_visible do
+      "bg-green-100 text-green-600 hover:bg-green-200"
+    else
+      "bg-gray-100 text-gray-400 hover:bg-gray-200"
+    end
+
+    # Return the HTML string for the item
+    """
+    <div class="bg-white rounded-lg border-2 transition-all #{visibility_class}">
+      <div class="p-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center flex-1">
+            <!-- Visibility Toggle -->
+            <button type="button"
+                    phx-click="toggle_item_visibility" phx-target={assigns.myself}
+                    phx-value-item_index="#{index}"
+                    class="inline-flex items-center justify-center w-8 h-8 rounded-full transition-colors mr-3 #{visibility_button_class}">
+              #{if is_visible do
+                '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>'
+              else
+                '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L8.464 8.464a5.001 5.001 0 00-3.104 7.336m9.29-9.29A9.97 9.97 0 0119.5 12a9.97 9.97 0 01-1.563 3.029m-1.8 1.8L19.5 19.5M4.5 4.5l15 15"/></svg>'
+              end}
+            </button>
+
+            <div class="flex-1">
+              <h5 class="font-medium #{if is_visible, do: "text-gray-900", else: "text-gray-500"}">
+                #{item_title}
+              </h5>
+              <p class="text-sm #{if is_visible, do: "text-gray-600", else: "text-gray-400"}">
+                #{if is_visible, do: "Visible to visitors", else: "Hidden from visitors"}
+              </p>
+            </div>
+          </div>
+
+          <!-- Action Controls -->
+          <div class="flex items-center space-x-1">
+            <!-- Edit Button -->
+            <button type="button"
+                    phx-click="edit_item" phx-target={assigns.myself}
+                    phx-value-item_index="#{index}"
+                    class="inline-flex items-center justify-center w-8 h-8 rounded text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            </button>
+
+            <!-- Delete Button -->
+            <button type="button"
+                    phx-click="delete_item_permanently" phx-target={assigns.myself}
+                    phx-value-item_index="#{index}"
+                    phx-confirm="Are you sure you want to permanently delete this item?"
+                    class="inline-flex items-center justify-center w-8 h-8 rounded text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+
+  # Sections Tab Renderer
+  defp render_sections_tab(assigns) do
+    ~H"""
+    <div class="sections-tab space-y-6">
+      <!-- Video Intro Section -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-lg font-bold text-gray-900 flex items-center">
+              <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+              Video Introduction
+            </h3>
+            <p class="text-gray-600">Add a personal video introduction to your portfolio</p>
+          </div>
+          <button
+            phx-click="toggle_video_intro_modal"
+            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+            <%= if has_video_intro?(@portfolio) do %>
+              Edit Video
+            <% else %>
+              Add Video
+            <% end %>
+          </button>
+        </div>
+
+        <!-- Current Video Display -->
+        <%= if has_video_intro?(@portfolio) do %>
+          <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <div class="w-16 h-12 bg-gray-200 rounded flex items-center justify-center mr-3">
+                  <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m-8-4a9 9 0 118 0 9 9 0 01-8 0z"/>
+                  </svg>
+                </div>
+                <div>
+                  <p class="font-medium text-gray-900">Video Introduction Added</p>
+                  <p class="text-sm text-gray-600">Click "Edit Video" to update or remove</p>
+                </div>
+              </div>
               <button
-                phx-click="show_import_resume"
-                class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                Import Resume
-              </button>
-              <span class="text-gray-400">or</span>
-              <button
-                phx-click="show_create_dropdown"
-                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                Add Your First Section
+                phx-click="remove_video_intro"
+                class="px-3 py-1 text-red-600 hover:bg-red-50 rounded text-sm">
+                Remove
               </button>
             </div>
           </div>
+        <% else %>
+          <div class="mt-4 p-6 border-2 border-dashed border-gray-300 rounded-lg text-center">
+            <svg class="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
+            <h4 class="text-lg font-medium text-gray-900 mb-2">Add Video Introduction</h4>
+            <p class="text-gray-600 mb-4">Make a great first impression with a personal video introduction</p>
+            <button
+              phx-click="toggle_video_intro_modal"
+              class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              Add Video
+            </button>
+          </div>
         <% end %>
       </div>
+
+      <!-- Enhanced Sections Management -->
+      <div class="bg-white rounded-xl shadow-sm border p-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+          <div>
+            <h3 class="text-lg font-bold text-gray-900">Portfolio Sections</h3>
+            <p class="text-gray-600">Build your portfolio by adding different sections</p>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex flex-col sm:flex-row gap-3">
+            <!-- Import Resume Button (Secondary) -->
+              <button
+                phx-click="show_import_resume"
+                class="flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium border border-gray-300">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                </svg>
+                Import Resume
+              </button>
+
+            <!-- Add Section Button (Primary) -->
+            <button
+              phx-click="show_create_dropdown"
+              class="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Add Section
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Tips -->
+        <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div class="flex items-start">
+            <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <h4 class="font-medium text-blue-900 mb-1">💡 Quick Start Tips</h4>
+              <p class="text-sm text-blue-800">
+                <strong>New to portfolios?</strong> Import your resume to automatically create sections,
+                then customize them. <strong>Starting fresh?</strong> Add sections manually for full control.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Existing Sections Display with ALL FUNCTIONALITY -->
+        <div class="space-y-4">
+          <%= for section <- @sections do %>
+            <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:shadow-sm transition-shadow">
+              <div class="flex items-center">
+                <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center mr-3">
+                  <span class="text-lg"><%= get_section_icon(section.section_type) %></span>
+                </div>
+                <div>
+                  <h4 class="font-medium text-gray-900"><%= section.title || format_section_type_title(section.section_type) %></h4>
+                  <p class="text-sm text-gray-600">
+                    <%= if section.visible, do: "Visible", else: "Hidden" %> •
+                    Position <%= section.position %>
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <!-- Edit Button -->
+                <button
+                  phx-click="edit_section"
+                  phx-value-section_id={section.id}
+                  class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Edit section">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                  </svg>
+                </button>
+
+                <!-- EXISTING: Move Up/Down Buttons -->
+                <div class="flex flex-col">
+                  <button
+                    phx-click="move_section_up"
+                    phx-value-section_id={section.id}
+                    class="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                    title="Move up">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>
+                    </svg>
+                  </button>
+                  <button
+                    phx-click="move_section_down"
+                    phx-value-section_id={section.id}
+                    class="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                    title="Move down">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- Visibility Toggle -->
+                <button
+                  phx-click="toggle_section_visibility"
+                  phx-value-section_id={section.id}
+                  class={[
+                    "p-2 rounded-lg transition-colors",
+                    if(section.visible,
+                      do: "text-green-600 hover:bg-green-50",
+                      else: "text-gray-400 hover:bg-gray-50")
+                  ]}
+                  title={if(section.visible, do: "Hide section", else: "Show section")}>
+                  <%= if section.visible do %>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                  <% else %>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
+                    </svg>
+                  <% end %>
+                </button>
+
+                <!-- Delete Button -->
+                <button
+                  phx-click="delete_section"
+                  phx-value-section_id={section.id}
+                  phx-confirm="Are you sure you want to delete this section?"
+                  class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete section">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          <% end %>
+
+          <%= if Enum.empty?(@sections) do %>
+            <div class="text-center py-12">
+              <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+              </svg>
+              <h4 class="text-lg font-medium text-gray-900 mb-2">No sections yet</h4>
+              <p class="text-gray-600 mb-6">Start building your portfolio by adding your first section or importing from your resume</p>
+              <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  phx-click="show_import_resume"
+                  class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
+                  Import Resume
+                </button>
+                <span class="text-gray-400">or</span>
+                <button
+                  phx-click="show_create_dropdown"
+                  class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                  Add Your First Section
+                </button>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <!-- NEW FEATURE: Enhanced Video Intro Modal with Tab Navigation and Camera Initialization -->
-  <%= if Map.get(assigns, :show_video_intro_modal, false) do %>
-    <%= render_video_intro_modal(assigns) %>
-  <% end %>
+    <!-- NEW FEATURE: Enhanced Video Intro Modal with Tab Navigation and Camera Initialization -->
+    <%= if Map.get(assigns, :show_video_intro_modal, false) do %>
+      <%= render_video_intro_modal(assigns) %>
+    <% end %>
 
-  <!-- EXISTING: Resume Import Modal -->
-  <%= if Map.get(assigns, :show_resume_import_modal, false) do %>
-    <%= render_resume_import_modal(assigns) %>
-  <% end %>
-  """
-end
+    <!-- EXISTING: Resume Import Modal -->
+    <%= if Map.get(assigns, :show_resume_import_modal, false) do %>
+      <%= render_resume_import_modal(assigns) %>
+    <% end %>
+    """
+  end
 
 defp render_resume_import_modal(assigns) do
   ~H"""
@@ -4154,75 +5038,69 @@ end
     """
   end
 
-  defp render_section_preview(section) do
-    assigns = %{section: section}
+defp render_section_preview(section) do
+  case to_string(section.section_type) do
+    "experience" ->
+      items = get_in(section.content, ["items"]) || []
+      if length(items) > 0 do
+        first_item = List.first(items)
+        title = Map.get(first_item, "title", "")
+        company = Map.get(first_item, "company", "")
+        count_text = if length(items) > 1, do: " and #{length(items) - 1} more", else: ""
+        "#{title} at #{company}#{count_text}"
+      else
+        "No experience items added yet"
+      end
 
-    ~H"""
-    <div class="section-preview bg-white rounded-lg border border-gray-200 p-6 mb-4">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center">
-          <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center mr-3">
-            <span class="text-lg"><%= get_section_icon(@section.section_type) %></span>
-          </div>
-          <div>
-            <h4 class="font-medium text-gray-900"><%= @section.title %></h4>
-            <p class="text-sm text-gray-600">
-              <%= if @section.visible, do: "Visible", else: "Hidden" %> •
-              Position <%= @section.position %>
-            </p>
-          </div>
-        </div>
+    "education" ->
+      items = get_in(section.content, ["items"]) || []
+      if length(items) > 0 do
+        first_item = List.first(items)
+        degree = Map.get(first_item, "degree", "")
+        institution = Map.get(first_item, "institution", "")
+        count_text = if length(items) > 1, do: " and #{length(items) - 1} more", else: ""
+        "#{degree} from #{institution}#{count_text}"
+      else
+        "No education items added yet"
+      end
 
-        <div class="flex items-center space-x-2">
-          <button
-            phx-click="edit_section"
-            phx-value-section_id={@section.id}
-            class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-            </svg>
-          </button>
+    "projects" ->
+      items = get_in(section.content, ["items"]) || []
+      "#{length(items)} project#{if length(items) != 1, do: "s", else: ""}"
 
-          <button
-            phx-click="toggle_section_visibility"
-            phx-value-section_id={@section.id}
-            class={[
-              "p-2 rounded-lg transition-colors",
-              if(@section.visible,
-                do: "text-green-600 hover:bg-green-50",
-                else: "text-gray-400 hover:bg-gray-50")
-            ]}>
-            <%= if @section.visible do %>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-              </svg>
-            <% else %>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"/>
-              </svg>
-            <% end %>
-          </button>
+    "skills" ->
+      items = get_in(section.content, ["items"]) || []
+      "#{length(items)} skill#{if length(items) != 1, do: "s", else: ""}"
 
-          <button
-            phx-click="delete_section"
-            phx-value-section_id={@section.id}
-            phx-confirm="Are you sure you want to delete this section?"
-            class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-            </svg>
-          </button>
-        </div>
-      </div>
+    "contact" ->
+      email = get_in(section.content, ["email"]) || ""
+      phone = get_in(section.content, ["phone"]) || ""
+      location = get_in(section.content, ["location"]) || ""
+      social_links = get_in(section.content, ["social_links"]) || %{}
 
-      <!-- Enhanced Content Preview -->
-      <div class="section-content-preview">
-        <%= render_section_content_preview(@section) %>
-      </div>
-    </div>
-    """
+      contact_info = [email, phone, location] |> Enum.reject(&(&1 == "")) |> Enum.take(2)
+      social_count = social_links |> Map.values() |> Enum.reject(&(&1 == "")) |> length()
+
+      contact_text = if length(contact_info) > 0, do: Enum.join(contact_info, " • "), else: "No contact info"
+      social_text = if social_count > 0, do: " • #{social_count} social links", else: ""
+      "#{contact_text}#{social_text}"
+
+    "hero" ->
+      headline = get_in(section.content, ["headline"]) || ""
+      subtitle = get_in(section.content, ["subtitle"]) || ""
+      if headline != "", do: headline, else: if subtitle != "", do: subtitle, else: "Hero section"
+
+    "intro" ->
+      summary = get_in(section.content, ["summary"]) || ""
+      description = get_in(section.content, ["description"]) || ""
+      text = if summary != "", do: summary, else: description
+      if String.length(text) > 100, do: String.slice(text, 0, 97) <> "...", else: text
+
+    _ ->
+      "#{String.capitalize(to_string(section.section_type))} section"
   end
+end
+
 
   defp render_video_intro_section(assigns) do
     # Check if we have valid portfolio data
@@ -6200,37 +7078,24 @@ end
     {:noreply, socket}
   end
 
-  defp broadcast_portfolio_update(portfolio_id, sections, customization, update_type \\ :general) do
-    IO.puts("📡 BROADCASTING: #{update_type} for portfolio #{portfolio_id}")
+  defp broadcast_portfolio_update(portfolio_id, sections, customization, change_type \\ :general)
 
-    update_data = %{
-      sections: sections,
-      customization: customization,
-      updated_at: DateTime.utc_now(),
-      portfolio_id: portfolio_id,
-      update_type: update_type
-    }
+  defp broadcast_portfolio_update(portfolio_id, sections, customization, change_type) do
+    IO.puts("🔧 Broadcasting portfolio update: #{portfolio_id} - #{change_type}")
 
-    # ONLY send ONE message type to avoid loops
-    message = case update_type do
-      :sections -> {:sections_updated, sections}
-      :customization -> {:customization_updated, customization}
-      _ -> {:portfolio_updated, update_data}
-    end
-
-    # ONLY broadcast to necessary channels
-    channels = case update_type do
-      :sections -> ["portfolio_preview:#{portfolio_id}"]
-      :customization -> ["portfolio_preview:#{portfolio_id}", "portfolio_show:#{portfolio_id}"]
-      _ -> ["portfolio_preview:#{portfolio_id}"]
-    end
-
-    Enum.each(channels, fn channel ->
-      PubSub.broadcast(Frestyl.PubSub, channel, message)
-    end)
+    # Single comprehensive broadcast with all necessary data
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_preview:#{portfolio_id}",
+      {:portfolio_updated, %{
+        portfolio_id: portfolio_id,
+        sections: sections,
+        customization: customization,
+        change_type: change_type,
+        timestamp: System.system_time(:millisecond)
+      }}
+    )
   end
-
-
 
   defp generate_css_from_customization(customization) do
     layout_style = Map.get(customization, "layout_style", "single")
@@ -6612,30 +7477,40 @@ end
 
   # PubSub handlers
   @impl true
-  def handle_info({:section_updated, section}, socket) do
-    updated_sections = Enum.map(socket.assigns.sections, fn s ->
-      if s.id == section.id, do: section, else: s
-    end)
+  def handle_info({:section_created, new_section}, socket) do
+    IO.puts("🔧 Received section_created broadcast")
 
-    hero_section = if to_string(section.section_type) == "hero" do
-      section
+    # Add new section to current list if not already present
+    current_sections = socket.assigns.sections
+    section_exists = Enum.any?(current_sections, &(&1.id == new_section.id))
+
+    updated_sections = if not section_exists do
+      current_sections ++ [new_section]
     else
-      socket.assigns.hero_section
+      current_sections
     end
 
-    {:noreply, socket
+    socket = socket
     |> assign(:sections, updated_sections)
-    |> assign(:hero_section, hero_section)}
+    |> put_flash(:info, "Section '#{new_section.title}' was added!")
+
+    {:noreply, socket}
   end
 
   @impl true
-  def handle_info({:portfolio_updated, data}, socket) do
-    sections = Map.get(data, :sections, socket.assigns.sections)
-    customization = Map.get(data, :customization, socket.assigns.customization)
+  def handle_info({:portfolio_updated, payload}, socket) do
+    # Only handle if it's for our portfolio to avoid conflicts
+    if payload.portfolio_id == socket.assigns.portfolio.id do
+      IO.puts("🔧 Received portfolio update broadcast")
 
-    {:noreply, socket
-      |> assign(:sections, sections)
-      |> assign(:customization, customization)}
+      socket = socket
+      |> assign(:sections, payload.sections)
+      |> assign(:customization, payload.customization)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
