@@ -496,7 +496,7 @@ defmodule FrestylWeb.StreamingLive.Index do
 
   # Helper Functions for Templates
 
-  def format_duration(seconds) when is_integer(seconds) do
+  defp format_duration(seconds) when is_integer(seconds) do
     hours = div(seconds, 3600)
     minutes = div(rem(seconds, 3600), 60)
     secs = rem(seconds, 60)
@@ -507,8 +507,6 @@ defmodule FrestylWeb.StreamingLive.Index do
       true -> "#{secs}s"
     end
   end
-
-  def format_duration(_), do: "0s"
 
   def format_bytes(bytes) when is_integer(bytes) do
     cond do

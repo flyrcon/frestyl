@@ -1,0 +1,169 @@
+<div class="max-w-7xl mx-auto">
+  <!-- Header Section -->
+  <div class="mb-8">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Story Engine</h1>
+        <p class="text-gray-600 mt-2">Create compelling narratives with collaborative tools and AI assistance</p>
+      </div>
+      <div class="flex items-center space-x-3">
+        <button 
+          phx-click="show_templates_library"
+          class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+          Browse Templates
+        </button>
+        <button 
+          phx-click="show_create_modal"
+          class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-6 py-2 rounded-lg hover:opacity-90 transition-opacity font-medium">
+          Start Creating
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Stats Dashboard -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white rounded-xl p-4 shadow-sm border">
+        <div class="text-2xl font-bold text-purple-600"><%= @story_stats.total_stories %></div>
+        <div class="text-sm text-gray-600">Stories</div>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow-sm border">
+        <div class="text-2xl font-bold text-blue-600"><%= @story_stats.active_collaborations %></div>
+        <div class="text-sm text-gray-600">Collaborations</div>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow-sm border">
+        <div class="text-2xl font-bold text-green-600"><%= @story_stats.average_completion %>%</div>
+        <div class="text-sm text-gray-600">Avg Completion</div>
+      </div>
+      <div class="bg-white rounded-xl p-4 shadow-sm border">
+        <div class="text-2xl font-bold text-orange-600"><%= format_number(@story_stats.words_this_week) %></div>
+        <div class="text-sm text-gray-600">Words This Week</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content: Intent-Based Story Creation -->
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 mb-12">
+    
+    <!-- Intent Selection (Left Column) -->
+    <div class="lg:col-span-2">
+      <.live_component 
+        module={FrestylWeb.StoryEngineLive.Components.IntentSelector}
+        id="intent-selector"
+        available_intents={@available_intents}
+        selected_intent={@selected_intent}
+        user_tier={@user_tier}
+      />
+    </div>
+
+    <!-- Format Selection (Right Column) -->
+    <div class="lg:col-span-3">
+      <.live_component 
+        module={FrestylWeb.StoryEngineLive.Components.FormatGrid}
+        id="format-grid"
+        formats={@available_formats}
+        user_tier={@user_tier}
+        selected_intent={@selected_intent}
+      />
+    </div>
+  </div>
+
+  <!-- Recent Stories -->
+  <.live_component 
+    module={FrestylWeb.StoryEngineLive.Components.RecentStories}
+    id="recent-stories"
+    recent_stories={@recent_stories}
+  />
+
+  <!-- Templates & Resources Row -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">
+    
+    <!-- Templates & Resources -->
+    <div class="bg-white rounded-xl p-8 shadow-sm border">
+      <h3 class="text-lg font-semibold text-gray-900 mb-6">Templates & Resources</h3>
+      <div class="space-y-4">
+        <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
+             phx-click="show_templates_library">
+          <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">📋</div>
+          <div>
+            <div class="font-medium text-gray-900">Story Templates</div>
+            <div class="text-sm text-gray-600">Pre-built structures for every format</div>
+          </div>
+        </div>
+        
+        <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
+             phx-click="show_ai_assistant">
+          <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">🤖</div>
+          <div>
+            <div class="font-medium text-gray-900">AI Writing Assistant</div>
+            <div class="text-sm text-gray-600">Get help with ideas and editing</div>
+          </div>
+        </div>
+        
+        <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
+             phx-click="show_collaboration_guide">
+          <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">👥</div>
+          <div>
+            <div class="font-medium text-gray-900">Collaboration Guide</div>
+            <div class="text-sm text-gray-600">Learn to write with others</div>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
+             phx-click="show_examples_gallery">
+          <div class="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">✨</div>
+          <div>
+            <div class="font-medium text-gray-900">Example Stories</div>
+            <div class="text-sm text-gray-600">Get inspired by great examples</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <.live_component 
+      module={FrestylWeb.StoryEngineLive.Components.QuickActions}
+      id="quick-actions"
+      user_tier={@user_tier}
+    />
+  </div>
+
+  <!-- Personalized Recommendations -->
+  <%= if length(@dashboard_data.format_recommendations) > 0 do %>
+    <div class="mt-12 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-8 border border-blue-100">
+      <h3 class="text-lg font-semibold text-gray-900 mb-4">Recommended for You</h3>
+      <p class="text-gray-600 mb-6"><%= @dashboard_data.completion_encouragement %></p>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <%= for format <- @dashboard_data.format_recommendations do %>
+          <% 
+            # SAFE ACCESS: Get format config with fallback 
+            format_config = case FormatManager.get_format_config(format) do
+              nil -> %{
+                name: String.capitalize(to_string(format)),
+                description: "Create #{format} content",
+                gradient: "from-gray-400 to-gray-600",
+                icon: "📝"
+              }
+              config -> config
+            end
+          %>
+          <button 
+            phx-click="create_story"
+            phx-value-format={format}
+            class="p-4 bg-white rounded-lg shadow-sm border hover:shadow-md transition-all text-left">
+            <div class="flex items-center space-x-3 mb-2">
+              <div class={[
+                "w-8 h-8 rounded-lg flex items-center justify-center text-white",
+                "bg-gradient-to-br #{Map.get(format_config, :gradient, "from-gray-400 to-gray-600")}"
+              ]}>
+                <%= Map.get(format_config, :icon, "📝") %>
+              </div>
+              <h4 class="font-semibold text-gray-900"><%= Map.get(format_config, :name, "Unknown Format") %></h4>
+            </div>
+            <p class="text-sm text-gray-600"><%= Map.get(format_config, :description, "Create content") %></p>
+          </button>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+</div>

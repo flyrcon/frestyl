@@ -1,466 +1,567 @@
-# lib/frestyl/stories.ex
+# lib/frestyl/stories.ex - Fixed get_favorite_formats function call
 defmodule Frestyl.Stories do
+  @moduledoc """
+  The Stories context with enhanced story structure support.
+  """
+
   import Ecto.Query, warn: false
-  alias Frestyl.{Repo, Accounts}
-  alias Frestyl.Stories.{Chapter, Collaboration, ContentBlock, Story, StoryLabUsage}
-  alias Frestyl.Features.TierManager
+  alias Frestyl.Repo
 
-  def invite_collaborator(story, inviting_user, invitee_email, role, permissions \\ %{}) do
-    host_account = get_story_account(story)
+  alias Frestyl.Stories.EnhancedStoryStructure
+  alias Frestyl.Accounts.User
+  alias Frestyl.StoryEngine.{UserPreferences, QuickStartTemplates}
 
-    # Check if inviting user has permission to invite
-    cond do
-      not can_invite_collaborators?(inviting_user, story) ->
-        {:error, :unauthorized}
+  # ============================================================================
+  # ENHANCED STORY STRUCTURE FUNCTIONS
+  # ============================================================================
 
-      not Frestyl.Features.FeatureGate.can_access_feature?(host_account, {:collaborator_invite, 1}) ->
-        {:error, :collaborator_limit_reached}
+  @doc """
+  Returns the list of enhanced story structures for a user.
+  """
+  def list_user_stories(user_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+    story_type = Keyword.get(opts, :story_type)
+    intent = Keyword.get(opts, :intent)
 
-      true ->
-        # Find invitee user if they exist
-        invitee_user = Accounts.get_user_by_email(invitee_email)
-        invitee_account = if invitee_user, do: Accounts.get_user_primary_account(invitee_user)
+    query = EnhancedStoryStructure
+    |> EnhancedStoryStructure.for_user(user_id)
+    |> order_by([s], desc: s.updated_at)
+    |> limit(^limit)
 
-        # Determine collaboration permissions based on tiers
-        collaboration_permissions = determine_collaboration_permissions(
-          host_account,
-          invitee_account,
-          role,
-          permissions
-        )
-
-        collaboration_attrs = %{
-          story_id: story.id,
-          collaborator_user_id: invitee_user && invitee_user.id,
-          collaborator_account_id: invitee_account && invitee_account.id,
-          invited_by_user_id: inviting_user.id,
-          invitation_email: invitee_email,
-          role: role,
-          permissions: collaboration_permissions.permissions,
-          access_level: collaboration_permissions.access_level,
-          billing_context: collaboration_permissions.billing_context
-        }
-
-        case create_collaboration_invitation(collaboration_attrs) do
-          {:ok, collaboration} ->
-            # Send invitation email
-            send_collaboration_invitation_email(collaboration, story, inviting_user)
-
-            # Track usage
-            Frestyl.Billing.UsageTracker.track_collaboration_invitation(host_account, collaboration)
-
-            {:ok, collaboration}
-
-          error ->
-            error
-        end
+    query = if story_type do
+      EnhancedStoryStructure.by_story_type(query, story_type)
+    else
+      query
     end
-  end
 
-  def accept_collaboration_invitation(token) do
-    case get_valid_invitation(token) do
-      nil ->
-        {:error, :invalid_or_expired_invitation}
-
-      collaboration ->
-        changeset = Ecto.Changeset.change(collaboration, %{
-          status: :accepted,
-          accepted_at: DateTime.utc_now(),
-          last_active_at: DateTime.utc_now()
-        })
-
-        case Repo.update(changeset) do
-          {:ok, updated_collaboration} ->
-            # Grant access to the story
-            grant_story_access(updated_collaboration)
-
-            {:ok, updated_collaboration}
-
-          error ->
-            error
-        end
+    query = if intent do
+      EnhancedStoryStructure.by_intent(query, intent)
+    else
+      query
     end
-  end
-
-    def list_user_stories(user_id, opts \\ []) do
-    limit = Keyword.get(opts, :limit, -1)
-
-    query = from s in Story,
-      where: s.created_by_id == ^user_id,
-      order_by: [desc: s.updated_at]
-
-    query = if limit > 0, do: limit(query, ^limit), else: query
 
     Repo.all(query)
   end
 
   @doc """
-  Creates a story from a template with tier checking
+  Gets a single enhanced story structure.
   """
-    def create_story_from_template(user, account, template_id, attrs \\ %{}) do
-      with {:ok, _} <- check_story_limits(user, account),
-          {:ok, template} <- get_template(template_id),
-          {:ok, _} <- check_template_access(account, template) do
+  def get_enhanced_story!(id), do: Repo.get!(EnhancedStoryStructure, id)
 
-        story_attrs = Map.merge(attrs, %{
-          created_by_id: user.id,
-          account_id: account.id,
-          story_type: template.story_type,
-          narrative_structure: template.narrative_structure
-        })
-
-        create_story_with_template(story_attrs, template)
-      end
-    end
-
-  defp check_story_limits(user, account) do
-    current_count = count_user_stories(user.id)
-    limits = TierManager.get_tier_limits(account.subscription_tier)
-    max_stories = Map.get(limits, :max_stories, 0)
-
-    if max_stories == -1 or current_count < max_stories do
-      {:ok, :within_limits}
-    else
-      {:error, :story_limit_exceeded}
-    end
-  end
-
-  defp check_template_access(account, template) do
-    if template.requires_tier do
-      if TierManager.has_tier_access?(account.subscription_tier, template.requires_tier) do
-        {:ok, :access_granted}
-      else
-        {:error, :insufficient_tier}
-      end
-    else
-      {:ok, :access_granted}
-    end
-  end
-
-  def count_user_stories(user_id) do
-    from(s in Story, where: s.created_by_id == ^user_id)
-    |> Repo.aggregate(:count)
+  @doc """
+  Gets a single enhanced story structure with user access check.
+  """
+  def get_user_story!(user_id, story_id) do
+    EnhancedStoryStructure
+    |> EnhancedStoryStructure.for_user(user_id)
+    |> Repo.get!(story_id)
   end
 
   @doc """
-  Gets or creates story lab usage tracking
+  Creates an enhanced story structure.
   """
-  def get_story_lab_usage(user_id) do
-    case Repo.get_by(Frestyl.Stories.StoryLabUsage, user_id: user_id) do
-      nil ->
-        %Frestyl.Stories.StoryLabUsage{
-          user_id: user_id,
-          stories_created: count_user_stories(user_id),
-          chapters_created: count_user_chapters(user_id),
-          recording_minutes_used: get_recording_minutes_used(user_id)
-        }
-      usage -> usage
+  def create_enhanced_story(attrs, user, session_id \\ nil) do
+    # Generate session_id if not provided
+    session_id = session_id || Ecto.UUID.generate()
+
+    # Get template if quick_start_template is specified
+    template = case Map.get(attrs, "quick_start_template") do
+      nil -> nil
+      template_key ->
+        [format, intent] = String.split(template_key, "_", parts: 2)
+        QuickStartTemplates.get_template(format, intent)
     end
-  end
 
-  defp count_user_chapters(user_id) do
-    from(c in Chapter,
-      join: s in Story, on: c.story_id == s.id,
-      where: s.created_by_id == ^user_id)
-    |> Repo.aggregate(:count)
-  end
+    # Merge template data if available
+    enhanced_attrs = case template do
+      nil -> attrs
+      template -> Map.merge(attrs, %{"template_data" => template})
+    end
 
-  defp get_recording_minutes_used(user_id) do
-    # This would calculate total recording time from audio files
-    # associated with user's stories
-    0  # Placeholder
+    # Calculate initial completion percentage
+    initial_completion = calculate_initial_completion(enhanced_attrs)
+
+    # Create the story structure
+    result = %EnhancedStoryStructure{
+      session_id: session_id,
+      created_by_id: user.id
+    }
+    |> EnhancedStoryStructure.changeset(Map.put(enhanced_attrs, "completion_percentage", initial_completion))
+    |> Repo.insert()
+
+    case result do
+      {:ok, story} ->
+        # Track user preferences
+        if Map.has_key?(enhanced_attrs, "intent_category") do
+          UserPreferences.track_format_usage(
+            user.id,
+            enhanced_attrs["story_type"],
+            enhanced_attrs["intent_category"]
+          )
+        end
+
+        # Broadcast story creation
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "user_stories:#{user.id}",
+          {:story_created, story}
+        )
+
+        {:ok, story}
+
+      error -> error
+    end
   end
 
   @doc """
-  Updates story lab usage when user creates content
+  Updates an enhanced story structure.
   """
-  def track_story_lab_usage(user_id, action, data \\ %{}) do
-    usage = get_story_lab_usage(user_id)
-
-    updated_usage = case action do
-      :story_created ->
-        %{usage |
-          stories_created: usage.stories_created + 1,
-          last_story_created_at: DateTime.utc_now()
-        }
-      :chapter_created ->
-        %{usage | chapters_created: usage.chapters_created + 1}
-      :recording_added ->
-        minutes = Map.get(data, :minutes, 0)
-        %{usage | recording_minutes_used: usage.recording_minutes_used + minutes}
+  def update_enhanced_story(%EnhancedStoryStructure{} = story, attrs) do
+    # Recalculate completion if content changed
+    updated_attrs = if Map.has_key?(attrs, "content") || Map.has_key?(attrs, "sections") do
+      completion = EnhancedStoryStructure.calculate_completion_percentage(
+        struct(story, Enum.into(attrs, %{}, fn {k, v} -> {String.to_atom(k), v} end))
+      )
+      Map.put(attrs, "completion_percentage", completion)
+    else
+      attrs
     end
 
-    Repo.insert_or_update(Frestyl.Stories.StoryLabUsage.changeset(updated_usage, %{}))
+    result = story
+    |> EnhancedStoryStructure.changeset(updated_attrs)
+    |> Repo.update()
+
+    case result do
+      {:ok, updated_story} ->
+        # Broadcast update
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "user_stories:#{story.created_by_id}",
+          {:story_updated, updated_story}
+        )
+
+        {:ok, updated_story}
+
+      error -> error
+    end
   end
 
-  # Template management
-  defp get_template("personal_journey") do
-    {:ok, %{
-      id: "personal_journey",
-      name: "Personal Journey",
-      story_type: :personal_narrative,
-      narrative_structure: "chronological",
-      requires_tier: nil,
-      chapters: [
-        %{title: "The Beginning", type: :intro, narrative_purpose: :hook},
-        %{title: "The Journey", type: :content, narrative_purpose: :journey},
-        %{title: "Where I Am Now", type: :conclusion, narrative_purpose: :resolution}
-      ]
-    }}
+  @doc """
+  Deletes an enhanced story structure.
+  """
+  def delete_enhanced_story(%EnhancedStoryStructure{} = story) do
+    result = Repo.delete(story)
+
+    case result do
+      {:ok, deleted_story} ->
+        # Broadcast deletion
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "user_stories:#{story.created_by_id}",
+          {:story_deleted, deleted_story}
+        )
+
+        {:ok, deleted_story}
+
+      error -> error
+    end
   end
 
-  defp get_template("simple_portfolio") do
-    {:ok, %{
-      id: "simple_portfolio",
-      name: "Story Portfolio",
-      story_type: :professional_showcase,
-      narrative_structure: "skills_first",
-      requires_tier: nil,
-      chapters: [
-        %{title: "About Me", type: :intro, narrative_purpose: :context},
-        %{title: "My Work", type: :content, narrative_purpose: :journey},
-        %{title: "Let's Connect", type: :call_to_action, narrative_purpose: :call_to_action}
-      ]
-    }}
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking enhanced story structure changes.
+  """
+  def change_enhanced_story(%EnhancedStoryStructure{} = story, attrs \\ %{}) do
+    EnhancedStoryStructure.changeset(story, attrs)
   end
 
-  defp get_template("basic_lyrics") do
-    {:ok, %{
-      id: "basic_lyrics",
-      name: "Lyrics & Audio",
-      story_type: :creative_portfolio,
-      narrative_structure: "artistic",
-      requires_tier: nil,
-      chapters: [
-        %{title: "Verse 1", type: :content, narrative_purpose: :hook},
-        %{title: "Chorus", type: :content, narrative_purpose: :journey},
-        %{title: "Verse 2", type: :content, narrative_purpose: :journey}
-      ]
-    }}
+  # ============================================================================
+  # COLLABORATION FUNCTIONS
+  # ============================================================================
+
+  @doc """
+  Adds a collaborator to a story.
+  """
+  def add_story_collaborator(%EnhancedStoryStructure{} = story, user_id, role \\ "collaborator") do
+    changeset = EnhancedStoryStructure.add_collaborator(story, user_id, role)
+
+    case Repo.update(changeset) do
+      {:ok, updated_story} ->
+        # Broadcast collaboration change
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "story_collaboration:#{story.id}",
+          {:collaborator_added, updated_story, user_id, role}
+        )
+
+        {:ok, updated_story}
+
+      error -> error
+    end
   end
 
-  defp get_template("hero_journey") do
-    {:ok, %{
-      id: "hero_journey",
-      name: "Hero's Journey",
-      story_type: :personal_narrative,
-      narrative_structure: "hero_journey",
-      requires_tier: "creator",
-      chapters: [
-        %{title: "The Call", type: :intro, narrative_purpose: :hook},
-        %{title: "The Challenge", type: :content, narrative_purpose: :conflict},
-        %{title: "The Journey", type: :content, narrative_purpose: :journey},
-        %{title: "The Transformation", type: :conclusion, narrative_purpose: :resolution}
-      ]
-    }}
+  @doc """
+  Removes a collaborator from a story.
+  """
+  def remove_story_collaborator(%EnhancedStoryStructure{} = story, user_id) do
+    changeset = EnhancedStoryStructure.remove_collaborator(story, user_id)
+
+    case Repo.update(changeset) do
+      {:ok, updated_story} ->
+        # Broadcast collaboration change
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "story_collaboration:#{story.id}",
+          {:collaborator_removed, updated_story, user_id}
+        )
+
+        {:ok, updated_story}
+
+      error -> error
+    end
   end
 
-  defp get_template(_), do: {:error, :template_not_found}
-
-  defp create_story_with_template(story_attrs, template) do
-    Repo.transaction(fn ->
-      # Create the story
-      story = %Story{}
-      |> Story.changeset(story_attrs)
-      |> Repo.insert!()
-
-      # Create chapters from template
-      template.chapters
-      |> Enum.with_index()
-      |> Enum.each(fn {chapter_template, index} ->
-        %Chapter{}
-        |> Chapter.changeset(%{
-          story_id: story.id,
-          title: chapter_template.title,
-          chapter_type: chapter_template.type,
-          narrative_purpose: chapter_template.narrative_purpose,
-          position: index
-        })
-        |> Repo.insert!()
-      end)
-
-      story
-    end)
-  end
-
-  def list_story_collaborators(story_id) do
-    from(c in Collaboration,
-      where: c.story_id == ^story_id and c.status == :accepted,
-      preload: [:collaborator_user, :collaborator_account, :invited_by_user]
+  @doc """
+  Gets stories where user is a collaborator.
+  """
+  def list_collaborative_stories(user_id) do
+    from(s in EnhancedStoryStructure,
+      where: ^user_id in s.collaborators or s.collaboration_mode in ["open", "public"],
+      order_by: [desc: s.updated_at]
     )
     |> Repo.all()
   end
 
-  def get_user_collaboration_for_story(user_id, story_id) do
-    from(c in Collaboration,
-      where: c.story_id == ^story_id and c.collaborator_user_id == ^user_id and c.status == :accepted
-    )
-    |> Repo.one()
-  end
+  # ============================================================================
+  # AI INTEGRATION FUNCTIONS
+  # ============================================================================
 
-  defp determine_collaboration_permissions(host_account, guest_account, role, requested_permissions) do
-    host_tier = host_account.subscription_tier
-    guest_tier = guest_account && guest_account.subscription_tier || :personal
+  @doc """
+  Adds an AI suggestion to a story.
+  """
+  def add_ai_suggestion(%EnhancedStoryStructure{} = story, suggestion_type, content) do
+    changeset = EnhancedStoryStructure.add_ai_suggestion(story, suggestion_type, content)
 
-    base_permissions = get_base_permissions_for_role(role)
+    case Repo.update(changeset) do
+      {:ok, updated_story} ->
+        # Broadcast AI suggestion
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "story_ai:#{story.id}",
+          {:ai_suggestion_added, updated_story, suggestion_type, content}
+        )
 
-    # Adjust permissions based on subscription compatibility
-    adjusted_permissions = case {host_tier, guest_tier} do
-      {:enterprise, _} ->
-        # Enterprise hosts can collaborate with anyone at full capacity
-        base_permissions
+        {:ok, updated_story}
 
-      {:professional, guest_tier} when guest_tier in [:professional, :enterprise] ->
-        # Professional-to-professional gets full features
-        base_permissions
-
-      {:professional, guest_tier} when guest_tier in [:personal, :creator] ->
-        # Professional hosting lower-tier guests: some limitations
-        limit_guest_features(base_permissions)
-
-      {:creator, :creator} ->
-        # Creator-to-creator: standard collaboration
-        base_permissions
-
-      {:creator, :personal} ->
-        # Creator hosting personal: basic collaboration only
-        basic_collaboration_only(base_permissions)
-
-      {:personal, _} ->
-        # Personal accounts can only do view-only sharing
-        view_only_permissions()
-    end
-
-    # Determine billing and access level
-    {billing_context, access_level} = determine_billing_and_access(host_tier, guest_tier)
-
-    %{
-      permissions: Map.merge(adjusted_permissions, requested_permissions),
-      access_level: access_level,
-      billing_context: billing_context
-    }
-  end
-
-  defp get_base_permissions_for_role(:viewer) do
-    %{
-      can_view: true,
-      can_comment: false,
-      can_edit: false,
-      can_invite_others: false,
-      can_export: false,
-      can_see_analytics: false
-    }
-  end
-
-  defp get_base_permissions_for_role(:commenter) do
-    %{
-      can_view: true,
-      can_comment: true,
-      can_edit: false,
-      can_invite_others: false,
-      can_export: false,
-      can_see_analytics: false
-    }
-  end
-
-  defp get_base_permissions_for_role(:editor) do
-    %{
-      can_view: true,
-      can_comment: true,
-      can_edit: true,
-      can_invite_others: false,
-      can_export: true,
-      can_see_analytics: false
-    }
-  end
-
-  defp get_base_permissions_for_role(:co_author) do
-    %{
-      can_view: true,
-      can_comment: true,
-      can_edit: true,
-      can_invite_others: true,
-      can_export: true,
-      can_see_analytics: true
-    }
-  end
-
-  defp limit_guest_features(permissions) do
-    permissions
-    |> Map.put(:can_invite_others, false)
-    |> Map.put(:can_see_analytics, false)
-  end
-
-  defp basic_collaboration_only(permissions) do
-    permissions
-    |> Map.put(:can_edit, false)
-    |> Map.put(:can_invite_others, false)
-    |> Map.put(:can_export, false)
-    |> Map.put(:can_see_analytics, false)
-  end
-
-  defp view_only_permissions do
-    %{
-      can_view: true,
-      can_comment: false,
-      can_edit: false,
-      can_invite_others: false,
-      can_export: false,
-      can_see_analytics: false
-    }
-  end
-
-  defp determine_billing_and_access(host_tier, guest_tier) do
-    case {host_tier, guest_tier} do
-      {:enterprise, _} -> {:host_pays, :cross_account}
-      {:professional, _} -> {:host_pays, :cross_account}
-      {:creator, guest_tier} when guest_tier in [:creator, :professional, :enterprise] ->
-        {:shared, :cross_account}
-      {:creator, :personal} -> {:host_pays, :guest}
-      {:personal, _} -> {:host_pays, :guest}
+      error -> error
     end
   end
 
-  defp can_invite_collaborators?(user, story) do
-    # Check if user owns the story or has co-author permissions
-    story.user_id == user.id ||
-    (get_user_collaboration_for_story(user.id, story.id) |>
-     case do
-       %{permissions: %{"can_invite_others" => true}} -> true
-       _ -> false
-     end)
+  @doc """
+  Accepts an AI suggestion.
+  """
+  def accept_ai_suggestion(%EnhancedStoryStructure{} = story, suggestion_id) do
+    changeset = EnhancedStoryStructure.accept_ai_suggestion(story, suggestion_id)
+
+    case Repo.update(changeset) do
+      {:ok, updated_story} ->
+        # Broadcast AI suggestion acceptance
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "story_ai:#{story.id}",
+          {:ai_suggestion_accepted, updated_story, suggestion_id}
+        )
+
+        {:ok, updated_story}
+
+      error -> error
+    end
   end
 
-  defp get_story_account(story) do
-    Repo.preload(story, :account).account
+  # ============================================================================
+  # ANALYTICS AND INSIGHTS
+  # ============================================================================
+
+  @doc """
+  Gets story statistics for a user.
+  """
+  def get_user_story_stats(user_id) do
+    base_query = EnhancedStoryStructure.for_user(EnhancedStoryStructure, user_id)
+
+    %{
+      total_stories: get_total_stories(base_query),
+      completed_stories: get_completed_stories(base_query),
+      active_collaborations: get_active_collaborations(base_query),
+      words_written: get_total_words(base_query),
+      favorite_formats: get_favorite_formats(user_id),  # This line was the issue
+      avg_completion_rate: get_avg_completion_rate(base_query),
+      stories_this_month: get_stories_this_month(base_query)
+    }
   end
 
-  defp create_collaboration_invitation(attrs) do
-    %Collaboration{}
-    |> Collaboration.invitation_changeset(attrs)
-    |> Repo.insert()
+  @doc """
+  Gets public stories with optional filtering.
+  """
+  def list_public_stories(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+    story_type = Keyword.get(opts, :story_type)
+    featured_only = Keyword.get(opts, :featured_only, false)
+
+    query = from(s in EnhancedStoryStructure)
+    |> EnhancedStoryStructure.public_stories()
+    |> order_by([s], desc: s.updated_at)
+    |> limit(^limit)
+
+    query = if story_type do
+      EnhancedStoryStructure.by_story_type(query, story_type)
+    else
+      query
+    end
+
+    query = if featured_only do
+      EnhancedStoryStructure.featured_stories(query)
+    else
+      query
+    end
+
+    Repo.all(query)
   end
 
-  defp get_valid_invitation(token) do
-    now = DateTime.utc_now()
-
-    from(c in Collaboration,
-      where: c.invitation_token == ^token
-        and c.status == :pending
-        and c.expires_at > ^now
+  @doc """
+  Searches stories by title or content.
+  """
+  def search_stories(search_term, user_id \\ nil) do
+    query = from(s in EnhancedStoryStructure,
+      where: ilike(s.title, ^"%#{search_term}%") or
+             fragment("? @> ?", s.content, ^"%#{search_term}%"),
+      order_by: [desc: s.updated_at]
     )
-    |> Repo.one()
+
+    query = if user_id do
+      where(query, [s], s.created_by_id == ^user_id or s.is_public == true)
+    else
+      EnhancedStoryStructure.public_stories(query)
+    end
+
+    Repo.all(query)
   end
 
-  defp send_collaboration_invitation_email(collaboration, story, inviting_user) do
-    # This would integrate with your email system
-    # For now, just log it
-    IO.puts("Sending collaboration invitation for story '#{story.title}' to #{collaboration.invitation_email}")
+  # ============================================================================
+  # STORY EXPORT AND SHARING
+  # ============================================================================
+
+  @doc """
+  Exports a story in a specific format.
+  """
+  def export_story(%EnhancedStoryStructure{} = story, format) do
+    case format do
+      "markdown" -> export_to_markdown(story)
+      "pdf" -> export_to_pdf(story)
+      "docx" -> export_to_docx(story)
+      "html" -> export_to_html(story)
+      "json" -> export_to_json(story)
+      _ -> {:error, "Unsupported export format"}
+    end
   end
 
-  defp grant_story_access(collaboration) do
-    # This would update any necessary access controls
-    # For now, the collaboration record itself grants access
-    :ok
+  @doc """
+  Creates a story remix/version.
+  """
+  def create_story_remix(%EnhancedStoryStructure{} = original_story, user, remix_attrs \\ %{}) do
+    remix_data = %{
+      "original_story_id" => original_story.id,
+      "remix_type" => Map.get(remix_attrs, "remix_type", "adaptation"),
+      "changes_made" => Map.get(remix_attrs, "changes_made", []),
+      "attribution" => %{
+        "original_author" => original_story.created_by_id,
+        "original_title" => original_story.title,
+        "remix_date" => DateTime.utc_now()
+      }
+    }
+
+    attrs = %{
+      "title" => "#{original_story.title} (Remix)",
+      "story_type" => original_story.story_type,
+      "narrative_structure" => original_story.narrative_structure,
+      "intent_category" => original_story.intent_category,
+      "template_data" => original_story.template_data,
+      "content" => original_story.content,
+      "parent_story_id" => original_story.id,
+      "remix_data" => remix_data,
+      "creation_source" => "story_remix"
+    }
+
+    create_enhanced_story(attrs, user)
+  end
+
+  # ============================================================================
+  # PRIVATE HELPER FUNCTIONS
+  # ============================================================================
+
+  defp calculate_initial_completion(attrs) do
+    story_type = Map.get(attrs, "story_type", "article")
+    content = Map.get(attrs, "content", %{})
+    sections = Map.get(attrs, "sections", [])
+
+    cond do
+      map_size(content) > 0 || length(sections) > 0 -> 10.0
+      true -> 0.0
+    end
+  end
+
+  defp get_total_stories(query) do
+    Repo.aggregate(query, :count)
+  end
+
+  defp get_completed_stories(query) do
+    query
+    |> where([s], s.completion_percentage >= 90.0)
+    |> Repo.aggregate(:count)
+  end
+
+  defp get_active_collaborations(query) do
+    query
+    |> where([s], s.collaboration_mode in ["open", "public", "team", "department"])
+    |> Repo.aggregate(:count)
+  end
+
+  defp get_total_words(query) do
+    query
+    |> select([s], sum(s.current_word_count))
+    |> Repo.one() || 0
+  end
+
+  # FIXED: Make this function public or call it differently
+  defp get_favorite_formats(user_id) do
+    from(s in EnhancedStoryStructure,
+      where: s.created_by_id == ^user_id,
+      group_by: s.story_type,
+      select: {s.story_type, count(s.id)},
+      order_by: [desc: count(s.id)],
+      limit: 3
+    )
+    |> Repo.all()
+  end
+
+  defp get_avg_completion_rate(query) do
+    case Repo.aggregate(query, :avg, :completion_percentage) do
+      nil -> 0.0
+      rate -> Float.round(rate, 1)
+    end
+  end
+
+  defp get_stories_this_month(query) do
+    start_of_month = DateTime.utc_now() |> DateTime.beginning_of_month()
+
+    query
+    |> where([s], s.inserted_at >= ^start_of_month)
+    |> Repo.aggregate(:count)
+  end
+
+  # Export helper functions
+  defp export_to_markdown(story) do
+    content = """
+    # #{story.title}
+
+    #{story.description || ""}
+
+    #{format_story_content_as_markdown(story)}
+    """
+
+    {:ok, content}
+  end
+
+  defp export_to_html(story) do
+    content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>#{story.title}</title>
+        <meta charset="UTF-8">
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #333; border-bottom: 2px solid #eee; }
+            .meta { color: #666; font-style: italic; margin-bottom: 20px; }
+        </style>
+    </head>
+    <body>
+        <h1>#{story.title}</h1>
+        <div class="meta">
+            Story Type: #{story.story_type} |
+            Created: #{DateTime.to_date(story.inserted_at)} |
+            Completion: #{story.completion_percentage}%
+        </div>
+        #{format_story_content_as_html(story)}
+    </body>
+    </html>
+    """
+
+    {:ok, content}
+  end
+
+  defp export_to_json(story) do
+    data = %{
+      id: story.id,
+      title: story.title,
+      description: story.description,
+      story_type: story.story_type,
+      narrative_structure: story.narrative_structure,
+      content: story.content,
+      sections: story.sections,
+      completion_percentage: story.completion_percentage,
+      word_count: story.current_word_count,
+      created_at: story.inserted_at,
+      updated_at: story.updated_at
+    }
+
+    {:ok, Jason.encode!(data, pretty: true)}
+  end
+
+  defp export_to_pdf(_story) do
+    # PDF export would require a PDF library like PuppeteerPDF or similar
+    {:error, "PDF export requires additional setup"}
+  end
+
+  defp export_to_docx(_story) do
+    # DOCX export would require a Word document library
+    {:error, "DOCX export requires additional setup"}
+  end
+
+  defp format_story_content_as_markdown(story) do
+    case story.sections do
+      [] ->
+        # Use content map if no sections
+        story.content
+        |> Map.values()
+        |> Enum.join("\n\n")
+
+      sections ->
+        sections
+        |> Enum.map(fn section ->
+          title = Map.get(section, "title", "Section")
+          content = Map.get(section, "content", "")
+          "## #{title}\n\n#{content}"
+        end)
+        |> Enum.join("\n\n")
+    end
+  end
+
+  defp format_story_content_as_html(story) do
+    case story.sections do
+      [] ->
+        # Use content map if no sections
+        story.content
+        |> Map.values()
+        |> Enum.map(&"<p>#{&1}</p>")
+        |> Enum.join("\n")
+
+      sections ->
+        sections
+        |> Enum.map(fn section ->
+          title = Map.get(section, "title", "Section")
+          content = Map.get(section, "content", "")
+          "<h2>#{title}</h2>\n<p>#{content}</p>"
+        end)
+        |> Enum.join("\n")
+    end
   end
 end

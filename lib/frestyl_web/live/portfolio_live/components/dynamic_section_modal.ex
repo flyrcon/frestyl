@@ -930,6 +930,139 @@ def handle_event("add_new_item", _params, socket) do
   {:noreply, assign(socket, :form_data, updated_form_data)}
 end
 
+@impl true
+def handle_event("edit_item", %{"item_index" => index_str}, socket) do
+  index = String.to_integer(index_str)
+  current_items = get_current_items(socket.assigns.form_data)
+
+  IO.puts("🔧 EDIT_ITEM: index #{index}, total items: #{length(current_items)}")
+
+  case Enum.at(current_items, index) do
+    nil ->
+      IO.puts("❌ Item not found at index #{index}")
+      {:noreply, put_flash(socket, :error, "Item not found")}
+
+    item ->
+      IO.puts("✅ Found item to edit: #{inspect(item)}")
+
+      # CRITICAL FIX: Set editing state WITHOUT removing the item
+      socket = socket
+      |> assign(:editing_item_index, index)
+      |> assign(:editing_item, item)
+      |> assign(:show_item_edit_modal, true)  # Show item editing modal
+
+      {:noreply, socket}
+  end
+end
+
+@impl true
+def handle_event("update_item", %{"item_index" => index_str} = params, socket) do
+  index = String.to_integer(index_str)
+  current_items = get_current_items(socket.assigns.form_data)
+
+  IO.puts("🔧 UPDATE_ITEM: index #{index}")
+  IO.puts("🔧 Update params: #{inspect(params)}")
+
+  if index >= 0 and index < length(current_items) do
+    # Extract item data from params
+    updated_item_data = extract_item_data_from_params(params, socket.assigns.section_type)
+
+    # CRITICAL FIX: Update the item in place, don't delete it
+    updated_items = List.replace_at(current_items, index, updated_item_data)
+    updated_form_data = Map.put(socket.assigns.form_data, "items", updated_items)
+
+    IO.puts("✅ Item updated successfully")
+
+    {:noreply, socket
+      |> assign(:form_data, updated_form_data)
+      |> assign(:editing_item_index, nil)
+      |> assign(:editing_item, nil)
+      |> assign(:show_item_edit_modal, false)
+      |> put_flash(:info, "Item updated successfully")}
+  else
+    IO.puts("❌ Invalid item index: #{index}")
+    {:noreply, put_flash(socket, :error, "Invalid item index")}
+  end
+end
+
+@impl true
+def handle_event("cancel_item_edit", _params, socket) do
+  IO.puts("🔧 CANCEL_ITEM_EDIT")
+
+  {:noreply, socket
+    |> assign(:editing_item_index, nil)
+    |> assign(:editing_item, nil)
+    |> assign(:show_item_edit_modal, false)}
+end
+
+defp load_portfolio_sections_ordered(portfolio_id) do
+  case Portfolios.list_portfolio_sections(portfolio_id) do
+    sections when is_list(sections) ->
+      # Ensure sections are ordered by position
+      ordered_sections = Enum.sort_by(sections, &(&1.position))
+
+      IO.puts("🔧 Loaded #{length(ordered_sections)} sections in order")
+      IO.puts("🔧 Section order: #{inspect(Enum.map(ordered_sections, &{&1.id, &1.position, &1.title}))}")
+
+      {:ok, ordered_sections}
+
+    _ ->
+      {:error, "Failed to load sections"}
+  end
+end
+
+defp extract_item_data_from_params(params, section_type) do
+  # Remove non-item fields
+  item_data = params
+  |> Map.drop(["item_index", "_target", "_csrf_token"])
+  |> Map.put("visible", Map.get(params, "visible", "true") == "true")
+
+  # Add section-specific defaults
+  case section_type do
+    "experience" ->
+      Map.merge(%{
+        "title" => "",
+        "company" => "",
+        "location" => "",
+        "start_date" => "",
+        "end_date" => "",
+        "description" => "",
+        "achievements" => []
+      }, item_data)
+
+    "education" ->
+      Map.merge(%{
+        "degree" => "",
+        "institution" => "",
+        "field" => "",
+        "graduation_date" => "",
+        "gpa" => "",
+        "honors" => "",
+        "description" => ""
+      }, item_data)
+
+    "projects" ->
+      Map.merge(%{
+        "title" => "",
+        "description" => "",
+        "technologies" => [],
+        "live_url" => "",
+        "github_url" => "",
+        "image_url" => ""
+      }, item_data)
+
+    "skills" ->
+      Map.merge(%{
+        "name" => "",
+        "level" => "intermediate",
+        "category" => "General"
+      }, item_data)
+
+    _ ->
+      item_data
+  end
+end
+
 # Helper to create default items for different section types
 defp create_default_item_for_section(section_type) do
   case section_type do

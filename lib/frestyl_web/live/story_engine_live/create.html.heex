@@ -1,0 +1,202 @@
+<div class="max-w-4xl mx-auto px-6 py-8">
+  <!-- Header -->
+  <div class="mb-8">
+    <div class="flex items-center space-x-4 mb-4">
+      <.link navigate={~p"/portfolio_hub?tab=story_engine"} 
+            class="text-gray-600 hover:text-gray-900">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </.link>
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Create Your <%= @format_config.name %></h1>
+        <p class="text-gray-600"><%= @format_config.description %></p>
+      </div>
+    </div>
+
+    <!-- Progress Indicator -->
+    <div class="flex items-center mb-6">
+      <%= for {section, index} <- Enum.with_index(@template.outline) do %>
+        <div class="flex items-center">
+          <div class={[
+            "w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm",
+            if(@current_section == index, do: "bg-blue-600 text-white", else: "bg-gray-200 text-gray-600")
+          ]}>
+            <%= index + 1 %>
+          </div>
+          <span class={[
+            "ml-2 font-medium",
+            if(@current_section == index, do: "text-blue-600", else: "text-gray-500")
+          ]}>
+            <%= section.title %>
+          </span>
+          <%= if index < length(@template.outline) - 1 do %>
+            <div class="ml-4 w-8 h-px bg-gray-300"></div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+    
+    <!-- Writing Area -->
+    <div class="lg:col-span-3">
+      <div class="bg-white rounded-xl shadow-sm border">
+        <!-- Section Header -->
+        <% current_outline = Enum.at(@template.outline, @current_section) %>
+        <div class="p-6 border-b border-gray-200">
+          <h2 class="text-xl font-semibold text-gray-900 mb-2">
+            <%= current_outline.title %>
+          </h2>
+          <p class="text-gray-600 mb-4"><%= current_outline.content %></p>
+          
+          <!-- Writing Prompts -->
+          <%= if Map.has_key?(current_outline, :prompts) do %>
+            <div class="bg-blue-50 rounded-lg p-4">
+              <h4 class="font-medium text-blue-900 mb-2">Writing Prompts:</h4>
+              <ul class="text-sm text-blue-800 space-y-1">
+                <%= for prompt <- current_outline.prompts do %>
+                  <li class="flex items-start space-x-2">
+                    <span class="text-blue-500 mt-1">•</span>
+                    <span><%= prompt %></span>
+                  </li>
+                <% end %>
+              </ul>
+            </div>
+          <% end %>
+        </div>
+
+        <!-- Writing Interface -->
+        <div class="p-6">
+          <textarea 
+            phx-change="update_section"
+            phx-value-section_index={@current_section}
+            phx-debounce="500"
+            name="content"
+            class="w-full h-96 border border-gray-300 rounded-lg p-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            placeholder={"Start writing your #{current_outline.title |> String.downcase()}..."}
+          ><%= Map.get(@story_content, @current_section, "") %></textarea>
+
+          <!-- Word Count & Targets -->
+          <div class="flex items-center justify-between mt-4">
+            <div class="flex items-center space-x-4 text-sm text-gray-500">
+              <span>
+                <%= String.length(Map.get(@story_content, @current_section, "")) %> characters
+              </span>
+              <%= if Map.has_key?(current_outline, :estimated_words) do %>
+                <span>Target: ~<%= current_outline.estimated_words %> words</span>
+              <% end %>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+              <button 
+                phx-click="toggle_ai_assistant"
+                class={[
+                  "text-sm px-3 py-1 rounded-lg font-medium transition-colors",
+                  if(@show_ai_assistant, do: "bg-green-100 text-green-700", else: "bg-gray-100 text-gray-600 hover:bg-gray-200")
+                ]}>
+                🤖 AI Assistant
+              </button>
+              
+              <%= if @current_section > 0 do %>
+                <button 
+                  phx-click="previous_section"
+                  class="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-sm hover:bg-gray-200 transition-colors">
+                  ← Previous
+                </button>
+              <% end %>
+              
+              <%= if @current_section < length(@template.outline) - 1 do %>
+                <button 
+                  phx-click="next_section"
+                  class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-700 transition-colors">
+                  Next →
+                </button>
+              <% else %>
+                <button 
+                  phx-click="save_story"
+                  class="bg-green-600 text-white px-4 py-1 rounded-lg text-sm hover:bg-green-700 transition-colors font-medium">
+                  Create Story
+                </button>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar: Help & AI -->
+    <div class="lg:col-span-1 space-y-6">
+      
+      <!-- AI Assistant Panel -->
+      <%= if @show_ai_assistant and length(@ai_suggestions) > 0 do %>
+        <div class="bg-green-50 rounded-xl p-6 border border-green-200">
+          <h3 class="font-semibold text-green-900 mb-4">✨ AI Suggestions</h3>
+          <div class="space-y-3">
+            <%= for suggestion <- @ai_suggestions do %>
+              <div class="bg-white rounded-lg p-3 border border-green-200">
+                <p class="text-sm text-green-800"><%= suggestion %></p>
+                <button class="text-xs text-green-600 mt-2 hover:text-green-700">
+                  Apply suggestion
+                </button>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Writing Tips -->
+      <div class="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 class="font-semibold text-gray-900 mb-4">💡 Writing Tips</h3>
+        <div class="space-y-3">
+          <%= for tip <- @template.writing_tips do %>
+            <div class="flex items-start space-x-2">
+              <span class="text-blue-500 mt-1 text-xs">●</span>
+              <p class="text-sm text-gray-700"><%= tip %></p>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Collaboration Suggestions -->
+      <%= if Map.has_key?(@template, :collaboration_suggestions) do %>
+        <div class="bg-purple-50 rounded-xl p-6 border border-purple-200">
+          <h3 class="font-semibold text-purple-900 mb-4">👥 Collaboration Ideas</h3>
+          <div class="space-y-3">
+            <%= for suggestion <- @template.collaboration_suggestions do %>
+              <div class="flex items-start space-x-2">
+                <span class="text-purple-500 mt-1 text-xs">●</span>
+                <p class="text-sm text-purple-800"><%= suggestion %></p>
+              </div>
+            <% end %>
+          </div>
+          
+          <%= if not @collaboration_setup do %>
+            <button 
+              phx-click="setup_collaboration"
+              class="mt-4 w-full bg-purple-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors">
+              Set Up Collaboration
+            </button>
+          <% end %>
+        </div>
+      <% end %>
+
+      <!-- Format-Specific Features -->
+      <div class="bg-gray-50 rounded-xl p-6 border">
+        <h3 class="font-semibold text-gray-900 mb-4">🛠️ Available Tools</h3>
+        <div class="space-y-2">
+          <%= for feature <- @format_config.features do %>
+            <div class="flex items-center space-x-2">
+              <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              <span class="text-sm text-gray-700"><%= humanize_feature(feature) %></span>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

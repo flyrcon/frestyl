@@ -22,144 +22,174 @@ defmodule FrestylWeb.PortfolioLive.EnhancedPortfolioEditor do
   LayoutPickerComponent
 }
 
-@impl true
-def mount(%{"id" => portfolio_id}, session, socket) do
-  IO.puts("🔧 MOUNTING Enhanced Portfolio Editor for portfolio: #{portfolio_id}")
+  @impl true
+  def mount(%{"id" => portfolio_id}, session, socket) do
+    IO.puts("🔧 MOUNTING Enhanced Portfolio Editor for portfolio: #{portfolio_id}")
 
-  # Subscribe to PubSub channels if connected
-  if connected?(socket) do
-    # ONLY subscribe to ONE channel to avoid loops
-    PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
-    IO.puts("🔧 Subscribed to: portfolio_preview:#{portfolio_id}")
-  end
-
-  # Get current user from session
-  current_user = get_current_user_from_session(session)
-  IO.puts("🔧 Current user: #{inspect(current_user && current_user.id)}")
-
-  # Load portfolio and sections
-  case load_portfolio_data(portfolio_id) do
-    {:ok, portfolio, sections} ->
-      IO.puts("🔧 Successfully loaded portfolio with #{length(sections)} sections")
-
-      # Initialize socket with all required assigns
-      socket = socket
-        |> assign_core_data(current_user, portfolio, sections)
-        |> assign_modal_states()
-        |> assign_ui_states()
-        |> assign_editor_states()
-        |> assign(:video_tab, "record")  # Add video tab state
-
-      {:ok, socket}
-
-    {:error, reason} ->
-      IO.puts("🔧 Failed to load portfolio: #{inspect(reason)}")
-
-      {:ok, socket
-        |> assign(:current_user, current_user)
-        |> put_flash(:error, "Portfolio not found or access denied")
-        |> redirect(to: ~p"/portfolios")}
-  end
-end
-
-defp load_portfolio_data(portfolio_id) do
-  case Portfolios.get_portfolio_with_sections(portfolio_id) do
-    {:ok, %{} = portfolio_data} ->
-      # Extract portfolio and sections from the loaded data
-      portfolio = normalize_portfolio(portfolio_data)
-      sections = extract_sections(portfolio_data)
-
-      {:ok, portfolio, sections}
-
-    {:error, _reason} = error ->
-      error
-
-    other ->
-      IO.inspect(other, label: "🔧 Unexpected portfolio data structure")
-      {:error, :invalid_structure}
-  end
-end
-
-defp normalize_portfolio(portfolio_data) do
-  # Ensure we have a proper portfolio struct/map
-  case portfolio_data do
-    %{id: _id} = portfolio ->
-      portfolio
-    %{"id" => _id} = portfolio ->
-      portfolio
-    _ ->
-      IO.puts("🔧 Warning: Portfolio data missing ID field")
-      portfolio_data
-  end
-end
-
-defp extract_sections(portfolio_data) do
-  # Try different ways to get sections
-  sections = portfolio_data
-    |> Map.get(:sections, [])
-    |> case do
-      [] -> Map.get(portfolio_data, "sections", [])
-      sections -> sections
+    # Subscribe to PubSub channels if connected
+    if connected?(socket) do
+      # Subscribe to both channels
+      PubSub.subscribe(Frestyl.PubSub, "portfolio_preview:#{portfolio_id}")
+      PubSub.subscribe(Frestyl.PubSub, "portfolio_editor:#{portfolio_id}")
+      IO.puts("🔧 Subscribed to portfolio channels")
     end
 
-  # Ensure sections is a list
-  case sections do
-    sections when is_list(sections) -> sections
-    _ -> []
+    # Get current user from session
+    current_user = get_current_user_from_session(session)
+
+    # CRITICAL FIX: Handle both tuple and direct struct returns from get_portfolio
+    portfolio_result = try do
+      case Portfolios.get_portfolio(portfolio_id) do
+        # Handle tuple return
+        {:ok, portfolio} -> {:ok, portfolio}
+        {:error, reason} -> {:error, reason}
+        # Handle direct struct return
+        %Frestyl.Portfolios.Portfolio{} = portfolio -> {:ok, portfolio}
+        # Handle nil return
+        nil -> {:error, "Portfolio not found"}
+        # Handle other cases
+        other ->
+          IO.puts("🔧 Unexpected portfolio return: #{inspect(other)}")
+          {:error, "Invalid portfolio data"}
+      end
+    rescue
+      error ->
+        IO.puts("🔧 Error loading portfolio: #{inspect(error)}")
+        {:error, "Failed to load portfolio"}
+    end
+
+    # Load sections in correct order
+    sections_result = load_portfolio_sections_ordered(portfolio_id)
+
+    case {portfolio_result, sections_result} do
+      {{:ok, portfolio}, {:ok, sections}} ->
+        IO.puts("🔧 Successfully loaded portfolio with #{length(sections)} sections")
+        IO.puts("🔧 Section positions: #{inspect(Enum.map(sections, &{&1.id, &1.position}))}")
+
+        # Initialize socket with all required assigns
+        socket = socket
+          |> assign_core_data(current_user, portfolio, sections)
+          |> assign_modal_states()
+          |> assign_ui_states()
+          |> assign_editor_states()
+          |> assign(:video_tab, "record")
+
+        {:ok, socket}
+
+      {{:error, portfolio_error}, _} ->
+        IO.puts("🔧 Failed to load portfolio: #{portfolio_error}")
+        {:ok, socket
+          |> assign(:current_user, current_user)
+          |> put_flash(:error, "Portfolio not found or access denied")
+          |> redirect(to: ~p"/portfolios")}
+
+      {_, {:error, sections_error}} ->
+        IO.puts("🔧 Failed to load sections: #{sections_error}")
+        {:ok, socket
+          |> assign(:current_user, current_user)
+          |> put_flash(:error, "Failed to load portfolio sections")
+          |> redirect(to: ~p"/portfolios")}
+    end
   end
-end
 
-defp assign_core_data(socket, current_user, portfolio, sections) do
-  hero_section = find_hero_section(sections)
-  customization = get_portfolio_customization(portfolio)
+  defp load_portfolio_data(portfolio_id) do
+    case Portfolios.get_portfolio_with_sections(portfolio_id) do
+      {:ok, %{} = portfolio_data} ->
+        # Extract portfolio and sections from the loaded data
+        portfolio = normalize_portfolio(portfolio_data)
+        sections = extract_sections(portfolio_data)
 
-  socket
-  |> assign(:current_user, current_user)
-  |> assign(:portfolio, portfolio)
-  |> assign(:sections, sections)
-  |> assign(:hero_section, hero_section)
-  |> assign(:customization, customization)
-end
+        {:ok, portfolio, sections}
 
-defp assign_modal_states(socket) do
-  socket
-  |> assign(:show_video_intro_modal, false)
-  |> assign(:show_upload_option, false)
-  |> assign(:show_video_preview_modal, false)
-  |> assign(:show_section_modal, false)
-  |> assign(:show_create_dropdown, false)
-  |> assign(:show_resume_import_modal, false)
-  |> assign(:video_tab, "record")
-  # Add resume import states
-  |> assign(:processing, false)
-  |> assign(:processing_stage, :idle)
-  |> assign(:processing_message, "")
-  |> assign(:parsing_progress, 0)
-  |> assign(:error_message, nil)
-  |> assign(:parsed_data, nil)
-  |> assign(:sections_to_import, %{})
-  |> allow_upload(:resume,
-      accept: ~w(.pdf .doc .docx .txt .rtf),
-      max_entries: 1,
-      max_file_size: 10 * 1_048_576)
-end
+      {:error, _reason} = error ->
+        error
 
-defp assign_ui_states(socket) do
-  socket
-  |> assign(:active_tab, "sections")
-  |> assign(:preview_mode, :editor)
-  |> assign(:preview_device, "desktop")
-  |> assign(:current_section_type, nil)
-  |> assign(:editing_section, nil)
-  |> assign(:expanded_categories, MapSet.new())
-end
+      other ->
+        IO.inspect(other, label: "🔧 Unexpected portfolio data structure")
+        {:error, :invalid_structure}
+    end
+  end
 
-defp assign_editor_states(socket) do
-  socket
-  |> assign(:editor_mode, :edit)
-  |> assign(:autosave_enabled, true)
-  |> assign(:last_saved, DateTime.utc_now())
-end
+  defp normalize_portfolio(portfolio_data) do
+    # Ensure we have a proper portfolio struct/map
+    case portfolio_data do
+      %{id: _id} = portfolio ->
+        portfolio
+      %{"id" => _id} = portfolio ->
+        portfolio
+      _ ->
+        IO.puts("🔧 Warning: Portfolio data missing ID field")
+        portfolio_data
+    end
+  end
+
+  defp extract_sections(portfolio_data) do
+    # Try different ways to get sections
+    sections = portfolio_data
+      |> Map.get(:sections, [])
+      |> case do
+        [] -> Map.get(portfolio_data, "sections", [])
+        sections -> sections
+      end
+
+    # Ensure sections is a list
+    case sections do
+      sections when is_list(sections) -> sections
+      _ -> []
+    end
+  end
+
+  defp assign_core_data(socket, current_user, portfolio, sections) do
+    hero_section = find_hero_section(sections)
+    customization = get_portfolio_customization(portfolio)
+
+    socket
+    |> assign(:current_user, current_user)
+    |> assign(:portfolio, portfolio)
+    |> assign(:sections, sections)
+    |> assign(:hero_section, hero_section)
+    |> assign(:customization, customization)
+  end
+
+  defp assign_modal_states(socket) do
+    socket
+    |> assign(:show_video_intro_modal, false)
+    |> assign(:show_upload_option, false)
+    |> assign(:show_video_preview_modal, false)
+    |> assign(:show_section_modal, false)
+    |> assign(:show_create_dropdown, false)
+    |> assign(:show_resume_import_modal, false)
+    |> assign(:video_tab, "record")
+    # Add resume import states
+    |> assign(:processing, false)
+    |> assign(:processing_stage, :idle)
+    |> assign(:processing_message, "")
+    |> assign(:parsing_progress, 0)
+    |> assign(:error_message, nil)
+    |> assign(:parsed_data, nil)
+    |> assign(:sections_to_import, %{})
+    |> allow_upload(:resume,
+        accept: ~w(.pdf .doc .docx .txt .rtf),
+        max_entries: 1,
+        max_file_size: 10 * 1_048_576)
+  end
+
+  defp assign_ui_states(socket) do
+    socket
+    |> assign(:active_tab, "sections")
+    |> assign(:preview_mode, :editor)
+    |> assign(:preview_device, "desktop")
+    |> assign(:current_section_type, nil)
+    |> assign(:editing_section, nil)
+    |> assign(:expanded_categories, MapSet.new())
+  end
+
+  defp assign_editor_states(socket) do
+    socket
+    |> assign(:editor_mode, :edit)
+    |> assign(:autosave_enabled, true)
+    |> assign(:last_saved, DateTime.utc_now())
+  end
 
   # Event Handlers
   @impl true
@@ -1318,24 +1348,68 @@ end
     end
   end
 
-  @impl true
   def handle_event("edit_item", %{"item_index" => index_str}, socket) do
     index = String.to_integer(index_str)
-    current_items = Map.get(socket.assigns.form_data, "items", [])
+    current_items = get_current_items(socket.assigns.form_data)
+
+    IO.puts("🔧 EDIT_ITEM: index #{index}, total items: #{length(current_items)}")
 
     case Enum.at(current_items, index) do
       nil ->
+        IO.puts("❌ Item not found at index #{index}")
         {:noreply, put_flash(socket, :error, "Item not found")}
 
       item ->
-        # Set editing state - you could expand this to show an item editing modal
+        IO.puts("✅ Found item to edit: #{inspect(item)}")
+
+        # CRITICAL FIX: Set editing state WITHOUT removing the item
         socket = socket
         |> assign(:editing_item_index, index)
         |> assign(:editing_item, item)
-        |> put_flash(:info, "Item editing - feature can be expanded with item-specific modal")
+        |> assign(:show_item_edit_modal, true)  # Show item editing modal
 
         {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("update_item", %{"item_index" => index_str} = params, socket) do
+    index = String.to_integer(index_str)
+    current_items = get_current_items(socket.assigns.form_data)
+
+    IO.puts("🔧 UPDATE_ITEM: index #{index}")
+    IO.puts("🔧 Update params: #{inspect(params)}")
+
+    if index >= 0 and index < length(current_items) do
+      # Extract item data from params
+      updated_item_data = extract_item_data_from_params(params, socket.assigns.section_type)
+
+      # CRITICAL FIX: Update the item in place, don't delete it
+      updated_items = List.replace_at(current_items, index, updated_item_data)
+      updated_form_data = Map.put(socket.assigns.form_data, "items", updated_items)
+
+      IO.puts("✅ Item updated successfully")
+
+      {:noreply, socket
+        |> assign(:form_data, updated_form_data)
+        |> assign(:editing_item_index, nil)
+        |> assign(:editing_item, nil)
+        |> assign(:show_item_edit_modal, false)
+        |> put_flash(:info, "Item updated successfully")}
+    else
+      IO.puts("❌ Invalid item index: #{index}")
+      {:noreply, put_flash(socket, :error, "Invalid item index")}
+    end
+  end
+
+  @impl true
+  def handle_event("cancel_item_edit", _params, socket) do
+    IO.puts("🔧 CANCEL_ITEM_EDIT")
+
+    {:noreply, socket
+      |> assign(:editing_item_index, nil)
+      |> assign(:editing_item, nil)
+      |> assign(:show_item_edit_modal, false)}
   end
 
   @impl true
@@ -1369,6 +1443,25 @@ end
   end
 
   @impl true
+  def handle_info({:sections_reordered, payload}, socket) do
+    if payload.portfolio_id == socket.assigns.portfolio.id do
+      IO.puts("🔧 Received sections_reordered broadcast")
+      IO.puts("🔧 New section order: #{inspect(payload.section_order)}")
+
+      # Update sections with new order
+      updated_sections = Enum.sort_by(payload.sections, &(&1.position))
+
+      socket = socket
+      |> assign(:sections, updated_sections)
+      |> put_flash(:info, "Section order updated")
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("reorder_sections", %{"sections" => section_order}, socket) do
     IO.puts("🔧 REORDERING SECTIONS: #{inspect(section_order)}")
 
@@ -1398,6 +1491,59 @@ end
 
     {:noreply, socket}
   end
+
+  defp extract_item_data_from_params(params, section_type) do
+    # Remove non-item fields
+    item_data = params
+    |> Map.drop(["item_index", "_target", "_csrf_token"])
+    |> Map.put("visible", Map.get(params, "visible", "true") == "true")
+
+    # Add section-specific defaults
+    case section_type do
+      "experience" ->
+        Map.merge(%{
+          "title" => "",
+          "company" => "",
+          "location" => "",
+          "start_date" => "",
+          "end_date" => "",
+          "description" => "",
+          "achievements" => []
+        }, item_data)
+
+      "education" ->
+        Map.merge(%{
+          "degree" => "",
+          "institution" => "",
+          "field" => "",
+          "graduation_date" => "",
+          "gpa" => "",
+          "honors" => "",
+          "description" => ""
+        }, item_data)
+
+      "projects" ->
+        Map.merge(%{
+          "title" => "",
+          "description" => "",
+          "technologies" => [],
+          "live_url" => "",
+          "github_url" => "",
+          "image_url" => ""
+        }, item_data)
+
+      "skills" ->
+        Map.merge(%{
+          "name" => "",
+          "level" => "intermediate",
+          "category" => "General"
+        }, item_data)
+
+      _ ->
+        item_data
+    end
+  end
+
 
   # Function to validate section data before saving
   defp validate_section_data(section_type, content) do
@@ -2447,6 +2593,38 @@ end
     end
   end
 
+  defp load_portfolio_sections_ordered(portfolio_id) do
+    try do
+      # Convert portfolio_id to integer if it's a string
+      portfolio_id = case portfolio_id do
+        id when is_binary(id) -> String.to_integer(id)
+        id when is_integer(id) -> id
+        _ -> raise "Invalid portfolio_id"
+      end
+
+      case Portfolios.list_portfolio_sections(portfolio_id) do
+        sections when is_list(sections) ->
+          # Ensure sections are ordered by position
+          ordered_sections = Enum.sort_by(sections, fn section ->
+            Map.get(section, :position, 999)
+          end)
+
+          IO.puts("🔧 Loaded #{length(ordered_sections)} sections in order")
+          IO.puts("🔧 Section order: #{inspect(Enum.map(ordered_sections, &{&1.id, Map.get(&1, :position), &1.title}))}")
+
+          {:ok, ordered_sections}
+
+        other ->
+          IO.puts("🔧 Unexpected sections result: #{inspect(other)}")
+          {:error, "Failed to load sections"}
+      end
+    rescue
+      error ->
+        IO.puts("🔧 Error in load_portfolio_sections_ordered: #{inspect(error)}")
+        {:error, "Exception loading sections"}
+    end
+  end
+
 
   defp update_section_with_modal_fixed(socket, params) do
     section_id = String.to_integer(params["section_id"])
@@ -2863,97 +3041,151 @@ end
     end)
   end
 
-@impl true
-def handle_event("move_section_up", %{"section_id" => section_id}, socket) do
-  section_id = String.to_integer(section_id)
-  sections = socket.assigns.sections
+  @impl true
+  def handle_event("move_section_up", %{"section_id" => section_id}, socket) do
+    section_id = String.to_integer(section_id)
+    sections = socket.assigns.sections
 
-  case find_section_index(sections, section_id) do
-    0 ->
-      {:noreply, put_flash(socket, :info, "Section is already at the top")}
+    IO.puts("🔧 MOVE_SECTION_UP: #{section_id}")
+    IO.puts("🔧 Current sections order: #{inspect(Enum.map(sections, &{&1.id, &1.position}))}")
 
-    nil ->
-      {:noreply, put_flash(socket, :error, "Section not found")}
+    case find_section_index(sections, section_id) do
+      0 ->
+        IO.puts("🔧 Section already at top")
+        {:noreply, put_flash(socket, :info, "Section is already at the top")}
 
-    index ->
-      updated_sections = swap_sections(sections, index, index - 1)
-      save_section_order_and_broadcast(socket, updated_sections)
+      nil ->
+        IO.puts("❌ Section not found")
+        {:noreply, put_flash(socket, :error, "Section not found")}
+
+      index ->
+        IO.puts("🔧 Moving section from index #{index} to #{index - 1}")
+        updated_sections = swap_sections(sections, index, index - 1)
+        save_section_order_and_broadcast(socket, updated_sections)
+    end
   end
-end
 
-@impl true
-def handle_event("move_section_down", %{"section_id" => section_id}, socket) do
-  section_id = String.to_integer(section_id)
-  sections = socket.assigns.sections
+  @impl true
+  def handle_event("move_section_down", %{"section_id" => section_id}, socket) do
+    section_id = String.to_integer(section_id)
+    sections = socket.assigns.sections
 
-  case find_section_index(sections, section_id) do
-    index when index == length(sections) - 1 ->
-      {:noreply, put_flash(socket, :info, "Section is already at the bottom")}
+    IO.puts("🔧 MOVE_SECTION_DOWN: #{section_id}")
+    IO.puts("🔧 Current sections order: #{inspect(Enum.map(sections, &{&1.id, &1.position}))}")
 
-    nil ->
-      {:noreply, put_flash(socket, :error, "Section not found")}
+    case find_section_index(sections, section_id) do
+      index when index == length(sections) - 1 ->
+        IO.puts("🔧 Section already at bottom")
+        {:noreply, put_flash(socket, :info, "Section is already at the bottom")}
 
-    index ->
-      updated_sections = swap_sections(sections, index, index + 1)
-      save_section_order_and_broadcast(socket, updated_sections)
+      nil ->
+        IO.puts("❌ Section not found")
+        {:noreply, put_flash(socket, :error, "Section not found")}
+
+      index ->
+        IO.puts("🔧 Moving section from index #{index} to #{index + 1}")
+        updated_sections = swap_sections(sections, index, index + 1)
+        save_section_order_and_broadcast(socket, updated_sections)
+    end
   end
-end
 
-# Helper functions for section sorting
-defp find_section_index(sections, section_id) do
-  Enum.find_index(sections, fn section -> section.id == section_id end)
-end
+  # Helper functions for section sorting
+  defp find_section_index(sections, section_id) do
+    Enum.find_index(sections, fn section -> section.id == section_id end)
+  end
 
-defp swap_sections(sections, index1, index2) do
-  section1 = Enum.at(sections, index1)
-  section2 = Enum.at(sections, index2)
+  defp swap_sections(sections, index1, index2) do
+    IO.puts("🔧 SWAPPING SECTIONS: #{index1} <-> #{index2}")
 
-  sections
-  |> List.replace_at(index1, %{section2 | position: section1.position})
-  |> List.replace_at(index2, %{section1 | position: section2.position})
-end
+    section1 = Enum.at(sections, index1)
+    section2 = Enum.at(sections, index2)
 
-defp save_section_order_and_broadcast(socket, updated_sections) do
-  # Update positions in database
-  updated_sections
-  |> Enum.with_index()
-  |> Enum.each(fn {section, index} ->
-    Portfolios.update_portfolio_section(section, %{position: index + 1})
-  end)
+    IO.puts("🔧 Section1: #{section1.id} (pos: #{section1.position})")
+    IO.puts("🔧 Section2: #{section2.id} (pos: #{section2.position})")
 
-  # Broadcast the change
-  broadcast_portfolio_update(
-    socket.assigns.portfolio.id,
-    updated_sections,
-    socket.assigns.customization,
-    :sections_reordered
-  )
+    # Swap the sections in the list and update their positions
+    updated_sections = sections
+    |> List.replace_at(index1, section2)
+    |> List.replace_at(index2, section1)
 
-  {:noreply, socket
-    |> assign(:sections, updated_sections)
-    |> put_flash(:info, "Section order updated")}
-end
+    # Re-assign positions based on new order
+    updated_sections
+    |> Enum.with_index()
+    |> Enum.map(fn {section, index} ->
+      Map.put(section, :position, index + 1)
+    end)
+  end
 
-defp render_section_card_with_scroll(section, content) do
-  """
-  <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
-    <!-- Section Header -->
-    <div class="p-4 border-b border-gray-100 flex justify-between items-center">
-      <h3 class="font-semibold text-gray-900">#{safe_html_escape(section.title)}</h3>
-      <div class="flex items-center space-x-2">
-        <!-- Section controls here -->
+  defp save_section_order_and_broadcast(socket, updated_sections) do
+    IO.puts("🔧 SAVING SECTION ORDER TO DATABASE")
+
+    # Update positions in database - CRITICAL: Use the actual position field
+    results = updated_sections
+    |> Enum.with_index()
+    |> Enum.map(fn {section, index} ->
+      new_position = index + 1
+      IO.puts("🔧 Updating section #{section.id} to position #{new_position}")
+
+      # CRITICAL: Use the correct function to update just the position
+      case Portfolios.update_portfolio_section(section, %{position: new_position}) do
+        {:ok, updated_section} ->
+          IO.puts("✅ Successfully updated section #{section.id} position")
+          {:ok, updated_section}
+        {:error, changeset} ->
+          IO.puts("❌ Failed to update section #{section.id}: #{inspect(changeset.errors)}")
+          {:error, changeset}
+      end
+    end)
+
+    # Check if all updates succeeded
+    failed_updates = Enum.filter(results, fn
+      {:error, _} -> true
+      _ -> false
+    end)
+
+    if length(failed_updates) > 0 do
+      IO.puts("❌ Some section updates failed")
+      {:noreply, put_flash(socket, :error, "Failed to update section order")}
+    else
+      IO.puts("✅ All section positions updated successfully")
+
+      # Get the successfully updated sections
+      updated_sections_from_db = Enum.map(results, fn {:ok, section} -> section end)
+
+      # Broadcast the change with the database-updated sections
+      broadcast_portfolio_update(
+        socket.assigns.portfolio.id,
+        updated_sections_from_db,
+        socket.assigns.customization,
+        :sections_reordered
+      )
+
+      {:noreply, socket
+        |> assign(:sections, updated_sections_from_db)
+        |> put_flash(:info, "Section order updated successfully")}
+    end
+  end
+
+  defp render_section_card_with_scroll(section, content) do
+    """
+    <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200">
+      <!-- Section Header -->
+      <div class="p-4 border-b border-gray-100 flex justify-between items-center">
+        <h3 class="font-semibold text-gray-900">#{safe_html_escape(section.title)}</h3>
+        <div class="flex items-center space-x-2">
+          <!-- Section controls here -->
+        </div>
+      </div>
+
+      <!-- Scrollable Content Area -->
+      <div class="max-h-96 overflow-y-auto">
+        <div class="p-4">
+          #{content}
+        </div>
       </div>
     </div>
-
-    <!-- Scrollable Content Area -->
-    <div class="max-h-96 overflow-y-auto">
-      <div class="p-4">
-        #{content}
-      </div>
-    </div>
-  </div>
-  """
-end
+    """
+  end
 
 
   defp generate_default_section_title(section_type) do
@@ -7083,17 +7315,31 @@ end
   defp broadcast_portfolio_update(portfolio_id, sections, customization, change_type) do
     IO.puts("🔧 Broadcasting portfolio update: #{portfolio_id} - #{change_type}")
 
-    # Single comprehensive broadcast with all necessary data
+    # Sort sections by position before broadcasting
+    sorted_sections = Enum.sort_by(sections, &(&1.position))
+
+    payload = %{
+      portfolio_id: portfolio_id,
+      sections: sorted_sections,
+      customization: customization,
+      change_type: change_type,
+      timestamp: System.system_time(:millisecond),
+      section_order: Enum.map(sorted_sections, &{&1.id, &1.position})
+    }
+
+    IO.puts("🔧 Broadcasting section order: #{inspect(payload.section_order)}")
+
+    # Broadcast to multiple channels to ensure delivery
     Phoenix.PubSub.broadcast(
       Frestyl.PubSub,
       "portfolio_preview:#{portfolio_id}",
-      {:portfolio_updated, %{
-        portfolio_id: portfolio_id,
-        sections: sections,
-        customization: customization,
-        change_type: change_type,
-        timestamp: System.system_time(:millisecond)
-      }}
+      {:portfolio_updated, payload}
+    )
+
+    Phoenix.PubSub.broadcast(
+      Frestyl.PubSub,
+      "portfolio_editor:#{portfolio_id}",
+      {:sections_reordered, payload}
     )
   end
 
@@ -7636,5 +7882,15 @@ end
       _ ->
         IO.puts("🔍 Content: #{inspect(section.content)}")
     end
+  end
+
+  defp debug_section_order(sections, context) do
+    IO.puts("🔧 DEBUG SECTION ORDER (#{context}):")
+    sections
+    |> Enum.each(fn section ->
+      IO.puts("  Section #{section.id}: position=#{section.position}, title='#{section.title}'")
+    end)
+
+    sections
   end
 end

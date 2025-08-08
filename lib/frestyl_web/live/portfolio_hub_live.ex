@@ -7,6 +7,7 @@ defmodule FrestylWeb.PortfolioHubLive do
   alias Frestyl.{Portfolios, Accounts, Channels, Features, Repo}
   alias Frestyl.Accounts.{Account, AccountMembership}
   alias Frestyl.Features.FeatureGate
+  alias FrestylWeb.StoryEngineLive.Hub
   alias FrestylWeb.PortfolioHubLive.ContentCampaignComponents
   alias Frestyl.DataCampaigns.AdvancedTracker
   import FrestylWeb.Navigation, only: [nav: 1]
@@ -53,6 +54,7 @@ defmodule FrestylWeb.PortfolioHubLive do
       |> assign(:create_type, nil)
       |> assign(:active_tab, "portfolio_hub")
       |> assign(:active_section, "portfolios")
+      |> assign(:story_engine_enabled, true)
       |> assign(:page_title, "Portfolio Hub")
       |> assign(:total_views, calculate_total_views(portfolios))
       |> assign(:monthly_views, calculate_monthly_views(portfolios))
@@ -858,6 +860,14 @@ defmodule FrestylWeb.PortfolioHubLive do
     new_menu = if current_menu == channel_id, do: nil, else: channel_id
 
     {:noreply, assign(socket, :open_channel_menu, new_menu)}
+  end
+
+  def handle_event("navigate_to_tab", %{"tab" => "story_engine"}, socket) do
+    {:noreply, assign(socket, :active_tab, "story_engine")}
+  end
+
+  def handle_event("navigate_to_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :active_tab, tab)}
   end
 
 

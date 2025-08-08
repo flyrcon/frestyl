@@ -337,6 +337,23 @@ defmodule FrestylWeb.Router do
     live "/events/:id/edit", EventLive.Index, :edit
     live "/events/:id/attend", EventAttendanceLive, :show
 
+    # Story Engine routes
+    live "/story-engine", StoryEngineLive.Hub, :index
+    live "/story-engine/create", StoryEngineLive.Create, :new
+    live "/story-engine/create/:format/:intent", StoryEngineLive.Create, :new
+
+    # Enhanced story routes
+    live "/stories", StoryLive.Index, :index
+    live "/stories/new", StoryLive.New, :new
+    live "/stories/:id", StoryLive.Show, :show
+    live "/stories/:id/edit", StoryLive.Edit, :edit
+
+    # Voice-Sketch routes
+    live "/voice-sketch", VoiceSketchLive.Index, :index
+    live "/voice-sketch/new", VoiceSketchLive.New, :new
+    live "/voice-sketch/:id", VoiceSketchLive.Session, :show
+    live "/voice-sketch/:id/edit", VoiceSketchLive.Session, :edit
+
     # Users and Profile
     live "/invite", InviteUserLive, :index
     live "/collaborations", CollaborationLive, :index

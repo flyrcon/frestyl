@@ -34,6 +34,13 @@ defmodule Frestyl.Stories.EnhancedTemplates do
         skills_first: skills_first_template()
       },
 
+      # Story Engine specific templates
+      story_engine: %{
+        quick_article: quick_article_template(),
+        quick_personal: quick_personal_template(),
+        quick_case_study: quick_case_study_template()
+      },
+
       case_study: %{
         problem_solution: problem_solution_template(),
         before_after: before_after_template()
@@ -909,6 +916,156 @@ defmodule Frestyl.Stories.EnhancedTemplates do
           target_word_count: 7000,
           description: "Show how the world has changed and the protagonist's new role",
           genre_elements: ["world changed", "protagonist transformed", "future implications"]
+        }
+      ]
+    }
+  end
+
+  defp quick_article_template do
+    %{
+      name: "Quick Article",
+      description: "Fast-track article creation with AI assistance",
+      story_type: :article,
+      narrative_structure: "informational",
+      requires_tier: "personal",
+      estimated_completion: "30-60 minutes",
+      features: [:seo_optimization, :publishing_ready, :social_sharing],
+      chapters: [
+        %{
+          title: "Hook & Introduction",
+          type: :opening,
+          purpose: :engagement,
+          suggested_content: "Grab attention and introduce your main point",
+          word_target: 150,
+          ai_prompts: [
+            "What's a surprising fact about your topic?",
+            "What question does your article answer?",
+            "How does this topic affect your readers?"
+          ]
+        },
+        %{
+          title: "Main Content",
+          type: :body,
+          purpose: :information,
+          suggested_content: "Your key insights, examples, and supporting details",
+          word_target: 800,
+          ai_prompts: [
+            "What are the 3 most important points?",
+            "What examples best illustrate your points?",
+            "What evidence supports your arguments?"
+          ]
+        },
+        %{
+          title: "Conclusion & Call to Action",
+          type: :closing,
+          purpose: :action,
+          suggested_content: "Summarize and guide readers to next steps",
+          word_target: 150,
+          ai_prompts: [
+            "What's the key takeaway?",
+            "What should readers do next?",
+            "How can readers apply this information?"
+          ]
+        }
+      ]
+    }
+  end
+
+  defp quick_personal_template do
+    %{
+      name: "Quick Personal Story",
+      description: "Share a meaningful personal experience or insight",
+      story_type: :personal_narrative,
+      narrative_structure: "moment_focused",
+      requires_tier: "personal",
+      estimated_completion: "45-90 minutes",
+      features: [:emotion_tracking, :memory_aids, :photo_integration],
+      chapters: [
+        %{
+          title: "The Moment",
+          type: :scene_setting,
+          purpose: :immersion,
+          suggested_content: "Set the scene - where were you, what was happening?",
+          word_target: 200,
+          ai_prompts: [
+            "What did you see, hear, and feel in that moment?",
+            "Who else was there?",
+            "What time of day/year was it?"
+          ]
+        },
+        %{
+          title: "The Experience",
+          type: :narrative_core,
+          purpose: :story,
+          suggested_content: "What happened? How did it unfold?",
+          word_target: 500,
+          ai_prompts: [
+            "What surprised you about this experience?",
+            "What emotions did you feel?",
+            "What did you learn about yourself?"
+          ]
+        },
+        %{
+          title: "The Impact",
+          type: :reflection,
+          purpose: :meaning,
+          suggested_content: "How did this change you? What did you learn?",
+          word_target: 300,
+          ai_prompts: [
+            "How are you different because of this experience?",
+            "What would you tell someone facing something similar?",
+            "What does this story reveal about who you are?"
+          ]
+        }
+      ]
+    }
+  end
+
+  defp quick_case_study_template do
+    %{
+      name: "Quick Case Study",
+      description: "Document a project or business outcome with clear impact",
+      story_type: :case_study,
+      narrative_structure: "impact_focused",
+      requires_tier: "creator",
+      estimated_completion: "60-120 minutes",
+      features: [:metrics_integration, :stakeholder_quotes, :visual_data],
+      chapters: [
+        %{
+          title: "The Challenge",
+          type: :problem_definition,
+          purpose: :context,
+          suggested_content: "What problem were you solving and why did it matter?",
+          word_target: 300,
+          ai_prompts: [
+            "What was the business impact of this problem?",
+            "Who were the key stakeholders affected?",
+            "What made this problem urgent or important?"
+          ]
+        },
+        %{
+          title: "The Solution",
+          type: :methodology,
+          purpose: :approach,
+          suggested_content: "How did you approach and solve the problem?",
+          word_target: 500,
+          ai_prompts: [
+            "What made your approach unique?",
+            "What resources or team did you need?",
+            "What obstacles did you overcome?"
+          ]
+        },
+        %{
+          title: "The Results",
+          type: :outcomes,
+          purpose: :impact,
+          suggested_content: "What were the measurable outcomes and broader impact?",
+          word_target: 400,
+          ai_prompts: [
+            "What metrics improved and by how much?",
+            "What unexpected benefits occurred?",
+            "How did stakeholders respond to the results?"
+          ]
         }
       ]
     }

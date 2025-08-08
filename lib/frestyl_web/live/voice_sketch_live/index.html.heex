@@ -1,0 +1,169 @@
+<div class="max-w-6xl mx-auto px-6 py-8">
+  <!-- Header -->
+  <div class="mb-8">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Voice-Sketch</h1>
+        <p class="text-gray-600 mt-2">Create narrated drawings that tell your story</p>
+      </div>
+      <button 
+        phx-click="show_create_modal"
+        class="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors font-medium">
+        🎨 New Voice-Sketch
+      </button>
+    </div>
+
+    <!-- Feature Highlights -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="bg-white rounded-xl p-6 shadow-sm border">
+        <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-gray-900 mb-2">Voice Narration</h3>
+        <p class="text-sm text-gray-600">Record your voice while drawing to create synchronized audio-visual stories</p>
+      </div>
+
+      <div class="bg-white rounded-xl p-6 shadow-sm border">
+        <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-gray-900 mb-2">Live Drawing</h3>
+        <p class="text-sm text-gray-600">Use professional drawing tools with layers, colors, and brushes that sync with your voice</p>
+      </div>
+
+      <div class="bg-white rounded-xl p-6 shadow-sm border">
+        <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          </svg>
+        </div>
+        <h3 class="font-semibold text-gray-900 mb-2">Video Export</h3>
+        <p class="text-sm text-gray-600">Export your voice-sketch as high-quality video for sharing and embedding</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sessions Grid -->
+  <%= if length(@sessions) > 0 do %>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <%= for session <- @sessions do %>
+        <.link navigate={~p"/voice-sketch/#{session.id}"} class="block">
+          <div class="bg-white rounded-xl shadow-sm border hover:shadow-lg hover:border-gray-300 transition-all overflow-hidden">
+            
+            <!-- Thumbnail -->
+            <div class="aspect-video bg-gradient-to-br from-purple-100 to-blue-100 relative">
+              <%= if session.thumbnail_url do %>
+                <img src={session.thumbnail_url} alt="Session thumbnail" class="w-full h-full object-cover">
+              <% else %>
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <div class="text-center">
+                    <div class="w-16 h-16 bg-white bg-opacity-50 rounded-full flex items-center justify-center mx-auto mb-2">
+                      <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                      </svg>
+                    </div>
+                    <span class="text-sm text-purple-700 font-medium">Voice-Sketch</span>
+                  </div>
+                </div>
+              <% end %>
+              
+              <!-- Status Badge -->
+              <div class="absolute top-3 right-3">
+                <span class={[
+                  "inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full",
+                  status_badge_class(session.status)
+                ]}>
+                  <%= String.capitalize(session.status) %>
+                </span>
+              </div>
+            </div>
+
+            <!-- Content -->
+            <div class="p-4">
+              <h3 class="font-semibold text-gray-900 mb-2 line-clamp-1"><%= session.title %></h3>
+              <%= if session.description do %>
+                <p class="text-sm text-gray-600 mb-3 line-clamp-2"><%= session.description %></p>
+              <% end %>
+              
+              <div class="flex items-center justify-between text-xs text-gray-500">
+                <span>Updated <%= time_ago(session.updated_at) %></span>
+                <%= if session.voice_recording_duration do %>
+                  <span><%= format_duration(session.voice_recording_duration) %></span>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        </.link>
+      <% end %>
+    </div>
+  <% else %>
+    <!-- Empty State -->
+    <div class="text-center py-16">
+      <div class="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+        <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+        </svg>
+      </div>
+      <h3 class="text-xl font-semibold text-gray-900 mb-4">Create Your First Voice-Sketch</h3>
+      <p class="text-gray-600 mb-8 max-w-md mx-auto">
+        Combine voice narration with live drawing to create engaging tutorials, 
+        explanations, or artistic stories.
+      </p>
+      <button 
+        phx-click="show_create_modal"
+        class="bg-indigo-600 text-white px-8 py-3 rounded-lg hover:bg-indigo-700 transition-colors font-medium">
+        🎨 Create Voice-Sketch
+      </button>
+    </div>
+  <% end %>
+</div>
+
+<!-- Create Modal -->
+<div 
+  id="create-modal" 
+  class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black bg-opacity-50"
+  phx-click-away="hide_create_modal">
+  
+  <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Create New Voice-Sketch</h3>
+    
+    <form phx-submit="create_session">
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Title</label>
+        <input 
+          type="text" 
+          name="title" 
+          required
+          placeholder="Enter a title for your voice-sketch..."
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+      </div>
+      
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
+        <textarea 
+          name="description" 
+          rows="3"
+          placeholder="Describe what you'll be creating..."
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+      </div>
+      
+      <div class="flex space-x-3">
+        <button 
+          type="button"
+          phx-click="hide_create_modal"
+          class="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 transition-colors">
+          Cancel
+        </button>
+        <button 
+          type="submit"
+          class="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+          Create
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
