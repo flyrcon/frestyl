@@ -342,6 +342,14 @@ defmodule FrestylWeb.Router do
     live "/story-engine/create", StoryEngineLive.Create, :new
     live "/story-engine/create/:format/:intent", StoryEngineLive.Create, :new
 
+    # Narrative Beats routes
+    live "/", Index, :index
+    live "/new", New, :new
+    live "/:id", Session, :show
+    live "/:id/edit", Edit, :edit
+    live "/:id/collaborate", Collaborate, :collaborate
+    live "/:id/export", Export, :export
+
     # Enhanced story routes
     live "/stories", StoryLive.Index, :index
     live "/stories/new", StoryLive.New, :new

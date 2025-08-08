@@ -92,7 +92,542 @@ defmodule Frestyl.Stories.EnhancedTemplates do
         animation: animation_storyboard_template(),
         commercial: commercial_storyboard_template(),
         music_video: music_video_storyboard_template()
+      },
+
+      # FRESTYL PROPRIETARY FORMATS
+      narrative_beats: %{
+        story_driven: narrative_beats_story_driven_template(),
+        character_focused: narrative_beats_character_focused_template(),
+        emotion_centric: narrative_beats_emotion_centric_template(),
+        collaborative: narrative_beats_collaborative_template()
+      },
+
+      live_story: %{
+        interactive_adventure: live_story_interactive_template(),
+        audience_choice: live_story_audience_choice_template(),
+        multi_narrator: live_story_multi_narrator_template(),
+        episodic_series: live_story_episodic_template()
+      },
+
+      data_jam: %{
+        business_insights: data_jam_business_template(),
+        research_findings: data_jam_research_template(),
+        performance_analytics: data_jam_performance_template(),
+        market_analysis: data_jam_market_template()
+      },
+
+      story_remix: %{
+        format_transformation: story_remix_format_template(),
+        style_adaptation: story_remix_style_template(),
+        audience_targeting: story_remix_audience_template(),
+        platform_optimization: story_remix_platform_template()
       }
+    }
+  end
+
+    def format_configs do
+    %{
+      # Standard formats (existing)
+      personal_narrative: %{
+        name: "Personal Narrative",
+        category: "personal",
+        required_tier: "personal",
+        features: [:text_editing, :basic_media],
+        collaboration_modes: ["solo"],
+        export_formats: ["pdf", "html"]
+      },
+
+      professional_showcase: %{
+        name: "Professional Showcase",
+        category: "professional",
+        required_tier: "creator",
+        features: [:advanced_media, :analytics],
+        collaboration_modes: ["solo", "review"],
+        export_formats: ["pdf", "html", "presentation"]
+      },
+
+      novel: %{
+        name: "Novel",
+        category: "creative",
+        required_tier: "creator",
+        features: [:character_tracking, :world_building, :chapter_management],
+        collaboration_modes: ["solo", "co_author", "editor"],
+        export_formats: ["epub", "pdf", "manuscript"]
+      },
+
+      screenplay: %{
+        name: "Screenplay",
+        category: "creative",
+        required_tier: "creator",
+        features: [:screenplay_formatting, :character_tracking, :scene_management],
+        collaboration_modes: ["solo", "co_writer", "director"],
+        export_formats: ["pdf", "fdx", "fountain"]
+      },
+
+      comic_book: %{
+        name: "Comic Book",
+        category: "creative",
+        required_tier: "creator",
+        features: [:panel_layout, :character_sheets, :visual_scripting],
+        collaboration_modes: ["solo", "artist", "colorist", "letterer"],
+        export_formats: ["pdf", "cbz", "web"]
+      },
+
+      # Proprietary formats
+      narrative_beats: %{
+        name: "Narrative Beats",
+        category: "experimental",
+        required_tier: "creator",
+        features: [:story_music_mapping, :character_instruments, :emotional_progressions,
+                  :real_time_collaboration, :ai_music_suggestions, :beat_machine_integration, :audio_export],
+        collaboration_modes: ["writer", "composer", "producer", "musician", "arranger"],
+        export_formats: ["wav", "mp3", "midi", "session"],
+        estimated_time: "2-6 hours",
+        complexity: "advanced"
+      },
+
+      live_story: %{
+        name: "Live Story",
+        category: "experimental",
+        required_tier: "creator",
+        features: [:live_streaming, :audience_voting, :branching_narratives, :multi_narrator_support,
+                  :real_time_collaboration, :session_recording, :audience_analytics],
+        collaboration_modes: ["narrator", "director", "audience", "moderator"],
+        export_formats: ["video", "audio", "transcript", "session_archive"],
+        estimated_time: "1-3 hours",
+        complexity: "intermediate"
+      },
+
+      data_jam: %{
+        name: "Data Jam Session",
+        category: "business",
+        required_tier: "professional",
+        features: [:data_integration_apis, :real_time_collaboration, :visual_story_builder,
+                  :ai_insights, :multi_format_export, :dashboard_creation],
+        collaboration_modes: ["analyst", "designer", "reviewer", "stakeholder"],
+        export_formats: ["pdf", "html", "video", "dashboard", "presentation"],
+        estimated_time: "1-4 hours",
+        complexity: "advanced"
+      },
+
+      story_remix: %{
+        name: "Story Remix",
+        category: "creative",
+        required_tier: "creator",
+        features: [:ai_content_analysis, :smart_transformations, :style_adaptation,
+                  :collaboration_remixes, :template_marketplace, :format_conversion],
+        collaboration_modes: ["creator", "editor", "reviewer", "style_consultant"],
+        export_formats: ["multiple", "original_format", "target_format"],
+        estimated_time: "30 minutes - 2 hours",
+        complexity: "intermediate"
+      }
+    }
+  end
+
+    # ============================================================================
+  # PROPRIETARY FORMAT TEMPLATES
+  # ============================================================================
+
+  # NARRATIVE BEATS TEMPLATES
+
+  defp narrative_beats_story_driven_template do
+    %{
+      name: "Story-Driven Musical Composition",
+      description: "Create music that follows your story's narrative arc, with characters mapped to instruments and plot points to musical sections",
+      story_type: :narrative_beats,
+      narrative_structure: "story_driven",
+      requires_tier: "creator",
+      features: [:story_music_mapping, :character_instruments, :plot_sections, :ai_suggestions],
+      estimated_duration: "4-6 hours",
+      target_outcome: "Complete musical score synchronized with story elements",
+
+      setup_phases: [
+        %{
+          title: "Story Analysis",
+          description: "Import or define your story structure",
+          required_elements: ["characters", "plot_points", "emotional_arc"],
+          ai_assistance: "Analyze story for musical potential"
+        },
+        %{
+          title: "Character-Instrument Mapping",
+          description: "Assign musical instruments to represent each character",
+          required_elements: ["character_list", "instrument_assignments", "emotional_ranges"],
+          ai_assistance: "Suggest instruments based on character traits"
+        },
+        %{
+          title: "Musical Structure Creation",
+          description: "Map plot points to musical sections (verse, chorus, bridge)",
+          required_elements: ["section_types", "progression_mappings", "timing"],
+          ai_assistance: "Generate chord progressions for emotional beats"
+        },
+        %{
+          title: "Collaborative Composition",
+          description: "Work with others to build the complete musical piece",
+          required_elements: ["role_assignments", "track_organization", "real_time_editing"],
+          ai_assistance: "Suggest arrangements and harmonies"
+        }
+      ],
+
+      collaboration_workflow: %{
+        roles: ["writer", "composer", "producer", "musician"],
+        permissions: %{
+          "writer" => ["edit_story", "view_music", "suggest_mappings"],
+          "composer" => ["edit_music", "create_progressions", "assign_instruments"],
+          "producer" => ["mix_tracks", "export_audio", "manage_project"],
+          "musician" => ["record_tracks", "edit_assigned_instruments", "add_performances"]
+        }
+      }
+    }
+  end
+
+  defp narrative_beats_character_focused_template do
+    %{
+      name: "Character-Focused Musical Storytelling",
+      description: "Build musical compositions around character development and relationships",
+      story_type: :narrative_beats,
+      narrative_structure: "character_focused",
+      requires_tier: "creator",
+      features: [:character_themes, :relationship_harmonies, :character_arcs, :leitmotifs],
+
+      setup_phases: [
+        %{
+          title: "Character Development",
+          description: "Create detailed character profiles for musical representation",
+          required_elements: ["character_personalities", "relationships", "growth_arcs"],
+          ai_assistance: "Suggest musical themes for each character"
+        },
+        %{
+          title: "Thematic Composition",
+          description: "Compose unique musical themes for each character",
+          required_elements: ["leitmotifs", "instrumental_voices", "harmonic_signatures"],
+          ai_assistance: "Generate character-specific melodies and progressions"
+        },
+        %{
+          title: "Relationship Harmonies",
+          description: "Create musical interactions representing character relationships",
+          required_elements: ["harmonic_relationships", "counterpoint", "ensemble_pieces"],
+          ai_assistance: "Suggest how character themes can interact musically"
+        }
+      ]
+    }
+  end
+
+  defp narrative_beats_emotion_centric_template do
+    %{
+      name: "Emotion-Centric Musical Journey",
+      description: "Create music that focuses on the emotional journey of your story",
+      story_type: :narrative_beats,
+      narrative_structure: "emotion_centric",
+      requires_tier: "creator",
+      features: [:emotional_progressions, :mood_mapping, :tension_curves, :dynamic_changes],
+
+      setup_phases: [
+        %{
+          title: "Emotional Mapping",
+          description: "Map out the emotional journey of your story",
+          required_elements: ["emotion_timeline", "intensity_levels", "transition_points"],
+          ai_assistance: "Analyze story for emotional peaks and valleys"
+        },
+        %{
+          title: "Musical Emotion Creation",
+          description: "Create chord progressions and musical elements for each emotion",
+          required_elements: ["chord_progressions", "dynamic_markings", "instrumental_colors"],
+          ai_assistance: "Generate emotionally appropriate musical content"
+        }
+      ]
+    }
+  end
+
+  defp narrative_beats_collaborative_template do
+    %{
+      name: "Collaborative Musical Storytelling",
+      description: "Multi-user musical composition with role-based collaboration",
+      story_type: :narrative_beats,
+      narrative_structure: "collaborative",
+      requires_tier: "creator",
+      features: [:multi_user_editing, :role_permissions, :version_control, :live_collaboration],
+
+      collaboration_features: %{
+        real_time_editing: true,
+        version_branching: true,
+        comment_system: true,
+        approval_workflow: true
+      }
+    }
+  end
+
+  # LIVE STORY TEMPLATES
+
+  defp live_story_interactive_template do
+    %{
+      name: "Interactive Adventure Story",
+      description: "Create immersive stories where audience choices drive the narrative",
+      story_type: :live_story,
+      narrative_structure: "interactive_adventure",
+      requires_tier: "creator",
+      features: [:audience_voting, :branching_narrative, :real_time_streaming, :choice_points],
+      estimated_duration: "1-3 hours",
+      target_outcome: "Completed interactive story session with audience engagement",
+
+      setup_phases: [
+        %{
+          title: "Story Concept Development",
+          description: "Create the core story concept and main narrative path",
+          required_elements: ["main_storyline", "key_characters", "setting", "theme"],
+          ai_assistance: "Suggest compelling story hooks and character motivations"
+        },
+        %{
+          title: "Choice Points Creation",
+          description: "Design decision points where audience can influence the story",
+          required_elements: ["decision_moments", "branching_options", "consequences"],
+          ai_assistance: "Generate meaningful choices and alternative paths"
+        },
+        %{
+          title: "Streaming Setup",
+          description: "Configure live streaming and audience interaction tools",
+          required_elements: ["streaming_platform", "voting_system", "chat_moderation"],
+          ai_assistance: "Optimize engagement and interaction timing"
+        },
+        %{
+          title: "Live Performance",
+          description: "Conduct the live storytelling session with real-time audience input",
+          required_elements: ["narrator_performance", "audience_management", "story_adaptation"],
+          ai_assistance: "Real-time story suggestions based on audience choices"
+        }
+      ],
+
+      interaction_mechanics: %{
+        voting_windows: "30-60 seconds per choice",
+        vote_weighting: "equal_weight", # or "engagement_based"
+        fallback_options: "narrator_choice",
+        audience_size_limits: %{
+          "creator" => 100,
+          "professional" => 500,
+          "enterprise" => 2000
+        }
+      }
+    }
+  end
+
+  defp live_story_audience_choice_template do
+    %{
+      name: "Audience Choice Narrative",
+      description: "Stories completely driven by audience decisions and voting",
+      story_type: :live_story,
+      narrative_structure: "audience_choice",
+      requires_tier: "creator",
+      features: [:democratic_storytelling, :weighted_voting, :consensus_building, :audience_analytics]
+    }
+  end
+
+  defp live_story_multi_narrator_template do
+    %{
+      name: "Multi-Narrator Collaborative Story",
+      description: "Multiple storytellers working together with audience input",
+      story_type: :live_story,
+      narrative_structure: "multi_narrator",
+      requires_tier: "creator",
+      features: [:narrator_coordination, :role_assignments, :character_voices, :collaborative_improvisation],
+
+      narrator_roles: %{
+        "primary_narrator" => %{
+          responsibilities: ["main_storyline", "pacing", "overall_direction"],
+          permissions: ["story_control", "choice_creation", "session_management"]
+        },
+        "character_narrator" => %{
+          responsibilities: ["specific_characters", "dialogue", "character_development"],
+          permissions: ["character_actions", "dialogue_creation", "character_choices"]
+        },
+        "world_narrator" => %{
+          responsibilities: ["setting_description", "atmosphere", "world_building"],
+          permissions: ["environment_control", "world_events", "atmospheric_elements"]
+        }
+      }
+    }
+  end
+
+  defp live_story_episodic_template do
+    %{
+      name: "Episodic Story Series",
+      description: "Create ongoing story series with continuing narratives",
+      story_type: :live_story,
+      narrative_structure: "episodic_series",
+      requires_tier: "creator",
+      features: [:series_continuity, :character_development, :seasonal_arcs, :audience_building]
+    }
+  end
+
+  # DATA JAM TEMPLATES
+
+  defp data_jam_business_template do
+    %{
+      name: "Business Insights Data Story",
+      description: "Transform business data into compelling narratives for stakeholders",
+      story_type: :data_jam,
+      narrative_structure: "business_insights",
+      requires_tier: "professional",
+      features: [:data_integration, :stakeholder_targeting, :executive_summaries, :actionable_insights],
+      estimated_duration: "2-4 hours",
+      target_outcome: "Executive-ready data story with clear recommendations",
+
+      setup_phases: [
+        %{
+          title: "Data Collection & Integration",
+          description: "Connect to data sources and import relevant datasets",
+          required_elements: ["data_sources", "api_connections", "data_validation"],
+          ai_assistance: "Identify key metrics and data relationships"
+        },
+        %{
+          title: "Narrative Structure Planning",
+          description: "Plan the story arc that will guide stakeholders through insights",
+          required_elements: ["story_arc", "key_messages", "audience_analysis"],
+          ai_assistance: "Suggest narrative structures for business impact"
+        },
+        %{
+          title: "Visualization Creation",
+          description: "Create compelling visuals that support the narrative",
+          required_elements: ["chart_selection", "visual_hierarchy", "interactive_elements"],
+          ai_assistance: "Recommend visualization types for data story impact"
+        },
+        %{
+          title: "Collaborative Review",
+          description: "Team review and refinement of insights and recommendations",
+          required_elements: ["stakeholder_feedback", "accuracy_validation", "presentation_polish"],
+          ai_assistance: "Suggest improvements and alternative perspectives"
+        }
+      ],
+
+      data_integration_options: [
+        "Google Analytics", "Salesforce", "HubSpot", "Shopify", "Airtable",
+        "Excel/CSV", "PostgreSQL", "MongoDB", "REST APIs", "Custom Connectors"
+      ],
+
+      collaboration_workflow: %{
+        roles: ["analyst", "designer", "reviewer", "stakeholder"],
+        permissions: %{
+          "analyst" => ["data_access", "analysis_creation", "insight_generation"],
+          "designer" => ["visualization_creation", "layout_design", "presentation_formatting"],
+          "reviewer" => ["feedback_provision", "accuracy_checking", "approval_workflow"],
+          "stakeholder" => ["view_access", "comment_provision", "requirement_setting"]
+        }
+      }
+    }
+  end
+
+  defp data_jam_research_template do
+    %{
+      name: "Research Findings Data Story",
+      description: "Present research data in narrative format for academic or scientific audiences",
+      story_type: :data_jam,
+      narrative_structure: "research_findings",
+      requires_tier: "professional",
+      features: [:academic_formatting, :citation_management, :peer_review, :methodology_documentation]
+    }
+  end
+
+  defp data_jam_performance_template do
+    %{
+      name: "Performance Analytics Story",
+      description: "Track and narrate performance metrics over time",
+      story_type: :data_jam,
+      narrative_structure: "performance_analytics",
+      requires_tier: "professional",
+      features: [:kpi_tracking, :trend_analysis, :benchmark_comparison, :forecasting]
+    }
+  end
+
+  defp data_jam_market_template do
+    %{
+      name: "Market Analysis Story",
+      description: "Analyze market trends and opportunities through data storytelling",
+      story_type: :data_jam,
+      narrative_structure: "market_analysis",
+      requires_tier: "professional",
+      features: [:market_research, :competitive_analysis, :opportunity_identification, :risk_assessment]
+    }
+  end
+
+  # STORY REMIX TEMPLATES
+
+  defp story_remix_format_template do
+    %{
+      name: "Format Transformation Remix",
+      description: "Transform stories from one format to another while preserving core narrative",
+      story_type: :story_remix,
+      narrative_structure: "format_transformation",
+      requires_tier: "creator",
+      features: [:ai_content_analysis, :format_conversion, :structure_preservation, :style_adaptation],
+      estimated_duration: "30 minutes - 2 hours",
+      target_outcome: "Story successfully adapted to new format",
+
+      setup_phases: [
+        %{
+          title: "Source Analysis",
+          description: "AI analyzes the source story to understand structure and themes",
+          required_elements: ["source_content", "format_identification", "theme_extraction"],
+          ai_assistance: "Deep content analysis and element identification"
+        },
+        %{
+          title: "Target Format Selection",
+          description: "Choose target format and review transformation requirements",
+          required_elements: ["target_format", "format_constraints", "adaptation_goals"],
+          ai_assistance: "Suggest optimal target formats and transformation strategies"
+        },
+        %{
+          title: "Smart Transformation",
+          description: "AI performs initial transformation with human oversight",
+          required_elements: ["automated_conversion", "structure_mapping", "content_adaptation"],
+          ai_assistance: "Intelligent content transformation and format optimization"
+        },
+        %{
+          title: "Refinement & Polish",
+          description: "Human review and refinement of the transformed content",
+          required_elements: ["quality_review", "manual_adjustments", "final_polish"],
+          ai_assistance: "Suggest improvements and catch inconsistencies"
+        }
+      ],
+
+      supported_transformations: %{
+        "novel_to_screenplay" => %{difficulty: "moderate", success_rate: "85%"},
+        "article_to_presentation" => %{difficulty: "easy", success_rate: "95%"},
+        "case_study_to_story" => %{difficulty: "easy", success_rate: "90%"},
+        "screenplay_to_novel" => %{difficulty: "hard", success_rate: "70%"},
+        "story_to_comic" => %{difficulty: "moderate", success_rate: "80%"},
+        "data_to_narrative" => %{difficulty: "moderate", success_rate: "75%"}
+      }
+    }
+  end
+
+  defp story_remix_style_template do
+    %{
+      name: "Style Adaptation Remix",
+      description: "Adapt story style for different audiences or purposes while keeping content",
+      story_type: :story_remix,
+      narrative_structure: "style_adaptation",
+      requires_tier: "creator",
+      features: [:tone_modification, :audience_targeting, :style_analysis, :voice_adaptation]
+    }
+  end
+
+  defp story_remix_audience_template do
+    %{
+      name: "Audience Targeting Remix",
+      description: "Adapt stories for specific audience demographics and preferences",
+      story_type: :story_remix,
+      narrative_structure: "audience_targeting",
+      requires_tier: "creator",
+      features: [:demographic_analysis, :preference_matching, :cultural_adaptation, :accessibility_optimization]
+    }
+  end
+
+  defp story_remix_platform_template do
+    %{
+      name: "Platform Optimization Remix",
+      description: "Optimize stories for specific platforms and distribution channels",
+      story_type: :story_remix,
+      narrative_structure: "platform_optimization",
+      requires_tier: "creator",
+      features: [:platform_requirements, :format_optimization, :engagement_maximization, :distribution_strategy]
     }
   end
 

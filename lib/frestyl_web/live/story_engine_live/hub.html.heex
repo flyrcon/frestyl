@@ -1,169 +1,526 @@
-<div class="max-w-7xl mx-auto">
-  <!-- Header Section -->
-  <div class="mb-8">
-    <div class="flex items-center justify-between mb-6">
+<div class="space-y-6">
+  <!-- Header Section - Matches Portfolio Hub Pattern -->
+  <div class="bg-white rounded-xl p-6 shadow-sm border">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4">
       <div>
-        <h1 class="text-3xl font-bold text-gray-900">Story Engine</h1>
-        <p class="text-gray-600 mt-2">Create compelling narratives with collaborative tools and AI assistance</p>
+        <h1 class="text-2xl font-bold text-gray-900">Story Engine</h1>
+        <p class="text-gray-600 mt-1">Create compelling narratives with collaborative tools and AI assistance</p>
       </div>
-      <div class="flex items-center space-x-3">
+      <div class="flex space-x-3 mt-4 sm:mt-0">
         <button 
-          phx-click="show_templates_library"
-          class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+          onclick="showTemplatesLibrary()"
+          class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors">
           Browse Templates
         </button>
         <button 
-          phx-click="show_create_modal"
-          class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-6 py-2 rounded-lg hover:opacity-90 transition-opacity font-medium">
-          Start Creating
+          onclick="showCreateModal()"
+          class="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg font-medium">
+          <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          New Story
         </button>
       </div>
     </div>
 
     <!-- Quick Stats Dashboard -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-      <div class="bg-white rounded-xl p-4 shadow-sm border">
-        <div class="text-2xl font-bold text-purple-600"><%= @story_stats.total_stories %></div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="text-center">
+        <div class="text-2xl font-bold text-purple-600">4</div>
         <div class="text-sm text-gray-600">Stories</div>
       </div>
-      <div class="bg-white rounded-xl p-4 shadow-sm border">
-        <div class="text-2xl font-bold text-blue-600"><%= @story_stats.active_collaborations %></div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-indigo-600">8</div>
         <div class="text-sm text-gray-600">Collaborations</div>
       </div>
-      <div class="bg-white rounded-xl p-4 shadow-sm border">
-        <div class="text-2xl font-bold text-green-600"><%= @story_stats.average_completion %>%</div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-green-600">73%</div>
         <div class="text-sm text-gray-600">Avg Completion</div>
       </div>
-      <div class="bg-white rounded-xl p-4 shadow-sm border">
-        <div class="text-2xl font-bold text-orange-600"><%= format_number(@story_stats.words_this_week) %></div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-orange-600">12.4K</div>
         <div class="text-sm text-gray-600">Words This Week</div>
       </div>
     </div>
   </div>
 
   <!-- Main Content: Intent-Based Story Creation -->
-  <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 mb-12">
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
     
     <!-- Intent Selection (Left Column) -->
     <div class="lg:col-span-2">
-      <.live_component 
-        module={FrestylWeb.StoryEngineLive.Components.IntentSelector}
-        id="intent-selector"
-        available_intents={@available_intents}
-        selected_intent={@selected_intent}
-        user_tier={@user_tier}
-      />
+      <div class="bg-white rounded-xl p-6 shadow-sm border">
+        <h2 class="text-lg font-bold text-gray-900 mb-4">What's your goal?</h2>
+        <p class="text-gray-600 mb-6">Choose your storytelling intent to get personalized recommendations</p>
+        
+        <div class="space-y-3">
+          <!-- Intent Options -->
+          <button onclick="selectIntent('entertain')" class="intent-option w-full text-left p-4 rounded-lg hover:bg-gray-50 transition-colors group border border-gray-200 hover:border-purple-300">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg flex items-center justify-center">
+                🎭
+              </div>
+              <div class="flex-1">
+                <h3 class="font-semibold text-gray-900 group-hover:text-purple-600">Entertain</h3>
+                <p class="text-sm text-gray-600">Captivate your audience with engaging stories</p>
+              </div>
+            </div>
+          </button>
+          
+          <button onclick="selectIntent('educate')" class="intent-option w-full text-left p-4 rounded-lg hover:bg-gray-50 transition-colors group border border-gray-200 hover:border-blue-300">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center">
+                📚
+              </div>
+              <div class="flex-1">
+                <h3 class="font-semibold text-gray-900 group-hover:text-blue-600">Educate</h3>
+                <p class="text-sm text-gray-600">Teach through compelling narratives</p>
+              </div>
+            </div>
+          </button>
+          
+          <button onclick="selectIntent('inspire')" class="intent-option w-full text-left p-4 rounded-lg hover:bg-gray-50 transition-colors group border border-gray-200 hover:border-green-300">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 bg-gradient-to-br from-green-100 to-emerald-100 rounded-lg flex items-center justify-center">
+                ✨
+              </div>
+              <div class="flex-1">
+                <h3 class="font-semibold text-gray-900 group-hover:text-green-600">Inspire</h3>
+                <p class="text-sm text-gray-600">Motivate and uplift your readers</p>
+              </div>
+            </div>
+          </button>
+          
+          <button onclick="selectIntent('persuade')" class="intent-option w-full text-left p-4 rounded-lg hover:bg-gray-50 transition-colors group border border-gray-200 hover:border-orange-300">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 bg-gradient-to-br from-orange-100 to-red-100 rounded-lg flex items-center justify-center">
+                🎯
+              </div>
+              <div class="flex-1">
+                <h3 class="font-semibold text-gray-900 group-hover:text-orange-600">Persuade</h3>
+                <p class="text-sm text-gray-600">Convince and influence through story</p>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Format Selection (Right Column) -->
     <div class="lg:col-span-3">
-      <.live_component 
-        module={FrestylWeb.StoryEngineLive.Components.FormatGrid}
-        id="format-grid"
-        formats={@available_formats}
-        user_tier={@user_tier}
-        selected_intent={@selected_intent}
-      />
+      <div class="bg-white rounded-xl p-6 shadow-sm border">
+        <h2 class="text-lg font-bold text-gray-900 mb-4">Choose your format</h2>
+        <p class="text-gray-600 mb-6">Select the best format for your storytelling goals</p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Studio Option -->
+          <button onclick="launchStudio('audio_production')" class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-gradient-to-br from-yellow-300 to-orange-400 border border-yellow-200 hover:border-orange-300">
+            <div class="flex items-center space-x-3 mb-3">
+              <div class="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center text-white text-sm">
+                🎵
+              </div>
+              <div>
+                <h3 class="font-semibold text-gray-900">Creator Studio</h3>
+                <span class="text-xs bg-yellow-300 text-yellow-700 px-2 py-1 rounded-full font-medium">Featured</span>
+              </div>
+            </div>
+            <p class="text-sm text-gray-600">Audio production and podcast creation tools</p>
+          </button>
+          
+          <!-- Other Format Cards -->
+          <button onclick="selectFormat('short_story')" class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-purple-300">
+            <div class="flex items-center space-x-3 mb-3">
+              <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center text-white text-sm">
+                📖
+              </div>
+              <h3 class="font-semibold text-gray-900">Short Story</h3>
+            </div>
+            <p class="text-sm text-gray-600">Complete narrative in 1,000-5,000 words</p>
+          </button>
+          
+          <button onclick="selectFormat('screenplay')" class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-blue-300">
+            <div class="flex items-center space-x-3 mb-3">
+              <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center text-white text-sm">
+                🎬
+              </div>
+              <h3 class="font-semibold text-gray-900">Screenplay</h3>
+            </div>
+            <p class="text-sm text-gray-600">Visual storytelling for film or TV</p>
+          </button>
+          
+          <button onclick="selectFormat('blog_series')" class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-green-300">
+            <div class="flex items-center space-x-3 mb-3">
+              <div class="w-8 h-8 bg-gradient-to-br from-green-600 to-emerald-600 rounded-lg flex items-center justify-center text-white text-sm">
+                📝
+              </div>
+              <h3 class="font-semibold text-gray-900">Blog Series</h3>
+            </div>
+            <p class="text-sm text-gray-600">Multi-part storytelling for content</p>
+          </button>
+          
+          <button onclick="selectFormat('ebook')" class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-orange-300">
+            <div class="flex items-center space-x-3 mb-3">
+              <div class="w-8 h-8 bg-gradient-to-br from-orange-600 to-red-600 rounded-lg flex items-center justify-center text-white text-sm">
+                📚
+              </div>
+              <h3 class="font-semibold text-gray-900">eBook Creation</h3>
+            </div>
+            <p class="text-sm text-gray-600">Turn your story into a publishable eBook</p>
+          </button>
+          
+          <button onclick="selectFormat('interactive')" class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-pink-300">
+            <div class="flex items-center space-x-3 mb-3">
+              <div class="w-8 h-8 bg-gradient-to-br from-pink-600 to-purple-600 rounded-lg flex items-center justify-center text-white text-sm">
+                🎮
+              </div>
+              <h3 class="font-semibold text-gray-900">Interactive Story</h3>
+            </div>
+            <p class="text-sm text-gray-600">Choose-your-own-adventure format</p>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Recent Stories -->
-  <.live_component 
-    module={FrestylWeb.StoryEngineLive.Components.RecentStories}
-    id="recent-stories"
-    recent_stories={@recent_stories}
-  />
-
-  <!-- Templates & Resources Row -->
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">
+  <!-- My Stories -->
+  <div class="bg-white rounded-xl p-6 shadow-sm border">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-lg font-bold text-gray-900">My Stories</h2>
+      <button onclick="viewAllStories()" class="text-purple-600 hover:text-purple-700 font-medium text-sm">View all</button>
+    </div>
     
-    <!-- Templates & Resources -->
-    <div class="bg-white rounded-xl p-8 shadow-sm border">
-      <h3 class="text-lg font-semibold text-gray-900 mb-6">Templates & Resources</h3>
-      <div class="space-y-4">
-        <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
-             phx-click="show_templates_library">
-          <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">📋</div>
-          <div>
-            <div class="font-medium text-gray-900">Story Templates</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <!-- Story Cards -->
+      <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
+        <!-- Card Header -->
+        <div class="relative p-4 border-b border-gray-100 bg-gradient-to-br from-purple-50 to-indigo-100">
+          <div class="absolute top-3 right-3">
+            <span class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+              Draft
+            </span>
+          </div>
+          <div class="flex items-center space-x-3">
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold text-gray-900 group-hover:text-purple-600">The Digital Nomad's Journey</h3>
+              <p class="text-sm text-gray-600">Short Story • 2 days ago</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Card Content -->
+        <div class="p-4">
+          <p class="text-sm text-gray-600 line-clamp-2 mb-4">A tale of remote work adventures across Southeast Asia, exploring the balance between freedom and responsibility...</p>
+          
+          <!-- Stats -->
+          <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="text-center">
+              <div class="text-lg font-bold text-gray-900">2.1K</div>
+              <div class="text-xs text-gray-500">Words</div>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-bold text-gray-900">73%</div>
+              <div class="text-xs text-gray-500">Complete</div>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-bold text-gray-900">3</div>
+              <div class="text-xs text-gray-500">Chapters</div>
+            </div>
+          </div>
+          
+          <!-- Action Button -->
+          <button class="w-full bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+            Continue Writing
+          </button>
+        </div>
+      </div>
+      
+      <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
+        <!-- Card Header -->
+        <div class="relative p-4 border-b border-gray-100 bg-gradient-to-br from-blue-50 to-cyan-100">
+          <div class="absolute top-3 right-3">
+            <span class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+              Published
+            </span>
+          </div>
+          <div class="flex items-center space-x-3">
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold text-gray-900 group-hover:text-blue-600">Coffee Shop Chronicles</h3>
+              <p class="text-sm text-gray-600">Screenplay • 1 week ago</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Card Content -->
+        <div class="p-4">
+          <p class="text-sm text-gray-600 line-clamp-2 mb-4">A romantic comedy set in a bustling downtown café where chance encounters lead to unexpected connections...</p>
+          
+          <!-- Stats -->
+          <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="text-center">
+              <div class="text-lg font-bold text-gray-900">89</div>
+              <div class="text-xs text-gray-500">Pages</div>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-bold text-gray-900">100%</div>
+              <div class="text-xs text-gray-500">Complete</div>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-bold text-gray-900">245</div>
+              <div class="text-xs text-gray-500">Views</div>
+            </div>
+          </div>
+          
+          <!-- Action Button -->
+          <button class="w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+            View Story
+          </button>
+        </div>
+      </div>
+      
+      <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
+        <!-- Card Header -->
+        <div class="relative p-4 border-b border-gray-100 bg-gradient-to-br from-green-50 to-emerald-100">
+          <div class="absolute top-3 right-3">
+            <span class="inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+              Active
+            </span>
+          </div>
+          <div class="flex items-center space-x-3">
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold text-gray-900 group-hover:text-green-600">Startup Success Stories</h3>
+              <p class="text-sm text-gray-600">Blog Series • 3 days ago</p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Card Content -->
+        <div class="p-4">
+          <p class="text-sm text-gray-600 line-clamp-2 mb-4">Inspiring tales from the entrepreneurial trenches, featuring real founders and their journey to success...</p>
+          
+          <!-- Stats -->
+          <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="text-center">
+              <div class="text-lg font-bold text-gray-900">5</div>
+              <div class="text-xs text-gray-500">Episodes</div>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-bold text-gray-900">45%</div>
+              <div class="text-xs text-gray-500">Complete</div>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-bold text-gray-900">1.2K</div>
+              <div class="text-xs text-gray-500">Readers</div>
+            </div>
+          </div>
+          
+          <!-- Action Button -->
+          <button class="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+            Continue Series
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resources & Tools Row -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    
+    <!-- Resources & Tools -->
+    <div class="bg-white rounded-xl p-6 shadow-sm border">
+      <h3 class="text-lg font-bold text-gray-900 mb-6">Resources & Tools</h3>
+      <div class="space-y-3">
+        <button onclick="showTemplatesLibrary()" class="w-full flex items-center space-x-4 p-4 rounded-lg hover:bg-gray-50 transition-colors text-left group">
+          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">📋</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900 group-hover:text-blue-600">Story Templates</div>
             <div class="text-sm text-gray-600">Pre-built structures for every format</div>
           </div>
-        </div>
+        </button>
         
-        <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
-             phx-click="show_ai_assistant">
-          <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">🤖</div>
-          <div>
-            <div class="font-medium text-gray-900">AI Writing Assistant</div>
+        <button onclick="showAIAssistant()" class="w-full flex items-center space-x-4 p-4 rounded-lg hover:bg-gray-50 transition-colors text-left group">
+          <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">🤖</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900 group-hover:text-green-600">AI Writing Assistant</div>
             <div class="text-sm text-gray-600">Get help with ideas and editing</div>
           </div>
-        </div>
+        </button>
         
-        <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
-             phx-click="show_collaboration_guide">
-          <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">👥</div>
-          <div>
-            <div class="font-medium text-gray-900">Collaboration Guide</div>
-            <div class="text-sm text-gray-600">Learn to write with others</div>
+        <button onclick="showCollaborationGuide()" class="w-full flex items-center space-x-4 p-4 rounded-lg hover:bg-gray-50 transition-colors text-left group">
+          <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">👥</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900 group-hover:text-purple-600">Collaboration Tools</div>
+            <div class="text-sm text-gray-600">Write together in real-time</div>
           </div>
-        </div>
+        </button>
 
-        <div class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
-             phx-click="show_examples_gallery">
-          <div class="w-8 h-8 bg-yellow-100 rounded-lg flex items-center justify-center">✨</div>
-          <div>
-            <div class="font-medium text-gray-900">Example Stories</div>
+        <button onclick="showExamplesGallery()" class="w-full flex items-center space-x-4 p-4 rounded-lg hover:bg-gray-50 transition-colors text-left group">
+          <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">✨</div>
+          <div class="flex-1">
+            <div class="font-semibold text-gray-900 group-hover:text-yellow-600">Example Stories</div>
             <div class="text-sm text-gray-600">Get inspired by great examples</div>
           </div>
-        </div>
+        </button>
       </div>
     </div>
 
     <!-- Quick Actions -->
-    <.live_component 
-      module={FrestylWeb.StoryEngineLive.Components.QuickActions}
-      id="quick-actions"
-      user_tier={@user_tier}
-    />
+    <div class="bg-white rounded-xl p-6 shadow-sm border">
+      <h3 class="text-lg font-bold text-gray-900 mb-6">Quick Actions</h3>
+      <div class="space-y-3">
+        <button onclick="quickStart('blank')" class="w-full p-4 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors font-semibold">
+          Start from Blank Canvas
+        </button>
+        
+        <button onclick="quickStart('template')" class="w-full p-4 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-colors font-semibold">
+          Use a Template
+        </button>
+        
+        <button onclick="importStory()" class="w-full p-4 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-colors font-semibold">
+          Import Existing Work
+        </button>
+        
+        <button onclick="joinCollaboration()" class="w-full p-4 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-colors font-semibold">
+          Join a Collaboration
+        </button>
+      </div>
+      
+      <!-- Upgrade Notice for Free Users -->
+      <div class="mt-6 p-4 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-lg border border-orange-200">
+        <h4 class="font-semibold text-orange-900 mb-2">Unlock Studio Features</h4>
+        <p class="text-sm text-orange-700 mb-3">Get access to audio production, video editing, and advanced collaboration tools</p>
+        <button onclick="showUpgrade()" class="text-orange-600 hover:text-orange-700 font-medium text-sm">Upgrade to Creator →</button>
+      </div>
+    </div>
   </div>
 
   <!-- Personalized Recommendations -->
-  <%= if length(@dashboard_data.format_recommendations) > 0 do %>
-    <div class="mt-12 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-8 border border-blue-100">
-      <h3 class="text-lg font-semibold text-gray-900 mb-4">Recommended for You</h3>
-      <p class="text-gray-600 mb-6"><%= @dashboard_data.completion_encouragement %></p>
+  <div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 shadow-sm border border-blue-100">
+    <h3 class="text-lg font-bold text-gray-900 mb-4">Recommended for You</h3>
+    <p class="text-gray-600 mb-6">Based on your recent activity, we suggest continuing these story types</p>
+    
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <button onclick="createStory('short_story')" class="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-all text-left group">
+        <div class="flex items-center space-x-3 mb-2">
+          <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center text-white">
+            📖
+          </div>
+          <h4 class="font-semibold text-gray-900 group-hover:text-purple-600">Short Stories</h4>
+        </div>
+        <p class="text-sm text-gray-600">You've completed 3 stories this month</p>
+      </button>
       
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <%= for format <- @dashboard_data.format_recommendations do %>
-          <% 
-            # SAFE ACCESS: Get format config with fallback 
-            format_config = case FormatManager.get_format_config(format) do
-              nil -> %{
-                name: String.capitalize(to_string(format)),
-                description: "Create #{format} content",
-                gradient: "from-gray-400 to-gray-600",
-                icon: "📝"
-              }
-              config -> config
-            end
-          %>
-          <button 
-            phx-click="create_story"
-            phx-value-format={format}
-            class="p-4 bg-white rounded-lg shadow-sm border hover:shadow-md transition-all text-left">
-            <div class="flex items-center space-x-3 mb-2">
-              <div class={[
-                "w-8 h-8 rounded-lg flex items-center justify-center text-white",
-                "bg-gradient-to-br #{Map.get(format_config, :gradient, "from-gray-400 to-gray-600")}"
-              ]}>
-                <%= Map.get(format_config, :icon, "📝") %>
-              </div>
-              <h4 class="font-semibold text-gray-900"><%= Map.get(format_config, :name, "Unknown Format") %></h4>
-            </div>
-            <p class="text-sm text-gray-600"><%= Map.get(format_config, :description, "Create content") %></p>
-          </button>
-        <% end %>
-      </div>
+      <button onclick="createStory('blog_series')" class="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-all text-left group">
+        <div class="flex items-center space-x-3 mb-2">
+          <div class="w-8 h-8 bg-gradient-to-br from-green-600 to-emerald-600 rounded-lg flex items-center justify-center text-white">
+            📝
+          </div>
+          <h4 class="font-semibold text-gray-900 group-hover:text-green-600">Blog Series</h4>
+        </div>
+        <p class="text-sm text-gray-600">Great for your content strategy</p>
+      </button>
+      
+      <button onclick="createStory('screenplay')" class="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-all text-left group">
+        <div class="flex items-center space-x-3 mb-2">
+          <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center text-white">
+            🎬
+          </div>
+          <h4 class="font-semibold text-gray-900 group-hover:text-blue-600">Screenplays</h4>
+        </div>
+        <p class="text-sm text-gray-600">Try something new and visual</p>
+      </button>
     </div>
-  <% end %>
+  </div>
 </div>
+
+<style>
+  .line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .intent-option.selected {
+    background: linear-gradient(135deg, #f3e8ff 0%, #e0e7ff 100%);
+    border-color: #8b5cf6;
+  }
+  
+  .format-card.selected {
+    transform: scale(1.02);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  }
+</style>
+
+<script>
+  function selectIntent(intent) {
+    // Remove previous selections
+    document.querySelectorAll('.intent-option').forEach(el => el.classList.remove('selected'));
+    // Add selection to clicked option
+    event.target.closest('.intent-option').classList.add('selected');
+    console.log('Selected intent:', intent);
+  }
+  
+  function selectFormat(format) {
+    // Remove previous selections
+    document.querySelectorAll('.format-card').forEach(el => el.classList.remove('selected'));
+    // Add selection to clicked option
+    event.target.closest('.format-card').classList.add('selected');
+    console.log('Selected format:', format);
+  }
+  
+  function launchStudio(type) {
+    console.log('Launch studio with type:', type);
+    alert('Launching Creator Studio for ' + type + '!');
+  }
+  
+  function showTemplatesLibrary() {
+    console.log('Show templates library');
+  }
+  
+  function showCreateModal() {
+    console.log('Show create modal');
+  }
+  
+  function showAIAssistant() {
+    console.log('Show AI assistant');
+  }
+  
+  function showCollaborationGuide() {
+    console.log('Show collaboration guide');
+  }
+  
+  function showExamplesGallery() {
+    console.log('Show examples gallery');
+  }
+  
+  function quickStart(type) {
+    console.log('Quick start:', type);
+  }
+  
+  function importStory() {
+    console.log('Import story');
+  }
+  
+  function joinCollaboration() {
+    console.log('Join collaboration');
+  }
+  
+  function showUpgrade() {
+    console.log('Show upgrade modal');
+  }
+  
+  function createStory(format) {
+    console.log('Create story with format:', format);
+  }
+  
+  function viewAllStories() {
+    console.log('View all stories');
+  }
+</script>

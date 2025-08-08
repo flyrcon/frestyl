@@ -5,7 +5,7 @@ defmodule FrestylWeb.DashboardLive do
   # Import the `nav` function from Navigation
   import FrestylWeb.Navigation, only: [nav: 1]
 
-  alias Frestyl.{Channels, Media, Statistics, Events, Analytics, Portfolios}
+  alias Frestyl.{Channels, Media, Statistics, Events, Analytics, Portfolios, StoryEngine}
 
   @impl true
   def mount(_params, _session, socket) do

@@ -681,6 +681,241 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, push_navigate(socket, to: "/campaigns/#{campaign_id}")}
   end
 
+  # Add these event handlers to lib/frestyl_web/live/portfolio_hub_live.ex
+
+  # Story Engine Quick Actions Event Handlers
+  @impl true
+  def handle_event("quick_create_story", %{"template" => template_key}, socket) do
+    user = socket.assigns.current_user
+
+    # Map template keys to story types and intents
+    {story_type, intent} = case template_key do
+      "article" -> {"article", "educate"}
+      "case_study" -> {"case_study", "persuade"}
+      _ -> {"article", "educate"}
+    end
+
+    # Create story with template
+    story_params = %{
+      title: get_template_title(template_key),
+      story_type: story_type,
+      intent_category: intent,
+      creation_source: "portfolio_hub_quick_action",
+      quick_start_template: template_key,
+      created_by_id: user.id
+    }
+
+    case Stories.create_enhanced_story(story_params, user) do
+      {:ok, story} ->
+        {:noreply,
+        socket
+        |> put_flash(:info, "Story created! Redirecting to editor...")
+        |> redirect(to: ~p"/stories/#{story.id}/edit")}
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to create story. Please try again.")}
+    end
+  end
+
+  @impl true
+  def handle_event("show_import_modal", _params, socket) do
+    {:noreply,
+    socket
+    |> assign(:show_import_modal, true)
+    |> assign(:import_error, nil)
+    |> assign(:processing_import, false)}
+  end
+
+  @impl true
+  def handle_event("close_import_modal", _params, socket) do
+    {:noreply, assign(socket, :show_import_modal, false)}
+  end
+
+  @impl true
+  def handle_event("import_existing_work", %{"import" => import_params}, socket) do
+    user = socket.assigns.current_user
+
+    case import_params do
+      %{"file" => file_upload} ->
+        # Handle file upload
+        handle_file_import(socket, file_upload, user)
+
+      %{"text_content" => text_content, "title" => title} when text_content != "" ->
+        # Handle direct text paste
+        handle_text_import(socket, text_content, title, user)
+
+      %{"url" => url} when url != "" ->
+        # Handle URL import (Google Docs, etc.)
+        handle_url_import(socket, url, user)
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Please provide content to import")}
+    end
+  end
+
+  @impl true
+  def handle_event("launch_studio_tool", %{"tool" => tool}, socket) do
+    # Redirect to creator studio with specific tool
+    studio_path = case tool do
+      "audio_production" -> ~p"/studio?tool=audio"
+      "video_production" -> ~p"/studio?tool=video"
+      "podcast_creation" -> ~p"/studio?tool=podcast"
+      _ -> ~p"/studio"
+    end
+
+    {:noreply, redirect(socket, to: studio_path)}
+  end
+
+  @impl true
+  def handle_event("show_story_templates", _params, socket) do
+    {:noreply, push_event(socket, "show_modal", %{modal: "story_templates_library"})}
+  end
+
+  # Import Helper Functions
+  defp handle_file_import(socket, file_upload, user) do
+    socket = assign(socket, :processing_import, true)
+
+    case extract_content_from_file(file_upload) do
+      {:ok, content, title} ->
+        create_imported_story(socket, content, title, user, "file_upload")
+
+      {:error, reason} ->
+        {:noreply,
+        socket
+        |> assign(:processing_import, false)
+        |> assign(:import_error, "Failed to process file: #{reason}")
+        |> put_flash(:error, "Could not import file. Please try a different format.")}
+    end
+  end
+
+  defp handle_text_import(socket, text_content, title, user) do
+    title = if title == "" or is_nil(title), do: "Imported Story", else: title
+    create_imported_story(socket, text_content, title, user, "text_paste")
+  end
+
+  defp handle_url_import(socket, url, user) do
+    socket = assign(socket, :processing_import, true)
+
+    case import_from_url(url) do
+      {:ok, content, title} ->
+        create_imported_story(socket, content, title, user, "url_import")
+
+      {:error, reason} ->
+        {:noreply,
+        socket
+        |> assign(:processing_import, false)
+        |> assign(:import_error, "Failed to import from URL: #{reason}")
+        |> put_flash(:error, "Could not access the provided URL.")}
+    end
+  end
+
+  defp create_imported_story(socket, content, title, user, source) do
+    story_params = %{
+      title: title,
+      content: content,
+      story_type: "imported_content",
+      intent_category: "general",
+      creation_source: source,
+      created_by_id: user.id,
+      status: "draft"
+    }
+
+    case Stories.create_enhanced_story(story_params, user) do
+      {:ok, story} ->
+        {:noreply,
+        socket
+        |> assign(:show_import_modal, false)
+        |> assign(:processing_import, false)
+        |> put_flash(:info, "Content imported successfully!")
+        |> redirect(to: ~p"/stories/#{story.id}/edit")}
+
+      {:error, _changeset} ->
+        {:noreply,
+        socket
+        |> assign(:processing_import, false)
+        |> assign(:import_error, "Failed to create story from imported content")
+        |> put_flash(:error, "Could not create story. Please try again.")}
+    end
+  end
+
+  defp extract_content_from_file(file_upload) do
+    # Extract content based on file type
+    case Path.extname(file_upload.filename) do
+      ".txt" ->
+        {:ok, File.read!(file_upload.path), Path.basename(file_upload.filename, ".txt")}
+
+      ".md" ->
+        {:ok, File.read!(file_upload.path), Path.basename(file_upload.filename, ".md")}
+
+      ".docx" ->
+        # Use a library like Pandoc or similar to extract text from DOCX
+        extract_docx_content(file_upload.path)
+
+      ".pdf" ->
+        # Use a PDF text extraction library
+        extract_pdf_content(file_upload.path)
+
+      _ ->
+        {:error, "Unsupported file format"}
+    end
+  end
+
+  defp extract_docx_content(file_path) do
+    # Implementation depends on available libraries
+    # For now, return error suggesting manual copy-paste
+    {:error, "DOCX files not yet supported. Please copy and paste your content."}
+  end
+
+  defp extract_pdf_content(file_path) do
+    # Implementation depends on available PDF libraries
+    {:error, "PDF files not yet supported. Please copy and paste your content."}
+  end
+
+  defp import_from_url(url) do
+    # For now, URL import is not supported - suggest manual copy/paste
+    # This can be implemented later when HTTP client dependencies are added
+    {:error, "URL import not yet supported. Please copy and paste your content using the 'Paste Text Content' option above."}
+  end
+
+  # Future implementation placeholder (commented out until HTTP client is available)
+  # defp import_from_url_with_finch(url) do
+  #   case Finch.build(:get, url) |> Finch.request(MyApp.Finch) do
+  #     {:ok, %Finch.Response{status: 200, body: body}} ->
+  #       content = clean_html_content(body)
+  #       title = extract_title_from_html(body) || "Imported from URL"
+  #       {:ok, content, title}
+  #     _ ->
+  #       {:error, "Could not fetch content from URL"}
+  #   end
+  # rescue
+  #   _ -> {:error, "URL import service unavailable"}
+  # end
+
+  defp clean_html_content(html) do
+    # Basic HTML-to-text conversion for future use
+    html
+    |> String.replace(~r/<script[^>]*>.*?<\/script>/s, "")
+    |> String.replace(~r/<style[^>]*>.*?<\/style>/s, "")
+    |> String.replace(~r/<[^>]*>/, " ")
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+  end
+
+  defp extract_title_from_html(html) do
+    case Regex.run(~r/<title[^>]*>([^<]+)<\/title>/i, html) do
+      [_, title] -> String.trim(title)
+      _ -> nil
+    end
+  end
+
+  # Helper function for template titles
+  defp get_template_title(template_key) do
+    case template_key do
+      "article" -> "Quick Article"
+      "case_study" -> "Case Study Analysis"
+      _ -> "New Story"
+    end
+  end
+
   # Content Campaigns Events
   @impl true
   def handle_event("create_content_campaign", _params, socket) do
