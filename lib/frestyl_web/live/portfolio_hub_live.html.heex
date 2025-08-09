@@ -122,8 +122,8 @@
               <% "analytics" -> %>
                 <h3 class="font-bold text-lg text-gray-900">Analytics Center</h3>
                 <p class="text-sm text-gray-600 mt-1">Track your performance</p>
-              <% "story_lab" -> %>
-                <h3 class="font-bold text-lg text-gray-900">Story Lab</h3>
+              <% "story_engine" -> %>
+                <h3 class="font-bold text-lg text-gray-900">Story Engine</h3>
                 <p class="text-sm text-gray-600 mt-1">Bring words to life</p>
               <% "collaboration_hub" -> %>
                 <h3 class="font-bold text-lg text-gray-900">Collaboration Hub</h3>
@@ -459,66 +459,6 @@
                   <div class="text-left">
                     <div class="font-medium text-gray-900">Sync Calendar</div>
                     <div class="text-sm text-gray-600">Update external calendars</div>
-                  </div>
-                </button>
-
-              <% "story_engine" -> %>
-                <!-- Story Engine Quick Actions -->
-                <button 
-                  phx-click="quick_create_story" 
-                  phx-value-template="article"
-                  class="w-full flex items-center space-x-3 p-3 bg-gradient-to-r from-purple-50 to-pink-50 hover:from-purple-100 hover:to-pink-100 rounded-xl group transition-all">
-                  <div class="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
-                    </svg>
-                  </div>
-                  <div class="text-left">
-                    <div class="font-medium text-gray-900">Quick Article</div>
-                    <div class="text-sm text-gray-600">Start writing immediately</div>
-                  </div>
-                </button>
-
-                <button 
-                  phx-click="show_import_modal"
-                  class="w-full flex items-center space-x-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 rounded-xl group transition-all">
-                  <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
-                    </svg>
-                  </div>
-                  <div class="text-left">
-                    <div class="font-medium text-gray-900">Import Existing Work</div>
-                    <div class="text-sm text-gray-600">Upload docs, text files</div>
-                  </div>
-                </button>
-
-                <button 
-                  phx-click="launch_studio_tool" 
-                  phx-value-tool="audio_production"
-                  class="w-full flex items-center space-x-3 p-3 bg-gradient-to-r from-yellow-50 to-orange-50 hover:from-yellow-100 hover:to-orange-100 rounded-xl group transition-all">
-                  <div class="w-10 h-10 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
-                    </svg>
-                  </div>
-                  <div class="text-left">
-                    <div class="font-medium text-gray-900">Creator Studio</div>
-                    <div class="text-sm text-gray-600">Audio & podcast tools</div>
-                  </div>
-                </button>
-
-                <button 
-                  phx-click="show_story_templates"
-                  class="w-full flex items-center space-x-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 rounded-xl group transition-all">
-                  <div class="w-10 h-10 bg-gradient-to-br from-green-600 to-emerald-600 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                    </svg>
-                  </div>
-                  <div class="text-left">
-                    <div class="font-medium text-gray-900">Browse Templates</div>
-                    <div class="text-sm text-gray-600">Find the perfect structure</div>
                   </div>
                 </button>
 

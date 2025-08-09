@@ -350,6 +350,11 @@ defmodule FrestylWeb.Router do
     live "/:id/collaborate", Collaborate, :collaborate
     live "/:id/export", Export, :export
 
+    live "/stories", StoriesLive.Index, :index
+    live "/stories/new", StoriesLive.New, :new
+    live "/stories/:id/edit", StoriesLive.Edit, :edit
+    live "/stories/:id", StoriesLive.Show, :show
+
     # Enhanced story routes
     live "/stories", StoryLive.Index, :index
     live "/stories/new", StoryLive.New, :new

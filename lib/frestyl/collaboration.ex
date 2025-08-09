@@ -230,4 +230,98 @@ defmodule Frestyl.Collaboration do
 
     resolved_ops
   end
+
+    def join_by_invitation_code(code, user) do
+    case get_invitation_by_code(code) do
+      nil ->
+        {:error, :not_found}
+
+      invitation ->
+        if invitation_valid?(invitation) do
+          add_collaborator_to_story(invitation.story, user, invitation.role)
+        else
+          {:error, :expired}
+        end
+    end
+  end
+
+  def join_open_collaboration(collaboration_id, user) do
+    case get_open_collaboration(collaboration_id) do
+      nil ->
+        {:error, :not_found}
+
+      collaboration ->
+        add_collaborator_to_story(collaboration.story, user, "collaborator")
+    end
+  end
+
+  def list_open_collaborations do
+    # This would query your collaboration system
+    # Placeholder implementation
+    []
+  end
+
+  def create_invitation_code(story, creator, options \\ %{}) do
+    code = generate_invitation_code()
+    expires_at = DateTime.add(DateTime.utc_now(), 7, :day)
+
+    %Frestyl.Stories.CollaborationInvitation{}
+    |> Frestyl.Stories.CollaborationInvitation.changeset(%{
+      story_id: story.id,
+      created_by_id: creator.id,
+      invitation_code: code,
+      role: Map.get(options, :role, "collaborator"),
+      expires_at: expires_at,
+      max_uses: Map.get(options, :max_uses, 1)
+    })
+    |> Repo.insert()
+  end
+
+  defp get_invitation_by_code(code) do
+    Frestyl.Stories.CollaborationInvitation
+    |> where([i], i.invitation_code == ^code)
+    |> preload([:story, :created_by])
+    |> Repo.one()
+  end
+
+  defp get_open_collaboration(collaboration_id) do
+    # Query open collaborations
+    nil
+  end
+
+  defp invitation_valid?(invitation) do
+    DateTime.compare(DateTime.utc_now(), invitation.expires_at) == :lt and
+    invitation.uses_count < invitation.max_uses
+  end
+
+  defp add_collaborator_to_story(story, user, role) do
+    current_collaborators = story.collaborators || []
+
+    unless Enum.member?(current_collaborators, user.id) do
+      updated_collaborators = [user.id | current_collaborators]
+
+      story
+      |> Ecto.Changeset.change(%{collaborators: updated_collaborators})
+      |> Repo.update()
+      |> case do
+        {:ok, updated_story} ->
+          # Broadcast collaboration joined
+          Phoenix.PubSub.broadcast(Frestyl.PubSub, "story_collaboration:#{story.id}",
+            {:collaborator_joined, user, role})
+
+          {:ok, updated_story}
+
+        error -> error
+      end
+    else
+      {:ok, story}  # Already a collaborator
+    end
+  end
+
+  defp generate_invitation_code do
+    :crypto.strong_rand_bytes(8)
+    |> Base.url_encode64(padding: false)
+    |> String.slice(0, 8)
+    |> String.upcase()
+  end
 end

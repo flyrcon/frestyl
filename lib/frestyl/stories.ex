@@ -7,9 +7,10 @@ defmodule Frestyl.Stories do
   import Ecto.Query, warn: false
   alias Frestyl.Repo
 
-  alias Frestyl.Stories.EnhancedStoryStructure
+  alias Frestyl.Stories.{Collaboration, EnhancedStoryStructure}
   alias Frestyl.Accounts.User
   alias Frestyl.StoryEngine.{UserPreferences, QuickStartTemplates}
+  alias Frestyl.Features.TierManager
 
   # ============================================================================
   # ENHANCED STORY STRUCTURE FUNCTIONS
@@ -564,4 +565,513 @@ defmodule Frestyl.Stories do
         |> Enum.join("\n")
     end
   end
+
+    # ============================================================================
+  # EDITOR SUPPORT FUNCTIONS
+  # ============================================================================
+
+  @doc """
+  Get story with user permissions for the editor
+  """
+  def get_enhanced_story_with_permissions(story_id, user_id) do
+    case get_enhanced_story(story_id) do
+      nil ->
+        {:error, :not_found}
+
+      story ->
+        permissions = calculate_user_permissions(story, user_id)
+        if permissions.can_view do
+          {:ok, story, permissions}
+        else
+          {:error, :access_denied}
+        end
+    end
+  end
+
+  @doc """
+  Calculate user permissions for a story
+  """
+  def calculate_user_permissions(story, user_id) do
+    cond do
+      story.created_by_id == user_id ->
+        owner_permissions()
+
+      is_collaborator?(story, user_id) ->
+        get_collaborator_permissions(story, user_id)
+
+      story.is_public ->
+        public_permissions()
+
+      true ->
+        no_permissions()
+    end
+  end
+
+  @doc """
+  Update a specific section of a story
+  """
+  def update_story_section(story_id, section_id, content) do
+    story = get_enhanced_story!(story_id)
+    section_id_int = String.to_integer(section_id)
+
+    updated_sections = Enum.map(story.sections, fn section ->
+      if section.id == section_id_int do
+        %{section | content: content, updated_at: DateTime.utc_now()}
+      else
+        section
+      end
+    end)
+
+    changeset = EnhancedStoryStructure.changeset(story, %{
+      sections: updated_sections,
+      current_word_count: calculate_total_word_count(updated_sections)
+    })
+
+    case Repo.update(changeset) do
+      {:ok, updated_story} ->
+        # Broadcast to collaborators
+        Phoenix.PubSub.broadcast(Frestyl.PubSub, "story_collaboration:#{story_id}",
+          {:section_updated, section_id, content})
+
+        {:ok, updated_story}
+
+      error -> error
+    end
+  end
+
+  @doc """
+  Export story in specified format
+  """
+  def export_story(story, format) do
+    case format do
+      "pdf" -> export_to_pdf(story)
+      "html" -> export_to_html(story)
+      "epub" -> export_to_epub(story)
+      "docx" -> export_to_docx(story)
+      "fdx" -> export_to_final_draft(story)
+      "fountain" -> export_to_fountain(story)
+      "mp3" -> export_to_audio(story)
+      _ -> {:error, "Unsupported export format"}
+    end
+  end
+
+  @doc """
+  Create story from Story Engine with proper initialization
+  """
+  def create_story_for_engine(attrs, user) when is_map(attrs) do
+    # Generate session_id if not provided
+    session_id = Ecto.UUID.generate()
+
+    # Get template if quick_start_template is specified
+    template = case Map.get(attrs, :quick_start_template) do
+      nil -> nil
+      template_key ->
+        [format, intent] = String.split(template_key, "_", parts: 2)
+        Frestyl.StoryEngine.QuickStartTemplates.get_template(format, intent)
+    end
+
+    # Merge template data if available
+    enhanced_attrs = case template do
+      nil -> attrs
+      template -> Map.merge(attrs, %{template_data: template})
+    end
+
+    # Create the story structure
+    result = %Frestyl.Stories.EnhancedStoryStructure{
+      session_id: session_id,
+      created_by_id: user.id
+    }
+    |> Frestyl.Stories.EnhancedStoryStructure.changeset(enhanced_attrs)
+    |> Frestyl.Repo.insert()
+
+    case result do
+      {:ok, story} ->
+        # Track user preferences if intent provided
+        if Map.has_key?(enhanced_attrs, :intent_category) do
+          Frestyl.StoryEngine.UserPreferences.track_format_usage(
+            user.id,
+            enhanced_attrs.story_type,
+            enhanced_attrs.intent_category
+          )
+        end
+
+        # Broadcast story creation
+        Phoenix.PubSub.broadcast(
+          Frestyl.PubSub,
+          "user_stories:#{user.id}",
+          {:story_created, story}
+        )
+
+        {:ok, story}
+
+      error -> error
+    end
+  end
+
+  # ============================================================================
+  # PERMISSION HELPERS
+  # ============================================================================
+
+  defp owner_permissions do
+    %{
+      can_view: true,
+      can_edit: true,
+      can_delete: true,
+      can_invite: true,
+      can_export: true,
+      can_publish: true,
+      can_use_ai: true,
+      can_use_voice: true,
+      can_manage_settings: true
+    }
+  end
+
+  defp get_collaborator_permissions(story, user_id) do
+    collaboration = get_user_collaboration(story.id, user_id)
+
+    base_permissions = %{
+      can_view: true,
+      can_edit: collaboration.permissions.can_edit || false,
+      can_delete: collaboration.permissions.can_delete || false,
+      can_invite: collaboration.permissions.can_invite || false,
+      can_export: collaboration.permissions.can_export || false,
+      can_publish: false,
+      can_use_ai: collaboration.permissions.can_use_ai || false,
+      can_use_voice: collaboration.permissions.can_use_voice || false,
+      can_manage_settings: false
+    }
+
+    # Apply tier-based restrictions
+    apply_tier_restrictions(base_permissions, collaboration.user_tier)
+  end
+
+  defp public_permissions do
+    %{
+      can_view: true,
+      can_edit: false,
+      can_delete: false,
+      can_invite: false,
+      can_export: false,
+      can_publish: false,
+      can_use_ai: false,
+      can_use_voice: false,
+      can_manage_settings: false
+    }
+  end
+
+  defp no_permissions do
+    %{
+      can_view: false,
+      can_edit: false,
+      can_delete: false,
+      can_invite: false,
+      can_export: false,
+      can_publish: false,
+      can_use_ai: false,
+      can_use_voice: false,
+      can_manage_settings: false
+    }
+  end
+
+  defp apply_tier_restrictions(permissions, user_tier) do
+    case user_tier do
+      "personal" ->
+        permissions
+        |> Map.put(:can_use_ai, false)
+        |> Map.put(:can_use_voice, false)
+        |> Map.put(:can_export, false)
+
+      "creator" ->
+        permissions
+
+      "professional" ->
+        permissions
+
+      _ ->
+        permissions
+        |> Map.put(:can_use_ai, false)
+        |> Map.put(:can_use_voice, false)
+    end
+  end
+
+  # ============================================================================
+  # EXPORT FUNCTIONS
+  # ============================================================================
+
+  defp export_to_pdf(story) do
+    # Generate PDF using a library like PuppeteerPdf or wkhtmltopdf
+    html_content = render_story_as_html(story)
+
+    case generate_pdf_from_html(html_content) do
+      {:ok, pdf_path} ->
+        {:ok, pdf_path}
+      error -> error
+    end
+  end
+
+  defp export_to_html(story) do
+    html_content = render_story_as_html(story)
+    file_path = "/tmp/story_#{story.id}_#{DateTime.utc_now() |> DateTime.to_unix()}.html"
+
+    case File.write(file_path, html_content) do
+      :ok -> {:ok, file_path}
+      error -> error
+    end
+  end
+
+  defp export_to_epub(story) do
+    # Generate EPUB using a library
+    # This would involve creating the EPUB structure with metadata, chapters, etc.
+    {:error, "EPUB export not yet implemented"}
+  end
+
+  defp export_to_final_draft(story) do
+    if story.story_type == "screenplay" do
+      fdx_content = render_story_as_fdx(story)
+      file_path = "/tmp/story_#{story.id}.fdx"
+
+      case File.write(file_path, fdx_content) do
+        :ok -> {:ok, file_path}
+        error -> error
+      end
+    else
+      {:error, "Final Draft export only available for screenplays"}
+    end
+  end
+
+  defp export_to_fountain(story) do
+    if story.story_type == "screenplay" do
+      fountain_content = render_story_as_fountain(story)
+      file_path = "/tmp/story_#{story.id}.fountain"
+
+      case File.write(file_path, fountain_content) do
+        :ok -> {:ok, file_path}
+        error -> error
+      end
+    else
+      {:error, "Fountain export only available for screenplays"}
+    end
+  end
+
+  defp export_to_docx(story) do
+    # Generate DOCX using a library
+    {:error, "DOCX export not yet implemented"}
+  end
+
+  defp export_to_audio(story) do
+    # Text-to-speech conversion
+    {:error, "Audio export not yet implemented"}
+  end
+
+  # ============================================================================
+  # TEMPLATE AND RENDERING FUNCTIONS
+  # ============================================================================
+
+  defp get_story_template(story_type, narrative_structure) do
+    case story_type do
+      "novel" ->
+        %{
+          initial_sections: [
+            %{
+              id: 1,
+              type: "chapter",
+              title: "Chapter 1",
+              content: "",
+              order: 1
+            }
+          ],
+          outline: %{
+            items: [
+              %{title: "Opening Hook", description: "Grab the reader's attention"},
+              %{title: "Character Introduction", description: "Introduce your protagonist"},
+              %{title: "Inciting Incident", description: "The event that starts the story"},
+              %{title: "Rising Action", description: "Build tension and conflict"},
+              %{title: "Climax", description: "The story's turning point"},
+              %{title: "Resolution", description: "Tie up loose ends"}
+            ]
+          },
+          character_data: %{
+            characters: []
+          }
+        }
+
+      "screenplay" ->
+        %{
+          initial_sections: [
+            %{
+              id: 1,
+              type: "scene",
+              title: "Scene 1",
+              content: "FADE IN:\n\nEXT. LOCATION - DAY\n\n",
+              order: 1
+            }
+          ],
+          outline: %{
+            items: [
+              %{title: "Act I - Setup", description: "Establish world and characters (25%)"},
+              %{title: "Plot Point 1", description: "Inciting incident"},
+              %{title: "Act II - Confrontation", description: "Rising action (50%)"},
+              %{title: "Midpoint", description: "Major revelation or setback"},
+              %{title: "Plot Point 2", description: "All seems lost"},
+              %{title: "Act III - Resolution", description: "Climax and resolution (25%)"}
+            ]
+          },
+          character_data: %{
+            characters: []
+          },
+          format_metadata: %{
+            screenplay_format: "feature",
+            page_count_target: 120
+          }
+        }
+
+      "case_study" ->
+        %{
+          initial_sections: [
+            %{
+              id: 1,
+              type: "overview",
+              title: "Executive Summary",
+              content: "",
+              order: 1
+            },
+            %{
+              id: 2,
+              type: "problem",
+              title: "Problem Statement",
+              content: "",
+              order: 2
+            }
+          ],
+          outline: %{
+            items: [
+              %{title: "Executive Summary", description: "Key findings and recommendations"},
+              %{title: "Problem Statement", description: "Define the challenge"},
+              %{title: "Solution Approach", description: "How you addressed it"},
+              %{title: "Results & Impact", description: "Measurable outcomes"},
+              %{title: "Lessons Learned", description: "Key takeaways"},
+              %{title: "Next Steps", description: "Future recommendations"}
+            ]
+          },
+          format_metadata: %{
+            stakeholders: [],
+            metrics: []
+          }
+        }
+
+      _ ->
+        %{
+          initial_sections: [
+            %{
+              id: 1,
+              type: "section",
+              title: "Getting Started",
+              content: "",
+              order: 1
+            }
+          ],
+          outline: %{items: []},
+          character_data: %{}
+        }
+    end
+  end
+
+  defp render_story_as_html(story) do
+    sections_html = Enum.map(story.sections, fn section ->
+      "<section class='story-section'>" <>
+      "<h2>#{section.title}</h2>" <>
+      "<div class='content'>#{section.content}</div>" <>
+      "</section>"
+    end) |> Enum.join("\n")
+
+    """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>#{story.title}</title>
+      <style>
+        body { font-family: serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .story-section { margin-bottom: 2em; }
+        h1, h2 { color: #333; }
+      </style>
+    </head>
+    <body>
+      <h1>#{story.title}</h1>
+      #{sections_html}
+    </body>
+    </html>
+    """
+  end
+
+  defp render_story_as_fdx(story) do
+    # Final Draft XML format
+    # This would be a more complex implementation
+    "<?xml version='1.0' encoding='UTF-8'?><FinalDraft>...</FinalDraft>"
+  end
+
+  defp render_story_as_fountain(story) do
+    # Fountain format for screenplays
+    story.sections
+    |> Enum.map(& &1.content)
+    |> Enum.join("\n\n")
+  end
+
+  # ============================================================================
+  # HELPER FUNCTIONS
+  # ============================================================================
+
+  defp is_collaborator?(story, user_id) do
+    user_id in (story.collaborators || [])
+  end
+
+  defp get_user_collaboration(story_id, user_id) do
+    # This would fetch from your collaboration table
+    Collaboration.get_by_story_and_user(story_id, user_id)
+  end
+
+  defp calculate_total_word_count(sections) do
+    sections
+    |> Enum.map(fn section ->
+      (section.content || "")
+      |> String.replace(~r/<[^>]*>/, "")  # Strip HTML
+      |> String.split()
+      |> length()
+    end)
+    |> Enum.sum()
+  end
+
+  defp setup_initial_collaboration(story, collaboration_type, user) do
+    # Initialize collaboration based on type
+    case collaboration_type do
+      "small_team" ->
+        Collaboration.create_collaboration_setup(story.id, %{
+          max_collaborators: 5,
+          permissions: %{can_edit: true, can_comment: true}
+        })
+
+      "writing_group" ->
+        Collaboration.create_collaboration_setup(story.id, %{
+          max_collaborators: 10,
+          permissions: %{can_edit: true, can_comment: true, can_suggest: true}
+        })
+
+      _ -> :ok
+    end
+  end
+
+  defp generate_pdf_from_html(html_content) do
+    # This would use a PDF generation library
+    # For now, return a placeholder
+    {:ok, "/tmp/placeholder.pdf"}
+  end
+
+  # Add missing functions that are referenced
+  def get_enhanced_story(story_id) do
+    Repo.get(EnhancedStoryStructure, story_id)
+  end
+
+  def get_enhanced_story!(story_id) do
+    Repo.get!(EnhancedStoryStructure, story_id)
+  end
+
 end

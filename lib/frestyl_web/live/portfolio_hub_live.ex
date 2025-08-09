@@ -7,8 +7,8 @@ defmodule FrestylWeb.PortfolioHubLive do
   alias Frestyl.{Portfolios, Accounts, Channels, Features, Repo}
   alias Frestyl.Accounts.{Account, AccountMembership}
   alias Frestyl.Features.FeatureGate
-  alias FrestylWeb.StoryEngineLive.Hub
   alias FrestylWeb.PortfolioHubLive.ContentCampaignComponents
+  alias FrestylWeb.StoryEngineLive.Hub
   alias Frestyl.DataCampaigns.AdvancedTracker
   import FrestylWeb.Navigation, only: [nav: 1]
   alias FrestylWeb.PortfolioHubLive.Helpers
@@ -391,13 +391,8 @@ defmodule FrestylWeb.PortfolioHubLive do
   # Tab Navigation Events
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    # Check tier access for premium features
-    case check_tab_access(socket.assigns.current_account, tab) do
-      {:ok, :accessible} ->
-        {:noreply, assign(socket, :active_tab, tab)}
-      {:error, :upgrade_required} ->
-        {:noreply, put_flash(socket, :info, "Upgrade to access #{humanize_tab(tab)}")}
-    end
+    # Simple tab switching without access checks for now
+    {:noreply, assign(socket, :active_tab, tab)}
   end
 
   # Collaboration Hub Events
@@ -681,9 +676,197 @@ defmodule FrestylWeb.PortfolioHubLive do
     {:noreply, push_navigate(socket, to: "/campaigns/#{campaign_id}")}
   end
 
-  # Add these event handlers to lib/frestyl_web/live/portfolio_hub_live.ex
+  # Content Campaigns Events
+  @impl true
+  def handle_event("create_content_campaign", _params, socket) do
+    current_user = socket.assigns.current_user
+    current_account = socket.assigns.current_account
 
-  # Story Engine Quick Actions Event Handlers
+    if FeatureGate.can_access_feature?(current_account, :content_campaigns) do
+      {:noreply, socket
+      |> assign(:show_campaign_modal, true)
+      |> assign(:campaign_form, %{})}
+    else
+      {:noreply, socket
+      |> put_flash(:error, "Upgrade required for content campaigns")
+      |> push_navigate(to: "/subscription")}
+    end
+  end
+
+  @impl true
+  def handle_event("join_campaign", %{"campaign_id" => campaign_id}, socket) do
+    current_user = socket.assigns.current_user
+
+    case Frestyl.DataCampaigns.join_campaign(campaign_id, current_user) do
+      {:ok, _contribution} ->
+        {:noreply, socket
+        |> assign(:content_campaigns, load_content_campaigns(current_user))
+        |> put_flash(:info, "Joined campaign successfully!")}
+
+      {:error, :campaign_full} ->
+        {:noreply, put_flash(socket, :error, "Campaign is full")}
+
+      {:error, :already_joined} ->
+        {:noreply, put_flash(socket, :error, "Already part of this campaign")}
+    end
+  end
+
+  @impl true
+  def handle_event("start_peer_review", %{"campaign_id" => campaign_id, "submission_type" => type}, socket) do
+    current_user = socket.assigns.current_user
+
+    submission_data = %{
+      type: String.to_atom(type),
+      content: get_user_campaign_content(campaign_id, current_user.id, type)
+    }
+
+    case Frestyl.DataCampaigns.PeerReview.submit_for_review(campaign_id, current_user.id, submission_data) do
+      {:ok, review_request} ->
+        {:noreply, socket
+        |> put_flash(:info, "Submitted for peer review! Reviewers will be notified.")
+        |> assign(:content_campaigns, load_content_campaigns(current_user))}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to submit for review: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("submit_peer_review", params, socket) do
+    %{
+      "review_request_id" => review_request_id,
+      "overall_score" => overall_score,
+      "criteria_scores" => criteria_scores,
+      "feedback" => feedback
+    } = params
+
+    current_user = socket.assigns.current_user
+
+    review_data = %{
+      overall_score: String.to_float(overall_score),
+      criteria_scores: parse_criteria_scores(criteria_scores),
+      feedback: feedback,
+      suggestions: Map.get(params, "suggestions", [])
+    }
+
+    case Frestyl.DataCampaigns.PeerReview.submit_review(review_request_id, current_user.id, review_data) do
+      {:ok, :review_completed, score} ->
+        {:noreply, socket
+        |> put_flash(:info, "Review completed! Final score: #{score}/5.0")
+        |> assign(:content_campaigns, load_content_campaigns(current_user))}
+
+      {:ok, :review_submitted, :awaiting_more_reviews} ->
+        {:noreply, socket
+        |> put_flash(:info, "Review submitted! Waiting for more reviewers.")
+        |> assign(:content_campaigns, load_content_campaigns(current_user))}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Review submission failed: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("view_contract", %{"contract_id" => contract_id}, socket) do
+    contract = DataCampaigns.RevenueManager.get_contract_details(contract_id)
+
+    {:noreply, socket
+    |> assign(:show_contract_modal, true)
+    |> assign(:current_contract, contract)}
+  end
+
+  @impl true
+  def handle_event("sign_contract_submit", params, socket) do
+    %{
+      "contract_id" => contract_id,
+      "legal_name" => legal_name,
+      "digital_signature" => digital_signature
+    } = params
+
+    current_user = socket.assigns.current_user
+
+    signature_data = %{
+      legal_name: legal_name,
+      digital_signature: digital_signature,
+      ip_address: get_connect_info(socket, :peer_data).address,
+      user_agent: get_connect_info(socket, :user_agent),
+      timestamp: DateTime.utc_now()
+    }
+
+    case DataCampaigns.RevenueManager.sign_contract(contract_id, current_user.id, signature_data) do
+      {:ok, signed_contract} ->
+        {:noreply, socket
+        |> assign(:show_contract_modal, false)
+        |> assign(:current_contract, nil)
+        |> assign(:pending_contracts, load_pending_contracts(current_user))
+        |> put_flash(:info, "Contract signed successfully! You're now part of the campaign.")}
+
+      {:error, reason} ->
+        {:noreply, socket
+        |> put_flash(:error, "Contract signing failed: #{reason}")}
+    end
+  end
+
+  @impl true
+  def handle_event("view_improvement_plan", %{"improvement_period_id" => period_id}, socket) do
+    {:noreply, socket
+    |> assign(:show_improvement_modal, true)
+    |> assign(:improvement_period_id, period_id)}
+  end
+
+  @impl true
+  def handle_event("complete_improvement_task", %{"period_id" => period_id, "task_index" => task_index}, socket) do
+    # Mark improvement task as completed
+    # This would update the improvement period progress
+    {:noreply, socket
+    |> put_flash(:info, "Improvement task completed!")
+    |> assign(:content_campaigns, load_content_campaigns(socket.assigns.current_user))}
+  end
+
+  @impl true
+  def handle_event("change_channels_view", %{"view" => view}, socket) do
+    {:noreply, assign(socket, :channels_view_mode, view)}
+  end
+
+  @impl true
+  def handle_event("search_channels", %{"search" => search_term}, socket) do
+    {:noreply, assign(socket, :channel_search, search_term)}
+  end
+
+  @impl true
+  def handle_event("change_channels_sort", %{"sort_by" => sort_by}, socket) do
+    {:noreply, assign(socket, :channels_sort_by, sort_by)}
+  end
+
+  @impl true
+  def handle_event("change_channels_filter", %{"filter" => filter}, socket) do
+    {:noreply, assign(socket, :channels_filter, filter)}
+  end
+
+  @impl true
+  def handle_event("start_channel_session", %{"channel_id" => channel_id}, socket) do
+    # Implement channel session start logic
+    {:noreply, put_flash(socket, :info, "Starting session for channel #{channel_id}")}
+  end
+
+  @impl true
+  def handle_event("toggle_channel_menu", %{"channel_id" => channel_id}, socket) do
+    # Implement channel menu toggle logic
+    current_menu = Map.get(socket.assigns, :open_channel_menu)
+    new_menu = if current_menu == channel_id, do: nil, else: channel_id
+
+    {:noreply, assign(socket, :open_channel_menu, new_menu)}
+  end
+
+    # Story Engine Actions and Event Handlers
+
+  def handle_event("navigate_to_tab", %{"tab" => "story_engine"}, socket) do
+    {:noreply, assign(socket, :active_tab, "story_engine")}
+  end
+
+  def handle_event("navigate_to_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :active_tab, tab)}
+  end
+
   @impl true
   def handle_event("quick_create_story", %{"template" => template_key}, socket) do
     user = socket.assigns.current_user
@@ -915,196 +1098,6 @@ defmodule FrestylWeb.PortfolioHubLive do
       _ -> "New Story"
     end
   end
-
-  # Content Campaigns Events
-  @impl true
-  def handle_event("create_content_campaign", _params, socket) do
-    current_user = socket.assigns.current_user
-    current_account = socket.assigns.current_account
-
-    if FeatureGate.can_access_feature?(current_account, :content_campaigns) do
-      {:noreply, socket
-      |> assign(:show_campaign_modal, true)
-      |> assign(:campaign_form, %{})}
-    else
-      {:noreply, socket
-      |> put_flash(:error, "Upgrade required for content campaigns")
-      |> push_navigate(to: "/subscription")}
-    end
-  end
-
-  @impl true
-  def handle_event("join_campaign", %{"campaign_id" => campaign_id}, socket) do
-    current_user = socket.assigns.current_user
-
-    case Frestyl.DataCampaigns.join_campaign(campaign_id, current_user) do
-      {:ok, _contribution} ->
-        {:noreply, socket
-        |> assign(:content_campaigns, load_content_campaigns(current_user))
-        |> put_flash(:info, "Joined campaign successfully!")}
-
-      {:error, :campaign_full} ->
-        {:noreply, put_flash(socket, :error, "Campaign is full")}
-
-      {:error, :already_joined} ->
-        {:noreply, put_flash(socket, :error, "Already part of this campaign")}
-    end
-  end
-
-  @impl true
-  def handle_event("start_peer_review", %{"campaign_id" => campaign_id, "submission_type" => type}, socket) do
-    current_user = socket.assigns.current_user
-
-    submission_data = %{
-      type: String.to_atom(type),
-      content: get_user_campaign_content(campaign_id, current_user.id, type)
-    }
-
-    case Frestyl.DataCampaigns.PeerReview.submit_for_review(campaign_id, current_user.id, submission_data) do
-      {:ok, review_request} ->
-        {:noreply, socket
-        |> put_flash(:info, "Submitted for peer review! Reviewers will be notified.")
-        |> assign(:content_campaigns, load_content_campaigns(current_user))}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to submit for review: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_event("submit_peer_review", params, socket) do
-    %{
-      "review_request_id" => review_request_id,
-      "overall_score" => overall_score,
-      "criteria_scores" => criteria_scores,
-      "feedback" => feedback
-    } = params
-
-    current_user = socket.assigns.current_user
-
-    review_data = %{
-      overall_score: String.to_float(overall_score),
-      criteria_scores: parse_criteria_scores(criteria_scores),
-      feedback: feedback,
-      suggestions: Map.get(params, "suggestions", [])
-    }
-
-    case Frestyl.DataCampaigns.PeerReview.submit_review(review_request_id, current_user.id, review_data) do
-      {:ok, :review_completed, score} ->
-        {:noreply, socket
-        |> put_flash(:info, "Review completed! Final score: #{score}/5.0")
-        |> assign(:content_campaigns, load_content_campaigns(current_user))}
-
-      {:ok, :review_submitted, :awaiting_more_reviews} ->
-        {:noreply, socket
-        |> put_flash(:info, "Review submitted! Waiting for more reviewers.")
-        |> assign(:content_campaigns, load_content_campaigns(current_user))}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Review submission failed: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_event("view_contract", %{"contract_id" => contract_id}, socket) do
-    contract = DataCampaigns.RevenueManager.get_contract_details(contract_id)
-
-    {:noreply, socket
-    |> assign(:show_contract_modal, true)
-    |> assign(:current_contract, contract)}
-  end
-
-  @impl true
-  def handle_event("sign_contract_submit", params, socket) do
-    %{
-      "contract_id" => contract_id,
-      "legal_name" => legal_name,
-      "digital_signature" => digital_signature
-    } = params
-
-    current_user = socket.assigns.current_user
-
-    signature_data = %{
-      legal_name: legal_name,
-      digital_signature: digital_signature,
-      ip_address: get_connect_info(socket, :peer_data).address,
-      user_agent: get_connect_info(socket, :user_agent),
-      timestamp: DateTime.utc_now()
-    }
-
-    case DataCampaigns.RevenueManager.sign_contract(contract_id, current_user.id, signature_data) do
-      {:ok, signed_contract} ->
-        {:noreply, socket
-        |> assign(:show_contract_modal, false)
-        |> assign(:current_contract, nil)
-        |> assign(:pending_contracts, load_pending_contracts(current_user))
-        |> put_flash(:info, "Contract signed successfully! You're now part of the campaign.")}
-
-      {:error, reason} ->
-        {:noreply, socket
-        |> put_flash(:error, "Contract signing failed: #{reason}")}
-    end
-  end
-
-  @impl true
-  def handle_event("view_improvement_plan", %{"improvement_period_id" => period_id}, socket) do
-    {:noreply, socket
-    |> assign(:show_improvement_modal, true)
-    |> assign(:improvement_period_id, period_id)}
-  end
-
-  @impl true
-  def handle_event("complete_improvement_task", %{"period_id" => period_id, "task_index" => task_index}, socket) do
-    # Mark improvement task as completed
-    # This would update the improvement period progress
-    {:noreply, socket
-    |> put_flash(:info, "Improvement task completed!")
-    |> assign(:content_campaigns, load_content_campaigns(socket.assigns.current_user))}
-  end
-
-  @impl true
-  def handle_event("change_channels_view", %{"view" => view}, socket) do
-    {:noreply, assign(socket, :channels_view_mode, view)}
-  end
-
-  @impl true
-  def handle_event("search_channels", %{"search" => search_term}, socket) do
-    {:noreply, assign(socket, :channel_search, search_term)}
-  end
-
-  @impl true
-  def handle_event("change_channels_sort", %{"sort_by" => sort_by}, socket) do
-    {:noreply, assign(socket, :channels_sort_by, sort_by)}
-  end
-
-  @impl true
-  def handle_event("change_channels_filter", %{"filter" => filter}, socket) do
-    {:noreply, assign(socket, :channels_filter, filter)}
-  end
-
-  @impl true
-  def handle_event("start_channel_session", %{"channel_id" => channel_id}, socket) do
-    # Implement channel session start logic
-    {:noreply, put_flash(socket, :info, "Starting session for channel #{channel_id}")}
-  end
-
-  @impl true
-  def handle_event("toggle_channel_menu", %{"channel_id" => channel_id}, socket) do
-    # Implement channel menu toggle logic
-    current_menu = Map.get(socket.assigns, :open_channel_menu)
-    new_menu = if current_menu == channel_id, do: nil, else: channel_id
-
-    {:noreply, assign(socket, :open_channel_menu, new_menu)}
-  end
-
-  def handle_event("navigate_to_tab", %{"tab" => "story_engine"}, socket) do
-    {:noreply, assign(socket, :active_tab, "story_engine")}
-  end
-
-  def handle_event("navigate_to_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :active_tab, tab)}
-  end
-
 
   # PubSub Message Handlers
   @impl true
@@ -1473,25 +1466,7 @@ defmodule FrestylWeb.PortfolioHubLive do
     Frestyl.DataCampaigns.get_user_campaign_metrics(user.id)
   end
 
-  # Helper Functions - Access Control
-  defp check_tab_access(account, tab) do
-    case tab do
-      "service_dashboard" ->
-        if can_access_feature?(account, :service_booking) do
-          {:ok, :accessible}
-        else
-          {:error, :upgrade_required}
-        end
-      "creator_studio" ->
-        if can_access_feature?(account, :creator_studio) do
-          {:ok, :accessible}
-        else
-          {:error, :upgrade_required}
-        end
-      _ ->
-        {:ok, :accessible}
-    end
-  end
+
 
   defp can_access_feature?(account, feature) do
     # Simplified feature gate - implement proper tier checking

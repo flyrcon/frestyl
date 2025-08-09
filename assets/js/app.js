@@ -6,13 +6,15 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import VideoCapture from "./hooks/video_capture"
+import { RichTextEditor } from "./hooks/rich_text_editor"
 
 console.log("🔥 Imports loaded")
 
 // COMPLETE HOOKS DEFINITION
 let Hooks = {
 
-   VideoCapture: VideoCapture
+  VideoCapture: VideoCapture,
+  RichTextEditor
   
 };
 

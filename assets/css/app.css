@@ -2100,3 +2100,95 @@ const additionalCSS = `
   transition: all 0.3s ease;
 }
 
+/* Story Engine Styles */
+.intent-option:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.format-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Editor Styles */
+.focus-mode .w-64,
+.focus-mode .w-80 {
+  display: none;
+}
+
+.editable-title:focus {
+  outline: none;
+  border-bottom: 2px solid #3B82F6;
+}
+
+/* Screenplay Formatting */
+.screenplay-character { 
+  text-transform: uppercase; 
+  margin-left: 4rem; 
+  font-weight: bold;
+}
+
+.screenplay-dialogue { 
+  margin-left: 2.5rem; 
+  margin-right: 2rem; 
+}
+
+.screenplay-parenthetical { 
+  margin-left: 3.5rem; 
+  font-style: italic; 
+}
+
+.screenplay-scene-heading {
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-top: 1rem;
+}
+
+/* Collaboration Cursors */
+.collaborator-cursor {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.collaborator-cursor::before {
+  content: attr(data-user);
+  position: absolute;
+  top: -20px;
+  left: 0;
+  background: var(--cursor-color, #3B82F6);
+  color: white;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.collaborator-cursor::after {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 20px;
+  background: var(--cursor-color, #3B82F6);
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Template Modal Styles */
+.template-category-tab {
+  transition: all 0.2s ease;
+}
+
+.template-category-tab:hover {
+  background-color: #f3f4f6;
+}
+
+.template-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
