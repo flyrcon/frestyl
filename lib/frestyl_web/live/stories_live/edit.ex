@@ -95,6 +95,8 @@ defmodule FrestylWeb.StoriesLive.Edit do
         |> assign(:show_ai_panel, false)
         |> assign(:show_collaboration_panel, false)
         |> assign(:mobile_view, false)
+        |> assign(:creation_source, nil)
+        |> assign(:editor_state_params, %{})
 
         {:ok, socket}
 
@@ -103,6 +105,48 @@ defmodule FrestylWeb.StoriesLive.Edit do
 
       {:error, :access_denied} ->
         {:ok, socket |> put_flash(:error, "Access denied") |> redirect(to: ~p"/stories")}
+    end
+  end
+
+  @impl true
+  def handle_params(params, _url, socket) do
+    # NEW: Handle editor state parameters from URL
+    editor_state = parse_editor_state_params(params)
+
+    socket = socket
+    |> assign(:editor_state_params, editor_state)
+    |> assign(:creation_source, Map.get(params, "source"))
+    |> apply_editor_state_configuration(editor_state)
+
+    {:noreply, socket}
+  end
+
+    @impl true
+  def handle_event("dismiss_welcome", _params, socket) do
+    {:noreply, assign(socket, :show_welcome_modal, false)}
+  end
+
+  @impl true
+  def handle_event("start_guided_tour", _params, socket) do
+    story_type = socket.assigns.story.story_type
+
+    {:noreply, socket
+     |> assign(:show_welcome_modal, false)
+     |> push_event("start_guided_tour", %{story_type: story_type})}
+  end
+
+  @impl true
+  def handle_event("apply_template_structure", %{"template_key" => template_key}, socket) do
+    case apply_template_to_story(socket.assigns.story, template_key) do
+      {:ok, updated_story} ->
+        {:noreply, socket
+         |> assign(:story, updated_story)
+         |> assign(:show_welcome_modal, false)
+         |> put_flash(:info, "Template structure applied!")
+         |> push_event("refresh_editor_content", %{})}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to apply template")}
     end
   end
 
@@ -240,6 +284,124 @@ defmodule FrestylWeb.StoriesLive.Edit do
   end
 
   # Helper Functions
+
+    defp is_new_story?(story) do
+    # Check if story has minimal content
+    total_content = story.sections
+    |> Enum.map(& &1.content || "")
+    |> Enum.join("")
+    |> String.trim()
+
+    String.length(total_content) < 50
+  end
+
+  defp find_section_by_id(sections, section_id) when is_list(sections) do
+    Enum.find(sections, fn section ->
+      to_string(section.id) == to_string(section_id)
+    end)
+  end
+  defp find_section_by_id(_, _), do: nil
+
+  defp get_ai_config_for_intent(intent) do
+    case intent do
+      "entertain" ->
+        %{
+          level: "creative",
+          suggestions_enabled: true,
+          auto_suggestions: true,
+          creativity_boost: true
+        }
+
+      "educate" ->
+        %{
+          level: "structured",
+          suggestions_enabled: true,
+          auto_suggestions: false,
+          fact_checking: true
+        }
+
+      "persuade" ->
+        %{
+          level: "strategic",
+          suggestions_enabled: true,
+          auto_suggestions: false,
+          argument_analysis: true
+        }
+
+      "document" ->
+        %{
+          level: "minimal",
+          suggestions_enabled: false,
+          auto_suggestions: false,
+          grammar_only: true
+        }
+
+      _ ->
+        %{
+          level: "balanced",
+          suggestions_enabled: true,
+          auto_suggestions: false
+        }
+    end
+  end
+
+  defp apply_template_to_story(story, template_key) do
+    case Templates.get_by_key(template_key) do
+      nil ->
+        {:error, :template_not_found}
+
+      template ->
+        # Apply template structure to story
+        updated_sections = build_sections_from_template(template)
+        updated_story = %{story | sections: updated_sections}
+
+        # Save the updated story
+        Stories.update_enhanced_story(story.id, %{sections: updated_sections})
+    end
+  end
+
+  defp build_sections_from_template(template) do
+    template.sections
+    |> Enum.with_index(1)
+    |> Enum.map(fn {section_template, index} ->
+      %{
+        id: System.unique_integer([:positive]),
+        title: section_template.title,
+        type: section_template.type,
+        content: section_template.placeholder || "",
+        order: index,
+        created_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      }
+    end)
+  end
+
+  # ============================================================================
+  # ENHANCED EDITOR MODE DETERMINATION
+  # ============================================================================
+
+  defp determine_editor_mode(story, format_config) do
+    # Check if there's editor preference data in the story
+    case Map.get(story, :editor_preferences) do
+      %{editor_mode: mode} when mode in [:manuscript, :business, :experimental] ->
+        mode
+
+      _ ->
+        # Fall back to format-based determination
+        determine_editor_mode_from_format(story.story_type, format_config)
+    end
+  end
+
+  defp determine_editor_mode_from_format(story_type, format_config) do
+    cond do
+      story_type in ["novel", "screenplay", "poetry"] -> :manuscript
+      story_type in ["case_study", "data_story", "report"] -> :business
+      story_type in ["live_story", "narrative_beats", "interactive"] -> :experimental
+      format_config && Map.get(format_config, :default_editor_mode) ->
+        String.to_atom(format_config.default_editor_mode)
+      true -> :standard
+    end
+  end
 
   defp determine_editor_mode(story, format_config) do
     cond do
@@ -387,4 +549,110 @@ defmodule FrestylWeb.StoriesLive.Edit do
     </div>
     """
   end
+
+    @doc """
+  Parse editor state parameters from URL params
+  """
+  defp parse_editor_state_params(params) do
+    %{
+      mode: Map.get(params, "mode"),
+      intent: Map.get(params, "intent"),
+      source: Map.get(params, "source"),
+      template: Map.get(params, "template"),
+      focus: Map.get(params, "focus"),
+      section: Map.get(params, "section"),
+      collaboration: Map.get(params, "collab") == "true",
+      continue: Map.get(params, "continue") == "true"
+    }
+  end
+
+  @doc """
+  Apply editor state configuration based on parameters
+  """
+  defp apply_editor_state_configuration(socket, state_params) do
+    socket
+    |> maybe_override_editor_mode(state_params.mode)
+    |> maybe_set_focus_mode(state_params.focus)
+    |> maybe_enable_collaboration_panel(state_params.collaboration)
+    |> maybe_show_welcome_for_new_story(state_params.source)
+    |> maybe_navigate_to_section(state_params.section)
+    |> maybe_configure_ai_assistance(state_params.intent)
+  end
+
+  @doc """
+  Override editor mode if specified in params
+  """
+  defp maybe_override_editor_mode(socket, nil), do: socket
+  defp maybe_override_editor_mode(socket, mode) when mode in ["manuscript", "business", "experimental", "standard"] do
+    assign(socket, :editor_mode, String.to_atom(mode))
+  end
+  defp maybe_override_editor_mode(socket, _), do: socket
+
+  @doc """
+  Set focus mode based on parameters
+  """
+  defp maybe_set_focus_mode(socket, nil), do: socket
+  defp maybe_set_focus_mode(socket, focus_mode) do
+    socket
+    |> assign(:focus_mode, focus_mode)
+    |> push_event("set_focus_mode", %{mode: focus_mode})
+  end
+
+  @doc """
+  Enable collaboration panel if requested
+  """
+  defp maybe_enable_collaboration_panel(socket, false), do: socket
+  defp maybe_enable_collaboration_panel(socket, true) do
+    assign(socket, :show_collaboration_panel, true)
+  end
+
+  @doc """
+  Show welcome modal for stories created from hub
+  """
+  defp maybe_show_welcome_for_new_story(socket, "hub_creation") do
+    story = socket.assigns.story
+
+    # Show welcome if this is a brand new story (no content yet)
+    if is_new_story?(story) do
+      socket
+      |> assign(:show_welcome_modal, true)
+      |> push_event("show_getting_started_tips", %{
+        story_type: story.story_type,
+        intent: story.intent_category
+      })
+    else
+      socket
+    end
+  end
+  defp maybe_show_welcome_for_new_story(socket, _), do: socket
+
+  @doc """
+  Navigate to specific section if specified
+  """
+  defp maybe_navigate_to_section(socket, nil), do: socket
+  defp maybe_navigate_to_section(socket, section_id) do
+    story = socket.assigns.story
+
+    case find_section_by_id(story.sections, section_id) do
+      nil -> socket
+      section ->
+        socket
+        |> assign(:active_section, section)
+        |> push_event("navigate_to_section", %{section_id: section_id})
+    end
+  end
+
+  @doc """
+  Configure AI assistance based on intent
+  """
+  defp maybe_configure_ai_assistance(socket, nil), do: socket
+  defp maybe_configure_ai_assistance(socket, intent) when socket.assigns.ai_enabled do
+    ai_config = get_ai_config_for_intent(intent)
+
+    socket
+    |> assign(:ai_assistance_level, ai_config.level)
+    |> assign(:ai_suggestions_enabled, ai_config.suggestions_enabled)
+    |> push_event("configure_ai_assistance", ai_config)
+  end
+  defp maybe_configure_ai_assistance(socket, _), do: socket
 end

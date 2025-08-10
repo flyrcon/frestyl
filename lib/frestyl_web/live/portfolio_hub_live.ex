@@ -22,6 +22,8 @@ defmodule FrestylWeb.PortfolioHubLive do
     available_accounts = load_user_accounts(current_user.id)
     current_account = get_current_account(current_user, available_accounts)
 
+    debug_tier_info(current_account, current_user, "mount")
+
     # Enhanced PubSub subscriptions with all necessary channels
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Frestyl.PubSub, "portfolio_hub")
@@ -41,6 +43,7 @@ defmodule FrestylWeb.PortfolioHubLive do
     socket = socket
       |> assign(:current_account, current_account)
       |> assign(:available_accounts, available_accounts)
+      |> assign(:show_account_settings, false)
       |> assign(:show_account_switcher, false)
       |> assign(:portfolios, portfolios)
       |> assign(:analytics_data, analytics_data)
@@ -133,10 +136,51 @@ defmodule FrestylWeb.PortfolioHubLive do
   end
 
   defp get_campaign_limits(account) do
-    try do
-      Features.FeatureGate.get_campaign_limits(account)
+    tier = Frestyl.Features.TierManager.get_account_tier(account)
+    limits = Frestyl.Features.TierManager.get_tier_limits(tier)
+
+    %{
+      max_campaigns: get_campaign_limit(account),
+      max_portfolios: limits.max_portfolios,
+      storage_gb: limits.storage_quota_gb,
+      can_monetize: Frestyl.Features.TierManager.feature_available?(tier, :monetization)
+    }
+  end
+
+  defp debug_tier_info(account, user, context \\ "unknown") do
+    account_tier_type = try do
+      account.subscription_tier.__struct__
     rescue
-      _ -> %{concurrent_campaigns: 1, max_contributors: 3, revenue_sharing: false}
+      _ -> :not_struct
+    end
+
+    IO.puts("""
+    🔍 TIER DEBUG [#{context}]:
+    - Account ID: #{inspect(account.id)}
+    - Account subscription_tier (raw): #{inspect(account.subscription_tier)}
+    - Account subscription_tier (type): #{inspect(account_tier_type)}
+    - Account subscription_tier is_atom?: #{is_atom(account.subscription_tier)}
+    - Account subscription_tier is_binary?: #{is_binary(account.subscription_tier)}
+    - TierManager.get_account_tier result: #{inspect(Frestyl.Features.TierManager.get_account_tier(account))}
+    - User subscription_tier (raw): #{inspect(user.subscription_tier)}
+    - TierManager.get_user_tier result: #{inspect(Frestyl.Features.TierManager.get_user_tier(user))}
+    """)
+
+    account
+  end
+
+  defp get_campaign_limit(account) do
+    # Ensure we're using the account, not user
+    tier = Frestyl.Features.TierManager.get_account_tier(account)
+
+    IO.puts("🔍 get_campaign_limit - tier: #{tier}")
+
+    case tier do
+      "personal" -> 1
+      "creator" -> 3
+      "professional" -> 10
+      "enterprise" -> "∞"
+      _ -> 1
     end
   end
 
@@ -339,6 +383,9 @@ defmodule FrestylWeb.PortfolioHubLive do
 
     case get_user_account(current_user.id, account_id) do
       {:ok, account} ->
+        # Add debugging for account switch
+        debug_tier_info(account, current_user, "switch_account")
+
         # Update session to remember last active account
         Phoenix.PubSub.broadcast(Frestyl.PubSub, "user:#{current_user.id}",
           {:account_switched, account_id})
@@ -352,15 +399,60 @@ defmodule FrestylWeb.PortfolioHubLive do
         |> assign(:current_account, account)
         |> assign(:portfolios, portfolios)
         |> assign(:analytics_data, analytics_data)
-        |> assign(:show_account_switcher, false)  # This already closes it
+        |> assign(:show_account_switcher, false)
         |> put_flash(:info, "Switched to #{account.name}")}
 
       {:error, _} ->
         {:noreply,
         socket
-        |> assign(:show_account_switcher, false)  # Close on error too
+        |> assign(:show_account_switcher, false)
         |> put_flash(:error, "Could not switch accounts")}
     end
+  end
+
+  @impl true
+  def handle_event("update_account_name", %{"name" => new_name}, socket) do
+    current_account = socket.assigns.current_account
+
+    case update_account_name(current_account, new_name) do
+      {:ok, updated_account} ->
+        # Update the socket with new account data
+        updated_accounts = load_user_accounts(socket.assigns.current_user.id)
+
+        {:noreply,
+        socket
+        |> assign(:current_account, updated_account)
+        |> assign(:available_accounts, updated_accounts)
+        |> put_flash(:info, "Account name updated successfully")}
+
+      {:error, changeset} ->
+        {:noreply,
+        socket
+        |> put_flash(:error, "Failed to update account name: #{format_errors(changeset)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("show_account_settings", _params, socket) do
+    {:noreply, assign(socket, :show_account_settings, true)}
+  end
+
+  @impl true
+  def handle_event("close_account_settings", _params, socket) do
+    {:noreply, assign(socket, :show_account_settings, false)}
+  end
+
+  defp debug_template_tier(account) do
+    tier = Frestyl.Features.TierManager.get_account_tier(account)
+    formatted = format_subscription_tier(tier)
+
+    """
+    <!-- TIER DEBUG:
+      Raw: #{inspect(account.subscription_tier)}
+      Normalized: #{tier}
+      Formatted: #{formatted}
+    -->
+    """
   end
 
   @impl true
@@ -369,22 +461,23 @@ defmodule FrestylWeb.PortfolioHubLive do
 
     account_attrs = %{
       name: params["name"],
-      type: String.to_atom(params["type"])
+      type: String.to_atom(params["type"])  # Now accepts: individual, business, organization, enterprise
     }
 
     case create_account_for_user(current_user, account_attrs) do
-      {:ok, account} ->
-        available_accounts = load_user_accounts(current_user.id)
-
+      {:ok, account, updated_accounts} ->
         {:noreply,
-         socket
-         |> assign(:available_accounts, available_accounts)
-         |> assign(:current_account, account)
-         |> assign(:show_account_switcher, false)
-         |> put_flash(:info, "Created account: #{account.name}")}
+        socket
+        |> assign(:available_accounts, updated_accounts)
+        |> assign(:current_account, account)
+        |> assign(:show_account_switcher, false)
+        |> put_flash(:info, "#{format_account_type(account.type)} account created successfully")}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to create account")}
+      {:error, _} ->
+        {:noreply,
+        socket
+        |> assign(:show_account_switcher, false)
+        |> put_flash(:error, "Could not create account")}
     end
   end
 
@@ -656,15 +749,32 @@ defmodule FrestylWeb.PortfolioHubLive do
   end
 
   @impl true
-  def handle_event("show_create_modal", %{"type" => type}, socket) do
+  def handle_event("show_create_modal", %{"type" => "account"}, socket) do
     {:noreply,
-     socket
-     |> assign(:show_create_modal, true)
-     |> assign(:create_type, type)}
+    socket
+    |> assign(:show_create_modal, true)
+    |> assign(:create_type, "account")}
   end
 
-  def handle_event("show_create_modal", %{"type" => "content_campaign"}, socket) do
-    {:noreply, assign(socket, :show_content_campaign_modal, true)}
+  @impl true
+  def handle_event("show_create_modal", params, socket) do
+    create_type = params["type"] || "portfolio"
+
+    socket = socket
+    |> assign(:show_create_modal, true)
+    |> assign(:create_type, create_type)
+
+    # Only assign import-related fields if needed
+    socket = if create_type in ["portfolio", "import"] do
+      socket
+      |> assign(:show_import_modal, false)
+      |> assign(:import_error, nil)
+      |> assign(:processing_import, false)
+    else
+      socket
+    end
+
+    {:noreply, socket}
   end
 
   def handle_event("join_campaign", %{"campaign_id" => campaign_id}, socket) do
@@ -1284,44 +1394,92 @@ defmodule FrestylWeb.PortfolioHubLive do
   # Helper Functions - Account Management
   defp load_user_accounts(user_id) do
     try do
-      Accounts.list_user_accounts(user_id)
+      case Accounts.list_user_accounts(user_id) do
+        accounts when is_list(accounts) -> accounts
+        _ -> [create_default_account_for_user_id(user_id)]
+      end
     rescue
-      _ -> []
+      _ -> [create_default_account_for_user_id(user_id)]
     end
   end
 
   defp get_current_account(user, available_accounts) do
-    # Get last active account from session or default to first personal account
     case available_accounts do
       [account | _] -> account
-      [] ->
-        IO.puts("No accounts found, creating default personal account for user #{user.id}")
-        create_default_personal_account(user)
+      [] -> create_default_account_for_user(user)
     end
+  end
+
+  defp create_default_account_for_user_id(user_id) do
+    %{
+      id: 0,  # Mock ID for default account
+      user_id: user_id,
+      owner_id: user_id,
+      name: "Personal Account",
+      type: :personal,
+      subscription_tier: "personal",  # Use string format for TierManager
+      subscription_status: :active
+    }
+  end
+
+  defp create_default_account_for_user(user) do
+    %{
+      id: 0,  # Mock ID for default account
+      user_id: user.id,
+      owner_id: user.id,
+      name: "#{user.name || user.email}'s Personal Account",
+      type: :personal,
+      subscription_tier: "personal",  # Use string format for TierManager
+      subscription_status: :active
+    }
   end
 
   defp get_user_account(user_id, account_id) do
     try do
-      case Enum.find(load_user_accounts(user_id), &(&1.id == account_id)) do
-        nil -> {:error, :not_found}
-        account -> {:ok, account}
+      case Accounts.get_account!(account_id) do
+        %{owner_id: ^user_id} = account -> {:ok, account}
+        account ->
+          # Check if user has membership in this account
+          case Accounts.get_account_membership(user_id, account_id) do
+            %{} -> {:ok, account}
+            nil -> {:error, :unauthorized}
+          end
       end
     rescue
       _ -> {:error, :not_found}
     end
   end
 
-  defp create_default_personal_account(user) do
-    IO.puts("Creating default personal account for user: #{inspect(user)}")
+  defp update_account_name(account, new_name) do
+    changeset = Ecto.Changeset.change(account, name: String.trim(new_name))
 
-    case create_account_for_user(user, %{name: "Personal", type: :personal}) do
+    case Frestyl.Repo.update(changeset) do
+      {:ok, updated_account} -> {:ok, updated_account}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp format_errors(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.map(fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
+    |> Enum.join("; ")
+  end
+
+  defp create_default_personal_account(user) do
+    IO.puts("Creating default individual account for user: #{inspect(user)}")
+
+    case create_account_for_user(user, %{name: "Personal", type: :individual}) do
       {:ok, account} ->
         IO.puts("Successfully created account: #{inspect(account)}")
         account
       {:error, error} ->
         IO.puts("Failed to create account: #{inspect(error)}")
         # Return a mock account to prevent crashes
-        %{id: 0, name: "Personal", type: :personal, owner_id: user.id}
+        %{id: 0, name: "Personal", type: :individual, owner_id: user.id}
     end
   end
 
@@ -1332,7 +1490,7 @@ defmodule FrestylWeb.PortfolioHubLive do
         name: attrs[:name] || attrs["name"],
         type: attrs[:type] || String.to_atom(attrs["type"]),
         owner_id: user.id,
-        subscription_tier: :personal,
+        subscription_tier: "personal",  # FIXED: Use string instead of :personal
         subscription_status: :active,
         settings: %{},
         branding_config: %{},
@@ -1466,16 +1624,33 @@ defmodule FrestylWeb.PortfolioHubLive do
     Frestyl.DataCampaigns.get_user_campaign_metrics(user.id)
   end
 
-
-
   defp can_access_feature?(account, feature) do
-    # Simplified feature gate - implement proper tier checking
-    case account.subscription_tier do
-      :creator -> true
-      :professional -> true
-      :enterprise -> true
-      _ -> false
+    tier = Frestyl.Features.TierManager.get_account_tier(account)
+
+    IO.puts("🔍 can_access_feature? - tier: #{tier}, feature: #{feature}")
+
+    result = case feature do
+      :creator_studio ->
+        tier in ["creator", "professional", "enterprise"]
+
+      :service_dashboard ->
+        tier in ["creator", "professional", "enterprise"]
+
+      :advanced_analytics ->
+        tier in ["professional", "enterprise"]
+
+      :custom_branding ->
+        tier in ["professional", "enterprise"]
+
+      :api_access ->
+        tier == "enterprise"
+
+      _ ->
+        true
     end
+
+    IO.puts("🔍 can_access_feature? - result: #{result}")
+    result
   end
 
   defp humanize_tab(tab) do
@@ -1952,49 +2127,87 @@ defmodule FrestylWeb.PortfolioHubLive do
   end
   defp format_visibility(_), do: "Unknown"
 
-  defp format_account_type(type) when is_atom(type) do
-    type |> Atom.to_string() |> String.capitalize()
+  defp format_account_type(type) do
+    case type do
+      :individual -> "Individual"
+      :business -> "Business"
+      :organization -> "Organization"
+      :enterprise -> "Enterprise"
+      _ -> "Individual"
+    end
   end
-  defp format_account_type(type) when is_binary(type) do
-    String.capitalize(type)
-  end
-  defp format_account_type(_), do: "Unknown"
 
-  defp format_subscription_tier(tier) when is_atom(tier) do
-    tier |> Atom.to_string() |> String.capitalize()
+  defp format_account_type_display(type) do
+    case type do
+      :individual -> "Individual"
+      :business -> "Business"
+      :organization -> "Organization"
+      :enterprise -> "Enterprise"
+      _ -> "Individual"
+    end
   end
-  defp format_subscription_tier(tier) when is_binary(tier) do
-    String.capitalize(tier)
-  end
-  defp format_subscription_tier(nil), do: "Free"
-  defp format_subscription_tier(_), do: "Unknown"
 
-  # Account Helper Functions
+  defp get_account_type_description(type) do
+    case type do
+      :individual -> "Personal projects and individual work"
+      :business -> "Professional business accounts"
+      :organization -> "Team collaboration and organizations"
+      :enterprise -> "Advanced enterprise features"
+      _ -> "Personal account"
+    end
+  end
+
+  defp format_subscription_tier(tier) do
+    # Use TierManager for consistent tier display
+    case Frestyl.Features.TierManager.normalize_tier(tier) do
+      "personal" -> "Personal"
+      "creator" -> "Creator"
+      "professional" -> "Professional"
+      "enterprise" -> "Enterprise"
+      _ -> "Personal"
+    end
+  end
+
+  defp get_account_tier_for_display(account) do
+    # Helper to get properly formatted tier for UI display
+    account
+    |> Frestyl.Features.TierManager.get_account_tier()
+    |> format_subscription_tier()
+  end
+
   defp get_account_gradient(account_type) do
     case account_type do
-      :personal -> "from-blue-600 to-cyan-600"
-      :work -> "from-purple-600 to-pink-600"
-      :team -> "from-emerald-600 to-teal-600"
+      :individual -> "from-blue-600 to-cyan-600"        # Individual users
+      :business -> "from-purple-600 to-pink-600"        # Business accounts
+      :organization -> "from-emerald-600 to-teal-600"   # Organizations/teams
+      :enterprise -> "from-amber-600 to-orange-600"     # Enterprise accounts
       _ -> "from-gray-600 to-slate-600"
     end
   end
 
+  # Update the account icon function
   defp get_account_icon(account_type) do
     case account_type do
-      :personal -> "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-      :work -> "M20 6L9 17l-5-5"
-      :team -> "M12 2l3.09 6.26L22 9l-5 4.74L18.18 22 12 18.27 5.82 22 7 13.74 2 9l6.91-.74L12 2z"
+      :individual -> "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+      :business -> "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1"
+      :organization -> "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+      :enterprise -> "M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
       _ -> "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
     end
   end
+
+
 
   defp list_content_campaigns(user) do
     # For now, return empty list - implement when backend is ready
     []
   end
 
-  defp get_campaign_limit(user) do
-    case Frestyl.Features.TierManager.get_account_tier(user) do
+  defp get_campaign_limit(account) do
+    # Fix: Pass account instead of user, and ensure we get the account tier
+    tier = Frestyl.Features.TierManager.get_account_tier(account)
+
+    case tier do
       "personal" -> 1
       "creator" -> 3
       "professional" -> 10

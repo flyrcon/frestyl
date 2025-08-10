@@ -5,7 +5,7 @@ defmodule Frestyl.Accounts.Account do
 
   schema "accounts" do
     field :name, :string
-    field :type, Ecto.Enum, values: [:personal, :work, :team]
+    field :type, Ecto.Enum, values: [:individual, :business, :organization, :enterprise]
     field :subscription_tier, Ecto.Enum, values: [:personal, :creator, :professional, :enterprise]
     field :subscription_status, Ecto.Enum, values: [:active, :past_due, :canceled, :paused]
 

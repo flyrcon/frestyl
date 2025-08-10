@@ -659,48 +659,27 @@ defmodule Frestyl.Stories do
   Create story from Story Engine with proper initialization
   """
   def create_story_for_engine(attrs, user) when is_map(attrs) do
-    # Generate session_id if not provided
-    session_id = Ecto.UUID.generate()
+    # Get format-specific template
+    template = get_story_template(attrs.story_type, attrs.narrative_structure)
 
-    # Get template if quick_start_template is specified
-    template = case Map.get(attrs, :quick_start_template) do
-      nil -> nil
-      template_key ->
-        [format, intent] = String.split(template_key, "_", parts: 2)
-        Frestyl.StoryEngine.QuickStartTemplates.get_template(format, intent)
-    end
+    # Initialize story with template
+    story_attrs = attrs
+    |> Map.put(:sections, template.initial_sections)
+    |> Map.put(:outline, template.outline)
+    |> Map.put(:character_data, template.character_data || %{})
+    |> Map.put(:format_metadata, template.format_metadata || %{})
+    |> Map.put(:collaboration_mode, "owner_only")
+    |> Map.put(:workflow_stage, "development")
+    |> Map.put(:created_by_id, user.id)
 
-    # Merge template data if available
-    enhanced_attrs = case template do
-      nil -> attrs
-      template -> Map.merge(attrs, %{template_data: template})
-    end
+    changeset = EnhancedStoryStructure.changeset(%EnhancedStoryStructure{}, story_attrs)
 
-    # Create the story structure
-    result = %Frestyl.Stories.EnhancedStoryStructure{
-      session_id: session_id,
-      created_by_id: user.id
-    }
-    |> Frestyl.Stories.EnhancedStoryStructure.changeset(enhanced_attrs)
-    |> Frestyl.Repo.insert()
-
-    case result do
+    case Repo.insert(changeset) do
       {:ok, story} ->
-        # Track user preferences if intent provided
-        if Map.has_key?(enhanced_attrs, :intent_category) do
-          Frestyl.StoryEngine.UserPreferences.track_format_usage(
-            user.id,
-            enhanced_attrs.story_type,
-            enhanced_attrs.intent_category
-          )
+        # Initialize collaboration if needed
+        if attrs[:collaboration_type] && attrs[:collaboration_type] != "solo" do
+          setup_initial_collaboration(story, attrs[:collaboration_type], user)
         end
-
-        # Broadcast story creation
-        Phoenix.PubSub.broadcast(
-          Frestyl.PubSub,
-          "user_stories:#{user.id}",
-          {:story_created, story}
-        )
 
         {:ok, story}
 
