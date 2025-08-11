@@ -588,6 +588,68 @@ defmodule Frestyl.Channels do
   end
 
   @doc """
+  Gets or creates a personal workspace for a user.
+  Each user gets one personal workspace initially (tier-based limits apply later).
+  """
+  def get_or_create_personal_workspace(user) do
+    case get_user_personal_workspace(user.id) do
+      nil -> create_personal_workspace(user)
+      workspace -> {:ok, workspace}
+    end
+  end
+
+  @doc """
+  Gets the user's existing personal workspace
+  """
+  defp get_user_personal_workspace(user_id) do
+    from(c in Channel,
+      where: c.owner_id == ^user_id and
+            fragment("?->>'is_personal_workspace' = 'true'", c.metadata),
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Creates a new personal workspace for the user
+  """
+  defp create_personal_workspace(user) do
+    user_tier = Frestyl.Features.TierManager.get_user_tier(user)
+
+    workspace_params = %{
+      name: "#{user.username}'s Personal Workspace",
+      description: "Private creative workspace for personal projects and story development",
+      slug: "#{user.username}-personal-#{System.unique_integer([:positive])}",
+      channel_type: :general,  # Use valid enum value
+      visibility: "private",
+      metadata: %{
+        is_personal_workspace: true,
+        workspace_type: "personal_creative",
+        tier: user_tier
+      }
+    }
+
+    case create_channel(workspace_params, user) do
+      {:ok, workspace} -> {:ok, workspace}
+      error -> error
+    end
+  end
+
+  @doc """
+  Gets user's default channel (fallback for missing function)
+  """
+  def get_user_default_channel(user_id) do
+    # Try to get personal workspace first
+    case get_user_personal_workspace(user_id) do
+      nil ->
+        # Fall back to any channel owned by user
+        from(c in Channel, where: c.owner_id == ^user_id, limit: 1)
+        |> Repo.one()
+      workspace -> workspace
+    end
+  end
+
+  @doc """
   Creates a channel membership.
   """
   def create_membership(attrs) do

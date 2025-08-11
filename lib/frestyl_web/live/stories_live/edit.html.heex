@@ -1,479 +1,457 @@
-<!-- lib/frestyl_web/live/stories_live/edit.html.heex -->
+# lib/frestyl_web/live/stories_live/edit.html.heex
 
-<div class="h-screen flex flex-col bg-gray-50" data-story-id={@story.id} data-editor-mode={@editor_mode}>
-  <!-- Top Navigation Bar -->
-  <div class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-    <!-- Left: Story Info -->
-    <div class="flex items-center space-x-4">
-      <.link navigate={~p"/stories"} class="text-gray-400 hover:text-gray-600">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-        </svg>
-      </.link>
-      
-      <div>
-        <h1 class="text-lg font-semibold text-gray-900 editable-title" 
-            contenteditable={@permissions.can_edit}
-            phx-blur="update_title"
-            phx-value-title={@story.title}>
-          <%= @story.title %>
-        </h1>
-        <div class="flex items-center space-x-3 text-sm text-gray-500">
-          <span class="format-badge px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-            <%= @format_config.name %>
-          </span>
-          <span class="word-count"><%= @word_count %> words</span>
-          <span class={[
-            "save-status",
+<div class={[
+  "min-h-screen bg-gray-50 flex",
+  if(@focus_mode == :distraction_free, do: "bg-white", else: "")
+]}>
+  <!-- Sidebar - Conditionally hidden in distraction-free mode -->
+  <%= unless @focus_mode == :distraction_free do %>
+    <div class={[
+      "w-80 bg-white border-r border-gray-200 flex flex-col",
+      if(@sidebar_collapsed, do: "w-16", else: "w-80")
+    ]}>
+      <!-- Sidebar Header -->
+      <div class="p-4 border-b border-gray-200">
+        <div class="flex items-center justify-between">
+          <%= unless @sidebar_collapsed do %>
+            <div>
+              <h1 class="text-lg font-semibold text-gray-900 truncate">
+                <%= @story.title %>
+              </h1>
+              <div class="text-sm text-gray-600">
+                <%= String.capitalize(@story.story_type) %> • <%= @editor_mode %>
+              </div>
+            </div>
+          <% end %>
+          
+          <button 
+            phx-click="toggle_sidebar"
+            class="p-1 text-gray-500 hover:text-gray-700">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d={if(@sidebar_collapsed, do: "M9 5l7 7-7 7", else: "M15 19l-7-7 7-7")} />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Format-Specific Tools -->
+      <%= unless @sidebar_collapsed do %>
+        <div class="flex-1 overflow-y-auto p-4">
+          <!-- Editor Mode Selector -->
+          <div class="mb-6">
+            <label class="text-sm font-medium text-gray-700 mb-2 block">Editor Mode</label>
+            <select 
+              phx-change="change_editor_mode"
+              class="w-full text-sm border-gray-300 rounded-md">
+              <option value="manuscript" selected={@editor_mode == :manuscript}>Manuscript</option>
+              <option value="business" selected={@editor_mode == :business}>Business</option>
+              <option value="publishing" selected={@editor_mode == :publishing}>Publishing</option>
+              <option value="experimental" selected={@editor_mode == :experimental}>Experimental</option>
+              <option value="standard" selected={@editor_mode == :standard}>Standard</option>
+            </select>
+          </div>
+
+          <!-- Format-Specific Components -->
+          <%= case @story.story_type do %>
+            <% "novel" -> %>
+              <.novel_editor_tools 
+                show_character_panel={@show_character_panel}
+                show_plot_tracker={@show_plot_tracker}
+                characters={@characters || []}
+                completion_percentage={@story.completion_percentage || 0}
+                current_act={@current_act || 1}
+                word_count_target={@word_count_target || 50000}
+                current_word_count={@story.current_word_count || 0} />
+
+            <% "screenplay" -> %>
+              <.screenplay_editor_tools 
+                show_scene_breakdown={@show_scene_breakdown}
+                character_list_visible={@character_list_visible}
+                scenes={@scenes || []}
+                screenplay_characters={@screenplay_characters || []}
+                current_page_count={@current_page_count || 0}
+                page_target={@page_target || 120} />
+
+            <% "case_study" -> %>
+              <.case_study_editor_tools 
+                show_data_panel={@show_data_panel}
+                show_stakeholder_panel={@show_stakeholder_panel}
+                template_guided={@template_guided}
+                data_sources={@data_sources || []}
+                stakeholders={@stakeholders || []} />
+
+            <% format when format in ["blog_series", "article"] -> %>
+              <.blog_editor_tools 
+                show_seo_panel={@show_seo_panel}
+                show_publishing_panel={@show_publishing_panel}
+                keyword_tracking={@keyword_tracking}
+                focus_keyword={@focus_keyword}
+                meta_description={@meta_description}
+                seo_score={@seo_score || 0}
+                readability_score={@readability_score || 0}
+                publication_status={@publication_status || "draft"}
+                categories={@categories || []}
+                keyword_densities={@keyword_densities || []} />
+
+            <% _ -> %>
+              <!-- Standard Tools -->
+              <div class="space-y-4">
+                <div>
+                  <h4 class="text-sm font-medium text-gray-900 mb-2">Outline</h4>
+                  <button 
+                    phx-click="toggle_panel" 
+                    phx-value-panel="outline"
+                    class="text-sm text-blue-600 hover:text-blue-700">
+                    Toggle Outline
+                  </button>
+                </div>
+                <div>
+                  <h4 class="text-sm font-medium text-gray-900 mb-2">Research</h4>
+                  <button 
+                    phx-click="toggle_panel" 
+                    phx-value-panel="research"
+                    class="text-sm text-blue-600 hover:text-blue-700">
+                    Add Research Note
+                  </button>
+                </div>
+              </div>
+          <% end %>
+
+          <!-- AI Assistance Panel -->
+          <%= if @ai_suggestions_enabled do %>
+            <div class="mt-6 pt-6 border-t border-gray-200">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-medium text-gray-900">AI Assistant</h4>
+                <div class={[
+                  "text-xs px-2 py-1 rounded",
+                  ai_level_class(@ai_assistance_level)
+                ]}>
+                  <%= String.capitalize(@ai_assistance_level) %>
+                </div>
+              </div>
+              
+              <button 
+                phx-click="toggle_panel" 
+                phx-value-panel="ai"
+                class={[
+                  "w-full py-2 px-3 text-sm rounded border transition-colors",
+                  if(@show_ai_panel, 
+                     do: "bg-blue-50 border-blue-200 text-blue-700", 
+                     else: "border-gray-300 text-gray-700 hover:bg-gray-50")
+                ]}>
+                <%= if @show_ai_panel, do: "Hide", else: "Show" %> AI Suggestions
+              </button>
+            </div>
+          <% end %>
+
+          <!-- Collaboration Panel -->
+          <%= if @collaboration_enabled do %>
+            <div class="mt-6 pt-6 border-t border-gray-200">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-medium text-gray-900">Collaboration</h4>
+                <div class="flex items-center">
+                  <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                  <span class="text-xs text-gray-600"><%= length(@collaborators) %> online</span>
+                </div>
+              </div>
+              
+              <button 
+                phx-click="toggle_panel" 
+                phx-value-panel="collaboration"
+                class="w-full py-2 px-3 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50">
+                Manage Collaborators
+              </button>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+
+  <!-- Main Editor Area -->
+  <div class="flex-1 flex flex-col">
+    <!-- Top Toolbar -->
+    <div class="bg-white border-b border-gray-200 px-6 py-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+          <!-- Focus Mode Toggle -->
+          <button 
+            phx-click="toggle_focus_mode"
+            class={[
+              "px-3 py-1 text-sm rounded transition-colors",
+              if(@focus_mode == :distraction_free,
+                 do: "bg-blue-100 text-blue-700 border border-blue-300",
+                 else: "bg-gray-100 text-gray-700 hover:bg-gray-200")
+            ]}>
+            <%= if @focus_mode == :distraction_free, do: "Exit Focus", else: "Focus Mode" %>
+          </button>
+
+          <!-- Section Navigation -->
+          <%= if length(@story.sections) > 1 do %>
+            <select 
+              phx-change="change_active_section"
+              class="text-sm border-gray-300 rounded">
+              <%= for section <- @story.sections do %>
+                <option value={section.id} selected={@active_section.id == section.id}>
+                  <%= section.title %>
+                </option>
+              <% end %>
+            </select>
+          <% end %>
+        </div>
+
+        <div class="flex items-center space-x-4">
+          <!-- Save Status -->
+          <div class={[
+            "text-sm",
             case @save_status do
               :saving -> "text-yellow-600"
               :saved -> "text-green-600"
               :error -> "text-red-600"
+              _ -> "text-gray-600"
             end
           ]}>
-            <%= case @save_status do
-              :saving -> "Saving..."
-              :saved -> "Saved"
-              :error -> "Error saving"
-            end %>
-          </span>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Center: Collaboration Avatars -->
-    <div class="flex items-center space-x-2">
-      <%= for collaborator <- @collaborators do %>
-        <div class="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full flex items-center justify-center text-white text-sm font-medium"
-             title={collaborator.name}>
-          <%= String.first(collaborator.name) %>
-        </div>
-      <% end %>
-      
-      <%= if @permissions.can_invite do %>
-        <button class="w-8 h-8 border-2 border-dashed border-gray-300 rounded-full flex items-center justify-center text-gray-400 hover:border-gray-400 hover:text-gray-600"
-                phx-click="show_invite_modal">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-          </svg>
-        </button>
-      <% end %>
-    </div>
-    
-    <!-- Right: Actions -->
-    <div class="flex items-center space-x-3">
-      <!-- Voice Input Button -->
-      <%= if @permissions.can_use_voice do %>
-        <button id="voice-input-btn" 
-                class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-                phx-click="voice_input_start"
-                title="Voice input">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
-          </svg>
-        </button>
-      <% end %>
-      
-      <!-- AI Assistant Toggle -->
-      <%= if @ai_enabled do %>
-        <button class={[
-          "p-2 rounded-lg",
-          if(@show_ai_panel, 
-            do: "bg-green-100 text-green-600", 
-            else: "text-gray-400 hover:text-gray-600 hover:bg-gray-100")
-        ]}
-                phx-click="toggle_ai_panel"
-                title="AI Assistant">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-          </svg>
-        </button>
-      <% end %>
-      
-      <!-- Export Menu -->
-      <%= if @permissions.can_export do %>
-        <div class="relative" data-dropdown>
-          <button class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-                  data-dropdown-toggle
-                  title="Export">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-          </button>
-          
-          <div class="export-menu absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 hidden">
-            <%= for format <- get_export_formats(@format_config) do %>
-              <button class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 first:rounded-t-lg last:rounded-b-lg"
-                      phx-click="export_story"
-                      phx-value-format={format.key}>
-                <%= format.name %>
-              </button>
+            <%= case @save_status do %>
+              <% :saving -> %> Saving...
+              <% :saved -> %> Saved
+              <% :error -> %> Error saving
+              <% _ -> %> Ready
             <% end %>
           </div>
-        </div>
-      <% end %>
-    </div>
-  </div>
-  
-  <!-- Main Editor Area -->
-  <div class="flex-1 flex overflow-hidden">
-    <!-- Left Sidebar: Format-Specific Tools -->
-    <div class="w-64 bg-white border-r border-gray-200 flex flex-col">
-      <!-- Section Navigation -->
-      <div class="p-4 border-b border-gray-200">
-        <h3 class="text-sm font-medium text-gray-900 mb-3">
-          <%= get_section_label(@editor_mode) %>
-        </h3>
-        
-        <div class="space-y-1" id="section-nav">
-          <%= for section <- @story.sections do %>
-            <div class={[
-              "flex items-center justify-between p-2 rounded-lg cursor-pointer",
-              if(section.id == @active_section.id, 
-                do: "bg-blue-50 text-blue-700", 
-                else: "text-gray-700 hover:bg-gray-50")
-            ]}
-                 phx-click="select_section"
-                 phx-value-section-id={section.id}>
-              <span class="text-sm"><%= section.title %></span>
-              <%= if @permissions.can_edit do %>
-                <button class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600">
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                  </svg>
+
+          <!-- Word Count -->
+          <div class="text-sm text-gray-600">
+            <%= format_number(@word_count) %> words
+          </div>
+
+          <!-- Export Menu -->
+          <div class="relative" phx-hook="Dropdown" id="export-dropdown">
+            <button 
+              class="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+              data-dropdown-toggle>
+              Export
+            </button>
+            <div class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-10 hidden"
+                 data-dropdown-menu>
+              <%= for format <- get_export_formats(@format_config) do %>
+                <button 
+                  phx-click="export_story" 
+                  phx-value-format={format.key}
+                  class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                  <%= format.name %>
                 </button>
               <% end %>
             </div>
-          <% end %>
-          
-          <%= if @permissions.can_edit do %>
-            <button class="w-full flex items-center justify-center p-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg border-2 border-dashed border-gray-300"
-                    phx-click="add_section">
-              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-              </svg>
-              Add <%= get_section_type(@editor_mode) %>
-            </button>
-          <% end %>
+          </div>
         </div>
-      </div>
-      
-      <!-- Format-Specific Tools -->
-      <div class="flex-1 p-4 overflow-y-auto">
-        <%= case @editor_mode do %>
-          <% :manuscript -> %>
-            <%= render_manuscript_tools(assigns) %>
-          <% :business -> %>
-            <%= render_business_tools(assigns) %>
-          <% :experimental -> %>
-            <%= render_experimental_tools(assigns) %>
-          <% _ -> %>
-            <%= render_standard_tools(assigns) %>
-        <% end %>
       </div>
     </div>
-    
-    <!-- Main Content Editor -->
-    <div class="flex-1 flex flex-col">
-      <!-- Editor Toolbar -->
-      <div class="bg-white border-b border-gray-200 px-6 py-3">
-        <div class="flex items-center space-x-4">
-          <!-- Formatting Tools -->
-          <div class="flex items-center space-x-1">
-            <button class="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded" title="Bold">
-              <strong>B</strong>
-            </button>
-            <button class="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded" title="Italic">
-              <em>I</em>
-            </button>
-            <button class="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded" title="Underline">
-              <u>U</u>
-            </button>
-          </div>
-          
-          <div class="w-px h-6 bg-gray-300"></div>
-          
-          <!-- Style Dropdown -->
-          <select class="text-sm border-0 text-gray-600 focus:ring-0" id="text-style">
-            <option>Normal Text</option>
-            <option>Heading 1</option>
-            <option>Heading 2</option>
-            <option>Quote</option>
-            <%= if @editor_mode == :manuscript do %>
-              <option>Character</option>
-              <option>Dialogue</option>
-              <option>Action</option>
-            <% end %>
-          </select>
-          
-          <div class="w-px h-6 bg-gray-300"></div>
-          
-          <!-- Focus Mode Toggle -->
-          <button class="text-sm text-gray-600 hover:text-gray-900"
-                  id="focus-mode-toggle">
-            Focus Mode
-          </button>
-        </div>
-      </div>
-      
-      <!-- Main Text Editor -->
-      <div class="flex-1 overflow-hidden">
-        <div class="h-full p-6">
-          <div class={[
-            "w-full max-w-4xl mx-auto",
-            case @editor_mode do
-              :manuscript -> "font-mono leading-relaxed"
-              :business -> "font-sans leading-normal"
-              _ -> "font-serif leading-relaxed"
-            end
-          ]}>
-            <!-- Section Title -->
-            <input type="text" 
-                   class="w-full text-2xl font-bold border-0 focus:ring-0 p-0 mb-6 bg-transparent"
-                   value={@active_section.title}
-                   phx-blur="update_section_title"
-                   phx-value-section-id={@active_section.id}
-                   readonly={not @permissions.can_edit} />
-            
-            <!-- Main Content Area -->
-            <div class="relative">
-              <div id="main-editor"
-                   class={[
-                     "min-h-96 focus:outline-none",
-                     if(@permissions.can_edit, do: "", else: "cursor-default")
-                   ]}
-                   contenteditable={@permissions.can_edit}
-                   phx-hook="RichTextEditor"
-                   data-section-id={@active_section.id}
-                   data-format={@story.story_type}>
-                <%= raw(@active_section.content || get_placeholder_content(@editor_mode)) %>
-              </div>
-              
-              <!-- Live Collaborator Cursors -->
-              <div id="collaborator-cursors"></div>
+
+    <!-- Editor Content Area -->
+    <div class="flex-1 overflow-hidden">
+      <div class="h-full flex">
+        <!-- Main Writing Area -->
+        <div class={[
+          "flex-1 bg-white",
+          if(@focus_mode == :distraction_free, do: "mx-auto max-w-4xl", else: "")
+        ]}>
+          <div class="h-full p-6">
+            <!-- Section Title (editable) -->
+            <div class="mb-4">
+              <input 
+                type="text"
+                phx-blur="update_section_title"
+                phx-value-section-id={@active_section.id}
+                value={@active_section.title}
+                class={[
+                  "text-2xl font-bold border-none outline-none bg-transparent w-full",
+                  "focus:bg-gray-50 rounded px-2 py-1"
+                ]}
+                placeholder="Section Title">
+            </div>
+
+            <!-- Rich Text Editor -->
+            <div 
+              id="story-editor"
+              phx-hook="RichTextEditor"
+              phx-update="ignore"
+              data-content={@active_section.content}
+              data-format={@story.story_type}
+              data-placeholder={get_placeholder_content(@editor_mode)}
+              class="prose prose-lg max-w-none min-h-96 focus:outline-none">
+              <%= raw(@active_section.content) %>
             </div>
           </div>
         </div>
-      </div>
-    </div>
-    
-    <!-- Right Sidebar: AI & Collaboration -->
-    <%= if @show_ai_panel or @show_collaboration_panel do %>
-      <div class="w-80 bg-white border-l border-gray-200 flex flex-col">
-        <!-- AI Assistant Panel -->
-        <%= if @show_ai_panel and @ai_enabled do %>
-          <div class="flex-1 p-4">
-            <h3 class="text-sm font-medium text-gray-900 mb-4">AI Writing Assistant</h3>
-            
-            <%= if length(@ai_suggestions) > 0 do %>
-              <div class="space-y-3">
-                <%= for suggestion <- @ai_suggestions do %>
-                  <div class="p-3 bg-green-50 rounded-lg border border-green-200">
-                    <p class="text-sm text-green-800 mb-2"><%= suggestion.text %></p>
-                    <button class="text-xs text-green-600 hover:text-green-700 font-medium"
-                            phx-click="apply_ai_suggestion"
-                            phx-value-suggestion={suggestion.id}
-                            phx-value-section-id={@active_section.id}>
-                      Apply suggestion
-                    </button>
+
+        <!-- Right Panel (AI, Collaboration, etc.) -->
+        <%= unless @focus_mode == :distraction_free do %>
+          <%= if @show_ai_panel or @show_collaboration_panel do %>
+            <div class="w-80 bg-gray-50 border-l border-gray-200 flex flex-col">
+              <!-- AI Suggestions Panel -->
+              <%= if @show_ai_panel do %>
+                <div class="flex-1 p-4 border-b border-gray-200">
+                  <h3 class="font-medium text-gray-900 mb-3">AI Suggestions</h3>
+                  
+                  <div class="space-y-3">
+                    <%= for suggestion <- @ai_suggestions do %>
+                      <div class="p-3 bg-white rounded border">
+                        <div class="text-sm text-gray-700"><%= suggestion.text %></div>
+                        <div class="mt-2 flex space-x-2">
+                          <button 
+                            phx-click="apply_ai_suggestion" 
+                            phx-value-id={suggestion.id}
+                            class="text-xs text-blue-600 hover:text-blue-700">
+                            Apply
+                          </button>
+                          <button 
+                            phx-click="dismiss_ai_suggestion" 
+                            phx-value-id={suggestion.id}
+                            class="text-xs text-gray-500 hover:text-gray-700">
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    <% end %>
                   </div>
-                <% end %>
-              </div>
-            <% else %>
-              <div class="text-center py-8">
-                <svg class="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                </svg>
-                <p class="text-sm text-gray-500">Start writing to get AI suggestions</p>
-              </div>
-            <% end %>
-          </div>
+
+                  <button 
+                    phx-click="generate_ai_suggestions"
+                    class="w-full mt-4 py-2 text-sm text-blue-600 border border-blue-200 rounded hover:bg-blue-50">
+                    Generate New Suggestions
+                  </button>
+                </div>
+              <% end %>
+
+              <!-- Collaboration Panel -->
+              <%= if @show_collaboration_panel do %>
+                <div class="flex-1 p-4">
+                  <h3 class="font-medium text-gray-900 mb-3">Collaborators</h3>
+                  
+                  <div class="space-y-2">
+                    <%= for collaborator <- @collaborators do %>
+                      <div class="flex items-center justify-between p-2 bg-white rounded">
+                        <div class="flex items-center">
+                          <div class={[
+                            "w-2 h-2 rounded-full mr-2",
+                            if(collaborator.online, do: "bg-green-500", else: "bg-gray-300")
+                          ]}></div>
+                          <span class="text-sm"><%= collaborator.name %></span>
+                        </div>
+                        <div class="text-xs text-gray-500">
+                          <%= collaborator.role %>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+
+                  <button 
+                    phx-click="invite_collaborator"
+                    class="w-full mt-4 py-2 text-sm text-blue-600 border border-blue-200 rounded hover:bg-blue-50">
+                    + Invite Collaborator
+                  </button>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
         <% end %>
       </div>
-    <% end %>
-  </div>
-</div>
-
-<!-- Voice Input Modal -->
-<div id="voice-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-  <div class="bg-white rounded-xl p-6 max-w-sm w-full mx-4">
-    <div class="text-center">
-      <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-        <div class="w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
-      </div>
-      <h3 class="text-lg font-medium text-gray-900 mb-2">Listening...</h3>
-      <p class="text-sm text-gray-500 mb-4">Speak clearly into your microphone</p>
-      <button id="stop-recording" 
-              class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">
-        Stop Recording
-      </button>
     </div>
   </div>
 </div>
 
+<!-- Welcome Modal for New Stories -->
+<%= if @show_welcome_modal do %>
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+      <div class="p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-2">
+          Welcome to Your <%= String.capitalize(@story.story_type) %> Editor!
+        </h3>
+        
+        <p class="text-gray-600 mb-4">
+          Your editor has been optimized for <%= @story.story_type %> writing with specialized tools and formatting.
+        </p>
+
+        <div class="space-y-3">
+          <%= case @story.story_type do %>
+            <% "novel" -> %>
+              <div class="flex items-center text-sm">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                Character development panel enabled
+              </div>
+              <div class="flex items-center text-sm">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                Three-act plot structure tracking
+              </div>
+
+            <% "screenplay" -> %>
+              <div class="flex items-center text-sm">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                Industry-standard formatting
+              </div>
+              <div class="flex items-center text-sm">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                Scene breakdown tracking
+              </div>
+
+            <% format when format in ["blog_series", "article"] -> %>
+              <div class="flex items-center text-sm">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                SEO optimization tools
+              </div>
+              <div class="flex items-center text-sm">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                Publishing workflow integration
+              </div>
+
+            <% _ -> %>
+              <div class="flex items-center text-sm">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                Optimized for your story format
+              </div>
+          <% end %>
+        </div>
+
+        <div class="mt-6 flex space-x-3">
+          <button 
+            phx-click="start_guided_tour"
+            class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700">
+            Take Tour
+          </button>
+          <button 
+            phx-click="dismiss_welcome"
+            class="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-300">
+            Start Writing
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+<% end %>
+
 <script>
-// Voice Input Handler
-window.addEventListener('phx:start_voice_recording', () => {
-  document.getElementById('voice-modal').classList.remove('hidden');
-  document.getElementById('voice-modal').classList.add('flex');
-  
-  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
+  // Initialize format-specific editor behaviors
+  window.addEventListener('DOMContentLoaded', function() {
+    const storyFormat = '<%= @story.story_type %>';
+    const editorMode = '<%= @editor_mode %>';
     
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    
-    let finalTranscript = '';
-    
-    recognition.onresult = (event) => {
-      let interimTranscript = '';
-      
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        } else {
-          interimTranscript += transcript;
-        }
-      }
-    };
-    
-    recognition.onend = () => {
-      document.getElementById('voice-modal').classList.add('hidden');
-      document.getElementById('voice-modal').classList.remove('flex');
-      
-      if (finalTranscript.trim()) {
-        window.liveSocket.pushEvent('voice_input_complete', {
-          transcript: finalTranscript,
-          section_id: document.getElementById('main-editor').dataset.sectionId
-        });
-      }
-    };
-    
-    recognition.start();
-    
-    document.getElementById('stop-recording').onclick = () => {
-      recognition.stop();
-    };
-  }
-});
-
-// Auto-save functionality
-let saveTimeout;
-document.getElementById('main-editor')?.addEventListener('input', (e) => {
-  clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
-    window.liveSocket.pushEvent('content_changed', {
-      content: e.target.innerHTML,
-      section_id: e.target.dataset.sectionId
-    });
-  }, 1000);
-});
-
-// Dropdown functionality
-document.querySelectorAll('[data-dropdown-toggle]').forEach(button => {
-  button.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const dropdown = button.parentElement.querySelector('.export-menu');
-    dropdown.classList.toggle('hidden');
+    // Apply format-specific keyboard shortcuts and behaviors
+    initializeFormatSpecificFeatures(storyFormat, editorMode);
   });
-});
-
-// Close dropdowns when clicking outside
-document.addEventListener('click', () => {
-  document.querySelectorAll('.export-menu').forEach(menu => {
-    menu.classList.add('hidden');
-  });
-});
-
-// Focus mode toggle
-document.getElementById('focus-mode-toggle')?.addEventListener('click', () => {
-  document.body.classList.toggle('focus-mode');
-});
-
-// Format-specific keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey || e.metaKey) {
-    switch(e.key) {
-      case 's':
-        e.preventDefault();
-        // Trigger manual save
-        window.liveSocket.pushEvent('manual_save', {});
-        break;
-      case '/':
-        e.preventDefault();
-        // Toggle AI panel
-        window.liveSocket.pushEvent('toggle_ai_panel', {});
-        break;
-    }
-  }
-});
 </script>
-
-<style>
-.focus-mode .w-64,
-.focus-mode .w-80 {
-  display: none;
-}
-
-.focus-mode .flex-1 {
-  max-width: none;
-}
-
-.editable-title:focus {
-  outline: none;
-  border-bottom: 2px solid #3B82F6;
-}
-
-/* Format-specific styling */
-[data-editor-mode="manuscript"] #main-editor {
-  font-family: 'Courier New', monospace;
-  line-height: 2;
-}
-
-[data-editor-mode="screenplay"] #main-editor {
-  font-family: 'Courier New', monospace;
-  line-height: 1.5;
-}
-
-[data-editor-mode="business"] #main-editor {
-  font-family: system-ui, -apple-system, sans-serif;
-  line-height: 1.6;
-}
-
-/* Collaboration cursors */
-.collaborator-cursor {
-  position: absolute;
-  pointer-events: none;
-  z-index: 10;
-}
-
-.collaborator-cursor::before {
-  content: attr(data-user);
-  position: absolute;
-  top: -20px;
-  left: 0;
-  background: #3B82F6;
-  color: white;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-
-.collaborator-cursor::after {
-  content: '';
-  position: absolute;
-  width: 2px;
-  height: 20px;
-  background: #3B82F6;
-  animation: blink 1s infinite;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-</style>

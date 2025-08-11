@@ -5,12 +5,12 @@ defmodule Frestyl.Stories do
   """
 
   import Ecto.Query, warn: false
-  alias Frestyl.Repo
 
   alias Frestyl.Stories.{Collaboration, EnhancedStoryStructure}
   alias Frestyl.Accounts.User
-  alias Frestyl.StoryEngine.{UserPreferences, QuickStartTemplates}
+  alias Frestyl.StoryEngine.{CollaborationModes, UserPreferences, QuickStartTemplates}
   alias Frestyl.Features.TierManager
+  alias Frestyl.{Channels, Repo, Sessions}
 
   # ============================================================================
   # ENHANCED STORY STRUCTURE FUNCTIONS
@@ -168,6 +168,94 @@ defmodule Frestyl.Stories do
     end
   end
 
+    @doc """
+  Creates a story with automatic session management for collaboration features.
+  This replaces the existing create_story_for_engine/2 function.
+  """
+  def create_story_with_collaboration_support(story_params, user, opts \\ []) do
+    collaboration_requested = Keyword.get(opts, :collaboration, false)
+    audio_features_requested = Keyword.get(opts, :audio_features, false)
+
+    # Determine if we need a session for this story type
+    story_type = Map.get(story_params, "story_type", "novel")
+    needs_session = should_create_session?(story_type, collaboration_requested, audio_features_requested)
+
+    # Create the story first
+    case create_enhanced_story(story_params, user) do
+      {:ok, story} ->
+        if needs_session do
+          case create_writing_session_for_story(story, user) do
+            {:ok, session} ->
+              # Link story to session
+              case update_enhanced_story(story, %{"session_id" => session.id}) do
+                {:ok, updated_story} ->
+                  {:ok, updated_story, session}
+                {:error, reason} ->
+                  # Clean up session if story update fails
+                  Sessions.delete_session(session.id)
+                  {:error, reason}
+              end
+
+            {:error, reason} ->
+              {:error, "Failed to create collaboration session: #{reason}"}
+          end
+        else
+          {:ok, story, nil}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Determines if a story needs an active session for collaboration/audio features.
+  """
+  def should_create_session?(story_type, collaboration_requested \\ false, audio_features_requested \\ false) do
+    cond do
+      # Explicit requests
+      collaboration_requested -> true
+      audio_features_requested -> true
+
+      # Frestyl Originals always need sessions
+      CollaborationModes.requires_active_session?(story_type) -> true
+
+      # Traditional story types only need sessions when requested
+      true -> false
+    end
+  end
+
+  @doc """
+  Creates a writing session specifically for story collaboration.
+  """
+  def create_writing_session_for_story(story, user) do
+    # Get or create personal workspace
+    case Channels.get_or_create_personal_workspace(user) do
+      {:ok, workspace} ->
+        collaboration_mode = CollaborationModes.get_collaboration_mode(story.story_type)
+
+        session_attrs = %{
+          "title" => "Writing: #{story.title}",
+          "session_type" => "regular",
+          "channel_id" => workspace.id,
+          "creator_id" => user.id,
+          "collaboration_mode" => collaboration_mode.session_type || "story_development",
+          "metadata" => %{
+            "story_id" => story.id,
+            "story_type" => story.story_type,
+            "collaboration_features" => collaboration_mode.primary_tools || [],
+            "audio_features" => collaboration_mode.audio_features || [],
+            "created_for" => "story_collaboration"
+          }
+        }
+
+        Sessions.create_session(session_attrs)
+
+      {:error, reason} ->
+        {:error, "Failed to create workspace: #{reason}"}
+    end
+  end
+
   @doc """
   Returns an `%Ecto.Changeset{}` for tracking enhanced story structure changes.
   """
@@ -230,6 +318,184 @@ defmodule Frestyl.Stories do
       order_by: [desc: s.updated_at]
     )
     |> Repo.all()
+  end
+
+    @doc """
+  Detects if collaboration is currently active for a story.
+  """
+  def collaboration_active?(story) do
+    case story.session_id do
+      nil -> false
+      session_id ->
+        case Sessions.get_participants_count(session_id) do
+          count when count > 1 -> true
+          _ -> false
+        end
+    end
+  end
+
+  @doc """
+  Enables collaboration for an existing story.
+  """
+  def enable_story_collaboration(story, user) do
+    case story.session_id do
+      nil ->
+        # Create new session
+        case create_writing_session_for_story(story, user) do
+          {:ok, session} ->
+            case update_enhanced_story(story, %{
+              "session_id" => session.id,
+              "collaboration_mode" => "collaborative"
+            }) do
+              {:ok, updated_story} -> {:ok, updated_story, session}
+              {:error, reason} -> {:error, reason}
+            end
+
+          {:error, reason} -> {:error, reason}
+        end
+
+      session_id ->
+        # Session already exists
+        case Sessions.get_session(session_id) do
+          nil -> {:error, "Session not found"}
+          session -> {:ok, story, session}
+        end
+    end
+  end
+
+  @doc """
+  Disables collaboration for a story (ends session but preserves story).
+  """
+  def disable_story_collaboration(story) do
+    case story.session_id do
+      nil -> {:ok, story}
+      session_id ->
+        # End the session
+        case Sessions.end_session(session_id) do
+          :ok ->
+            case update_enhanced_story(story, %{
+              "session_id" => nil,
+              "collaboration_mode" => "owner_only"
+            }) do
+              {:ok, updated_story} -> {:ok, updated_story}
+              {:error, reason} -> {:error, reason}
+            end
+
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+    # ============================================================================
+  # VOICE NOTES INTEGRATION
+  # ============================================================================
+
+  @doc """
+  Gets voice notes for a story, optionally filtered by section.
+  """
+  def get_story_voice_notes(story_id, section_id \\ nil) do
+    base_query = from(vn in "voice_notes",
+      where: vn.story_id == ^story_id,
+      order_by: [desc: vn.created_at]
+    )
+
+    query = if section_id do
+      from(vn in base_query, where: vn.section_id == ^section_id)
+    else
+      base_query
+    end
+
+    Repo.all(query)
+  end
+
+  @doc """
+  Creates a voice note for a story section.
+  """
+  def create_voice_note(attrs) do
+    %{
+      id: Ecto.UUID.generate(),
+      story_id: attrs.story_id,
+      section_id: attrs.section_id,
+      user_id: attrs.user_id,
+      audio_file_path: attrs.audio_file_path,
+      duration_seconds: attrs.duration_seconds,
+      transcription: attrs.transcription,
+      metadata: attrs.metadata || %{},
+      created_at: DateTime.utc_now(),
+      updated_at: DateTime.utc_now()
+    }
+    |> then(fn voice_note ->
+      # Insert into database (would need proper Ecto schema)
+      # For now, store in story metadata
+      case get_enhanced_story(attrs.story_id) do
+        nil -> {:error, "Story not found"}
+        story ->
+          current_voice_notes = Map.get(story, :voice_notes_data, [])
+          updated_voice_notes = [voice_note | current_voice_notes]
+
+          update_enhanced_story(story, %{"voice_notes_data" => updated_voice_notes})
+      end
+    end)
+  end
+
+  # ============================================================================
+  # COLLABORATION DETECTION HELPERS
+  # ============================================================================
+
+  @doc """
+  Gets active collaborators for a story session.
+  """
+  def get_story_collaborators(story) do
+    case story.session_id do
+      nil -> []
+      session_id ->
+        Sessions.get_session_participants(session_id)
+        |> Enum.map(&get_user_basic_info/1)
+    end
+  end
+
+  @doc """
+  Checks if a user can collaborate on a story.
+  """
+  def can_collaborate_on_story?(story, user) do
+    cond do
+      story.created_by_id == user.id -> true
+      story.collaboration_mode == "open" -> true
+      story.collaboration_mode == "public" -> true
+      user.id in (story.collaborators || []) -> true
+      true -> false
+    end
+  end
+
+  defp get_user_basic_info(user_id) do
+    # Would fetch from Accounts context
+    %{
+      id: user_id,
+      username: "User #{user_id}",  # Placeholder
+      avatar_url: nil
+    }
+  end
+
+  # ============================================================================
+  # ENHANCED STORY ENGINE INTEGRATION
+  # ============================================================================
+
+  @doc """
+  Updated story creation for Story Engine Hub with session support.
+  """
+  def create_story_for_engine_with_sessions(story_params, user) do
+    # Determine collaboration needs from story type and intent
+    story_type = Map.get(story_params, "story_type")
+    intent_category = Map.get(story_params, "intent_category")
+
+    collaboration_needed = story_type in ["live_story", "voice_sketch", "audio_portfolio", "data_jam", "story_remix", "narrative_beats"]
+    audio_features_needed = story_type in ["voice_sketch", "audio_portfolio", "narrative_beats"] or
+                           intent_category in ["entertain", "audio_focused"]
+
+    create_story_with_collaboration_support(story_params, user, [
+      collaboration: collaboration_needed,
+      audio_features: audio_features_needed
+    ])
   end
 
   # ============================================================================
@@ -571,7 +837,121 @@ defmodule Frestyl.Stories do
   # ============================================================================
 
   @doc """
-  Get story with user permissions for the editor
+  Get story template with error handling
+  """
+  defp get_story_template(story_type, intent) do
+    try do
+      case QuickStartTemplates.get_template(story_type, intent) do
+        nil -> get_default_template(story_type)
+        template -> template
+      end
+    rescue
+      UndefinedFunctionError ->
+        get_default_template(story_type)
+    end
+  end
+
+  @doc """
+  Get format configuration with error handling
+  """
+  defp get_format_configuration(story_type) do
+    try do
+      FormatManager.get_format_config(story_type)
+    rescue
+      UndefinedFunctionError ->
+        %{
+          editor_mode: "standard",
+          export_formats: ["pdf", "html"],
+          ai_assistance: true
+        }
+    end
+  end
+
+  defp get_default_template(story_type) do
+    %{
+      title: get_default_story_title(story_type),
+      outline: %{},
+      character_data: %{},
+      initial_sections: []
+    }
+  end
+
+  defp build_section_metadata(section, story_type) do
+    base_metadata = %{
+      word_target: Map.get(section, :word_target),
+      page_target: Map.get(section, :page_target),
+      seo_target: Map.get(section, :seo_target)
+    }
+
+    format_metadata = case story_type do
+      "screenplay" -> %{
+        scene_type: "int_day",
+        characters: []
+      }
+      "blog_series" -> %{
+        seo_keywords: [],
+        readability_target: "grade_8"
+      }
+      _ -> %{}
+    end
+
+    Map.merge(base_metadata, format_metadata)
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new()
+  end
+
+  # Default content helpers
+  defp get_default_section_title(story_type) do
+    case story_type do
+      "novel" -> "Chapter 1"
+      "screenplay" -> "Scene 1"
+      "case_study" -> "Executive Summary"
+      "blog_series" -> "Introduction"
+      _ -> "Section 1"
+    end
+  end
+
+  defp get_default_section_type(story_type) do
+    case story_type do
+      "novel" -> "chapter"
+      "screenplay" -> "scene"
+      "case_study" -> "section"
+      "blog_series" -> "post"
+      _ -> "section"
+    end
+  end
+
+  defp get_default_section_content(story_type) do
+    case story_type do
+      "novel" ->
+        "Once upon a time...\n\nBegin your novel here. Use the character panel to develop your protagonists."
+
+      "screenplay" ->
+        "FADE IN:\n\nEXT. LOCATION - DAY\n\nYour screenplay begins here."
+
+      "case_study" ->
+        "Executive Summary\n\nProvide a compelling overview of your findings and recommendations."
+
+      "blog_series" ->
+        "Introduction\n\nHook your readers with an engaging opening that previews the value they'll get from this series."
+
+      _ ->
+        "Start writing here...\n\nUse the tools in the sidebar to organize your thoughts."
+    end
+  end
+
+  defp get_default_story_title(story_type) do
+    case story_type do
+      "novel" -> "Untitled Novel"
+      "screenplay" -> "Untitled Screenplay"
+      "case_study" -> "New Case Study"
+      "blog_series" -> "New Blog Series"
+      _ -> "New Story"
+    end
+  end
+
+  @doc """
+  Get enhanced story with permissions, including editor state
   """
   def get_enhanced_story_with_permissions(story_id, user_id) do
     case get_enhanced_story(story_id) do
@@ -580,11 +960,52 @@ defmodule Frestyl.Stories do
 
       story ->
         permissions = calculate_user_permissions(story, user_id)
-        if permissions.can_view do
-          {:ok, story, permissions}
-        else
-          {:error, :access_denied}
+
+        case permissions.can_view do
+          true ->
+            # Load editor state if available
+            editor_state = load_editor_state(story)
+            story_with_state = Map.put(story, :editor_state, editor_state)
+            {:ok, story_with_state, permissions}
+
+          false ->
+            {:error, :access_denied}
         end
+    end
+  end
+
+  @doc """
+  Load editor state from story preferences
+  """
+  defp load_editor_state(story) do
+    case story.editor_preferences do
+      nil -> %{}
+      preferences when is_map(preferences) -> preferences
+      _ -> %{}
+    end
+  end
+
+  @doc """
+  Update story with format-specific validation
+  """
+  def update_story_with_format_validation(story, attrs) do
+    # Apply format-specific validation rules
+    validated_attrs = apply_format_validation(story.story_type, attrs)
+
+    changeset = EnhancedStoryStructure.changeset(story, validated_attrs)
+
+    case Repo.update(changeset) do
+      {:ok, updated_story} ->
+        # Trigger format-specific post-update actions
+        handle_format_specific_updates(updated_story, attrs)
+
+        # Broadcast update
+        Phoenix.PubSub.broadcast(Frestyl.PubSub, "story:#{story.id}",
+          {:story_updated, updated_story})
+
+        {:ok, updated_story}
+
+      error -> error
     end
   end
 
@@ -639,6 +1060,24 @@ defmodule Frestyl.Stories do
     end
   end
 
+  def update_story_editor_preferences(story, preferences) do
+    changeset = EnhancedStoryStructure.changeset(story, %{
+      editor_preferences: preferences,
+      updated_at: DateTime.utc_now()
+    })
+
+    case Repo.update(changeset) do
+      {:ok, updated_story} ->
+        # Broadcast preferences update
+        Phoenix.PubSub.broadcast(Frestyl.PubSub, "story:#{story.id}",
+          {:preferences_updated, preferences})
+
+        {:ok, updated_story}
+
+      error -> error
+    end
+  end
+
   @doc """
   Export story in specified format
   """
@@ -658,32 +1097,82 @@ defmodule Frestyl.Stories do
   @doc """
   Create story from Story Engine with proper initialization
   """
-  def create_story_for_engine(attrs, user) when is_map(attrs) do
-    # Get format-specific template
-    template = get_story_template(attrs.story_type, attrs.narrative_structure)
+def create_story_for_engine(attrs, user) when is_map(attrs) do
+  case Repo.transaction(fn ->
+    try do
+      # Create a Studio Session for the story
+      session_attrs = %{
+        "title" => "Story Creation: #{Map.get(attrs, :title, "Untitled Story")}",
+        "session_type" => "regular",  # Changed from "story_creation" to "regular"
+        "creator_id" => user.id,
+        "status" => "active",
+        "channel_id" => get_default_channel_for_user(user.id)  # Add required channel_id
+      }
 
-    # Initialize story with template
-    story_attrs = attrs
-    |> Map.put(:sections, template.initial_sections)
-    |> Map.put(:outline, template.outline)
-    |> Map.put(:character_data, template.character_data || %{})
-    |> Map.put(:format_metadata, template.format_metadata || %{})
-    |> Map.put(:collaboration_mode, "owner_only")
-    |> Map.put(:workflow_stage, "development")
-    |> Map.put(:created_by_id, user.id)
+      case Frestyl.Sessions.create_session(session_attrs) do
+        {:ok, session} ->
+          # Rest of your story creation code...
+          story_attrs = attrs
+          |> Map.put(:session_id, session.id)
+          |> Map.put(:sections, build_initial_sections(attrs.initial_section_config || %{}, attrs.story_type))
+          |> Map.put(:outline, %{})
+          |> Map.put(:character_data, %{})
+          |> Map.put(:format_metadata, attrs.format_metadata || %{})
+          |> Map.put(:editor_preferences, attrs.editor_preferences || %{})
+          |> Map.put(:collaboration_mode, attrs.collaboration_mode || "owner_only")
+          |> Map.put(:workflow_stage, "first_draft")
+          |> Map.put(:narrative_structure, get_default_narrative_structure(attrs.story_type))
+          |> Map.put(:completion_percentage, 0.0)
+          |> Map.put(:current_word_count, 0)
 
-    changeset = EnhancedStoryStructure.changeset(%EnhancedStoryStructure{}, story_attrs)
+          changeset = EnhancedStoryStructure.changeset(%EnhancedStoryStructure{}, story_attrs)
+          |> Ecto.Changeset.put_change(:created_by_id, user.id)
 
-    case Repo.insert(changeset) do
-      {:ok, story} ->
-        # Initialize collaboration if needed
-        if attrs[:collaboration_type] && attrs[:collaboration_type] != "solo" do
-          setup_initial_collaboration(story, attrs[:collaboration_type], user)
-        end
+          case Repo.insert(changeset) do
+            {:ok, story} ->
+              story
+            {:error, changeset} ->
+              Repo.rollback(changeset)
+          end
 
-        {:ok, story}
+        {:error, session_changeset} ->
+          Repo.rollback(session_changeset)
+      end
 
-      error -> error
+    rescue
+      error ->
+        Repo.rollback(error)
+    end
+  end) do
+    {:ok, story} -> {:ok, story}
+    {:error, reason} -> {:error, reason}
+  end
+end
+
+# Add this helper function
+defp get_default_channel_for_user(user_id) do
+  # You'll need to either:
+  # 1. Get the user's default/personal channel
+  # 2. Or create a default channel for story creation
+  # For now, let's try to get their first channel or create a default one
+
+  case Frestyl.Channels.get_user_default_channel(user_id) do
+    nil ->
+      # Create a default personal channel for the user
+      {:ok, channel} = Frestyl.Channels.create_personal_channel(user_id)
+      channel.id
+    channel ->
+      channel.id
+  end
+end
+
+  defp get_default_narrative_structure(story_type) do
+    case story_type do
+      "novel" -> "three_act"
+      "screenplay" -> "three_act"
+      "case_study" -> "business_case"
+      "blog_series" -> "series"
+      _ -> "standard"
     end
   end
 
@@ -773,6 +1262,42 @@ defmodule Frestyl.Stories do
     end
   end
 
+  defp build_initial_sections(section_config, story_type) do
+    case section_config do
+      %{sections: sections} when is_list(sections) ->
+        sections
+        |> Enum.with_index()
+        |> Enum.map(fn {section, index} ->
+          %{
+            id: index + 1,
+            title: section.title,
+            type: section.type,
+            content: section.placeholder || "",
+            order: section.order || index + 1,
+            word_count: 0,
+            created_at: DateTime.utc_now(),
+            updated_at: DateTime.utc_now(),
+            metadata: build_section_metadata(section, story_type)
+          }
+        end)
+
+      _ ->
+        # Default single section
+        [%{
+          id: 1,
+          title: get_default_section_title(story_type),
+          type: get_default_section_type(story_type),
+          content: get_default_section_content(story_type),
+          order: 1,
+          word_count: 0,
+          created_at: DateTime.utc_now(),
+          updated_at: DateTime.utc_now(),
+          metadata: %{}
+        }]
+    end
+  end
+
+
   # ============================================================================
   # EXPORT FUNCTIONS
   # ============================================================================
@@ -840,6 +1365,68 @@ defmodule Frestyl.Stories do
   defp export_to_audio(story) do
     # Text-to-speech conversion
     {:error, "Audio export not yet implemented"}
+  end
+
+  @doc """
+  Initialize format-specific features after story creation
+  """
+  defp initialize_format_features(story, format, intent) do
+    case format do
+      "novel" ->
+        initialize_novel_features(story, intent)
+      "screenplay" ->
+        initialize_screenplay_features(story, intent)
+      "case_study" ->
+        initialize_case_study_features(story, intent)
+      "blog_series" ->
+        initialize_blog_features(story, intent)
+      _ ->
+        :ok
+    end
+  end
+
+  defp initialize_novel_features(story, _intent) do
+    # Initialize character tracking
+    Characters.initialize_for_story(story.id)
+
+    # Initialize plot tracking
+    PlotTracker.initialize_for_story(story.id)
+
+    # Set up three-act structure outline
+    Outline.create_default_structure(story.id, "three_act")
+  end
+
+  defp initialize_screenplay_features(story, _intent) do
+    # Initialize scene breakdown
+    SceneBreakdown.initialize_for_story(story.id)
+
+    # Set up screenplay formatting rules
+    FormattingRules.apply_screenplay_rules(story.id)
+
+    # Initialize character list
+    Characters.initialize_screenplay_characters(story.id)
+  end
+
+  defp initialize_case_study_features(story, _intent) do
+    # Initialize stakeholder tracking
+    Stakeholders.initialize_for_story(story.id)
+
+    # Set up business case structure
+    BusinessStructure.initialize_case_study(story.id)
+
+    # Initialize data panel
+    DataPanel.initialize_for_story(story.id)
+  end
+
+  defp initialize_blog_features(story, _intent) do
+    # Initialize SEO tracking
+    SEOTracker.initialize_for_story(story.id)
+
+    # Set up publishing workflow
+    PublishingWorkflow.initialize_for_story(story.id)
+
+    # Initialize social media preview
+    SocialPreview.initialize_for_story(story.id)
   end
 
   # ============================================================================
@@ -1051,6 +1638,62 @@ defmodule Frestyl.Stories do
 
   def get_enhanced_story!(story_id) do
     Repo.get!(EnhancedStoryStructure, story_id)
+  end
+
+  defp apply_format_validation(story_type, attrs) do
+    case story_type do
+      "screenplay" ->
+        # Validate screenplay formatting
+        validate_screenplay_formatting(attrs)
+
+      "case_study" ->
+        # Validate business case structure
+        validate_case_study_structure(attrs)
+
+      "blog_series" ->
+        # Validate SEO requirements
+        validate_blog_seo_requirements(attrs)
+
+      _ ->
+        attrs
+    end
+  end
+
+  defp validate_screenplay_formatting(attrs) do
+    # Apply screenplay-specific validation
+    # This would include scene heading validation, character name formatting, etc.
+    attrs
+  end
+
+  defp validate_case_study_structure(attrs) do
+    # Validate required sections for case studies
+    # This would ensure executive summary, problem statement, etc. are present
+    attrs
+  end
+
+  defp validate_blog_seo_requirements(attrs) do
+    # Validate SEO requirements for blog posts
+    # This would check meta descriptions, keyword density, etc.
+    attrs
+  end
+
+  defp handle_format_specific_updates(story, attrs) do
+    case story.story_type do
+      "screenplay" ->
+        # Update scene breakdown if content changed
+        if Map.has_key?(attrs, :sections) do
+          SceneBreakdown.update_from_content(story.id, attrs.sections)
+        end
+
+      "blog_series" ->
+        # Update SEO analysis if content changed
+        if Map.has_key?(attrs, :sections) do
+          SEOTracker.analyze_content(story.id, attrs.sections)
+        end
+
+      _ ->
+        :ok
+    end
   end
 
 end

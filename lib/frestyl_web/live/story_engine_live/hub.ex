@@ -3,9 +3,9 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
   use FrestylWeb, :live_view
 
   import FrestylWeb.Live.Helpers.CommonHelpers, except: [format_word_count: 1]
-  alias Frestyl.StoryEngine.{IntentClassifier, UserPreferences, FormatManager, QuickStartTemplates}
+  alias Frestyl.StoryEngine.{CollaborationModes, IntentClassifier, UserPreferences, FormatManager, QuickStartTemplates}
   alias Frestyl.Features.TierManager
-  alias Frestyl.Stories
+  alias Frestyl.{Stories, UserPreferences}
   alias Frestyl.Stories.Collaboration
 
   @impl true
@@ -101,6 +101,31 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
      |> push_event("intent_changed", %{intent: intent_key})}
   end
 
+    @impl true
+  def handle_event("create_story", %{"format" => format, "intent" => intent} = params, socket) do
+    user = socket.assigns.current_user
+
+    # Check tier requirements
+    required_tier = QuickStartTemplates.get_required_tier(format, intent)
+
+    unless TierManager.user_has_tier?(socket.assigns.user_tier, required_tier) do
+      {:noreply, socket
+      |> put_flash(:error, "Upgrade required to access this format")
+      |> push_event("show_upgrade_modal", %{required_tier: required_tier})}
+    else
+      # Enhanced story creation with session support
+      collaboration_requested = Map.get(params, "collaboration", "false") == "true"
+      audio_features_requested = Map.get(params, "audio_features", "false") == "true"
+
+      create_story_with_enhanced_features(socket, format, intent, %{
+        collaboration_requested: collaboration_requested,
+        audio_features_requested: audio_features_requested,
+        template_key: Map.get(params, "template"),
+        title: Map.get(params, "title")
+      })
+    end
+  end
+
   @impl true
   def handle_event("create_story_with_format", %{"format" => format}, socket) do
     intent = socket.assigns.selected_intent
@@ -119,8 +144,21 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
     else
       # Continue with story creation...
       # Use your existing create_story_with_setup logic
-      create_story_with_setup(socket, format, intent, %{})
+      create_story_with_editor_state(socket, format, intent, %{})
     end
+  end
+
+  @impl true
+  def handle_event("create_frestyl_original", %{"story_type" => story_type} = params, socket) do
+    user = socket.assigns.current_user
+
+    # Frestyl Originals always need collaboration/audio features
+    create_story_with_enhanced_features(socket, story_type, "create", %{
+      collaboration_requested: true,
+      audio_features_requested: true,
+      is_frestyl_original: true,
+      title: Map.get(params, "title", get_default_frestyl_title(story_type))
+    })
   end
 
   defp create_story_with_setup(socket, format, intent, options \\ %{}) do
@@ -149,6 +187,7 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
 
     case Stories.create_story_for_engine(story_params, user) do
       {:ok, story} ->
+      editor_url = build_editor_url_with_state(story, format, intent, options)
         {:noreply, socket
          |> put_flash(:info, "Story created! Opening editor...")
          |> redirect(to: ~p"/stories/#{story.id}/edit")}
@@ -234,34 +273,410 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
   # ENHANCED EDITOR STATE FUNCTIONS
   # ============================================================================
 
-  @doc """
-  Enhanced story creation that includes editor state parameters
-  """
+    defp create_story_with_enhanced_features(socket, format, intent, options \\ %{}) do
+    user = socket.assigns.current_user
+
+    # Get template or use default
+    template = case Map.get(options, :template_key) do
+      nil -> QuickStartTemplates.get_template(format, intent)
+      template_key -> QuickStartTemplates.get_template_by_key(template_key)
+    end
+
+    # Build enhanced story parameters
+    story_params = %{
+      title: Map.get(options, :title, template.title),
+      story_type: format,
+      intent_category: intent,
+      template_data: template,
+      creation_source: "story_engine_hub",
+      quick_start_template: "#{format}_#{intent}",
+      created_by_id: user.id,
+      collaboration_mode: determine_initial_collaboration_mode(options),
+      audio_features_enabled: Map.get(options, :audio_features_requested, false),
+      editor_preferences: build_enhanced_editor_preferences(format, intent, options),
+      initial_section_config: build_initial_section_config(format, intent)
+    }
+
+    # Track usage
+    UserPreferences.track_format_usage(user.id, format, intent)
+
+    # Create story with collaboration support
+    case Stories.create_story_with_collaboration_support(story_params, user, [
+      collaboration: Map.get(options, :collaboration_requested, false),
+      audio_features: Map.get(options, :audio_features_requested, false)
+    ]) do
+      {:ok, story, session} ->
+        editor_url = build_enhanced_editor_url(story, session, format, intent, options)
+
+        {:noreply, socket
+         |> put_flash(:info, get_creation_success_message(format, session != nil))
+         |> redirect(to: editor_url)}
+
+      {:error, changeset} when is_struct(changeset, Ecto.Changeset) ->
+        {:noreply, put_flash(socket, :error, "Failed to create story. Please try again.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Error: #{reason}")}
+    end
+  end
+
+  defp determine_initial_collaboration_mode(options) do
+    cond do
+      Map.get(options, :collaboration_requested, false) -> "collaborative"
+      Map.get(options, :is_frestyl_original, false) -> "collaborative"
+      true -> "owner_only"
+    end
+  end
+
+  defp build_enhanced_editor_url(story, session, format, intent, options) do
+    base_url = ~p"/stories/#{story.id}/edit"
+
+    params = [
+      {"mode", determine_editor_mode_from_format(format)},
+      {"intent", intent},
+      {"source", "hub_creation"}
+    ]
+
+    # Add collaboration parameters if session exists
+    params = if session do
+      params ++ [
+        {"collaboration", "true"},
+        {"session_id", session.id}
+      ]
+    else
+      params
+    end
+
+    # Add additional parameters
+    params = params
+    |> maybe_add_param("template", Map.get(options, :template_key))
+    |> maybe_add_param("focus", Map.get(options, :focus_mode))
+    |> maybe_add_param("audio", Map.get(options, :audio_features_requested, false))
+
+    build_url_with_params(base_url, params)
+  end
+
+    defp build_enhanced_editor_preferences(format, intent, options) do
+    base_preferences = %{
+      auto_save_interval: 2000,
+      ai_assistance_level: get_ai_assistance_level(intent),
+      collaboration_enabled: Map.get(options, :collaboration_requested, false),
+      focus_mode: get_default_focus_mode(format),
+      audio_features_enabled: Map.get(options, :audio_features_requested, false)
+    }
+
+    format_preferences = case format do
+      "novel" -> %{
+        show_character_panel: true,
+        show_plot_tracker: true,
+        word_count_target: 50000,
+        section_type: "chapter",
+        editor_mode: "manuscript"
+      }
+      "screenplay" -> %{
+        formatting_mode: "industry_standard",
+        show_scene_breakdown: true,
+        page_target: 120,
+        section_type: "scene",
+        editor_mode: "manuscript"
+      }
+      "case_study" -> %{
+        show_data_panel: true,
+        template_guided: true,
+        structure_hints: true,
+        section_type: "section",
+        editor_mode: "business"
+      }
+      "blog_series" -> %{
+        seo_mode: true,
+        show_publishing_panel: true,
+        social_preview: true,
+        section_type: "post",
+        editor_mode: "business"
+      }
+      "live_story" -> %{
+        real_time_audience: true,
+        branching_enabled: true,
+        streaming_mode: true,
+        section_type: "segment",
+        editor_mode: "experimental"
+      }
+      "voice_sketch" -> %{
+        audio_visual_sync: true,
+        drawing_tools: true,
+        timeline_mode: true,
+        section_type: "sketch",
+        editor_mode: "experimental"
+      }
+      "audio_portfolio" -> %{
+        spatial_audio: true,
+        navigation_mode: "immersive",
+        visitor_analytics: true,
+        section_type: "experience",
+        editor_mode: "experimental"
+      }
+      "narrative_beats" -> %{
+        beat_machine_integration: true,
+        musical_structure: true,
+        story_sync: true,
+        section_type: "beat",
+        editor_mode: "experimental"
+      }
+      _ -> %{
+        section_type: "section",
+        editor_mode: "standard"
+      }
+    end
+
+    Map.merge(base_preferences, format_preferences)
+  end
+
+  defp get_creation_success_message(format, has_session) do
+    base_message = "Story created! Opening editor..."
+
+    case {format, has_session} do
+      {format, true} when format in ["live_story", "voice_sketch", "audio_portfolio"] ->
+        "#{base_message} Collaboration session started!"
+
+      {_, true} ->
+        "#{base_message} Collaboration features enabled!"
+
+      {_, false} ->
+        base_message
+    end
+  end
+
+  defp get_default_frestyl_title(story_type) do
+    case story_type do
+      "live_story" -> "My Live Story"
+      "voice_sketch" -> "Voice Sketch Project"
+      "audio_portfolio" -> "Audio Portfolio"
+      "data_jam" -> "Data Jam Session"
+      "story_remix" -> "Story Remix"
+      "narrative_beats" -> "Narrative Beats"
+      _ -> "Untitled Frestyl Original"
+    end
+  end
+
+  # ============================================================================
+  # ENHANCED QUICK START OPTIONS
+  # ============================================================================
+
+  @impl true
+  def handle_event("show_quick_start_options", _params, socket) do
+    # Enhanced quick start with Frestyl Originals
+    quick_start_options = get_enhanced_quick_start_options()
+
+    {:noreply, socket
+     |> assign(:show_quick_start_modal, true)
+     |> assign(:quick_start_options, quick_start_options)}
+  end
+
+  defp get_enhanced_quick_start_options do
+    %{
+      traditional: [
+        %{
+          key: "novel_draft",
+          title: "Novel Draft",
+          description: "Chapter-based novel with character development",
+          format: "novel",
+          intent: "entertain",
+          icon: "book-open",
+          features: ["Character sheets", "Plot tracking", "Chapter organization"]
+        },
+        %{
+          key: "screenplay_standard",
+          title: "Screenplay",
+          description: "Industry-standard screenplay format",
+          format: "screenplay",
+          intent: "entertain",
+          icon: "film",
+          features: ["Scene breakdown", "Character dialogue", "Action lines"]
+        },
+        %{
+          key: "business_case_study",
+          title: "Case Study",
+          description: "Professional business analysis",
+          format: "case_study",
+          intent: "persuade",
+          icon: "chart-bar",
+          features: ["Data visualization", "Executive summary", "Stakeholder collaboration"]
+        },
+        %{
+          key: "blog_article",
+          title: "Blog Article",
+          description: "SEO-optimized blog post or article",
+          format: "blog_series",
+          intent: "educate",
+          icon: "newspaper",
+          features: ["SEO optimization", "Social preview", "Publishing tools"]
+        }
+      ],
+      frestyl_originals: [
+        %{
+          key: "live_story_interactive",
+          title: "Live Story",
+          description: "Real-time collaborative storytelling with audience",
+          format: "live_story",
+          intent: "entertain",
+          icon: "broadcast",
+          features: ["Live audience interaction", "Real-time branching", "Streaming integration"],
+          requires_collaboration: true
+        },
+        %{
+          key: "voice_sketch_tutorial",
+          title: "Voice Sketch",
+          description: "Voice narration with synchronized drawing",
+          format: "voice_sketch",
+          intent: "educate",
+          icon: "microphone",
+          features: ["Audio-visual sync", "Drawing tools", "Voice narration"],
+          requires_audio: true
+        },
+        %{
+          key: "audio_portfolio_showcase",
+          title: "Audio Portfolio",
+          description: "Interactive audio-first portfolio experience",
+          format: "audio_portfolio",
+          intent: "showcase",
+          icon: "volume-up",
+          features: ["Spatial audio", "Interactive navigation", "Immersive experience"],
+          requires_audio: true
+        },
+        %{
+          key: "narrative_beats_music",
+          title: "Narrative Beats",
+          description: "Music production driven by story structure",
+          format: "narrative_beats",
+          intent: "entertain",
+          icon: "musical-note",
+          features: ["Beat machine", "Story sync", "Musical storytelling"],
+          requires_audio: true
+        }
+      ]
+    }
+  end
+
+
   defp create_story_with_editor_state(socket, format, intent, options \\ %{}) do
     user = socket.assigns.current_user
 
-    story_params = %{
-      title: Map.get(options, :title, get_default_title(format, intent)),
-      story_type: format,
-      intent_category: intent,
-      creation_source: "story_engine_hub",
-      created_by_id: user.id,
-      collaboration_mode: Map.get(options, :collaboration_mode, "owner_only"),
-      editor_preferences: build_editor_preferences(format, intent, options),
-      initial_section_config: build_initial_section_config(format, intent),
-      template_data: Map.get(options, :template, get_default_template(format, intent))
+    # Get or create personal workspace
+    case Frestyl.Channels.get_or_create_personal_workspace(user) do
+      {:ok, personal_workspace} ->
+        # Create session for story collaboration
+        session_params = %{
+          "title" => "Writing: #{Map.get(options, :title, get_default_title(format, intent))}",
+          "session_type" => "regular",
+          "channel_id" => personal_workspace.id,
+          "creator_id" => user.id,
+          "status" => "active"
+        }
+
+        case Frestyl.Sessions.create_session(session_params) do
+          {:ok, session} ->
+            # Create story with session reference
+            story_params = %{
+              title: Map.get(options, :title, get_default_title(format, intent)),
+              story_type: format,
+              intent_category: intent,
+              session_id: session.id,
+              creation_source: "story_engine_hub",
+              created_by_id: user.id,
+              collaboration_mode: Map.get(options, :collaboration_mode, "owner_only"),
+              editor_preferences: build_editor_preferences(format, intent, options),
+              initial_section_config: build_initial_section_config(format, intent),
+              template_data: Map.get(options, :template, get_default_template(format, intent))
+            }
+
+            case Frestyl.Stories.create_story_for_engine(story_params, user) do
+              {:ok, story} ->
+                editor_url = build_editor_url_with_state(story, format, intent, options)
+
+                {:noreply, socket
+                |> put_flash(:info, "Story created! Opening editor...")
+                |> redirect(to: editor_url)}
+
+              {:error, story_changeset} ->
+                {:noreply, put_flash(socket, :error, "Failed to create story. Please try again.")}
+            end
+
+          {:error, session_changeset} ->
+            {:noreply, put_flash(socket, :error, "Failed to create workspace session.")}
+        end
+
+      {:error, workspace_error} ->
+        {:noreply, put_flash(socket, :error, "Failed to create personal workspace.")}
+    end
+  end
+
+  @doc """
+  Determine collaboration mode based on format and options
+  """
+  defp determine_collaboration_mode(format, options) do
+    cond do
+      Map.get(options, :collaboration_enabled, false) -> "story_development"
+      format in ["screenplay", "case_study"] -> "business_workflow"
+      format in ["novel", "short_story"] -> "narrative_workshop"
+      true -> "content_review"
+    end
+  end
+
+  @doc """
+  Get initial workspace state for story creation
+  """
+  defp get_initial_story_workspace_state(format) do
+    %{
+      story: %{
+        outline: %{template: get_default_outline_template(format), sections: []},
+        characters: [],
+        world_bible: %{},
+        timeline: %{events: []},
+        comments: [],
+        format_specific: get_format_specific_state(format)
+      },
+      text: %{
+        version: 0,
+        content: "",
+        pending_operations: [],
+        cursors: %{},
+        selection: nil
+      },
+      collaboration: %{
+        active_users: [],
+        last_activity: DateTime.utc_now()
+      }
     }
+  end
 
-    case Stories.create_story_for_engine(story_params, user) do
-      {:ok, story} ->
-        editor_url = build_editor_url_with_state(story, format, intent, options)
+  defp get_format_specific_state(format) do
+    case format do
+      "novel" -> %{
+        word_count_target: 50000,
+        chapter_structure: "traditional",
+        pov_style: "third_person"
+      }
+      "screenplay" -> %{
+        page_target: 120,
+        format_style: "feature",
+        scene_numbering: true
+      }
+      "case_study" -> %{
+        stakeholders: [],
+        metrics: [],
+        timeline_required: true
+      }
+      _ -> %{}
+    end
+  end
 
-        {:noreply, socket
-         |> put_flash(:info, "Story created! Opening editor...")
-         |> redirect(to: editor_url)}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to create story. Please try again.")}
+  defp get_default_outline_template(format) do
+    case format do
+      "novel" -> "three_act"
+      "screenplay" -> "screenplay_structure"
+      "case_study" -> "problem_solution"
+      _ -> "basic"
     end
   end
 
@@ -270,7 +685,8 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
       auto_save_interval: 2000,
       ai_assistance_level: get_ai_assistance_level(intent),
       collaboration_enabled: Map.get(options, :collaboration_enabled, false),
-      focus_mode: get_default_focus_mode(format)
+      focus_mode: get_default_focus_mode(format),
+      distraction_free: Map.get(options, :focus_mode) == "distraction_free"
     }
 
     format_preferences = case format do
@@ -278,33 +694,45 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
         show_character_panel: true,
         show_plot_tracker: true,
         word_count_target: 50000,
-        section_type: "chapter"
+        section_type: "chapter",
+        manuscript_mode: true,
+        auto_chapter_breaks: true
       }
+
       "screenplay" -> %{
         formatting_mode: "industry_standard",
         show_scene_breakdown: true,
         page_target: 120,
-        section_type: "scene"
+        section_type: "scene",
+        screenplay_formatting: true,
+        character_list_visible: true
       }
+
       "case_study" -> %{
         show_data_panel: true,
         template_guided: true,
         structure_hints: true,
-        section_type: "section"
+        section_type: "section",
+        business_mode: true,
+        stakeholder_tracking: true
       }
+
       "blog_series" -> %{
         seo_mode: true,
         show_publishing_panel: true,
         social_preview: true,
-        section_type: "post"
+        section_type: "post",
+        keyword_tracking: true,
+        readability_score: true
       }
+
       _ -> %{section_type: "section"}
     end
 
     Map.merge(base_preferences, format_preferences)
   end
 
-  defp build_initial_section_config(format, intent) do
+    defp build_initial_section_config(format, intent) do
     case {format, intent} do
       {"novel", _} ->
         %{
@@ -333,6 +761,30 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
             %{title: "Introduction", type: "post", order: 1, placeholder: get_blog_placeholder()}
           ]
         }
+      {"live_story", _} ->
+        %{
+          sections: [
+            %{title: "Opening Scene", type: "segment", order: 1, placeholder: get_live_story_placeholder()}
+          ]
+        }
+      {"voice_sketch", _} ->
+        %{
+          sections: [
+            %{title: "Sketch 1", type: "sketch", order: 1, placeholder: get_voice_sketch_placeholder()}
+          ]
+        }
+      {"audio_portfolio", _} ->
+        %{
+          sections: [
+            %{title: "Welcome Experience", type: "experience", order: 1, placeholder: get_audio_portfolio_placeholder()}
+          ]
+        }
+      {"narrative_beats", _} ->
+        %{
+          sections: [
+            %{title: "Opening Beat", type: "beat", order: 1, placeholder: get_narrative_beats_placeholder()}
+          ]
+        }
       _ ->
         %{
           sections: [
@@ -342,27 +794,59 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
     end
   end
 
+
   defp build_editor_url_with_state(story, format, intent, options) do
     base_url = ~p"/stories/#{story.id}/edit"
 
+    # Core parameters
     params = [
       {"mode", determine_editor_mode_from_format(format)},
       {"intent", intent},
-      {"source", "hub_creation"}
+      {"source", "hub_creation"},
+      {"format", format}
     ]
 
+    # Add conditional parameters
     params = params
     |> maybe_add_param("template", Map.get(options, :template_key))
     |> maybe_add_param("focus", Map.get(options, :focus_mode))
     |> maybe_add_param("collab", Map.get(options, :collaboration_enabled, false))
+    |> maybe_add_param("welcome", "true")
+    |> maybe_add_param("setup", "guided")
 
     build_url_with_params(base_url, params)
   end
+
+  defp build_format_metadata(format, intent, options) do
+    base_metadata = %{
+      creation_timestamp: DateTime.utc_now(),
+      hub_intent: intent,
+      creation_flow: "story_engine"
+    }
+
+    format_metadata = case format do
+      "screenplay" -> %{
+        industry_standard: true,
+        page_numbering: true,
+        scene_headings: true
+      }
+      "blog_series" -> %{
+        seo_enabled: true,
+        social_sharing: true,
+        publication_ready: false
+      }
+      _ -> %{}
+    end
+
+    Map.merge(base_metadata, format_metadata)
+  end
+
 
   defp determine_editor_mode_from_format(format) do
     case format do
       format when format in ["novel", "screenplay", "poetry"] -> "manuscript"
       format when format in ["case_study", "data_story", "report"] -> "business"
+      format when format in ["blog_series", "article"] -> "publishing"
       format when format in ["live_story", "interactive"] -> "experimental"
       _ -> "standard"
     end
@@ -409,17 +893,17 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
     case intent do
       "entertain" -> "creative"
       "educate" -> "structured"
-      "persuade" -> "strategic"
-      "document" -> "minimal"
+      "persuade" -> "analytical"
+      "showcase" -> "polished"
       _ -> "balanced"
     end
   end
 
   defp get_default_focus_mode(format) do
     case format do
-      format when format in ["novel", "poetry"] -> "distraction_free"
-      format when format in ["case_study", "report"] -> "structured"
-      format when format in ["blog_series", "article"] -> "collaborative"
+      format when format in ["novel", "screenplay"] -> "immersive"
+      format when format in ["case_study", "report"] -> "analytical"
+      format when format in ["live_story", "voice_sketch"] -> "collaborative"
       _ -> "balanced"
     end
   end
@@ -429,27 +913,47 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
   defp maybe_add_param(params, _key, false), do: params
   defp maybe_add_param(params, key, value), do: params ++ [{key, to_string(value)}]
 
+
   defp build_url_with_params(base_url, []), do: base_url
   defp build_url_with_params(base_url, params) do
-    query_string = URI.encode_query(params)
+    query_string = params
+    |> Enum.map(fn {key, value} -> "#{key}=#{URI.encode(value)}" end)
+    |> Enum.join("&")
+
     "#{base_url}?#{query_string}"
   end
 
   # Placeholder content functions
   defp get_novel_placeholder do
-    "Once upon a time...\n\nStart writing your story here. Use the character panel on the left to develop your protagonists and the plot tracker to outline your narrative arc."
+    "Once upon a time...\n\nBegin your chapter here. Develop your characters, set the scene, and advance your plot."
   end
 
   defp get_screenplay_placeholder do
-    "INT. LOCATION - DAY\n\nCHARACTER NAME\n(action/emotion)\nFirst line of dialogue...\n\nUse the scene breakdown panel to structure your screenplay according to industry standards."
+    "FADE IN:\n\nEXT. LOCATION - DAY\n\nAction line describing what we see...\n\nCHARACTER\nDialogue goes here."
   end
 
   defp get_case_study_placeholder do
-    "## Executive Summary\n\nProvide a brief overview of the key findings and recommendations...\n\n## Problem Statement\n\nDescribe the challenge or opportunity that prompted this analysis..."
+    "Executive Summary\n\nProvide a brief overview of the key findings, recommendations, and business impact..."
   end
 
   defp get_blog_placeholder do
-    "# Your Blog Post Title\n\nStart with a compelling hook that draws readers in...\n\nUse the SEO panel to optimize your content for search engines and social sharing."
+    "# Blog Post Title\n\nStart with a compelling introduction that hooks your readers..."
+  end
+
+  defp get_live_story_placeholder do
+    "Welcome to your live story! This opening scene will be shared with your audience in real-time.\n\nSet the stage for interactive storytelling..."
+  end
+
+  defp get_voice_sketch_placeholder do
+    "Voice Sketch Notes\n\nDescribe what you'll be drawing while you narrate. This will help synchronize your voice with visual elements..."
+  end
+
+  defp get_audio_portfolio_placeholder do
+    "Welcome Experience\n\nDescribe the immersive audio journey visitors will experience. Consider spatial audio and interactive elements..."
+  end
+
+  defp get_narrative_beats_placeholder do
+    "Opening Beat\n\nDescribe the musical and narrative elements for this beat. How does the story drive the musical composition?"
   end
 
   defp get_default_placeholder do
@@ -458,25 +962,21 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
 
   defp get_default_title(format, intent) do
     case {format, intent} do
-      {"novel", "entertain"} -> "Untitled Novel"
-      {"screenplay", "entertain"} -> "Untitled Screenplay"
-      {"case_study", "persuade"} -> "Business Case Study"
-      {"blog_series", "educate"} -> "Blog Series"
+      {"novel", _} -> "Untitled Novel"
+      {"screenplay", _} -> "Untitled Screenplay"
+      {"case_study", _} -> "New Case Study"
+      {"blog_series", _} -> "New Blog Series"
       {format, _} -> "New #{String.capitalize(format)}"
     end
   end
 
   defp get_default_template(format, intent) do
-    try do
-      Templates.get_default_template(format, intent)
-    rescue
-      UndefinedFunctionError ->
-        %{
-          title: get_default_title(format, intent),
-          sections: [],
-          metadata: %{}
-        }
-    end
+    # This could be expanded with your existing template system
+    %{
+      format: format,
+      intent: intent,
+      structure: get_default_outline_template(format)
+    }
   end
 
   defp get_template_by_key(template_key) do

@@ -64,6 +64,78 @@ defmodule Frestyl.Sessions do
     |> Repo.insert()
   end
 
+  @doc """
+  Creates a session specifically for story development with proper validation
+  """
+  def create_story_session(session_params, user) do
+    # Ensure we have the required fields with proper values
+    validated_params = session_params
+    |> Map.put("session_type", "regular")  # Ensure valid enum value
+    |> Map.put("creator_id", user.id)
+    |> Map.put("host_id", user.id)  # User hosts their own story sessions
+    |> Map.put("status", "active")
+    |> Map.put("is_public", false)  # Story sessions are private by default
+    |> ensure_required_session_fields()
+
+    create_session(validated_params)
+  end
+
+  @doc """
+  Ensure all required session fields are present with valid defaults
+  """
+  defp ensure_required_session_fields(params) do
+    params
+    |> Map.put_new("title", "Story Writing Session")
+    |> Map.put_new("description", "Collaborative story writing session")
+    |> Map.put_new("session_type", "regular")
+    |> Map.put_new("status", "active")
+    |> Map.put_new("is_public", false)
+    |> Map.put_new("waiting_room_enabled", false)
+    |> Map.put_new("max_participants", 10)
+    |> Map.put_new("workspace_state", %{})
+    |> validate_channel_exists()
+  end
+
+  @doc """
+  Validate that the channel_id exists and user has access
+  """
+  defp validate_channel_exists(params) do
+    case Map.get(params, "channel_id") do
+      nil ->
+        Map.put(params, "validation_error", "channel_id is required")
+      channel_id ->
+        # Check if channel exists (you might want to add this validation)
+        case Frestyl.Channels.get_channel(channel_id) do
+          nil -> Map.put(params, "validation_error", "Channel not found")
+          _channel -> params
+        end
+    end
+  end
+
+  @doc """
+  Alternative approach: Create session with better error handling
+  """
+  def create_session_with_fallback(session_params) do
+    case create_session(session_params) do
+      {:ok, session} -> {:ok, session}
+      {:error, changeset} ->
+        # Log the specific validation errors for debugging
+        IO.inspect(changeset.errors, label: "Session creation validation errors")
+
+        # Check if it's a missing channel issue
+        if has_channel_error?(changeset) do
+          {:error, :missing_channel}
+        else
+          {:error, changeset}
+        end
+    end
+  end
+
+  defp has_channel_error?(changeset) do
+    changeset.errors
+    |> Enum.any?(fn {field, _} -> field == :channel_id end)
+  end
+
   # Helper function to ensure datetime is in UTC
   defp ensure_utc_datetime(params, key) do
     case Map.get(params, key) do

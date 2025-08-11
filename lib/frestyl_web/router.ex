@@ -337,7 +337,7 @@ defmodule FrestylWeb.Router do
     live "/events/:id/edit", EventLive.Index, :edit
     live "/events/:id/attend", EventAttendanceLive, :show
 
-    # Story Engine routes
+    # Story Engine ro\utes
     live "/story-engine", StoryEngineLive.Hub, :index
     live "/story-engine/create", StoryEngineLive.Create, :new
     live "/story-engine/create/:format/:intent", StoryEngineLive.Create, :new

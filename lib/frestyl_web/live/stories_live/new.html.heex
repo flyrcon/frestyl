@@ -1,0 +1,134 @@
+<div class="max-w-4xl mx-auto p-6">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Create Your Story</h1>
+    <p class="text-gray-600 mt-2">Choose how you want to tell your story</p>
+  </div>
+
+  <!-- Step Indicator -->
+  <div class="flex items-center mb-8">
+    <div class={["flex items-center", if(@step == :basics, do: "text-blue-600", else: "text-gray-400")]}>
+      <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center font-semibold">1</div>
+      <span class="ml-2">Story Type</span>
+    </div>
+    <div class="flex-1 h-px bg-gray-300 mx-4"></div>
+    <div class={["flex items-center", if(@step == :template, do: "text-blue-600", else: "text-gray-400")]}>
+      <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center font-semibold">2</div>
+      <span class="ml-2">Details</span>
+    </div>
+  </div>
+
+  <%= if @step == :basics do %>
+    <!-- Story Type Selection -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <%= for {type, config} <- story_type_options() do %>
+        <button
+          type="button"
+          phx-click="story_type_selected"
+          phx-value-story_type={type}
+          class={[
+            "p-6 border-2 rounded-xl text-left transition-all",
+            if(@selected_story_type == type, 
+               do: "border-blue-500 bg-blue-50", 
+               else: "border-gray-200 hover:border-gray-300")
+          ]}
+        >
+          <div class="text-3xl mb-4"><%= config.icon %></div>
+          <h3 class="text-lg font-semibold text-gray-900 mb-2"><%= config.name %></h3>
+          <p class="text-gray-600 text-sm mb-3"><%= config.description %></p>
+          <%= if config.examples do %>
+            <div class="mt-3">
+              <div class="text-xs text-gray-500 font-medium">Examples:</div>
+              <div class="text-xs text-gray-600"><%= config.examples %></div>
+            </div>
+          <% end %>
+        </button>
+      <% end %>
+    </div>
+
+    <%= if @selected_story_type do %>
+      <div class="mt-8 flex justify-end">
+        <button 
+          phx-click="next_step"
+          class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium">
+          Continue
+        </button>
+      </div>
+    <% end %>
+
+  <% else %>
+    <!-- Story Details Form -->
+    <.simple_form for={@changeset} phx-submit="create_story">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="md:col-span-2">
+          <.input field={@changeset[:title]} 
+                   label="Story Title" 
+                   placeholder="Enter your story title..."
+                   required />
+        </div>
+
+        <div class="md:col-span-2">
+          <.input field={@changeset[:description]} 
+                   type="textarea" 
+                   label="Description (Optional)" 
+                   placeholder="Brief description of your story..."
+                   rows="3" />
+        </div>
+
+        <.input field={@changeset[:intent_category]} 
+                 type="select" 
+                 label="Story Purpose" 
+                 prompt="What's your goal?"
+                 options={[
+                   {"Entertain readers", "entertain"},
+                   {"Educate audience", "educate"}, 
+                   {"Persuade/convince", "persuade"},
+                   {"Document events", "document"},
+                   {"Personal/professional", "personal_professional"}
+                 ]} />
+
+        <.input field={@changeset[:collaboration_mode]} 
+                 type="select" 
+                 label="Collaboration" 
+                 value="owner_only"
+                 options={[
+                   {"Just me", "owner_only"},
+                   {"Small team (2-5 people)", "team"},
+                   {"Open collaboration", "open"}
+                 ]} />
+      </div>
+
+      <div class="mt-8 flex items-center justify-between">
+        <button 
+          type="button"
+          phx-click="prev_step"
+          class="bg-gray-200 text-gray-800 px-6 py-3 rounded-lg hover:bg-gray-300 font-medium">
+          Back
+        </button>
+
+        <div class="flex space-x-3">
+          <.link navigate={~p"/story-engine"} 
+                class="text-blue-600 hover:text-blue-700 font-medium px-6 py-3">
+            Use Story Engine Instead
+          </.link>
+          
+          <.button type="submit" class="bg-green-600 hover:bg-green-700 px-6 py-3">
+            Create Story
+          </.button>
+        </div>
+      </div>
+    </.simple_form>
+  <% end %>
+
+  <!-- Help Text -->
+  <div class="mt-12 bg-blue-50 border border-blue-200 rounded-lg p-6">
+    <h3 class="text-lg font-medium text-blue-900 mb-2">Need Help Choosing?</h3>
+    <p class="text-blue-800 mb-4">
+      The Story Engine can help you select the perfect format and get started with templates, 
+      AI assistance, and guided workflows tailored to your specific goals.
+    </p>
+    <.link navigate={~p"/story-engine"} 
+          class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-medium">
+      Try Story Engine
+    </.link>
+  </div>
+</div>
