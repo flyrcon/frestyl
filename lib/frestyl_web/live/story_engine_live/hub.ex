@@ -38,7 +38,10 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
     socket = socket
     |> assign(:current_user, current_user)
     |> assign(:user_tier, user_tier)
-    |> assign(:selected_intent, dashboard_data.suggested_intent)
+    |> assign(:selected_intent, nil)
+    |> assign(:active_format_tab, "traditional")
+    |> assign(:stories_view_mode, "grid")
+    |> assign(:selected_intent, nil)
     |> assign(:available_intents, available_intents)
     |> assign(:available_formats, get_formats_for_intent(dashboard_data.suggested_intent, user_tier))
     |> assign(:recent_stories, load_recent_stories(current_user.id))
@@ -267,6 +270,77 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
   @impl true
   def handle_event("close_template_modal", _params, socket) do
     {:noreply, assign(socket, :show_template_modal, false)}
+  end
+
+    @impl true
+  def handle_event("change_format_tab", %{"tab" => tab}, socket) do
+    {:noreply, assign(socket, :active_format_tab, tab)}
+  end
+
+  # View toggle for My Stories (grid vs list)
+  @impl true
+  def handle_event("change_stories_view", %{"view" => view}, socket) do
+    {:noreply, assign(socket, :stories_view_mode, view)}
+  end
+
+  # Intent selection
+  @impl true
+  def handle_event("select_intent", %{"intent" => intent}, socket) do
+    {:noreply, assign(socket, :selected_intent, intent)}
+  end
+
+  # Traditional story creation
+  @impl true
+  def handle_event("create_story", %{"format" => format, "intent" => intent}, socket) do
+    user = socket.assigns.current_user
+
+    # Check tier access
+    format_config = FormatManager.get_format_config(format)
+    required_tier = format_config.required_tier
+
+    unless TierManager.has_tier_access?(user.tier, required_tier) do
+      {:noreply, socket
+      |> put_flash(:error, "Upgrade required to access this format")
+      |> push_event("show_upgrade_modal", %{required_tier: required_tier})}
+    else
+      create_story_with_enhanced_features(socket, format, intent, %{
+        collaboration_requested: false,
+        audio_features_requested: false,
+        is_frestyl_original: false
+      })
+    end
+  end
+
+  # Frestyl Original creation
+  @impl true
+  def handle_event("create_frestyl_original", %{"story_type" => story_type}, socket) do
+    user = socket.assigns.current_user
+
+    # Check tier access - Frestyl Originals require Creator tier
+    unless TierManager.has_tier_access?(user.tier, "creator") do
+      {:noreply, socket
+      |> put_flash(:error, "Upgrade to Creator tier to access Frestyl Originals")
+      |> push_event("show_upgrade_modal", %{required_tier: "creator"})}
+    else
+      create_story_with_enhanced_features(socket, story_type, "create", %{
+        collaboration_requested: true,
+        audio_features_requested: true,
+        is_frestyl_original: true,
+        title: get_default_frestyl_title(story_type)
+      })
+    end
+  end
+
+  # Continue existing story
+  @impl true
+  def handle_event("continue_story", %{"story-id" => story_id}, socket) do
+    case Stories.get_enhanced_story(story_id) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Story not found")}
+      story ->
+        editor_url = build_continuation_url(story)
+        {:noreply, redirect(socket, to: editor_url)}
+    end
   end
 
   # ============================================================================
@@ -1203,5 +1277,136 @@ defmodule FrestylWeb.StoryEngineLive.Hub do
         story
       end
     end)
+  end
+
+    defp calculate_story_stats(user) do
+    %{
+      total_stories: Stories.count_user_stories(user.id),
+      active_collaborations: Stories.count_active_collaborations(user.id),
+      average_completion: Stories.calculate_average_completion(user.id),
+      words_this_week: Stories.count_words_this_week(user.id) |> format_word_count()
+    }
+  end
+
+  defp load_recent_stories(user) do
+    Stories.list_recent_stories(user.id, limit: 6)
+  end
+
+  defp get_user_tier(user) do
+    user.subscription_tier || "personal"
+  end
+
+  defp create_story_with_enhanced_features(socket, format, intent, options) do
+    user = socket.assigns.current_user
+
+    # Get template
+    template = QuickStartTemplates.get_template(format, intent)
+
+    # Build story parameters
+    story_params = %{
+      title: Map.get(options, :title, template.title),
+      story_type: format,
+      intent_category: intent,
+      template_data: template,
+      creation_source: "story_engine_hub",
+      created_by_id: user.id,
+      collaboration_mode: determine_initial_collaboration_mode(options),
+      audio_features_enabled: Map.get(options, :audio_features_requested, false),
+      editor_preferences: build_enhanced_editor_preferences(format, intent, options)
+    }
+
+    # Track usage
+    UserPreferences.track_format_usage(user.id, format, intent)
+
+    case Stories.create_story_with_collaboration_support(story_params, user, [
+      collaboration: Map.get(options, :collaboration_requested, false),
+      audio_features: Map.get(options, :audio_features_requested, false)
+    ]) do
+      {:ok, story, session} ->
+        editor_url = build_enhanced_editor_url(story, session, format, intent, options)
+        {:noreply, socket
+         |> put_flash(:info, get_creation_success_message(format, session != nil))
+         |> redirect(to: editor_url)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to create story. Please try again.")}
+    end
+  end
+
+  defp get_default_frestyl_title(story_type) do
+    case story_type do
+      "live_story" -> "My Live Story Session"
+      "voice_sketch" -> "Voice Sketch Creation"
+      "audio_portfolio" -> "Interactive Audio Portfolio"
+      "data_jam" -> "Data Storytelling Session"
+      "story_remix" -> "Story Remix Project"
+      "narrative_beats" -> "Musical Story Composition"
+      _ -> "Frestyl Original Story"
+    end
+  end
+
+  defp determine_initial_collaboration_mode(options) do
+    cond do
+      Map.get(options, :collaboration_requested, false) -> "collaborative"
+      Map.get(options, :is_frestyl_original, false) -> "collaborative"
+      true -> "owner_only"
+    end
+  end
+
+  defp build_enhanced_editor_preferences(format, intent, options) do
+    %{
+      auto_save_interval: 2000,
+      ai_assistance_level: get_ai_assistance_level(intent),
+      collaboration_enabled: Map.get(options, :collaboration_requested, false),
+      focus_mode: get_default_focus_mode(format),
+      audio_features_enabled: Map.get(options, :audio_features_requested, false)
+    }
+  end
+
+  defp get_ai_assistance_level(intent) do
+    case intent do
+      "creative_expression" -> "creative"
+      "business_growth" -> "analytical"
+      "share_knowledge" -> "educational"
+      "entertainment" -> "creative"
+      _ -> "balanced"
+    end
+  end
+
+  defp get_default_focus_mode(format) do
+    case format do
+      format when format in ["novel", "screenplay"] -> "manuscript"
+      format when format in ["case_study", "report"] -> "business"
+      _ -> "balanced"
+    end
+  end
+
+  defp build_enhanced_editor_url(story, session, format, intent, options) do
+    base_url = ~p"/stories/#{story.id}/edit"
+
+    params = [
+      {"mode", determine_editor_mode_from_format(format)},
+      {"intent", intent},
+      {"source", "hub_creation"}
+    ]
+
+    if session do
+      params ++ [{"collaboration", "true"}, {"session_id", session.id}]
+    else
+      params
+    end
+    |> build_url_with_params(base_url)
+  end
+
+  defp build_continuation_url(story) do
+    ~p"/stories/#{story.id}/edit"
+  end
+
+  defp get_creation_success_message(format, has_session) do
+    if has_session do
+      "#{String.capitalize(format)} created with collaboration enabled! Opening editor..."
+    else
+      "#{String.capitalize(format)} created! Opening editor..."
+    end
   end
 end

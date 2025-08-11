@@ -1,12 +1,12 @@
-<!-- lib/frestyl_web/live/story_engine_live/hub.html.heex - Final Functional Version -->
+<!-- lib/frestyl_web/live/story_engine_live/hub.html.heex - Enhanced Story Engine Hub -->
 
 <div class="space-y-6">
-  <!-- Header Section -->
+  <!-- Header Section - Matching portfolio hub tab styling -->
   <div class="bg-white rounded-xl p-6 shadow-sm border">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Story Engine</h1>
-        <p class="text-gray-600 mt-1">Create compelling narratives with collaborative tools and AI assistance</p>
+        <p class="text-gray-600 mt-1">Create compelling narratives with collaborative tools, AI assistance, and unique formats</p>
       </div>
       <div class="flex space-x-3 mt-4 sm:mt-0">
         <button 
@@ -25,704 +25,771 @@
       </div>
     </div>
 
-    <!-- Quick Stats Dashboard -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div class="text-center">
-        <div class="text-2xl font-bold text-purple-600"><%= @story_stats.total_stories %></div>
-        <div class="text-sm text-gray-600">Stories</div>
-      </div>
-      <div class="text-center">
-        <div class="text-2xl font-bold text-indigo-600"><%= @story_stats.active_collaborations %></div>
-        <div class="text-sm text-gray-600">Collaborations</div>
-      </div>
-      <div class="text-center">
-        <div class="text-2xl font-bold text-green-600"><%= @story_stats.average_completion %>%</div>
-        <div class="text-sm text-gray-600">Avg Completion</div>
-      </div>
-      <div class="text-center">
-        <div class="text-2xl font-bold text-orange-600"><%= format_word_count(@story_stats.words_this_week) %></div>
-        <div class="text-sm text-gray-600">Words This Week</div>
+    <!-- Quick Intent Selection -->
+    <div class="mb-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-3">Not sure where to start?</h3>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <button 
+          phx-click="select_intent" 
+          phx-value-intent="creative_expression"
+          class="intent-card p-3 bg-gradient-to-br from-purple-50 to-pink-50 hover:from-purple-100 hover:to-pink-100 rounded-lg transition-all group text-left border border-purple-100">
+          <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 19 7.5 19s3.332-.523 4.5-1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.523 18.247 19 16.5 19c-1.746 0-3.332-.523-4.5-1.253"/>
+            </svg>
+          </div>
+          <h4 class="font-semibold text-gray-900 text-sm mb-1">Creative</h4>
+          <p class="text-xs text-gray-600">Novels, stories</p>
+        </button>
+
+        <button 
+          phx-click="select_intent" 
+          phx-value-intent="business_growth"
+          class="intent-card p-3 bg-gradient-to-br from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 rounded-lg transition-all group text-left border border-blue-100">
+          <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+          </div>
+          <h4 class="font-semibold text-gray-900 text-sm mb-1">Business</h4>
+          <p class="text-xs text-gray-600">Reports, cases</p>
+        </button>
+
+        <button 
+          phx-click="select_intent" 
+          phx-value-intent="share_knowledge"
+          class="intent-card p-3 bg-gradient-to-br from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 rounded-lg transition-all group text-left border border-green-100">
+          <div class="w-8 h-8 bg-gradient-to-br from-green-600 to-emerald-600 rounded-lg flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+          </div>
+          <h4 class="font-semibold text-gray-900 text-sm mb-1">Knowledge</h4>
+          <p class="text-xs text-gray-600">Blogs, guides</p>
+        </button>
+
+        <button 
+          phx-click="select_intent" 
+          phx-value-intent="entertainment"
+          class="intent-card p-3 bg-gradient-to-br from-orange-50 to-red-50 hover:from-orange-100 hover:to-red-100 rounded-lg transition-all group text-left border border-orange-100">
+          <div class="w-8 h-8 bg-gradient-to-br from-orange-600 to-red-600 rounded-lg flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <h4 class="font-semibold text-gray-900 text-sm mb-1">Entertainment</h4>
+          <p class="text-xs text-gray-600">Scripts, media</p>
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- Main Content: Intent-Based Story Creation -->
-  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+  <!-- Main Content Grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
     
-    <!-- Intent Selection (Left Column) -->
-    <div class="lg:col-span-2">
-      <div class="bg-white rounded-xl p-6 shadow-sm border">
-        <h2 class="text-lg font-bold text-gray-900 mb-4">What's your goal?</h2>
-        <p class="text-gray-600 mb-6">Choose your storytelling intent to get personalized recommendations</p>
-        
-        <div class="space-y-3">
-          <button 
-            phx-click="select_intent" 
-            phx-value-intent="entertain"
-            class={[
-              "intent-option w-full text-left p-4 rounded-lg transition-colors group border-2",
-              if(@selected_intent == "entertain", 
-                do: "border-purple-500 bg-purple-50", 
-                else: "border-gray-200 hover:border-purple-300 hover:bg-gray-50")
-            ]}>
-            <div class="flex items-center space-x-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center text-white text-xl">
-                🎭
-              </div>
-              <div class="flex-1">
-                <h3 class="font-semibold text-gray-900 group-hover:text-purple-600">Entertain</h3>
-                <p class="text-sm text-gray-600">Create engaging stories that captivate readers</p>
-              </div>
-            </div>
-          </button>
-
-          <button 
-            phx-click="select_intent" 
-            phx-value-intent="educate"
-            class={[
-              "intent-option w-full text-left p-4 rounded-lg transition-colors group border-2",
-              if(@selected_intent == "educate", 
-                do: "border-blue-500 bg-blue-50", 
-                else: "border-gray-200 hover:border-blue-300 hover:bg-gray-50")
-            ]}>
-            <div class="flex items-center space-x-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center text-white text-xl">
-                📚
-              </div>
-              <div class="flex-1">
-                <h3 class="font-semibold text-gray-900 group-hover:text-blue-600">Educate</h3>
-                <p class="text-sm text-gray-600">Share knowledge and teach others</p>
-              </div>
-            </div>
-          </button>
-
-          <button 
-            phx-click="select_intent" 
-            phx-value-intent="persuade"
-            class={[
-              "intent-option w-full text-left p-4 rounded-lg transition-colors group border-2",
-              if(@selected_intent == "persuade", 
-                do: "border-green-500 bg-green-50", 
-                else: "border-gray-200 hover:border-green-300 hover:bg-gray-50")
-            ]}>
-            <div class="flex items-center space-x-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-green-600 to-emerald-600 rounded-lg flex items-center justify-center text-white text-xl">
-                💼
-              </div>
-              <div class="flex-1">
-                <h3 class="font-semibold text-gray-900 group-hover:text-green-600">Persuade</h3>
-                <p class="text-sm text-gray-600">Influence and inspire action</p>
-              </div>
-            </div>
-          </button>
-
-          <button 
-            phx-click="select_intent" 
-            phx-value-intent="document"
-            class={[
-              "intent-option w-full text-left p-4 rounded-lg transition-colors group border-2",
-              if(@selected_intent == "document", 
-                do: "border-orange-500 bg-orange-50", 
-                else: "border-gray-200 hover:border-orange-300 hover:bg-gray-50")
-            ]}>
-            <div class="flex items-center space-x-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-orange-600 to-red-600 rounded-lg flex items-center justify-center text-white text-xl">
-                📊
-              </div>
-              <div class="flex-1">
-                <h3 class="font-semibold text-gray-900 group-hover:text-orange-600">Document</h3>
-                <p class="text-sm text-gray-600">Record experiences and insights</p>
-              </div>
-            </div>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Format Selection (Right Column) -->
-    <div class="lg:col-span-3">
-      <div class="bg-white rounded-xl p-6 shadow-sm border">
-        <h2 class="text-lg font-bold text-gray-900 mb-4">Choose your format</h2>
-        <p class="text-gray-600 mb-6">Select the best format for your storytelling goals</p>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <!-- Studio Option -->
-          <button 
-            phx-click="launch_studio" 
-            phx-value-mode="audio_production"
-            class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-gradient-to-br from-yellow-300 to-orange-400 border border-yellow-200 hover:border-orange-300">
-            <div class="flex items-center space-x-3 mb-3">
-              <div class="w-8 h-8 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center text-white text-sm">
-                🎵
-              </div>
-              <div>
-                <h3 class="font-semibold text-gray-900">Creator Studio</h3>
-                <span class="text-xs bg-yellow-300 text-yellow-700 px-2 py-1 rounded-full font-medium">Featured</span>
-              </div>
-            </div>
-            <p class="text-sm text-gray-600">Audio production and podcast creation tools</p>
-          </button>
-          
-          <!-- Format Cards -->
-          <button 
-            phx-click="create_story_with_format" 
-            phx-value-format="short_story"
-            class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-purple-300">
-            <div class="flex items-center space-x-3 mb-3">
-              <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center text-white text-sm">
-                📖
-              </div>
-              <h3 class="font-semibold text-gray-900">Short Story</h3>
-            </div>
-            <p class="text-sm text-gray-600">Complete narrative in 1,000-5,000 words</p>
-          </button>
-          
-          <button 
-            phx-click="create_story_with_format" 
-            phx-value-format="screenplay"
-            class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-blue-300">
-            <div class="flex items-center space-x-3 mb-3">
-              <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center text-white text-sm">
-                🎬
-              </div>
-              <h3 class="font-semibold text-gray-900">Screenplay</h3>
-            </div>
-            <p class="text-sm text-gray-600">Visual storytelling for film or TV</p>
-          </button>
-          
-          <button 
-            phx-click="create_story_with_format" 
-            phx-value-format="blog_series"
-            class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-green-300">
-            <div class="flex items-center space-x-3 mb-3">
-              <div class="w-8 h-8 bg-gradient-to-br from-green-600 to-emerald-600 rounded-lg flex items-center justify-center text-white text-sm">
-                📝
-              </div>
-              <h3 class="font-semibold text-gray-900">Blog Series</h3>
-            </div>
-            <p class="text-sm text-gray-600">Multi-part storytelling for content</p>
-          </button>
-          
-          <button 
-            phx-click="create_story_with_format" 
-            phx-value-format="ebook"
-            class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-orange-300">
-            <div class="flex items-center space-x-3 mb-3">
-              <div class="w-8 h-8 bg-gradient-to-br from-orange-600 to-red-600 rounded-lg flex items-center justify-center text-white text-sm">
-                📚
-              </div>
-              <h3 class="font-semibold text-gray-900">eBook Creation</h3>
-            </div>
-            <p class="text-sm text-gray-600">Turn your story into a publishable eBook</p>
-          </button>
-          
-          <button 
-            phx-click="create_story_with_format" 
-            phx-value-format="interactive"
-            class="format-card p-4 rounded-xl hover:shadow-md transition-all text-left group bg-white border border-gray-200 hover:border-pink-300">
-            <div class="flex items-center space-x-3 mb-3">
-              <div class="w-8 h-8 bg-gradient-to-br from-pink-600 to-purple-600 rounded-lg flex items-center justify-center text-white text-sm">
-                🎮
-              </div>
-              <h3 class="font-semibold text-gray-900">Interactive Story</h3>
-            </div>
-            <p class="text-sm text-gray-600">Choose-your-own-adventure format</p>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- My Stories Section - Preserved as Placeholders -->
-  <div class="bg-white rounded-xl p-6 shadow-sm border">
-    <div class="flex items-center justify-between mb-6">
-      <h2 class="text-lg font-bold text-gray-900">My Stories</h2>
-      <button 
-        phx-click="view_all_stories"
-        class="text-purple-600 hover:text-purple-700 font-medium text-sm">View all</button>
-    </div>
-    
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-      <!-- Story Card Placeholders -->
-      <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
-        <!-- Card Header -->
-        <div class="relative p-4 border-b border-gray-100 bg-gradient-to-br from-purple-50 to-blue-50">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-purple-600 bg-purple-100 px-2 py-1 rounded-full">
-              Novel
-            </span>
-            <div class="flex items-center space-x-1">
-              <span class="text-xs text-gray-500">73%</span>
-              <div class="w-8 h-1 bg-gray-200 rounded-full overflow-hidden">
-                <div class="h-full bg-green-500 transition-all duration-300" style="width: 73%"></div>
-              </div>
-            </div>
-          </div>
-          
-          <h3 class="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors mb-1">
-            The Digital Renaissance
-          </h3>
-          
-          <div class="flex items-center space-x-4 text-xs text-gray-500">
-            <span>12,847 words</span>
-            <span>Updated 2h ago</span>
-          </div>
-        </div>
-        
-        <!-- Card Body -->
-        <div class="p-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-2">
-              <div class="flex -space-x-1">
-                <div class="w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full border-2 border-white flex items-center justify-center text-white text-xs">
-                  A
-                </div>
-                <div class="w-6 h-6 bg-gradient-to-br from-green-400 to-blue-500 rounded-full border-2 border-white flex items-center justify-center text-white text-xs">
-                  M
-                </div>
-              </div>
-              
-              <span class="text-xs px-2 py-1 rounded-full font-medium bg-blue-100 text-blue-800">
-                In Progress
-              </span>
-            </div>
-            
-            <button 
-              phx-click="continue_story"
-              phx-value-story-id="placeholder-1"
-              class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
-              Continue
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Second Story Card -->
-      <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
-        <div class="relative p-4 border-b border-gray-100 bg-gradient-to-br from-green-50 to-teal-50">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full">
-              Case Study
-            </span>
-            <div class="flex items-center space-x-1">
-              <span class="text-xs text-gray-500">100%</span>
-              <div class="w-8 h-1 bg-gray-200 rounded-full overflow-hidden">
-                <div class="h-full bg-green-500 transition-all duration-300" style="width: 100%"></div>
-              </div>
-            </div>
-          </div>
-          
-          <h3 class="font-semibold text-gray-900 group-hover:text-green-600 transition-colors mb-1">
-            Q4 Marketing Campaign Success
-          </h3>
-          
-          <div class="flex items-center space-x-4 text-xs text-gray-500">
-            <span>3,241 words</span>
-            <span>Updated 1d ago</span>
-          </div>
-        </div>
-        
-        <div class="p-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-2">
-              <span class="text-xs px-2 py-1 rounded-full font-medium bg-green-100 text-green-800">
-                Complete
-              </span>
-            </div>
-            
-            <button 
-              phx-click="continue_story"
-              phx-value-story-id="placeholder-2"
-              class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
-              View
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Third Story Card -->
-      <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
-        <div class="relative p-4 border-b border-gray-100 bg-gradient-to-br from-orange-50 to-red-50">
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-orange-600 bg-orange-100 px-2 py-1 rounded-full">
-              Screenplay
-            </span>
-            <div class="flex items-center space-x-1">
-              <span class="text-xs text-gray-500">45%</span>
-              <div class="w-8 h-1 bg-gray-200 rounded-full overflow-hidden">
-                <div class="h-full bg-yellow-500 transition-all duration-300" style="width: 45%"></div>
-              </div>
-            </div>
-          </div>
-          
-          <h3 class="font-semibold text-gray-900 group-hover:text-orange-600 transition-colors mb-1">
-            Coffee Shop Chronicles
-          </h3>
-          
-          <div class="flex items-center space-x-4 text-xs text-gray-500">
-            <span>54 pages</span>
-            <span>Updated 3d ago</span>
-          </div>
-        </div>
-        
-        <div class="p-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-2">
-              <span class="text-xs px-2 py-1 rounded-full font-medium bg-yellow-100 text-yellow-800">
-                Draft
-              </span>
-            </div>
-            
-            <button 
-              phx-click="continue_story"
-              phx-value-story-id="placeholder-3"
-              class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors">
-              Continue
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Quick Actions Row -->
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    
-    <!-- Resources & Tools -->
-    <div class="bg-white rounded-xl p-6 shadow-sm border">
-      <h3 class="text-lg font-bold text-gray-900 mb-6">Resources & Tools</h3>
-      <div class="space-y-3">
-        <button 
-          phx-click="show_templates_library"
-          class="w-full flex items-center space-x-4 p-4 rounded-lg hover:bg-gray-50 transition-colors text-left group">
-          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">📋</div>
-          <div class="flex-1">
-            <div class="font-semibold text-gray-900 group-hover:text-blue-600">Story Templates</div>
-            <div class="text-sm text-gray-600">Pre-built structures for every format</div>
-          </div>
-        </button>
-        
-        <button 
-          phx-click="show_ai_assistant"
-          class="w-full flex items-center space-x-4 p-4 rounded-lg hover:bg-gray-50 transition-colors text-left group">
-          <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">🤖</div>
-          <div class="flex-1">
-            <div class="font-semibold text-gray-900 group-hover:text-green-600">AI Writing Assistant</div>
-            <div class="text-sm text-gray-600">Get help with ideas and editing</div>
-          </div>
-        </button>
-        
-        <button 
-          phx-click="show_collaboration_guide"
-          class="w-full flex items-center space-x-4 p-4 rounded-lg hover:bg-gray-50 transition-colors text-left group">
-          <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">👥</div>
-          <div class="flex-1">
-            <div class="font-semibold text-gray-900 group-hover:text-purple-600">Collaboration Tools</div>
-            <div class="text-sm text-gray-600">Write together in real-time</div>
-          </div>
-        </button>
-
-        <button 
-          phx-click="show_examples_gallery"
-          class="w-full flex items-center space-x-4 p-4 rounded-lg hover:bg-gray-50 transition-colors text-left group">
-          <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">✨</div>
-          <div class="flex-1">
-            <div class="font-semibold text-gray-900 group-hover:text-yellow-600">Example Stories</div>
-            <div class="text-sm text-gray-600">Get inspired by great examples</div>
-          </div>
-        </button>
-      </div>
-    </div>
-
-    <!-- Quick Actions -->
-    <div class="bg-white rounded-xl p-6 shadow-sm border">
-      <h3 class="text-lg font-bold text-gray-900 mb-6">Quick Actions</h3>
-      <div class="space-y-3">
-        <button 
-          phx-click="create_blank_story"
-          class="w-full p-4 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors font-semibold">
-          Start from Blank Canvas
-        </button>
-        
-        <button 
-          phx-click="show_template_modal"
-          class="w-full p-4 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-colors font-semibold">
-          Use a Template
-        </button>
-        
-        <button 
-          phx-click="show_import_modal"
-          class="w-full p-4 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-colors font-semibold">
-          Import Existing Work
-        </button>
-        
-        <button 
-          phx-click="show_collaboration_modal"
-          class="w-full p-4 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-colors font-semibold">
-          Join a Collaboration
-        </button>
-      </div>
+    <!-- Main Content Area -->
+    <div class="lg:col-span-3 space-y-6">
       
-      <!-- Upgrade Notice for Free Users -->
-      <%= if @user_tier == "personal" do %>
-        <div class="mt-6 p-4 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-lg border border-orange-200">
-          <h4 class="font-semibold text-orange-900 mb-2">Unlock Advanced Features</h4>
-          <p class="text-sm text-orange-700 mb-3">Get access to AI assistance, collaboration tools, and premium formats</p>
-          <button 
-            phx-click="show_upgrade_modal"
-            class="text-orange-600 hover:text-orange-700 font-medium text-sm">
-            Upgrade to Creator →
-          </button>
+      <!-- Choose a Format Section with Tabs -->
+      <div class="bg-white rounded-xl shadow-sm border">
+        <div class="p-6 border-b border-gray-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-xl font-bold text-gray-900">Choose a Format</h2>
+              <p class="text-gray-600 text-sm mt-1">Start with traditional formats or explore unique Frestyl Originals</p>
+            </div>
+          </div>
         </div>
-      <% end %>
+        
+        <!-- Format Tabs -->
+        <div class="border-b border-gray-200">
+          <nav class="flex space-x-8 px-6" aria-label="Tabs">
+            <button 
+              phx-click="change_format_tab" 
+              phx-value-tab="traditional"
+              class={[
+                "py-4 px-1 border-b-2 font-medium text-sm transition-colors",
+                if(Map.get(assigns, :active_format_tab, "traditional") == "traditional", 
+                   do: "border-gray-900 text-gray-900", 
+                   else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
+              ]}>
+              Traditional Types
+            </button>
+            <button 
+              phx-click="change_format_tab" 
+              phx-value-tab="originals"
+              class={[
+                "py-4 px-1 border-b-2 font-medium text-sm transition-colors",
+                if(Map.get(assigns, :active_format_tab, "traditional") == "originals", 
+                   do: "border-purple-600 text-purple-600", 
+                   else: "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
+              ]}>
+              <span class="flex items-center space-x-2">
+                <span>Frestyl Originals</span>
+                <span class="bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-bold px-2 py-1 rounded flex items-center">
+                  <span class="w-1.5 h-1.5 bg-white rounded-full mr-1 animate-pulse"></span>
+                  EXCLUSIVE
+                </span>
+              </span>
+            </button>
+          </nav>
+        </div>
+        
+        <div class="p-6">
+          <%= if Map.get(assigns, :active_format_tab, "traditional") == "traditional" do %>
+            <!-- Traditional Story Types -->
+            <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              <!-- Novel -->
+              <button 
+                phx-click="create_story" 
+                phx-value-format="novel"
+                phx-value-intent={Map.get(assigns, :selected_intent, "creative_expression")}
+                class="story-card group p-6 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-lg hover:border-purple-400 hover:shadow-md transition-all text-left">
+                <div class="flex items-center space-x-3 mb-3">
+                  <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 19 7.5 19s3.332-.523 4.5-1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.523 18.247 19 16.5 19c-1.746 0-3.332-.523-4.5-1.253"/>
+                    </svg>
+                  </div>
+                  <span class="bg-green-100 text-green-600 text-xs font-medium px-2 py-1 rounded">Mobile Ready</span>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Novel</h3>
+                <p class="text-sm text-gray-600 leading-relaxed">Long-form fiction with character tracking and plot development</p>
+              </button>
+
+              <!-- Screenplay -->
+              <button 
+                phx-click="create_story" 
+                phx-value-format="screenplay"
+                phx-value-intent={Map.get(assigns, :selected_intent, "entertainment")}
+                class="story-card group p-6 bg-gradient-to-br from-orange-50 to-red-50 border border-orange-200 rounded-lg hover:border-orange-400 hover:shadow-md transition-all text-left">
+                <div class="flex items-center space-x-3 mb-3">
+                  <div class="w-8 h-8 bg-gradient-to-br from-orange-600 to-red-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                  </div>
+                  <span class="bg-blue-100 text-blue-600 text-xs font-medium px-2 py-1 rounded">Professional</span>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Screenplay</h3>
+                <p class="text-sm text-gray-600 leading-relaxed">Industry-standard formatting with scene management</p>
+              </button>
+
+              <!-- Case Study -->
+              <button 
+                phx-click="create_story" 
+                phx-value-format="case_study"
+                phx-value-intent={Map.get(assigns, :selected_intent, "business_growth")}
+                class="story-card group p-6 bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-lg hover:border-blue-400 hover:shadow-md transition-all text-left">
+                <div class="flex items-center space-x-3 mb-3">
+                  <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                  </div>
+                  <span class="bg-purple-100 text-purple-600 text-xs font-medium px-2 py-1 rounded">Business</span>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Case Study</h3>
+                <p class="text-sm text-gray-600 leading-relaxed">Business analysis with data visualization</p>
+              </button>
+
+              <!-- Blog/Article -->
+              <button 
+                phx-click="create_story" 
+                phx-value-format="blog_article"
+                phx-value-intent={Map.get(assigns, :selected_intent, "share_knowledge")}
+                class="story-card group p-6 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg hover:border-green-400 hover:shadow-md transition-all text-left">
+                <div class="flex items-center space-x-3 mb-3">
+                  <div class="w-8 h-8 bg-gradient-to-br from-green-600 to-emerald-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                  </div>
+                  <span class="bg-green-100 text-green-600 text-xs font-medium px-2 py-1 rounded">SEO Ready</span>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Blog/Article</h3>
+                <p class="text-sm text-gray-600 leading-relaxed">SEO-optimized content with publishing tools</p>
+              </button>
+
+              <!-- Report -->
+              <button 
+                phx-click="create_story" 
+                phx-value-format="report"
+                phx-value-intent={Map.get(assigns, :selected_intent, "business_growth")}
+                class="story-card group p-6 bg-gradient-to-br from-gray-50 to-slate-50 border border-gray-200 rounded-lg hover:border-gray-400 hover:shadow-md transition-all text-left">
+                <div class="flex items-center space-x-3 mb-3">
+                  <div class="w-8 h-8 bg-gradient-to-br from-gray-600 to-slate-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                  </div>
+                  <span class="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-1 rounded">Enterprise</span>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 mb-2">Report/White Paper</h3>
+                <p class="text-sm text-gray-600 leading-relaxed">Professional formatting with version control</p>
+              </button>
+            </div>
+          <% else %>
+            <!-- Frestyl Originals with Bold Styling -->
+            <div class="space-y-6">
+              <!-- Live Story - Featured Card with Bold Styling -->
+              <div class="relative overflow-hidden rounded-xl shadow-lg hover:shadow-xl transition-all duration-500 bg-gradient-to-r from-purple-600 to-indigo-600">
+                <div class="absolute inset-0 bg-black bg-opacity-20"></div>
+                <div class="relative p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between">
+                  <div class="flex-1 pr-6">
+                    <div class="flex items-center space-x-3 mb-3">
+                      <span class="bg-white bg-opacity-20 backdrop-blur-sm text-white text-xs font-bold px-3 py-1 rounded-full border border-white border-opacity-30">
+                        🔥 FEATURED
+                      </span>
+                      <span class="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">Live</span>
+                    </div>
+                    <h3 class="text-2xl font-black text-white mb-3 leading-tight">
+                      Live Story
+                    </h3>
+                    <p class="text-white text-opacity-90 text-sm leading-relaxed mb-4">
+                      Real-time collaborative storytelling with live audience interaction. Create branching narratives that respond to viewer choices in real-time.
+                    </p>
+                    <div class="flex flex-wrap gap-2 mb-4">
+                      <span class="bg-white bg-opacity-20 text-white text-xs px-2 py-1 rounded border border-white border-opacity-30">Live Streaming</span>
+                      <span class="bg-white bg-opacity-20 text-white text-xs px-2 py-1 rounded border border-white border-opacity-30">Audience Voting</span>
+                      <span class="bg-white bg-opacity-20 text-white text-xs px-2 py-1 rounded border border-white border-opacity-30">Branching Narratives</span>
+                      <span class="bg-white bg-opacity-20 text-white text-xs px-2 py-1 rounded border border-white border-opacity-30">Mobile Optimized</span>
+                    </div>
+                  </div>
+                  <div class="lg:flex-shrink-0">
+                    <button 
+                      phx-click="create_frestyl_original" 
+                      phx-value-story_type="live_story"
+                      class="bg-white bg-opacity-20 backdrop-blur-sm text-white font-bold px-6 py-3 rounded-xl border border-white border-opacity-30 hover:bg-opacity-30 transition-all transform hover:scale-105">
+                      Start Live Story
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Other Originals Grid -->
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Voice Sketch -->
+                <div class="story-type-card group bg-gradient-to-br from-cyan-50 to-blue-50 rounded-xl p-6 hover:shadow-lg transition-all border border-cyan-200">
+                  <div class="flex items-start justify-between mb-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-cyan-600 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                      </svg>
+                    </div>
+                    <span class="bg-cyan-100 text-cyan-600 text-xs font-medium px-2 py-1 rounded">Audio+Visual</span>
+                  </div>
+                  <h3 class="text-lg font-black text-gray-900 mb-2">Voice Sketch</h3>
+                  <p class="text-gray-600 text-sm mb-4 leading-relaxed">Voice narration synchronized with live drawing and sketching</p>
+                  
+                  <div class="space-y-2 mb-4">
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-cyan-500 rounded-full mr-2"></div>
+                      Audio-visual synchronization
+                    </div>
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                      Gesture recording & playback
+                    </div>
+                  </div>
+                  
+                  <button 
+                    phx-click="create_frestyl_original" 
+                    phx-value-story_type="voice_sketch"
+                    class="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white py-3 rounded-lg font-semibold transition-all transform hover:scale-105">
+                    Start Voice Sketch
+                  </button>
+                </div>
+
+                <!-- Audio Portfolio -->
+                <div class="story-type-card group bg-gradient-to-br from-pink-50 to-rose-50 rounded-xl p-6 hover:shadow-lg transition-all border border-pink-200">
+                  <div class="flex items-start justify-between mb-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-pink-600 to-rose-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                      </svg>
+                    </div>
+                    <span class="bg-pink-100 text-pink-600 text-xs font-medium px-2 py-1 rounded">3D Audio</span>
+                  </div>
+                  <h3 class="text-lg font-black text-gray-900 mb-2">Audio Portfolio</h3>
+                  <p class="text-gray-600 text-sm mb-4 leading-relaxed">Interactive audio-first portfolio with spatial navigation</p>
+                  
+                  <div class="space-y-2 mb-4">
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-pink-500 rounded-full mr-2"></div>
+                      Spatial audio navigation
+                    </div>
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-rose-500 rounded-full mr-2"></div>
+                      Interactive soundscapes
+                    </div>
+                  </div>
+                  
+                  <button 
+                    phx-click="create_frestyl_original" 
+                    phx-value-story_type="audio_portfolio"
+                    class="w-full bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white py-3 rounded-lg font-semibold transition-all transform hover:scale-105">
+                    Start Audio Portfolio
+                  </button>
+                </div>
+
+                <!-- Data Jam -->
+                <div class="story-type-card group bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-6 hover:shadow-lg transition-all border border-emerald-200">
+                  <div class="flex items-start justify-between mb-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-emerald-600 to-teal-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                      </svg>
+                    </div>
+                    <span class="bg-emerald-100 text-emerald-600 text-xs font-medium px-2 py-1 rounded">Real-time</span>
+                  </div>
+                  <h3 class="text-lg font-black text-gray-900 mb-2">Data Jam</h3>
+                  <p class="text-gray-600 text-sm mb-4 leading-relaxed">Collaborative data storytelling with real-time analysis</p>
+                  
+                  <div class="space-y-2 mb-4">
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-emerald-500 rounded-full mr-2"></div>
+                      Live data integration
+                    </div>
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-teal-500 rounded-full mr-2"></div>
+                      Collaborative analysis
+                    </div>
+                  </div>
+                  
+                  <button 
+                    phx-click="create_frestyl_original" 
+                    phx-value-story_type="data_jam"
+                    class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-3 rounded-lg font-semibold transition-all transform hover:scale-105">
+                    Start Data Jam
+                  </button>
+                </div>
+
+                <!-- Story Remix -->
+                <div class="story-type-card group bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-6 hover:shadow-lg transition-all border border-violet-200">
+                  <div class="flex items-start justify-between mb-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-violet-600 to-purple-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                      </svg>
+                    </div>
+                    <span class="bg-violet-100 text-violet-600 text-xs font-medium px-2 py-1 rounded">AI-Powered</span>
+                  </div>
+                  <h3 class="text-lg font-black text-gray-900 mb-2">Story Remix</h3>
+                  <p class="text-gray-600 text-sm mb-4 leading-relaxed">Transform existing stories across different mediums</p>
+                  
+                  <div class="space-y-2 mb-4">
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-violet-500 rounded-full mr-2"></div>
+                      AI content analysis
+                    </div>
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
+                      Smart transformations
+                    </div>
+                  </div>
+                  
+                  <button 
+                    phx-click="create_frestyl_original" 
+                    phx-value-story_type="story_remix"
+                    class="w-full bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white py-3 rounded-lg font-semibold transition-all transform hover:scale-105">
+                    Start Story Remix
+                  </button>
+                </div>
+
+                <!-- Narrative Beats -->
+                <div class="story-type-card group bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-6 hover:shadow-lg transition-all border border-yellow-200">
+                  <div class="flex items-start justify-between mb-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-yellow-600 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                      </svg>
+                    </div>
+                    <span class="bg-yellow-100 text-yellow-600 text-xs font-medium px-2 py-1 rounded">Musical</span>
+                  </div>
+                  <h3 class="text-lg font-black text-gray-900 mb-2">Narrative Beats</h3>
+                  <p class="text-gray-600 text-sm mb-4 leading-relaxed">Music production where story structure drives musical arrangement</p>
+                  
+                  <div class="space-y-2 mb-4">
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-yellow-500 rounded-full mr-2"></div>
+                      Story-music synchronization
+                    </div>
+                    <div class="flex items-center text-xs text-gray-600">
+                      <div class="w-2 h-2 bg-orange-500 rounded-full mr-2"></div>
+                      Character instruments
+                    </div>
+                  </div>
+                  
+                  <button 
+                    phx-click="create_frestyl_original" 
+                    phx-value-story_type="narrative_beats"
+                    class="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white py-3 rounded-lg font-semibold transition-all transform hover:scale-105">
+                    Start Narrative Beats
+                  </button>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- My Stories Section (Portfolio Hub Style) -->
+      <div class="bg-white rounded-xl shadow-sm border">
+        <div class="p-6 border-b border-gray-200">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-xl font-bold text-gray-900">My Stories</h2>
+              <p class="text-gray-600 text-sm mt-1">Pick up where you left off</p>
+            </div>
+            
+            <!-- View Toggle (matching community channels pattern) -->
+            <div class="flex rounded-lg bg-gray-100 p-1">
+              <button 
+                phx-click="change_stories_view" 
+                phx-value-view="grid"
+                class={[
+                  "px-3 py-2 text-sm rounded-md transition-all",
+                  if(Map.get(assigns, :stories_view_mode, "grid") == "grid", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600 hover:text-gray-900")
+                ]}>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                </svg>
+              </button>
+              <button 
+                phx-click="change_stories_view" 
+                phx-value-view="list"
+                class={[
+                  "px-3 py-2 text-sm rounded-md transition-all",
+                  if(Map.get(assigns, :stories_view_mode, "grid") == "list", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-600 hover:text-gray-900")
+                ]}>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="p-6">
+          <%= if Map.get(assigns, :stories_view_mode, "grid") == "grid" do %>
+            <!-- Grid View - Portfolio Hub Style -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div 
+                phx-click="continue_story" 
+                phx-value-story-id="1"
+                class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
+                <!-- Card Header -->
+                <div class="relative p-5 bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50">
+                  <!-- Type Badge -->
+                  <div class="absolute top-4 right-4">
+                    <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-white/60 text-purple-700 backdrop-blur-sm border border-white/30">
+                      Novel
+                    </span>
+                  </div>
+                  <!-- Progress -->
+                  <div class="text-left pr-16">
+                    <h3 class="font-bold text-gray-900 text-lg mb-2 line-clamp-1">The Digital Nomad's Guide</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed line-clamp-2">
+                      A modern adventure exploring remote work and travel across continents
+                    </p>
+                  </div>
+                </div>
+                <!-- Card Content -->
+                <div class="p-5">
+                  <!-- Stats -->
+                  <div class="flex items-center space-x-4 mb-4 text-sm text-gray-600">
+                    <div class="flex items-center space-x-1">
+                      <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                      <span>45% complete</span>
+                    </div>
+                    <span>•</span>
+                    <span>Last edited 2 hours ago</span>
+                  </div>
+                  <!-- Progress Bar -->
+                  <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="bg-gradient-to-r from-purple-600 to-indigo-600 h-2 rounded-full" style="width: 45%"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div 
+                phx-click="continue_story" 
+                phx-value-story-id="2"
+                class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
+                <!-- Card Header -->
+                <div class="relative p-5 bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
+                  <!-- Type Badge -->
+                  <div class="absolute top-4 right-4">
+                    <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-white/60 text-emerald-700 backdrop-blur-sm border border-white/30">
+                      Case Study
+                    </span>
+                  </div>
+                  <!-- Progress -->
+                  <div class="text-left pr-16">
+                    <h3 class="font-bold text-gray-900 text-lg mb-2 line-clamp-1">AI in Healthcare Analysis</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed line-clamp-2">
+                      Comprehensive analysis of AI implementation in modern healthcare systems
+                    </p>
+                  </div>
+                </div>
+                <!-- Card Content -->
+                <div class="p-5">
+                  <!-- Stats -->
+                  <div class="flex items-center space-x-4 mb-4 text-sm text-gray-600">
+                    <div class="flex items-center space-x-1">
+                      <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                      <span>78% complete</span>
+                    </div>
+                    <span>•</span>
+                    <span>Last edited yesterday</span>
+                  </div>
+                  <!-- Progress Bar -->
+                  <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="bg-gradient-to-r from-green-600 to-emerald-600 h-2 rounded-full" style="width: 78%"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div 
+                phx-click="continue_story" 
+                phx-value-story-id="3"
+                class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
+                <!-- Card Header -->
+                <div class="relative p-5 bg-gradient-to-br from-cyan-50 via-blue-50 to-indigo-50">
+                  <!-- Type Badge -->
+                  <div class="absolute top-4 right-4">
+                    <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-white/60 text-cyan-700 backdrop-blur-sm border border-white/30">
+                      Voice Sketch
+                    </span>
+                  </div>
+                  <!-- Progress -->
+                  <div class="text-left pr-16">
+                    <h3 class="font-bold text-gray-900 text-lg mb-2 line-clamp-1">Morning Routine Voice Sketch</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed line-clamp-2">
+                      Audio-visual exploration of daily habits and mindfulness practices
+                    </p>
+                  </div>
+                </div>
+                <!-- Card Content -->
+                <div class="p-5">
+                  <!-- Stats -->
+                  <div class="flex items-center space-x-4 mb-4 text-sm text-gray-600">
+                    <div class="flex items-center space-x-1">
+                      <div class="w-2 h-2 rounded-full bg-orange-500"></div>
+                      <span>23% complete</span>
+                    </div>
+                    <span>•</span>
+                    <span>Started 3 days ago</span>
+                  </div>
+                  <!-- Progress Bar -->
+                  <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="bg-gradient-to-r from-cyan-600 to-blue-600 h-2 rounded-full" style="width: 23%"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% else %>
+            <!-- List View - Portfolio Hub Style -->
+            <div class="space-y-3">
+              <div 
+                phx-click="continue_story" 
+                phx-value-story-id="1"
+                class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
+                <div class="flex items-center p-5">
+                  <!-- Story Type Indicator -->
+                  <div class="flex-shrink-0 mr-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-lg flex items-center justify-center">
+                      <div class="w-6 h-6 bg-gradient-to-br from-purple-600 to-indigo-600 rounded"></div>
+                    </div>
+                  </div>
+                  
+                  <!-- Story Info -->
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center space-x-3 mb-1">
+                      <h3 class="font-bold text-gray-900 text-lg truncate">The Digital Nomad's Guide</h3>
+                      <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-700">
+                        Novel
+                      </span>
+                    </div>
+                    <p class="text-gray-600 text-sm mb-2">A modern adventure exploring remote work and travel across continents</p>
+                    <div class="flex items-center space-x-4 text-sm text-gray-500">
+                      <span>Last edited 2 hours ago</span>
+                      <span>•</span>
+                      <span>45% complete</span>
+                    </div>
+                  </div>
+                  
+                  <!-- Progress -->
+                  <div class="flex-shrink-0 ml-4">
+                    <div class="w-20">
+                      <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="bg-gradient-to-r from-purple-600 to-indigo-600 h-2 rounded-full" style="width: 45%"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div 
+                phx-click="continue_story" 
+                phx-value-story-id="2"
+                class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
+                <div class="flex items-center p-5">
+                  <!-- Story Type Indicator -->
+                  <div class="flex-shrink-0 mr-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-green-100 to-emerald-100 rounded-lg flex items-center justify-center">
+                      <div class="w-6 h-6 bg-gradient-to-br from-green-600 to-emerald-600 rounded"></div>
+                    </div>
+                  </div>
+                  
+                  <!-- Story Info -->
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center space-x-3 mb-1">
+                      <h3 class="font-bold text-gray-900 text-lg truncate">AI in Healthcare Analysis</h3>
+                      <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700">
+                        Case Study
+                      </span>
+                    </div>
+                    <p class="text-gray-600 text-sm mb-2">Comprehensive analysis of AI implementation in modern healthcare systems</p>
+                    <div class="flex items-center space-x-4 text-sm text-gray-500">
+                      <span>Last edited yesterday</span>
+                      <span>•</span>
+                      <span>78% complete</span>
+                    </div>
+                  </div>
+                  
+                  <!-- Progress -->
+                  <div class="flex-shrink-0 ml-4">
+                    <div class="w-20">
+                      <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="bg-gradient-to-r from-green-600 to-emerald-600 h-2 rounded-full" style="width: 78%"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div 
+                phx-click="continue_story" 
+                phx-value-story-id="3"
+                class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer">
+                <div class="flex items-center p-5">
+                  <!-- Story Type Indicator -->
+                  <div class="flex-shrink-0 mr-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-cyan-100 to-blue-100 rounded-lg flex items-center justify-center">
+                      <div class="w-6 h-6 bg-gradient-to-br from-cyan-600 to-blue-600 rounded"></div>
+                    </div>
+                  </div>
+                  
+                  <!-- Story Info -->
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center space-x-3 mb-1">
+                      <h3 class="font-bold text-gray-900 text-lg truncate">Morning Routine Voice Sketch</h3>
+                      <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-cyan-100 text-cyan-700">
+                        Voice Sketch
+                      </span>
+                    </div>
+                    <p class="text-gray-600 text-sm mb-2">Audio-visual exploration of daily habits and mindfulness practices</p>
+                    <div class="flex items-center space-x-4 text-sm text-gray-500">
+                      <span>Started 3 days ago</span>
+                      <span>•</span>
+                      <span>23% complete</span>
+                    </div>
+                  </div>
+                  
+                  <!-- Progress -->
+                  <div class="flex-shrink-0 ml-4">
+                    <div class="w-20">
+                      <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="bg-gradient-to-r from-cyan-600 to-blue-600 h-2 rounded-full" style="width: 23%"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <!-- Personalized Recommendations -->
-  <div class="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 shadow-sm border border-blue-100">
-    <h3 class="text-lg font-bold text-gray-900 mb-4">Recommended for You</h3>
-    <p class="text-gray-600 mb-6">Based on your recent activity, we suggest these story types</p>
-    
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <button 
-        phx-click="create_story_with_format" 
-        phx-value-format="short_story"
-        class="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-all text-left group">
-        <div class="flex items-center space-x-3 mb-2">
-          <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center text-white">
-            📖
+    <!-- Sidebar -->
+    <div class="lg:col-span-1">
+      <div class="bg-white rounded-xl shadow-sm border">
+        <!-- Story Stats (Dashboard style) -->
+        <div class="p-6 border-b border-gray-200">
+          <h3 class="font-bold text-lg text-gray-900">Story Engine</h3>
+          <p class="text-sm text-gray-600 mt-1">Your creative dashboard</p>
+        </div>
+        
+        <div class="p-6">
+          <!-- Stats Grid -->
+          <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="text-center p-3 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg">
+              <div class="text-2xl font-black text-purple-600"><%= Map.get(assigns, :story_stats, %{}) |> Map.get(:total_stories, 47) %></div>
+              <div class="text-xs text-gray-600 font-medium">Stories</div>
+            </div>
+            <div class="text-center p-3 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg">
+              <div class="text-2xl font-black text-blue-600"><%= Map.get(assigns, :story_stats, %{}) |> Map.get(:active_collaborations, 12) %></div>
+              <div class="text-xs text-gray-600 font-medium">Active Collabs</div>
+            </div>
+            <div class="text-center p-3 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
+              <div class="text-2xl font-black text-green-600"><%= Map.get(assigns, :story_stats, %{}) |> Map.get(:average_completion, 89) %>%</div>
+              <div class="text-xs text-gray-600 font-medium">Avg Completion</div>
+            </div>
+            <div class="text-center p-3 bg-gradient-to-br from-orange-50 to-yellow-50 rounded-lg">
+              <div class="text-2xl font-black text-orange-600"><%= Map.get(assigns, :story_stats, %{}) |> Map.get(:words_this_week, "25.2K") %></div>
+              <div class="text-xs text-gray-600 font-medium">Words This Week</div>
+            </div>
           </div>
-          <h4 class="font-semibold text-gray-900">Short Story</h4>
-        </div>
-        <p class="text-sm text-gray-600">Complete narrative in under 5,000 words</p>
-        <div class="mt-3 text-xs text-purple-600 font-medium">
-          Estimated: 2-4 hours
-        </div>
-      </button>
 
-      <button 
-        phx-click="create_story_with_format" 
-        phx-value-format="case_study"
-        class="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-all text-left group">
-        <div class="flex items-center space-x-3 mb-2">
-          <div class="w-8 h-8 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center text-white">
-            📊
+          <!-- Quick Actions -->
+          <div class="space-y-3">
+            <h4 class="font-semibold text-gray-900 text-sm">Quick Actions</h4>
+            
+            <button 
+              phx-click="create_blank_story"
+              class="w-full p-3 bg-gray-900 hover:bg-gray-800 text-white rounded-lg transition-colors font-medium text-sm flex items-center justify-center">
+              <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+              </svg>
+              Blank Canvas
+            </button>
+            
+            <button 
+              phx-click="show_templates_library"
+              class="w-full p-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-colors font-medium text-sm">
+              Use Template
+            </button>
+            
+            <button 
+              phx-click="show_import_modal"
+              class="w-full p-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-colors font-medium text-sm">
+              Import Work
+            </button>
+            
+            <button 
+              phx-click="show_collaboration_modal"
+              class="w-full p-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg transition-colors font-medium text-sm">
+              Join Collaboration
+            </button>
           </div>
-          <h4 class="font-semibold text-gray-900">Case Study</h4>
+          
+          <!-- Upgrade Notice for Free Users -->
+          <%= if Map.get(assigns, :user_tier, "personal") == "personal" do %>
+            <div class="mt-6 p-4 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-lg border border-orange-200">
+              <h4 class="font-bold text-orange-900 text-sm mb-2">Unlock Advanced Features</h4>
+              <p class="text-xs text-orange-700 mb-3 leading-relaxed">Access AI assistance, collaboration tools, and premium formats</p>
+              <button 
+                phx-click="show_upgrade_modal"
+                class="text-orange-600 hover:text-orange-700 font-medium text-xs">
+                Upgrade to Creator →
+              </button>
+            </div>
+          <% end %>
         </div>
-        <p class="text-sm text-gray-600">Professional business storytelling</p>
-        <div class="mt-3 text-xs text-blue-600 font-medium">
-          Estimated: 3-5 hours
-        </div>
-      </button>
-
-      <button 
-        phx-click="create_story_with_format" 
-        phx-value-format="memoir"
-        class="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-all text-left group">
-        <div class="flex items-center space-x-3 mb-2">
-          <div class="w-8 h-8 bg-gradient-to-br from-green-600 to-teal-600 rounded-lg flex items-center justify-center text-white">
-            📖
-          </div>
-          <h4 class="font-semibold text-gray-900">Personal Memoir</h4>
-        </div>
-        <p class="text-sm text-gray-600">Share your life experiences</p>
-        <div class="mt-3 text-xs text-green-600 font-medium">
-          Estimated: 1-2 weeks
-        </div>
-      </button>
+      </div>
     </div>
   </div>
 </div>
-
-<!-- Template Modal (when shown) -->
-<%= if assigns[:show_template_modal] do %>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
-      <div class="p-6 border-b border-gray-200">
-        <div class="flex items-center justify-between">
-          <h2 class="text-xl font-bold text-gray-900">Choose a Template</h2>
-          <button 
-            phx-click="close_template_modal"
-            class="text-gray-400 hover:text-gray-600">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-        <p class="text-gray-600 mt-2">Start with a professionally designed template</p>
-      </div>
-      
-      <div class="p-6 overflow-y-auto max-h-[70vh]">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <button 
-            phx-click="create_from_template"
-            phx-value-template="novel_hero_journey"
-            class="border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer text-left">
-            <div class="flex items-center space-x-3 mb-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center text-white">
-                📚
-              </div>
-              <h3 class="font-semibold text-gray-900">Hero's Journey Novel</h3>
-            </div>
-            <p class="text-sm text-gray-600 mb-3">Classic storytelling structure for novels</p>
-            <div class="flex justify-between text-xs text-gray-500">
-              <span>3-6 months</span>
-              <span>12 chapters</span>
-            </div>
-          </button>
-
-          <button 
-            phx-click="create_from_template"
-            phx-value-template="case_study_business"
-            class="border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer text-left">
-            <div class="flex items-center space-x-3 mb-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center text-white">
-                📊
-              </div>
-              <h3 class="font-semibold text-gray-900">Business Case Study</h3>
-            </div>
-            <p class="text-sm text-gray-600 mb-3">Professional case study template</p>
-            <div class="flex justify-between text-xs text-gray-500">
-              <span>2-4 hours</span>
-              <span>6 sections</span>
-            </div>
-          </button>
-
-          <button 
-            phx-click="create_from_template"
-            phx-value-template="screenplay_three_act"
-            class="border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer text-left">
-            <div class="flex items-center space-x-3 mb-3">
-              <div class="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center text-white">
-                🎬
-              </div>
-              <h3 class="font-semibold text-gray-900">Three-Act Screenplay</h3>
-            </div>
-            <p class="text-sm text-gray-600 mb-3">Industry-standard screenplay structure</p>
-            <div class="flex justify-between text-xs text-gray-500">
-              <span>2-4 months</span>
-              <span>120 pages</span>
-            </div>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-<% end %>
-
-<!-- Collaboration Modal (when shown) -->
-<%= if assigns[:show_collaboration_modal] do %>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-xl max-w-2xl w-full mx-4">
-      <div class="p-6 border-b border-gray-200">
-        <div class="flex items-center justify-between">
-          <h2 class="text-xl font-bold text-gray-900">Join a Collaboration</h2>
-          <button 
-            phx-click="close_collaboration_modal"
-            class="text-gray-400 hover:text-gray-600">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-      
-      <div class="p-6">
-        <div class="space-y-6">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Invitation Code</label>
-            <div class="flex space-x-3">
-              <input 
-                type="text" 
-                placeholder="Enter invitation code..."
-                class="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-              <button 
-                phx-click="join_by_code"
-                class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                Join
-              </button>
-            </div>
-          </div>
-          
-          <div class="text-center">
-            <div class="relative">
-              <div class="absolute inset-0 flex items-center">
-                <div class="w-full border-t border-gray-300"></div>
-              </div>
-              <div class="relative flex justify-center text-sm">
-                <span class="px-2 bg-white text-gray-500">or browse open collaborations</span>
-              </div>
-            </div>
-          </div>
-          
-          <div class="space-y-3">
-            <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
-              <div>
-                <h4 class="font-medium text-gray-900">Community Novel Project</h4>
-                <p class="text-sm text-gray-600">Fantasy adventure with multiple authors</p>
-                <div class="flex items-center space-x-4 text-xs text-gray-500 mt-1">
-                  <span>Sarah Chen</span>
-                  <span>3 collaborators</span>
-                  <span>Novel</span>
-                </div>
-              </div>
-              <button 
-                phx-click="join_open_collaboration"
-                phx-value-id="sample-1"
-                class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
-                Join
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-<% end %>
-
-<!-- Import Modal (when shown) -->
-<%= if assigns[:show_import_modal] do %>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-xl max-w-2xl w-full mx-4">
-      <div class="p-6 border-b border-gray-200">
-        <div class="flex items-center justify-between">
-          <h2 class="text-xl font-bold text-gray-900">Import Existing Work</h2>
-          <button 
-            phx-click="close_import_modal"
-            class="text-gray-400 hover:text-gray-600">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-      
-      <div class="p-6">
-        <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-          <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-          </svg>
-          <p class="text-sm text-gray-600 mb-2">
-            Drop your file here or 
-            <button class="text-blue-600 hover:text-blue-700 font-medium">browse</button>
-          </p>
-          <p class="text-xs text-gray-500">Supports: .docx, .txt, .md, .pdf, .fdx, .fountain</p>
-        </div>
-        
-        <div class="flex justify-end space-x-3 mt-6">
-          <button 
-            phx-click="close_import_modal"
-            class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-            Cancel
-          </button>
-          <button 
-            phx-click="import_document"
-            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-            Import Document
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-<% end %>
