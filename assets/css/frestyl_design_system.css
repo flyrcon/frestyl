@@ -1,0 +1,642 @@
+/* assets/css/frestyl_design_system.css */
+
+/* ============================================================================
+   FRESTYL DESIGN SYSTEM
+   Core branding, colors, and component styles
+   ============================================================================ */
+
+:root {
+  /* === FRESTYL BRAND COLORS === */
+  --frestyl-purple-primary: #8B5CF6;
+  --frestyl-purple-secondary: #7C3AED;
+  --frestyl-purple-light: #A78BFA;
+  --frestyl-purple-dark: #6D28D9;
+  
+  --frestyl-blue-primary: #3B82F6;
+  --frestyl-blue-secondary: #1D4ED8;
+  --frestyl-cyan-accent: #06B6D4;
+  --frestyl-cyan-light: #22D3EE;
+  
+  --frestyl-emerald: #10B981;
+  --frestyl-emerald-light: #34D399;
+  --frestyl-orange: #F97316;
+  --frestyl-pink: #EC4899;
+  
+  /* === FRESTYL GRADIENTS === */
+  --frestyl-gradient-primary: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
+  --frestyl-gradient-cosmic: linear-gradient(135deg, #8B5CF6 0%, #06B6D4 50%, #3B82F6 100%);
+  --frestyl-gradient-blue: linear-gradient(135deg, #06B6D4 0%, #3B82F6 100%);
+  --frestyl-gradient-emerald: linear-gradient(135deg, #10B981 0%, #34D399 100%);
+  --frestyl-gradient-sunset: linear-gradient(135deg, #F97316 0%, #EC4899 100%);
+  --frestyl-gradient-dark: linear-gradient(135deg, #1F2937 0%, #111827 100%);
+  
+  /* === FRESTYL SHADOWS === */
+  --frestyl-shadow-sm: 0 2px 8px rgba(139, 92, 246, 0.08);
+  --frestyl-shadow-md: 0 4px 16px rgba(139, 92, 246, 0.12);
+  --frestyl-shadow-lg: 0 8px 32px rgba(139, 92, 246, 0.16);
+  --frestyl-shadow-xl: 0 12px 48px rgba(139, 92, 246, 0.2);
+  --frestyl-shadow-glow: 0 0 24px rgba(139, 92, 246, 0.3);
+  --frestyl-shadow-blue: 0 4px 16px rgba(59, 130, 246, 0.12);
+  --frestyl-shadow-emerald: 0 4px 16px rgba(16, 185, 129, 0.12);
+  
+  /* === GLASSMORPHISM EFFECTS === */
+  --frestyl-glass-bg: rgba(255, 255, 255, 0.1);
+  --frestyl-glass-border: rgba(255, 255, 255, 0.2);
+  --frestyl-glass-dark: rgba(0, 0, 0, 0.1);
+  --frestyl-glass-dark-border: rgba(255, 255, 255, 0.1);
+  
+  /* === TYPOGRAPHY === */
+  --frestyl-font-primary: 'Inter', system-ui, -apple-system, sans-serif;
+  --frestyl-font-heading: 'Poppins', system-ui, -apple-system, sans-serif;
+  --frestyl-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  
+  /* === SPACING & SIZING === */
+  --frestyl-radius-sm: 8px;
+  --frestyl-radius-md: 12px;
+  --frestyl-radius-lg: 16px;
+  --frestyl-radius-xl: 20px;
+  --frestyl-radius-2xl: 24px;
+  
+  /* === ANIMATIONS === */
+  --frestyl-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --frestyl-transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --frestyl-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* ============================================================================
+   FRESTYL BASE COMPONENTS
+   ============================================================================ */
+
+/* === CARDS === */
+.frestyl-card {
+  background: white;
+  border-radius: var(--frestyl-radius-xl);
+  box-shadow: var(--frestyl-shadow-md);
+  border: none;
+  transition: var(--frestyl-transition);
+  overflow: hidden;
+}
+
+.frestyl-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--frestyl-shadow-lg);
+}
+
+.frestyl-card-dark {
+  background: var(--frestyl-glass-dark);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--frestyl-glass-dark-border);
+  color: white;
+}
+
+.frestyl-card-glass {
+  background: var(--frestyl-glass-bg);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--frestyl-glass-border);
+}
+
+/* === BUTTONS === */
+.frestyl-btn {
+  font-family: var(--frestyl-font-primary);
+  font-weight: 600;
+  border-radius: var(--frestyl-radius-md);
+  padding: 12px 24px;
+  border: none;
+  cursor: pointer;
+  transition: var(--frestyl-transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.frestyl-btn:hover {
+  transform: translateY(-1px);
+}
+
+.frestyl-btn:active {
+  transform: translateY(0);
+}
+
+.frestyl-btn-primary {
+  background: var(--frestyl-gradient-primary);
+  color: white;
+  box-shadow: var(--frestyl-shadow-sm);
+}
+
+.frestyl-btn-primary:hover {
+  box-shadow: var(--frestyl-shadow-md);
+}
+
+.frestyl-btn-cosmic {
+  background: var(--frestyl-gradient-cosmic);
+  color: white;
+  box-shadow: var(--frestyl-shadow-blue);
+}
+
+.frestyl-btn-emerald {
+  background: var(--frestyl-gradient-emerald);
+  color: white;
+  box-shadow: var(--frestyl-shadow-emerald);
+}
+
+.frestyl-btn-outline {
+  background: transparent;
+  border: 2px solid var(--frestyl-purple-primary);
+  color: var(--frestyl-purple-primary);
+}
+
+.frestyl-btn-outline:hover {
+  background: var(--frestyl-purple-primary);
+  color: white;
+}
+
+.frestyl-btn-glass {
+  background: var(--frestyl-glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--frestyl-glass-border);
+  color: white;
+}
+
+.frestyl-btn-sm {
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: var(--frestyl-radius-sm);
+}
+
+.frestyl-btn-lg {
+  padding: 16px 32px;
+  font-size: 18px;
+  border-radius: var(--frestyl-radius-lg);
+}
+
+/* === INPUTS & FORMS === */
+.frestyl-input {
+  font-family: var(--frestyl-font-primary);
+  padding: 12px 16px;
+  border-radius: var(--frestyl-radius-md);
+  border: 2px solid transparent;
+  background: white;
+  box-shadow: var(--frestyl-shadow-sm);
+  transition: var(--frestyl-transition);
+  width: 100%;
+}
+
+.frestyl-input:focus {
+  outline: none;
+  border-color: var(--frestyl-purple-primary);
+  box-shadow: var(--frestyl-shadow-md);
+}
+
+.frestyl-input-glass {
+  background: var(--frestyl-glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--frestyl-glass-border);
+  color: white;
+}
+
+.frestyl-input-glass::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* === STUDIO INTERFACE COMPONENTS === */
+.frestyl-studio-header {
+  background: var(--frestyl-gradient-cosmic);
+  padding: 2rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.frestyl-studio-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: url('data:image/svg+xml,<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><g fill="none" fill-rule="evenodd"><g fill="%23ffffff" fill-opacity="0.05"><circle cx="30" cy="30" r="1"/></g></svg>');
+  pointer-events: none;
+}
+
+.frestyl-studio-panel {
+  background: var(--frestyl-glass-dark);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--frestyl-glass-dark-border);
+  border-radius: var(--frestyl-radius-xl);
+  padding: 1.5rem;
+  color: white;
+}
+
+.frestyl-track {
+  background: var(--frestyl-glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--frestyl-glass-border);
+  border-radius: var(--frestyl-radius-lg);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  transition: var(--frestyl-transition);
+}
+
+.frestyl-track:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateX(4px);
+}
+
+.frestyl-track-recording {
+  border-color: #EF4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+  animation: pulse-recording 2s infinite;
+}
+
+@keyframes pulse-recording {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.1); }
+}
+
+/* === AUDIO CONTROLS === */
+.frestyl-volume-slider {
+  appearance: none;
+  background: linear-gradient(to right, var(--frestyl-purple-primary) 0%, var(--frestyl-purple-primary) 50%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.3) 100%);
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  transition: var(--frestyl-transition);
+}
+
+.frestyl-volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: var(--frestyl-shadow-sm);
+  cursor: pointer;
+  border: 2px solid var(--frestyl-purple-primary);
+}
+
+.frestyl-volume-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: var(--frestyl-shadow-sm);
+  cursor: pointer;
+  border: 2px solid var(--frestyl-purple-primary);
+}
+
+.frestyl-waveform {
+  background: var(--frestyl-glass-dark);
+  border-radius: var(--frestyl-radius-md);
+  padding: 1rem;
+  min-height: 80px;
+  position: relative;
+  overflow: hidden;
+}
+
+.frestyl-waveform::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-50%);
+}
+
+/* === BROADCAST INTERFACE === */
+.frestyl-broadcast-container {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  min-height: 100vh;
+  position: relative;
+}
+
+.frestyl-broadcast-video {
+  background: #000;
+  border-radius: var(--frestyl-radius-xl);
+  overflow: hidden;
+  position: relative;
+  box-shadow: var(--frestyl-shadow-xl);
+}
+
+.frestyl-broadcast-controls {
+  background: var(--frestyl-glass-dark);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--frestyl-glass-dark-border);
+  border-radius: var(--frestyl-radius-lg);
+  padding: 1rem;
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  right: 1rem;
+}
+
+.frestyl-live-indicator {
+  background: #EF4444;
+  color: white;
+  padding: 4px 12px;
+  border-radius: var(--frestyl-radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  animation: pulse-live 2s infinite;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* === PORTFOLIO HUB COMPONENTS === */
+.frestyl-hub-container {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  min-height: 100vh;
+}
+
+.frestyl-hub-card {
+  background: white;
+  border-radius: var(--frestyl-radius-2xl);
+  box-shadow: var(--frestyl-shadow-lg);
+  padding: 2rem;
+  border: none;
+  transition: var(--frestyl-transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.frestyl-hub-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--frestyl-gradient-primary);
+}
+
+.frestyl-hub-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--frestyl-shadow-xl);
+}
+
+.frestyl-stat-card {
+  background: var(--frestyl-gradient-primary);
+  color: white;
+  border-radius: var(--frestyl-radius-xl);
+  padding: 1.5rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.frestyl-stat-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* === BEAT MACHINE INTERFACE === */
+.frestyl-beat-machine {
+  background: var(--frestyl-glass-dark);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--frestyl-glass-dark-border);
+  border-radius: var(--frestyl-radius-xl);
+  padding: 2rem;
+  color: white;
+}
+
+.frestyl-beat-pad {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--frestyl-radius-md);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: var(--frestyl-glass-dark);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  transition: var(--frestyl-transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.frestyl-beat-pad:hover {
+  border-color: var(--frestyl-purple-light);
+  background: rgba(139, 92, 246, 0.2);
+}
+
+.frestyl-beat-pad.active {
+  background: var(--frestyl-gradient-primary);
+  border-color: var(--frestyl-purple-light);
+  box-shadow: var(--frestyl-shadow-glow);
+  transform: scale(0.95);
+}
+
+.frestyl-beat-pad.triggered {
+  animation: beat-trigger 0.2s var(--frestyl-bounce);
+}
+
+@keyframes beat-trigger {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.frestyl-sequencer-step {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--frestyl-radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  cursor: pointer;
+  transition: var(--frestyl-transition-fast);
+  position: relative;
+}
+
+.frestyl-sequencer-step.active {
+  background: var(--frestyl-purple-primary);
+  border-color: var(--frestyl-purple-light);
+}
+
+.frestyl-sequencer-step.current {
+  box-shadow: 0 0 0 2px var(--frestyl-cyan-accent);
+  animation: step-pulse 0.5s ease-in-out;
+}
+
+@keyframes step-pulse {
+  0% { box-shadow: 0 0 0 2px var(--frestyl-cyan-accent); }
+  100% { box-shadow: 0 0 0 6px rgba(6, 182, 212, 0.3); }
+}
+
+/* === UTILITY CLASSES === */
+.frestyl-text-gradient {
+  background: var(--frestyl-gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 700;
+}
+
+.frestyl-text-cosmic {
+  background: var(--frestyl-gradient-cosmic);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 700;
+}
+
+.frestyl-border-gradient {
+  border: 2px solid transparent;
+  background: linear-gradient(white, white) padding-box,
+              var(--frestyl-gradient-primary) border-box;
+}
+
+.frestyl-hover-lift {
+  transition: var(--frestyl-transition);
+}
+
+.frestyl-hover-lift:hover {
+  transform: translateY(-2px);
+}
+
+.frestyl-hover-scale {
+  transition: var(--frestyl-transition);
+}
+
+.frestyl-hover-scale:hover {
+  transform: scale(1.02);
+}
+
+.frestyl-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(139, 92, 246, 0.2);
+  border-top: 3px solid var(--frestyl-purple-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.frestyl-notification {
+  background: var(--frestyl-glass-bg);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--frestyl-glass-border);
+  border-radius: var(--frestyl-radius-lg);
+  padding: 1rem 1.5rem;
+  box-shadow: var(--frestyl-shadow-lg);
+  color: white;
+  animation: slide-in 0.3s var(--frestyl-bounce);
+}
+
+@keyframes slide-in {
+  0% { transform: translateX(100%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+.frestyl-notification.success {
+  border-color: var(--frestyl-emerald);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(52, 211, 153, 0.1));
+}
+
+.frestyl-notification.error {
+  border-color: #EF4444;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(248, 113, 113, 0.1));
+}
+
+.frestyl-notification.warning {
+  border-color: var(--frestyl-orange);
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(251, 146, 60, 0.1));
+}
+
+/* === RESPONSIVE DESIGN === */
+@media (max-width: 768px) {
+  .frestyl-card {
+    border-radius: var(--frestyl-radius-lg);
+    padding: 1rem;
+  }
+  
+  .frestyl-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+  
+  .frestyl-studio-panel {
+    padding: 1rem;
+    border-radius: var(--frestyl-radius-lg);
+  }
+  
+  .frestyl-beat-pad {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .frestyl-sequencer-step {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* === DARK MODE OVERRIDES === */
+@media (prefers-color-scheme: dark) {
+  .frestyl-hub-container {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  }
+  
+  .frestyl-card {
+    background: var(--frestyl-glass-dark);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--frestyl-glass-dark-border);
+    color: white;
+  }
+  
+  .frestyl-input {
+    background: var(--frestyl-glass-dark);
+    color: white;
+    border-color: var(--frestyl-glass-dark-border);
+  }
+  
+  .frestyl-input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+  }
+}
+
+/* === ACCESSIBILITY === */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.frestyl-focus-visible:focus-visible {
+  outline: 2px solid var(--frestyl-purple-primary);
+  outline-offset: 2px;
+}
+
+/* === PRINT STYLES === */
+@media print {
+  .frestyl-card {
+    box-shadow: none;
+    border: 1px solid #e5e7eb;
+  }
+  
+  .frestyl-btn {
+    background: white !important;
+    color: black !important;
+    border: 1px solid #000;
+  }
+}

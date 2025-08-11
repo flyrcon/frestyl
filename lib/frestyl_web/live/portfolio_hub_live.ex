@@ -9,6 +9,7 @@ defmodule FrestylWeb.PortfolioHubLive do
   alias Frestyl.Features.FeatureGate
   alias FrestylWeb.PortfolioHubLive.ContentCampaignComponents
   alias FrestylWeb.StoryEngineLive.Hub
+  alias FrestylWeb.StudioLive.CreatorStudioComponent
   alias Frestyl.DataCampaigns.AdvancedTracker
   import FrestylWeb.Navigation, only: [nav: 1]
   alias FrestylWeb.PortfolioHubLive.Helpers
@@ -1651,6 +1652,11 @@ defmodule FrestylWeb.PortfolioHubLive do
 
     IO.puts("🔍 can_access_feature? - result: #{result}")
     result
+  end
+
+  defp can_access_creator_studio?(account) do
+    tier = Frestyl.Features.TierManager.get_account_tier(account)
+    tier in ["creator", "professional", "enterprise"]
   end
 
   defp humanize_tab(tab) do

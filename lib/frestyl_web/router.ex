@@ -171,10 +171,20 @@ defmodule FrestylWeb.Router do
     #live "/hub/:section", PortfolioHubLiveEnhanced, :section
 
       # Studio routes
+    #live "/studio", StudioLive.Index, :index
+    #live "/studio/:slug", StudioLive.Show, :show
+    #live "/studio/:id", StudioLive.Show, :show
+    #live "/studio/workspace/:workspace_id", StudioLive.Workspace, :show
+
+    # Creative Studio Hub (our new enhanced index)
     live "/studio", StudioLive.Index, :index
-    live "/studio/:slug", StudioLive.Show, :show
-    live "/studio/:id", StudioLive.Show, :show
-    live "/studio/workspace/:workspace_id", StudioLive.Workspace, :show
+
+    # Individual Studio Sessions (your existing enhanced show)
+    live "/studio/:id", StudioLive.EnhancedShow, :show
+
+    # Optional: Studio session management
+    live "/studio/sessions", StudioLive.SessionsIndex, :sessions
+    live "/studio/sessions/:id", StudioLive.SessionsShow, :session_detail
 
     # Story Lab Routes
     live "/lab", LabLive.Index, :index

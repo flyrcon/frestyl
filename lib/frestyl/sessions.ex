@@ -431,6 +431,68 @@ defmodule Frestyl.Sessions do
     |> Repo.all()
   end
 
+    @doc """
+  Lists user sessions with options.
+  """
+  def list_user_sessions(user_id, opts \\ []) do
+    _limit = Keyword.get(opts, :limit, 10)
+
+    # For now, return empty list until you implement the schema
+    []
+
+    # When you have the schema, use this:
+    # Session
+    # |> where([s], s.created_by_id == ^user_id)
+    # |> order_by([s], desc: s.inserted_at)
+    # |> limit(^limit)
+    # |> Repo.all()
+  end
+
+  @doc """
+  Lists active user sessions.
+  """
+  def list_active_user_sessions(user_id) do
+    # For now, return empty list
+    []
+
+    # When you have the schema:
+    # Session
+    # |> where([s], s.created_by_id == ^user_id and s.status == "active")
+    # |> order_by([s], desc: s.inserted_at)
+    # |> Repo.all()
+  end
+
+  @doc """
+  Counts user sessions.
+  """
+  def count_user_sessions(user_id) do
+    # For now, return 0
+    0
+
+    # When you have the schema:
+    # Session
+    # |> where([s], s.created_by_id == ^user_id)
+    # |> Repo.aggregate(:count)
+  end
+
+  @doc """
+  Deletes a session.
+  """
+  def delete_session(session_id) do
+    # For now, return success
+    {:ok, %{id: session_id}}
+
+    # When you have the schema:
+    # case Repo.get(Session, session_id) do
+    #   nil -> {:error, :not_found}
+    #   session -> Repo.delete(session)
+    # end
+  end
+
+  defp generate_session_id do
+    "session_" <> (:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower))
+  end
+
   @doc """
   Deletes a session.
   """
