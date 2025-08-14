@@ -7,12 +7,11 @@ defmodule FrestylWeb.PortfolioHubLive do
   alias Frestyl.{Portfolios, Accounts, Channels, Features, Repo}
   alias Frestyl.Accounts.{Account, AccountMembership}
   alias Frestyl.Features.FeatureGate
-  alias FrestylWeb.PortfolioHubLive.ContentCampaignComponents
+  alias FrestylWeb.PortfolioHubLive.{ContentCampaignComponents, Helpers}
   alias FrestylWeb.StoryEngineLive.Hub
   alias FrestylWeb.StudioLive.CreatorStudioComponent
   alias Frestyl.DataCampaigns.AdvancedTracker
   import FrestylWeb.Navigation, only: [nav: 1]
-  alias FrestylWeb.PortfolioHubLive.Helpers
   import Ecto.Changeset
 
   @impl true

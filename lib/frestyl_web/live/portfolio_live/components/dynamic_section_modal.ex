@@ -164,76 +164,34 @@ defmodule FrestylWeb.PortfolioLive.Components.DynamicSectionModal do
 
   defp get_essential_fields(section_type) do
     case section_type do
-      # FIXED: Hero Section
+      # FIXED: Hero Section - Only name required, everything else optional
       "hero" ->
         [
-          {"headline", %{type: :string, required: true, placeholder: "Your Name or Professional Brand"}},
-          {"tagline", %{type: :string, required: true, placeholder: "Professional Title or Key Message"}},
-          {"description", %{type: :text, placeholder: "Brief introduction or elevator pitch..."}}
+          {"name", %{type: :string, required: true, placeholder: "Your Name"}},
+          {"title", %{type: :string, required: false, placeholder: "Professional Title (optional)"}},
+          {"description", %{type: :text, required: false, placeholder: "Brief introduction (optional)..."}}
         ]
 
-      # Working sections (maintain as-is)
       "intro" ->
         [
-          {"story", %{type: :text, required: true, placeholder: "Tell your professional story in 2-3 paragraphs..."}}
+          {"story", %{type: :text, required: true, placeholder: "Tell your professional story..."}}
         ]
 
       "contact" ->
         [
           {"email", %{type: :string, required: true, placeholder: "your@email.com"}},
-          {"phone", %{type: :string, placeholder: "+1 (555) 123-4567"}},
-          {"location", %{type: :string, placeholder: "City, State/Country"}}
+          {"phone", %{type: :string, required: false, placeholder: "(555) 123-4567"}}
         ]
 
-      # FIXED: Gallery Section
-      "gallery" ->
+      "experience" ->
         [
-          {"display_style", %{type: :select, options: ["grid", "masonry", "carousel"], default: "grid"}},
-          {"items_per_row", %{type: :select, options: ["2", "3", "4"], default: "3"}},
-          {"show_captions", %{type: :boolean, default: true}}
+          {"company", %{type: :string, required: true, placeholder: "Company Name"}},
+          {"position", %{type: :string, required: true, placeholder: "Job Title"}},
+          {"start_date", %{type: :date, required: true}},
+          {"end_date", %{type: :date, required: false}}
         ]
 
-      # FIXED: Blog Section
-      "blog" ->
-        [
-          {"blog_url", %{type: :string, required: true, placeholder: "https://yourblog.com"}},
-          {"auto_sync", %{type: :boolean, default: false}},
-          {"max_posts", %{type: :integer, default: 6}}
-        ]
-
-      # FIXED: Timeline Section
-      "timeline" ->
-        [
-          {"timeline_type", %{type: :select, options: ["chronological", "reverse_chronological", "milestone"], default: "reverse_chronological"}},
-          {"show_dates", %{type: :boolean, default: true}}
-        ]
-
-      # FIXED: Services Section
-      "services" ->
-        [
-          {"service_style", %{type: :select, options: ["cards", "list", "grid"], default: "cards"}},
-          {"show_pricing", %{type: :boolean, default: false}}
-        ]
-
-      # FIXED: Pricing Section
-      "pricing" ->
-        [
-          {"currency", %{type: :select, options: ["USD", "EUR", "GBP", "CAD", "AUD"], default: "USD"}},
-          {"billing_period", %{type: :select, options: ["hourly", "daily", "weekly", "monthly", "yearly", "project"], default: "project"}},
-          {"show_popular", %{type: :boolean, default: true}}
-        ]
-
-      # FIXED: Code Showcase Section
-      "code_showcase" ->
-        [
-          {"primary_language", %{type: :select, options: ["JavaScript", "Python", "Elixir", "Ruby", "Java", "Go", "Rust", "TypeScript", "PHP", "C++", "Swift", "Kotlin", "Other"], default: "JavaScript"}},
-          {"repository_url", %{type: :string, required: true, placeholder: "https://github.com/yourusername"}},
-          {"show_stats", %{type: :boolean, default: true}}
-        ]
-
-      # All other sections return empty list (they use items instead)
-      _ ->
-        []
+      _ -> []
     end
   end
 

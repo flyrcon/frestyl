@@ -11,10 +11,6 @@ defmodule FrestylWeb.PortfolioLive.Show do
 
   alias FrestylWeb.PortfolioLive.EnhancedPortfolioEditor
   alias Frestyl.ResumeExporter
-  alias FrestylWeb.PortfolioLive.Components.{DynamicSectionModal,
-    EnhancedSectionRenderer, EnhancedLayoutRenderer, PortfolioLayoutEngine
-
-  }
 
 
   @impl true
@@ -74,10 +70,13 @@ defp mount_portfolio(portfolio, socket) do
   sections = case load_portfolio_sections_comprehensive(portfolio.id) do
     {:ok, sections} when is_list(sections) ->
       IO.puts("📁 Loaded #{length(sections)} sections successfully")
-      sections
+      processed_sections = sections
       |> Enum.map(&normalize_section_for_display/1)
       |> Enum.filter(&valid_section?/1)
       |> Enum.sort_by(&Map.get(&1, :position, 999))
+
+      IO.puts("📁 After processing: #{length(processed_sections)} sections remain")
+      processed_sections
 
     {:error, reason} ->
       IO.puts("📁 Error loading sections: #{inspect(reason)}")
@@ -106,8 +105,15 @@ defp mount_portfolio(portfolio, socket) do
   # Determine if portfolio has resume/download capabilities
   has_resume = Map.get(portfolio, :resume_url) != nil
 
+  # DEBUG: Check sections right before final assignment
+  IO.puts("🔍 MOUNT DEBUG - About to assign #{length(sections)} sections to socket")
+  if length(sections) > 0 do
+    IO.puts("🔍 MOUNT DEBUG - First section: #{inspect(List.first(sections).title)}")
+    IO.puts("🔍 MOUNT DEBUG - Section types: #{inspect(Enum.map(sections, &(&1.section_type)))}")
+  end
+
   # Build comprehensive assigns for enhanced rendering
-  {:ok, socket
+  result_socket = socket
   |> assign(:portfolio, enhance_portfolio_data(portfolio, portfolio_metadata))
   |> assign(:sections, sections)
   |> assign(:customization, customization)
@@ -119,7 +125,12 @@ defp mount_portfolio(portfolio, socket) do
   |> assign(:video_url, get_video_url_safe(intro_video))
   |> assign(:view_type, :public)
   |> assign(:loading, false)
-  |> assign(:error_state, nil)}
+  |> assign(:error_state, nil)
+
+  # DEBUG: Verify assignment worked
+  IO.puts("🔍 MOUNT DEBUG - Socket now has #{if result_socket.assigns.sections, do: length(result_socket.assigns.sections), else: "nil"} sections")
+
+  {:ok, result_socket}
 end
 
   defp mount_public_portfolio(slug, socket) do
@@ -612,13 +623,40 @@ def handle_info(msg, socket) do
 
       {:noreply, socket}
 
-    # Handle portfolio updates (legacy)
-    {:portfolio_updated, updated_portfolio} ->
+    # Handle portfolio updates from editor
+    {:portfolio_updated, payload} ->
       IO.puts("🔄 SHOW: Handling portfolio_updated")
+      IO.puts("🔍 BROADCAST DATA: #{inspect(Map.keys(payload))}")
+      IO.puts("🔍 SECTIONS FROM BROADCAST: #{length(payload.sections)}")
+
+      sections = Map.get(payload, :sections, socket.assigns.sections)
+      customization = Map.get(payload, :customization, socket.assigns.customization)
+
+      # Debug before assignment
+      IO.puts("🔍 BEFORE ASSIGNMENT - Socket sections: #{if socket.assigns.sections, do: length(socket.assigns.sections), else: "nil"}")
+      IO.puts("🔍 BEFORE ASSIGNMENT - New sections: #{length(sections)}")
+
+      # Convert sections to serializable maps for push_event
+      serializable_sections = Enum.map(sections, fn section ->
+        %{
+          id: section.id,
+          title: section.title,
+          section_type: section.section_type,
+          content: section.content,
+          position: section.position,
+          visible: section.visible,
+          portfolio_id: section.portfolio_id
+        }
+      end)
 
       socket = socket
-      |> assign(:portfolio, updated_portfolio)
-      |> assign(:customization, updated_portfolio.customization || %{})
+      |> assign(:sections, sections)
+      |> assign(:customization, customization)
+      |> debug_sections_state("after portfolio_updated")
+      |> push_event("comprehensive_update", %{
+        sections: serializable_sections,
+        customization: customization
+      })
 
       {:noreply, socket}
 
@@ -1351,23 +1389,17 @@ end
   end
 
   # Handle live updates from editor
-  def handle_info({:portfolio_updated, portfolio_id, _sections, customization, _type}, socket) do
-    if socket.assigns.portfolio.id == portfolio_id do
-      # Update video display options when portfolio is updated
-      video_aspect_ratio = Map.get(customization, "video_aspect_ratio", "16:9")
-      video_display_mode = Map.get(customization, "video_display_mode", "original")
+  @impl true
+  def handle_info({:portfolio_updated, payload}, socket) do
+    IO.puts("🔄 SHOW: Handling portfolio_updated")
 
-      video_display_options = %{
-        aspect_ratio: video_aspect_ratio,
-        display_mode: video_display_mode
-      }
+    # FIX: Keep original portfolio struct, just update customization
+    updated_portfolio = Map.put(socket.assigns.portfolio, :customization, payload.customization)
 
-      {:noreply, socket
-        |> assign(:customization, customization)
-        |> assign(:video_display_options, video_display_options)}
-    else
-      {:noreply, socket}
-    end
+    {:noreply, socket
+    |> assign(:portfolio, updated_portfolio)  # Portfolio struct with updated customization
+    |> assign(:sections, payload.sections)
+    |> assign(:customization, payload.customization)}
   end
 
   @impl true
@@ -1480,11 +1512,21 @@ end
   end
 
   def render(assigns) do
-    IO.puts("🔍 SECTIONS IN SHOW: #{inspect(@sections, pretty: true)}")
+    IO.puts("🔍 SECTIONS IN SHOW: #{if assigns.sections, do: length(assigns.sections), else: "nil"}")
+    if assigns.sections && length(assigns.sections) > 0 do
+      IO.puts("🔍 FIRST SECTION: #{List.first(assigns.sections).title}")
+    end
+
     # Extract layout settings with proper defaults
     layout_style = Map.get(assigns.customization, "layout_style", "single")
     color_scheme = Map.get(assigns.customization, "color_scheme", "professional")
     typography = Map.get(assigns.customization, "typography", "sans")
+
+    # DEBUG: Print the actual customization being used
+    IO.puts("🔍 CUSTOMIZATION DEBUG:")
+    IO.puts("🔍   Layout from assigns: #{layout_style}")
+    IO.puts("🔍   Color scheme: #{color_scheme}")
+    IO.puts("🔍   Full customization: #{inspect(Map.take(assigns.customization, ["layout_style", "color_scheme", "typography"]))}")
 
     IO.puts("🎨 SHOW RENDER: Layout=#{layout_style}, Color=#{color_scheme}, Typography=#{typography}")
 
@@ -1506,15 +1548,13 @@ end
 
       <!-- Enhanced Layout Rendering - FIXED: Check if function exists with 6 parameters -->
       <%= if function_exported?(FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer, :render_portfolio_layout, 6) do %>
-        <%= raw(
-          FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer.render_portfolio_layout(
-            @portfolio,
-            @sections,
-            layout_style,
-            color_scheme,
-            typography,
-            @video_display_options
-          )
+        <%= FrestylWeb.PortfolioLive.Components.EnhancedLayoutRenderer.render_portfolio_layout(
+          @portfolio,
+          @sections,
+          layout_style,
+          color_scheme,
+          typography,
+          @video_display_options
         ) %>
       <% else %>
         <!-- Fallback: Call without video display options -->
@@ -2261,5 +2301,16 @@ end
 
     # Return section with normalized content
     Map.put(section, :content, normalized_content)
+  end
+  defp debug_sections_state(socket, context) do
+    sections = socket.assigns.sections
+    IO.puts("🔍 SECTIONS DEBUG [#{context}]:")
+    IO.puts("🔍   Sections assigned: #{sections != nil}")
+    IO.puts("🔍   Sections count: #{if sections, do: length(sections), else: "nil"}")
+    if sections && length(sections) > 0 do
+      IO.puts("🔍   First section: #{inspect(List.first(sections).title)}")
+      IO.puts("🔍   Section types: #{inspect(Enum.map(sections, &(&1.section_type)))}")
+    end
+    socket
   end
 end

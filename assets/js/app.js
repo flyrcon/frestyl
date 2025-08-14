@@ -1,21 +1,31 @@
-// assets/js/app.js - COMPLETE VERSION WITH COLORPICKER
-console.log("🔥 Loading app.js with ColorPicker")
+// assets/js/app.js - Updated to use new VideoCapture hook
+console.log("🔥 Loading app.js with new VideoCapture")
 
 import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
-import VideoCapture from "./hooks/video_capture"
+import VideoCapture from "./hooks/video_capture_v2"  // Import new hook
 import { RichTextEditor } from "./hooks/rich_text_editor"
+import CollaborativeTextEditor from "./hooks/collaborative_text_editor"
+import VoiceRecorder from "./hooks/voice_recorder"
+import StoryboardManager from "./hooks/storyboard_manager"
+import FabricCanvas from "./hooks/fabric_canvas"
+
 
 console.log("🔥 Imports loaded")
 
 // COMPLETE HOOKS DEFINITION
 let Hooks = {
-
-  VideoCapture: VideoCapture,
-  RichTextEditor
+  VideoCapture: VideoCapture,  // Use new clean hook
+  RichTextEditor: RichTextEditor,
+  CollaborativeTextEditor,
+  VoiceRecorder,
   
+  // New storyboard hooks
+  StoryboardManager,
+  FabricCanvas
+
 };
 
 console.log("🔥 Creating hooks object")
@@ -66,278 +76,106 @@ Hooks.PreviewFrame = {
   }
 };
 
-// ColorPicker Hook - THIS WAS MISSING
+// ColorPicker Hook
 Hooks.ColorPicker = {
   mounted() {
-    console.log("🎨 ColorPicker hook mounted on element:", this.el.id)
-    this.setupColorHandling()
+    console.log("🎨 ColorPicker hook mounted")
+    this.initColorPicker()
   },
 
   updated() {
     console.log("🎨 ColorPicker hook updated")
+    this.initColorPicker()
   },
 
-  setupColorHandling() {
-    console.log("🎨 Setting up color handling for:", this.el.id)
-    
-    // Handle input events (while dragging color picker)
-    this.el.addEventListener('input', (e) => {
-      console.log("🎨 Color input event:", e.target.value)
-      this.handleColorChange(e)
-    })
-
-    // Handle change events (when color picker is closed)
-    this.el.addEventListener('change', (e) => {
-      console.log("🎨 Color change event:", e.target.value)
-      this.handleColorChange(e)
-    })
-  },
-
-  handleColorChange(e) {
-    const field = e.target.getAttribute('phx-value-field') || e.target.name
-    const value = e.target.value
-    
-    console.log("🎨 Color changed - Field:", field, "Value:", value)
-    
-    if (field && value) {
-      console.log("🎨 Pushing color update to LiveView")
-      this.pushEvent('update_single_color', {
-        field: field,
-        value: value
-      })
-    } else {
-      console.warn("🎨 Missing field or value:", {field, value})
-    }
-  }
-};
-
-Hooks.DesignUpdater = {
-  mounted() {
-    console.log('DesignUpdater hook mounted')
-    
-    this.handleEvent("update_portfolio_css", ({css}) => {
-      console.log('Received CSS update:', css.substring(0, 100) + '...')
+  initColorPicker() {
+    const input = this.el.querySelector('input[type="color"]')
+    if (input && !input.dataset.initialized) {
+      input.dataset.initialized = 'true'
       
-      // Update the dynamic CSS in preview
-      let styleElement = document.getElementById("dynamic-portfolio-css")
-      if (styleElement) {
-        styleElement.innerHTML = css
-        console.log('✅ CSS updated successfully')
-      } else {
-        console.log('❌ Could not find #dynamic-portfolio-css element')
-        
-        // Try to create the style element if it doesn't exist
-        let newStyle = document.createElement('style')
-        newStyle.id = 'dynamic-portfolio-css'
-        newStyle.innerHTML = css
-        document.head.appendChild(newStyle)
-        console.log('✅ Created new CSS style element')
-      }
-    })
-
-    this.handleEvent("refresh_preview_iframe", () => {
-      let iframe = document.getElementById("portfolio-preview-iframe")
-      if (iframe) {
-        iframe.src = iframe.src  // Force reload
-      }
-    })
-  }
-}
-
-// SortableSections Hook
-Hooks.SortableSections = {
-  mounted() {
-    this.initSortable();
-  },
-  
-  initSortable() {
-    if (typeof Sortable !== 'undefined') {
-      this.sortable = Sortable.create(this.el, {
-        animation: 150,
-        ghostClass: 'sortable-ghost',
-        onEnd: (evt) => {
-          const sectionIds = Array.from(this.el.children).map(item => 
-            item.getAttribute('data-section-id')
-          );
-          
-          this.pushEvent("reorder_sections", { sections: sectionIds });
-        }
-      });
-    } else {
-      console.warn('Sortable.js not loaded');
-    }
-  },
-  
-  destroyed() {
-    if (this.sortable) {
-      this.sortable.destroy();
-    }
-  }
-};
-
-// CopyToClipboard Hook
-Hooks.CopyToClipboard = {
-  mounted() {
-    this.el.addEventListener('click', () => {
-      const textToCopy = this.el.dataset.copy || this.el.previousElementSibling?.value || this.el.textContent
-      
-      navigator.clipboard.writeText(textToCopy).then(() => {
-        this.showCopySuccess()
-      }).catch(() => {
-        this.fallbackCopy(textToCopy)
+      input.addEventListener('input', (e) => {
+        console.log("🎨 Color changed:", e.target.value)
+        this.pushEvent("color_changed", { value: e.target.value })
       })
+      
+      console.log("🎨 ColorPicker initialized")
+    }
+  }
+};
+
+// FileUploader Hook for drag and drop functionality
+Hooks.FileUploader = {
+  mounted() {
+    console.log("📁 FileUploader hook mounted")
+    this.setupDragAndDrop()
+  },
+
+  setupDragAndDrop() {
+    const dropZone = this.el
+    
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      this.highlight(dropZone)
+    })
+    
+    dropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (!dropZone.contains(e.relatedTarget)) {
+        this.unhighlight(dropZone)
+      }
+    })
+    
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      this.unhighlight(dropZone)
+      
+      const files = Array.from(e.dataTransfer.files)
+      if (files.length > 0) {
+        this.handleFiles(files, dropZone)
+      }
     })
   },
 
-  showCopySuccess() {
-    const originalText = this.el.textContent
-    this.el.textContent = 'Copied!'
-    this.el.classList.add('bg-green-600')
-    
-    setTimeout(() => {
-      this.el.textContent = originalText
-      this.el.classList.remove('bg-green-600')
-    }, 1500)
+  highlight(element) {
+    element.classList.add('drag-over')
+    element.style.backgroundColor = '#f0f9ff'
+    element.style.borderColor = '#3b82f6'
+    element.style.borderStyle = 'dashed'
   },
 
-  fallbackCopy(text) {
-    const textArea = document.createElement('textarea')
-    textArea.value = text
-    document.body.appendChild(textArea)
-    textArea.select()
-    document.execCommand('copy')
-    document.body.removeChild(textArea)
-    this.showCopySuccess()
-  }
-};
-
-Hooks.LayoutPicker = {
-  mounted() {
-    console.log('🏗️ LayoutPicker hook mounted on element:', this.el.id);
-    this.setupLayoutHandling();
+  unhighlight(element) {
+    element.classList.remove('drag-over')
+    element.style.backgroundColor = ''
+    element.style.borderColor = ''
+    element.style.borderStyle = ''
   },
-  
-  setupLayoutHandling() {
-    // Handle layout button clicks
-    this.el.addEventListener('click', (e) => {
-      const layout = this.el.dataset.layout;
-      if (layout) {
-        console.log('🏗️ Layout selected:', layout);
-        this.pushEvent("update_portfolio_layout", { layout: layout });
-      }
-    });
-  },
-  
-  updated() {
-    console.log('🏗️ LayoutPicker hook updated');
-  }
-};
 
-Hooks.FontPicker = {
-  mounted() {
-    console.log('🔤 FontPicker hook mounted');
-    this.el.addEventListener('click', (e) => {
-      const font = this.el.dataset.font;
-      console.log('🔤 Font selected:', font);
-      this.pushEvent("update_font_family", { font: font });
-    });
-  }
-};
-
-Hooks.ThemePicker = {
-  mounted() {
-    console.log('🎨 ThemePicker hook mounted');
-    this.el.addEventListener('click', (e) => {
-      const theme = this.el.dataset.theme;
-      console.log('🎨 Theme selected:', theme);
-      this.pushEvent("update_theme", { theme: theme });
-    });
-  }
-};
-
-console.log("🔥 All hooks defined:", Object.keys(Hooks))
-
-export default Hooks
-
-// Make sure Hooks object exists
-window.Hooks = window.Hooks || {};
-
-// Fix the DesignUpdater hook
-window.Hooks.DesignUpdater = {
-  mounted() {
-    console.log("DesignUpdater hook mounted successfully");
+  handleFiles(files, dropZone) {
+    console.log("📁 Files dropped:", files.length)
     
-    this.handleEvent("design_updated", (data) => {
-      console.log("🎨 Design updated:", data);
-      this.updatePortfolioStyles(data.customization);
-    });
-    
-    // Listen for direct CSS injection
-    this.handleEvent("inject_design_css", (data) => {
-      console.log("🎨 CSS injection received:", data.css.substring(0, 100) + "...");
-      this.injectCSS(data.css);
-    });
-  },
-  
-  injectCSS(css) {
-    // Remove old portfolio CSS
-    const oldCSS = document.getElementById('dynamic-portfolio-css');
-    if (oldCSS) {
-      oldCSS.remove();
-    }
-    
-    // Inject new CSS
-    const style = document.createElement('style');
-    style.id = 'dynamic-portfolio-css';
-    style.innerHTML = css;
-    document.head.appendChild(style);
-    
-    console.log("✅ CSS injected successfully");
-    
-    // Force layout recalculation
-    const containers = document.querySelectorAll('.portfolio-display, .portfolio-preview-container');
-    containers.forEach(container => {
-      container.style.display = 'none';
-      container.offsetHeight; // Trigger reflow
-      container.style.display = '';
-      console.log("🔄 Container attributes:", {
-        'data-portfolio-layout': container.getAttribute('data-portfolio-layout'),
-        'data-professional-type': container.getAttribute('data-professional-type'),
-        classes: container.className
-      });
-    });
-  },
-  
-  updatePortfolioStyles(customization) {
-    console.log("🔄 Updating portfolio styles:", customization);
-    
-    // Update data attributes
-    const containers = document.querySelectorAll('.portfolio-display, .portfolio-preview-container');
-    containers.forEach(container => {
-      if (customization.portfolio_layout) {
-        container.setAttribute('data-portfolio-layout', customization.portfolio_layout);
-        console.log("📝 Set data-portfolio-layout to:", customization.portfolio_layout);
-      }
-      if (customization.professional_type) {
-        container.setAttribute('data-professional-type', customization.professional_type);
-        console.log("📝 Set data-professional-type to:", customization.professional_type);
-      }
-    });
-    
-    // Update CSS custom properties
-    const root = document.documentElement;
-    if (customization.primary_color) {
-      root.style.setProperty('--primary-color', customization.primary_color);
-    }
-    if (customization.portfolio_layout) {
-      root.style.setProperty('--portfolio-layout', customization.portfolio_layout);
+    // Find the file input within the drop zone
+    const fileInput = dropZone.querySelector('input[type="file"]')
+    if (fileInput) {
+      // Create a new FileList-like object
+      const dt = new DataTransfer()
+      files.forEach(file => dt.items.add(file))
+      fileInput.files = dt.files
+      
+      // Trigger change event
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+      console.log("📁 Files assigned to input")
     }
   }
 };
 
 // Get CSRF token
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
-console.log("🔥 CSRF token found:", !!csrfToken)
+if (!csrfToken) {
+  console.error("🔥 CSRF token not found")
+}
 
 // Create LiveSocket
 let liveSocket = new LiveSocket("/live", Socket, {
@@ -347,6 +185,7 @@ let liveSocket = new LiveSocket("/live", Socket, {
 
 console.log("🔥 LiveSocket created with hooks:", Object.keys(Hooks))
 
+// Portfolio design application
 window.addEventListener("phx:apply_portfolio_design", (e) => {
   console.log("🎨 JS: Applying portfolio design:", e.detail);
   
@@ -406,10 +245,5 @@ console.log("🔥 LiveSocket connected")
 window.liveSocket = liveSocket
 window.Hooks = Hooks
 
-console.log("🔥 App.js fully loaded with ColorPicker hook")
+console.log("🔥 App.js fully loaded with new VideoCapture hook")
 console.log("🔥 Available hooks:", Object.keys(window.Hooks))
-
-// Verify hooks are properly registered
-setTimeout(() => {
-  console.log("🔥 Final verification - LiveSocket hooks:", window.liveSocket.getHooks ? Object.keys(window.liveSocket.getHooks()) : 'getHooks not available')
-}, 1000)

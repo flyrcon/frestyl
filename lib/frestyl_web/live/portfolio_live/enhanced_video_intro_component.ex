@@ -4,39 +4,28 @@
 defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   use FrestylWeb, :live_component
   alias Frestyl.{Portfolios, Accounts}
-  alias Frestyl.Features.TierManager
 
   @impl true
   def mount(socket) do
     socket = socket
     |> assign(:recording_state, :setup)
-    |> assign(:countdown, nil)
-    |> assign(:recording_duration, 0)
+    |> assign(:countdown, nil)          # Add this
+    |> assign(:countdown_value, nil)
+    |> assign(:countdown_timer, nil)
+    |> assign(:countdown_value, nil)
+    |> assign(:elapsed_time, 0)
     |> assign(:camera_ready, false)
     |> assign(:camera_status, :initializing)
     |> assign(:video_blob, nil)
     |> assign(:error_message, nil)
-    |> assign(:is_saving, false)
     |> assign(:upload_progress, 0)
     |> assign(:processing_video, false)
-    |> assign(:mode, "record")
-    |> assign(:video_constraints, %{
-        "video" => %{
-          "width" => %{"ideal" => 1280},
-          "height" => %{"ideal" => 720},
-          "frameRate" => %{"ideal" => 30}
-        },
-        "audio" => true
-      })
-    |> assign(:show_menu, false)  # Add menu state
-    |> assign(:menu_loading, false)  # Add loading state
-    # ADD the missing aspect ratio assigns from our patches:
-    |> assign(:aspect_ratio, "16:9")  # Default aspect ratio
-    |> assign(:display_mode, "original")  # How to display uploaded videos
+    |> assign(:aspect_ratio, "16:9")  # NEW: Default aspect ratio
+    |> assign(:display_mode, "zoom_to_fit")  # NEW: How video displays
     |> assign(:available_ratios, [
-      %{value: "16:9", label: "Widescreen", description: "Professional landscape format"},
-      %{value: "9:16", label: "Portrait", description: "Mobile-friendly vertical format"},
-      %{value: "1:1", label: "Square", description: "Social media optimized format"}
+      %{value: "16:9", label: "Widescreen (16:9)", description: "Professional landscape"},
+      %{value: "9:16", label: "Portrait (9:16)", description: "Mobile vertical"},
+      %{value: "1:1", label: "Square (1:1)", description: "Social media"}
     ])
 
     {:ok, socket}
@@ -198,17 +187,6 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     end
   end
 
-  @impl true
-  def handle_event("cancel_countdown", _params, socket) do
-    IO.puts("❌ Countdown cancelled")
-
-    socket = socket
-    |> assign(:recording_state, :idle)
-    |> assign(:countdown, nil)
-
-    {:noreply, socket}
-  end
-
   def handle_event("close_modal", _params, socket) do
     # Try multiple ways to close the modal
     send(self(), {:close_video_modal})
@@ -234,14 +212,11 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   end
 
   @impl true
-  def handle_event("countdown_update", %{"count" => count}, socket) do
-    IO.puts("🎬 Elixir: Countdown update received: #{count}")
-
-    socket = socket
-    |> assign(:countdown, count)
-    |> assign(:force_update, :rand.uniform(1000))  # Force re-render
-
-    {:noreply, socket}
+  def update(%{action: :countdown_update, count: count}, socket) do
+    IO.puts("🎬 Video component received countdown: #{count}")
+    # Force the entire component to re-render
+    send_update(__MODULE__, id: socket.assigns.id, countdown: count, force_update: :rand.uniform(1000))
+    {:ok, assign(socket, :countdown, count)}
   end
 
   @impl true
@@ -294,53 +269,6 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     |> assign(:recording_duration, 0)
 
     {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:countdown_tick, component_id}, socket) do
-    IO.puts("🎬 COUNTDOWN TICK received - Component: #{component_id}, Socket: #{socket.assigns.id}")
-    IO.puts("🎬 Current state: #{socket.assigns.recording_state}")
-    IO.puts("🎬 Current countdown: #{socket.assigns.countdown}")
-
-    if socket.assigns.id == component_id && socket.assigns.recording_state == :countdown do
-      current_countdown = socket.assigns.countdown
-      IO.puts("🎬 Processing countdown: #{current_countdown}")
-
-      if current_countdown > 1 do
-        # Continue countdown
-        new_count = current_countdown - 1
-        IO.puts("🎬 Continuing countdown: #{new_count}")
-
-        socket = socket
-        |> assign(:countdown, new_count)
-        |> assign(:countdown_value, new_count)
-
-        # Schedule next tick
-        Process.send_after(self(), {:countdown_tick, component_id}, 1000)
-
-        {:noreply, socket}
-      else
-        # Countdown finished, start recording
-        IO.puts("🎬 Countdown complete! Starting recording...")
-
-        socket = socket
-        |> assign(:recording_state, :recording)
-        |> assign(:countdown, nil)
-        |> assign(:countdown_value, nil)
-        |> assign(:recording_duration, 0)
-
-        # Push event to JavaScript to start recording
-        socket = push_event(socket, "start-recording", %{component_id: socket.assigns.id})
-
-        # Start recording duration timer
-        send(self(), {:recording_tick, socket.assigns.id})
-
-        {:noreply, socket}
-      end
-    else
-      IO.puts("🎬 COUNTDOWN TICK ignored - wrong component or state")
-      {:noreply, socket}
-    end
   end
 
   @impl true
@@ -429,73 +357,31 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     end
   end
 
+  # Keep only this countdown event handler:
   @impl true
   def handle_event("start_countdown", _params, socket) do
-    IO.puts("🎬 START_COUNTDOWN event received")
-    IO.puts("🎬 Camera ready: #{socket.assigns.camera_ready}")
-    IO.puts("🎬 Camera status: #{socket.assigns.camera_status}")
-
     cond do
       not socket.assigns.camera_ready ->
-        IO.puts("🎬 Camera not ready, showing error")
         socket = put_flash(socket, :error, "Camera not ready. Please allow camera access.")
         {:noreply, socket}
 
       socket.assigns.camera_status != :ready ->
-        IO.puts("🎬 Camera not ready status, showing error")
         socket = put_flash(socket, :error, "Camera is still initializing. Please wait.")
         {:noreply, socket}
 
       true ->
-        IO.puts("🎬 Starting countdown sequence...")
-
         socket = socket
         |> assign(:recording_state, :countdown)
         |> assign(:countdown, 3)
-        |> assign(:countdown_value, 3)  # Add this for display
         |> assign(:error_message, nil)
 
-        # CRITICAL FIX: Send countdown tick immediately
-        send(self(), {:countdown_tick, socket.assigns.id})
+        # Send event to JavaScript to handle countdown
+        socket = push_event(socket, "start_countdown", %{
+          component_id: socket.assigns.id,
+          initial_count: 3
+        })
 
-        IO.puts("🎬 Countdown state set, timer started")
         {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def update(%{action: :countdown_tick} = _assigns, socket) do
-    IO.puts("🎬 Countdown tick received! Current countdown: #{socket.assigns.countdown}")
-
-    if socket.assigns.recording_state == :countdown do
-      current_countdown = socket.assigns.countdown
-
-      if current_countdown > 1 do
-        # Continue countdown
-        new_countdown = current_countdown - 1
-        IO.puts("🎬 Continuing countdown: #{new_countdown}")
-
-        # Schedule next tick
-        send_update_after(self(), __MODULE__, %{id: socket.assigns.id, action: :countdown_tick}, 1000)
-
-        {:ok, assign(socket, :countdown, new_countdown)}
-      else
-        # Countdown finished, start recording
-        IO.puts("🎬 Countdown complete, starting recording")
-
-        socket = socket
-        |> assign(:recording_state, :recording)
-        |> assign(:countdown, nil)
-        |> assign(:recording_duration, 0)
-
-        # Send recording start event to hook
-        send(self(), {:push_js_event, "start-recording", %{component_id: socket.assigns.id}})
-
-        {:ok, socket}
-      end
-    else
-      IO.puts("🎬 Countdown tick ignored - not in countdown state")
-      {:ok, socket}
     end
   end
 
@@ -539,30 +425,6 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     |> assign(:error_message, "Camera access failed: #{error}")
 
     {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("start_countdown", _params, socket) do
-    cond do
-      not socket.assigns.camera_ready ->
-        socket = put_flash(socket, :error, "Camera not ready. Please allow camera access.")
-        {:noreply, socket}
-
-      socket.assigns.camera_status != :ready ->  # FIXED: Use atom comparison
-        socket = put_flash(socket, :error, "Camera is still initializing. Please wait.")
-        {:noreply, socket}
-
-      true ->
-        socket =
-          socket
-          |> assign(:recording_state, :countdown)
-          |> assign(:countdown_timer, 3)
-          |> assign(:countdown_value, 3)
-          |> assign(:error_message, nil)
-
-        socket = push_event(socket, "start_countdown", %{})
-        {:noreply, socket}
-    end
   end
 
 
@@ -655,9 +517,59 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     |> push_event("reset-camera", %{})}
   end
 
+  @impl true
+  def handle_event("select_aspect_ratio", %{"ratio" => ratio}, socket) do
+    IO.puts("🎬 Selected aspect ratio: #{ratio}")
+
+    socket = socket
+    |> assign(:aspect_ratio, ratio)
+    |> push_event("update_video_constraints", %{
+      aspect_ratio: ratio,
+      constraints: get_video_constraints_for_ratio(ratio)
+    })
+
+    {:noreply, socket}
+  end
+
   # ============================================================================
   # VIDEO UPLOAD PROCESSING
   # ============================================================================
+
+    defp get_video_constraints_for_ratio(ratio) do
+    case ratio do
+      "16:9" -> %{
+        "video" => %{
+          "width" => %{"ideal" => 1280, "min" => 854},
+          "height" => %{"ideal" => 720, "min" => 480},
+          "aspectRatio" => 16/9
+        },
+        "audio" => true
+      }
+      "9:16" -> %{
+        "video" => %{
+          "width" => %{"ideal" => 720, "min" => 480},
+          "height" => %{"ideal" => 1280, "min" => 854},
+          "aspectRatio" => 9/16
+        },
+        "audio" => true
+      }
+      "1:1" -> %{
+        "video" => %{
+          "width" => %{"ideal" => 720, "min" => 480},
+          "height" => %{"ideal" => 720, "min" => 480},
+          "aspectRatio" => 1
+        },
+        "audio" => true
+      }
+      _ -> %{
+        "video" => %{
+          "width" => %{"ideal" => 1280},
+          "height" => %{"ideal" => 720}
+        },
+        "audio" => true
+      }
+    end
+  end
 
   defp handle_video_upload(socket, blob_data, mime_type, file_size, duration, metadata) do
     case Base.decode64(blob_data) do
@@ -780,10 +692,17 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
 
   defp get_aspect_ratio_style(ratio) do
     case ratio do
-      "16:9" -> "aspect-ratio: 16/9;"
-      "9:16" -> "aspect-ratio: 9/16;"
-      "1:1" -> "aspect-ratio: 1/1;"
-      _ -> "aspect-ratio: 16/9;"
+      "16:9" ->
+        "aspect-ratio: 16/9; max-width: 90vw; max-height: 50vh; width: 100%; height: auto; object-fit: cover;"
+
+      "9:16" ->
+        "aspect-ratio: 9/16; max-width: 40vw; max-height: 70vh; width: auto; height: auto; margin: 0 auto; object-fit: cover;"
+
+      "1:1" ->
+        "aspect-ratio: 1/1; max-width: 60vw; max-height: 60vh; width: auto; height: auto; margin: 0 auto; object-fit: cover;"
+
+      _ ->
+        "aspect-ratio: 16/9; max-width: 90vw; max-height: 50vh; width: 100%; height: auto; object-fit: cover;"
     end
   end
 
@@ -801,6 +720,34 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
       "original" -> "object-contain"
       "crop_" <> _ -> "object-cover"
       _ -> "object-cover"
+    end
+  end
+
+  @impl true
+  def update(%{action: :countdown_update, count: count}, socket) do
+    IO.puts("🎬 Video component received countdown: #{count}")
+    {:ok, assign(socket, :countdown, count)}
+  end
+
+  @impl true
+  def update(%{action: :countdown_complete}, socket) do
+    IO.puts("🎬 Video component countdown complete")
+    socket = socket
+    |> assign(:recording_state, :recording)
+    |> assign(:countdown, nil)
+    {:ok, socket}
+  end
+
+  # Add this catch-all for normal updates
+  @impl true
+  def update(assigns, socket) do
+    # Handle normal assign updates
+    if Map.has_key?(assigns, :action) do
+      # Already handled above
+      {:ok, socket}
+    else
+      # Normal update with assigns
+      {:ok, assign(socket, assigns)}
     end
   end
 
@@ -970,69 +917,163 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   # RENDER FUNCTIONS
   # ============================================================================
 
-  @impl true
   def render(assigns) do
     ~H"""
-    <div class="video-intro-component space-y-6" id={"video-intro-#{@id}"}>
+    <div class="video-intro-component" id={"video-component-#{@id}"}>
+      <!-- Debug info - remove after fixing -->
+      <div class="bg-yellow-100 p-2 text-xs mb-4 border rounded">
+        <p><strong>Debug:</strong> State: <%= @recording_state %> | Countdown: <%= inspect(@countdown) %> | Camera: <%= @camera_ready %></p>
+      </div>
 
-      <!-- Aspect Ratio Selection (Always Visible) -->
-      <div class="bg-gray-50 rounded-lg p-4">
-        <h5 class="font-medium text-gray-900 mb-3">Choose Video Format</h5>
-        <div class="grid grid-cols-3 gap-3">
-          <%= for ratio <- @available_ratios do %>
-            <label class={[
-              "flex flex-col items-center p-3 border rounded-lg cursor-pointer hover:bg-white transition-colors",
-              if(@aspect_ratio == ratio.value, do: "border-blue-500 bg-blue-50", else: "border-gray-200")
-            ]}>
-              <input type="radio" name="aspect_ratio" value={ratio.value}
-                    checked={@aspect_ratio == ratio.value}
-                    phx-click="set_aspect_ratio" phx-value-ratio={ratio.value} phx-target={@myself}
-                    class="sr-only">
+      <%= case @recording_state do %>
+        <% :setup -> %>
+          <div class="space-y-6">
+            <!-- Camera preview area -->
+            <div class="relative bg-gray-900 rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
+              <video
+                id={"camera-preview-#{@id}"}
+                class="w-full h-full object-cover"
+                autoplay
+                muted
+                playsinline
+                phx-hook="VideoCapture"
+                data-component-id={@id}
+                style="transform: scaleX(-1);">
+              </video>
 
-              <!-- Visual Preview of Aspect Ratio -->
-              <div class={["w-12 h-8 bg-gray-300 rounded mb-2", get_preview_aspect_class(ratio.value)]}></div>
+              <%= if not @camera_ready do %>
+                <div class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-90">
+                  <div class="text-center space-y-4">
+                    <div class="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <div class="text-white">
+                      <h4 class="font-medium mb-2">Initializing Camera...</h4>
+                      <p class="text-sm text-gray-300">Please allow camera access when prompted</p>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
+            </div>
 
-              <div class="text-center">
-                <div class="font-medium text-sm"><%= ratio.label %></div>
-                <div class="text-xs text-gray-500"><%= ratio.description %></div>
+            <!-- Start recording button -->
+            <div class="text-center">
+              <button
+                phx-click="start_countdown"
+                phx-target={@myself}
+                disabled={not @camera_ready}
+                class="px-8 py-4 bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold text-lg">
+                <%= if @camera_ready, do: "Start Recording", else: "Waiting for Camera..." %>
+              </button>
+            </div>
+          </div>
+
+        <% :countdown -> %>
+          <div class="text-center">
+            <div class="relative bg-black rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
+              <video
+                id={"camera-preview-#{@id}"}
+                class="w-full h-full object-cover"
+                autoplay
+                muted
+                playsinline
+                phx-hook="VideoCapture"
+                data-component-id={@id}
+                style="transform: scaleX(-1);">
+              </video>
+
+              <!-- Countdown Overlay -->
+              <div class="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-10">
+                <div class="text-center">
+                  <!-- Big countdown number -->
+                  <div class="text-9xl font-black text-white mb-6 animate-pulse drop-shadow-2xl filter">
+                    <%= @countdown || "3" %>
+                  </div>
+                  <p class="text-white text-2xl font-semibold mb-4">Get ready to record...</p>
+                  <div class="flex justify-center">
+                    <div class="animate-spin w-6 h-6 border-2 border-white border-t-transparent rounded-full"></div>
+                  </div>
+                </div>
               </div>
-            </label>
-          <% end %>
-        </div>
-      </div>
+            </div>
 
-      <!-- Mode Toggle (Record vs Upload) -->
-      <div class="flex bg-gray-100 rounded-lg p-1">
-        <button
-          phx-click="set_mode"
-          phx-value-mode="record"
-          phx-target={@myself}
-          class={[
-            "flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors",
-            if(@mode == "record", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-500 hover:text-gray-700")
-          ]}>
-          📹 Record Video
-        </button>
-        <button
-          phx-click="set_mode"
-          phx-value-mode="upload"
-          phx-target={@myself}
-          class={[
-            "flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors",
-            if(@mode == "upload", do: "bg-white text-gray-900 shadow-sm", else: "text-gray-500 hover:text-gray-700")
-          ]}>
-          📁 Upload Video
-        </button>
-      </div>
+            <!-- Cancel button -->
+            <div class="mt-6">
+              <button
+                phx-click="cancel_countdown"
+                phx-target={@myself}
+                class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                Cancel Recording
+              </button>
+            </div>
+          </div>
 
-      <!-- Dynamic Content Based on Mode -->
-      <%= case @mode do %>
-        <% "upload" -> %>
-          <%= render_upload_interface(assigns) %>
+        <% :recording -> %>
+          <div class="text-center">
+            <div class="relative bg-black rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
+              <video
+                id={"camera-preview-#{@id}"}
+                class="w-full h-full object-cover"
+                autoplay
+                muted
+                playsinline
+                style="transform: scaleX(-1);">
+              </video>
+
+              <!-- Recording indicator -->
+              <div class="absolute top-4 left-4 flex items-center bg-red-600 text-white px-3 py-1 rounded-full">
+                <div class="w-3 h-3 bg-white rounded-full mr-2 animate-pulse"></div>
+                <span class="font-medium">REC <%= format_duration(@recording_duration) %></span>
+              </div>
+            </div>
+
+            <!-- Stop recording button -->
+            <div class="mt-6">
+              <button
+                phx-click="stop_recording"
+                phx-target={@myself}
+                class="px-8 py-4 bg-red-600 text-white rounded-xl hover:bg-red-700 font-semibold text-lg">
+                Stop Recording
+              </button>
+            </div>
+          </div>
+
+        <% :preview -> %>
+          <div class="text-center">
+            <div class="relative bg-black rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
+              <%= if @video_blob do %>
+                <video
+                  class="w-full h-full object-cover"
+                  controls
+                  src={@video_blob}>
+                </video>
+              <% else %>
+                <div class="flex items-center justify-center h-64 text-white">
+                  <p>No video recorded</p>
+                </div>
+              <% end %>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="mt-6 flex justify-center space-x-4">
+              <button
+                phx-click="retake_video"
+                phx-target={@myself}
+                class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+                Retake
+              </button>
+              <button
+                phx-click="save_video"
+                phx-target={@myself}
+                class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                Save Video
+              </button>
+            </div>
+          </div>
+
         <% _ -> %>
-          <%= render_recording_interface(assigns) %>
+          <div class="text-center py-8">
+            <p class="text-gray-500">Unknown state: <%= @recording_state %></p>
+          </div>
       <% end %>
-
     </div>
     """
   end
@@ -1292,6 +1333,13 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   defp render_recording_interface(assigns) do
     ~H"""
     <div class="space-y-6">
+    <!-- DEBUG SECTION - Add at top of component -->
+<div class="bg-red-100 p-2 text-xs">
+  <p>State: <%= @recording_state %></p>
+  <p>Countdown: <%= inspect(@countdown) %></p>
+  <p>Camera Ready: <%= @camera_ready %></p>
+  <p>Camera Status: <%= @camera_status %></p>
+</div>
       <!-- Camera Preview Area -->
       <div class="relative bg-gray-900 rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
         <video
@@ -1301,7 +1349,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
           muted
           playsinline
           phx-hook="VideoCapture"
-          data-component-id={@id}
+          data-component-id={@myself}
           style="transform: scaleX(-1);">
         </video>
 
@@ -1383,7 +1431,7 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
           <div class="text-center">
             <!-- FIXED: Use countdown_value for display -->
             <div class="text-9xl font-black text-white mb-6 animate-pulse drop-shadow-2xl">
-              <%= @countdown_value || @countdown || 3 %>
+              <%= @countdown %>
             </div>
             <p class="text-white text-2xl font-semibold mb-4">Get ready to record...</p>
             <div class="flex justify-center">
@@ -1527,45 +1575,143 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
   defp render_camera_setup(assigns) do
     ~H"""
     <div class="space-y-6">
-      <!-- Camera Preview Area with Loading State -->
-      <div class="relative bg-gray-900 rounded-xl overflow-hidden" style={get_aspect_ratio_style(@aspect_ratio)}>
-        <!-- Loading Overlay -->
-        <%= if not @camera_ready do %>
-          <div class="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
-            <div class="text-center space-y-4">
-              <div class="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-              <div class="text-white">
-                <h4 class="font-medium mb-2">Initializing Camera...</h4>
-                <p class="text-sm text-gray-300">Please allow camera access when prompted</p>
+      <!-- Aspect Ratio Selection -->
+      <div class="bg-gray-50 rounded-lg p-4">
+        <h4 class="font-medium text-gray-900 mb-3">📱 Video Format</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <%= for ratio <- @available_ratios do %>
+            <button
+              phx-click="select_aspect_ratio"
+              phx-value-ratio={ratio.value}
+              phx-target={@myself}
+              class={[
+                "p-3 rounded-lg border-2 text-left transition-all",
+                if(@aspect_ratio == ratio.value,
+                  do: "border-blue-500 bg-blue-50 text-blue-900",
+                  else: "border-gray-200 hover:border-gray-300"
+                )
+              ]}>
+              <div class="font-medium text-sm"><%= ratio.label %></div>
+              <div class="text-xs text-gray-600 mt-1"><%= ratio.description %></div>
+            </button>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Camera Preview with Proper Sizing -->
+      <div class="relative bg-black rounded-lg overflow-hidden">
+        <div
+          id={"camera-preview-#{@id}"}
+          class={[
+            "camera-preview relative",
+            case @aspect_ratio do
+              "16:9" -> "aspect-video"
+              "9:16" -> "aspect-[9/16]"
+              "1:1" -> "aspect-square"
+              _ -> "aspect-video"
+            end
+          ]}
+          phx-hook="VideoRecorder"
+          data-component-id={@id}
+          data-aspect-ratio={@aspect_ratio}>
+
+          <video
+            id={"preview-video-#{@id}"}
+            class="w-full h-full object-cover"
+            autoplay
+            muted
+            playsinline>
+          </video>
+
+          <!-- Recording State Overlay -->
+          <%= if @recording_state == :countdown do %>
+            <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div class="text-white text-8xl font-bold animate-pulse">
+                <%= @countdown_value %>
               </div>
             </div>
-          </div>
-        <% end %>
+          <% end %>
 
-        <!-- Video Element with proper hook registration -->
-        <video
-              id={"camera-preview-#{@id}"}
-              class="w-full h-full object-cover"
-              autoplay
-              muted
-              playsinline
-              phx-hook="VideoCapture"
-              data-component-id={@id}
-              data-portfolio-id={@portfolio.id}>
-        </video>
-
-        <!-- Camera Error State -->
-        <%= if @camera_error do %>
-          <div class="absolute inset-0 flex items-center justify-center bg-red-900 bg-opacity-90 z-20">
-            <div class="text-center text-white max-w-sm">
-              <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              <h4 class="font-semibold mb-2">Camera Error</h4>
-              <p class="text-sm"><%= @camera_error %></p>
+          <%= if @recording_state == :recording do %>
+            <div class="absolute top-4 right-4 flex items-center space-x-2">
+              <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+              <span class="text-white font-medium">REC <%= format_time(@elapsed_time) %></span>
             </div>
-          </div>
+          <% end %>
+        </div>
+
+        <!-- Camera Status -->
+        <div class="absolute bottom-4 left-4 right-4">
+          <%= case @camera_status do %>
+            <% :initializing -> %>
+              <div class="bg-yellow-500 text-white px-3 py-2 rounded-lg text-sm">
+                📷 Initializing camera...
+              </div>
+            <% :permission_denied -> %>
+              <div class="bg-red-500 text-white px-3 py-2 rounded-lg text-sm">
+                ❌ Camera access denied. Please allow permissions.
+              </div>
+            <% :ready -> %>
+              <div class="bg-green-500 text-white px-3 py-2 rounded-lg text-sm">
+                ✅ Camera ready
+              </div>
+            <% _ -> %>
+              <div class="bg-gray-500 text-white px-3 py-2 rounded-lg text-sm">
+                📷 Setting up camera...
+              </div>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Recording Controls -->
+      <div class="text-center space-y-4">
+        <%= if @recording_state == :setup and @camera_ready do %>
+          <button
+            phx-click="start_countdown"
+            phx-target={@myself}
+            class="px-8 py-4 bg-red-600 text-white text-lg font-semibold rounded-xl hover:bg-red-700 transition-colors shadow-lg">
+            <svg class="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
+            Start Recording
+          </button>
         <% end %>
+
+        <%= if @recording_state == :recording do %>
+          <button
+            phx-click="stop_recording"
+            phx-target={@myself}
+            class="px-8 py-4 bg-gray-800 text-white text-lg font-semibold rounded-xl hover:bg-gray-900 transition-colors shadow-lg">
+            <svg class="w-6 h-6 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+            </svg>
+            Stop Recording
+          </button>
+        <% end %>
+      </div>
+
+      <!-- Recording Tips -->
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h5 class="font-medium text-blue-900 mb-2">📹 Tips for <%= @aspect_ratio %> Recording:</h5>
+        <ul class="text-sm text-blue-800 space-y-1">
+          <%= case @aspect_ratio do %>
+            <% "16:9" -> %>
+              <li>• Perfect for professional presentations</li>
+              <li>• Great for desktop viewing</li>
+              <li>• Position yourself in the center frame</li>
+            <% "9:16" -> %>
+              <li>• Optimized for mobile viewing</li>
+              <li>• Hold phone vertically while watching</li>
+              <li>• Keep important content in top 2/3</li>
+            <% "1:1" -> %>
+              <li>• Great for social media sharing</li>
+              <li>• Center yourself in the frame</li>
+              <li>• Perfect for profile videos</li>
+          <% end %>
+          <li>• Ensure good lighting on your face</li>
+          <li>• Speak clearly and at normal pace</li>
+        </ul>
       </div>
     </div>
     """
@@ -1885,7 +2031,6 @@ defmodule FrestylWeb.PortfolioLive.EnhancedVideoIntroComponent do
     remaining_seconds = rem(seconds, 60)
     "#{String.pad_leading(to_string(minutes), 2, "0")}:#{String.pad_leading(to_string(remaining_seconds), 2, "0")}"
   end
-
   defp format_time(_), do: "00:00"
 
   defp find_position_name(position_id, available_positions) do

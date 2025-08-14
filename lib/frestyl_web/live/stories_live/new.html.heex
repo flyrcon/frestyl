@@ -57,65 +57,65 @@
 
   <% else %>
     <!-- Story Details Form -->
-    <.simple_form for={@changeset} phx-submit="create_story">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <.simple_form for={@changeset} phx-submit="create_story" :let={f}>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div class="md:col-span-2">
-          <.input field={@changeset[:title]} 
-                   label="Story Title" 
-                   placeholder="Enter your story title..."
-                   required />
+        <.input field={f[:title]} 
+                label="Story Title" 
+                placeholder="Enter your story title..."
+                required />
         </div>
 
         <div class="md:col-span-2">
-          <.input field={@changeset[:description]} 
-                   type="textarea" 
-                   label="Description (Optional)" 
-                   placeholder="Brief description of your story..."
-                   rows="3" />
+        <.input field={f[:description]} 
+                type="textarea" 
+                label="Description (Optional)" 
+                placeholder="Brief description of your story..."
+                rows="3" />
         </div>
 
-        <.input field={@changeset[:intent_category]} 
-                 type="select" 
-                 label="Story Purpose" 
-                 prompt="What's your goal?"
-                 options={[
-                   {"Entertain readers", "entertain"},
-                   {"Educate audience", "educate"}, 
-                   {"Persuade/convince", "persuade"},
-                   {"Document events", "document"},
-                   {"Personal/professional", "personal_professional"}
-                 ]} />
+        <.input field={f[:intent_category]} 
+                type="select" 
+                label="Story Purpose" 
+                prompt="What's your goal?"
+                options={[
+                {"Entertain readers", "entertain"},
+                {"Educate audience", "educate"}, 
+                {"Persuade/convince", "persuade"},
+                {"Document events", "document"},
+                {"Personal/professional", "personal_professional"}
+                ]} />
 
-        <.input field={@changeset[:collaboration_mode]} 
-                 type="select" 
-                 label="Collaboration" 
-                 value="owner_only"
-                 options={[
-                   {"Just me", "owner_only"},
-                   {"Small team (2-5 people)", "team"},
-                   {"Open collaboration", "open"}
-                 ]} />
-      </div>
+        <.input field={f[:collaboration_mode]} 
+                type="select" 
+                label="Collaboration" 
+                value="owner_only"
+                options={[
+                {"Just me", "owner_only"},
+                {"Small team (2-5 people)", "team"},
+                {"Open collaboration", "open"}
+                ]} />
+    </div>
 
-      <div class="mt-8 flex items-center justify-between">
+    <div class="mt-8 flex items-center justify-between">
         <button 
-          type="button"
-          phx-click="prev_step"
-          class="bg-gray-200 text-gray-800 px-6 py-3 rounded-lg hover:bg-gray-300 font-medium">
-          Back
+        type="button"
+        phx-click="prev_step"
+        class="bg-gray-200 text-gray-800 px-6 py-3 rounded-lg hover:bg-gray-300 font-medium">
+        Back
         </button>
 
         <div class="flex space-x-3">
-          <.link navigate={~p"/story-engine"} 
+        <.link navigate={~p"/story-engine"} 
                 class="text-blue-600 hover:text-blue-700 font-medium px-6 py-3">
             Use Story Engine Instead
-          </.link>
-          
-          <.button type="submit" class="bg-green-600 hover:bg-green-700 px-6 py-3">
+        </.link>
+        
+        <.button type="submit" class="bg-green-600 hover:bg-green-700 px-6 py-3">
             Create Story
-          </.button>
+        </.button>
         </div>
-      </div>
+    </div>
     </.simple_form>
   <% end %>
 

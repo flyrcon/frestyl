@@ -288,31 +288,20 @@ const VideoCapture = {
   startCountdown(count) {
     console.log(`🎬 JS: Countdown starting at ${count}`);
     
-    // Clear any existing countdown
-    if (this.countdownInterval) {
-      clearInterval(this.countdownInterval);
-    }
-    
     let currentCount = count;
     
-    // Send initial count
+    // Send initial count immediately
     this.pushEvent("countdown_update", { count: currentCount });
     
-    // Start interval
     this.countdownInterval = setInterval(() => {
       currentCount--;
       console.log(`🎬 JS: Countdown tick: ${currentCount}`);
       
       if (currentCount > 0) {
-        // Send countdown update
+        // Push update to LiveView
         this.pushEvent("countdown_update", { count: currentCount });
       } else {
-        // Countdown finished
-        console.log("🎬 JS: Countdown complete!");
         clearInterval(this.countdownInterval);
-        this.countdownInterval = null;
-        
-        // Notify component that countdown is done
         this.pushEvent("countdown_complete", {});
       }
     }, 1000);
