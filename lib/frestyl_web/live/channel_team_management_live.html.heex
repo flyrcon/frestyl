@@ -1,0 +1,680 @@
+# Complete Team Assignment Template
+# File: lib/frestyl_web/live/channel_team_management_live.html.heex
+
+<div class="team-management min-h-screen bg-gray-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Team Management</h1>
+        <p class="text-gray-600 mt-1">
+          Manage teams and assignments for <span class="font-medium"><%= @channel.name %></span>
+        </p>
+      </div>
+      
+      <div class="flex space-x-3">
+        <button phx-click="show_create_team_modal"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          <span>Create Team</span>
+        </button>
+        
+        <%= if length(@unassigned_members) > 0 and length(@teams) > 0 do %>
+          <div class="relative inline-block text-left">
+            <button class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center space-x-2"
+                    onclick="document.getElementById('auto-assign-menu').classList.toggle('hidden')">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              <span>Auto Assign</span>
+            </button>
+            
+            <div id="auto-assign-menu" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+              <div class="py-1">
+                <button phx-click="auto_assign_teams" phx-value-strategy="balanced"
+                        class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                  Balanced Distribution
+                </button>
+                <button phx-click="auto_assign_teams" phx-value-strategy="random"
+                        class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                  Random Assignment
+                </button>
+                <button phx-click="auto_assign_teams" phx-value-strategy="skill_based"
+                        class="block w-full text-left px-4 py-2 text-sm text-gray-500 cursor-not-allowed">
+                  Skill-Based (Coming Soon)
+                </button>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <!-- Dashboard Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-600">Total Teams</p>
+            <p class="text-3xl font-bold text-gray-900"><%= length(@teams) %></p>
+          </div>
+          <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-600">Total Members</p>
+            <p class="text-3xl font-bold text-gray-900"><%= length(@channel_members) %></p>
+          </div>
+          <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-600">Unassigned</p>
+            <p class="text-3xl font-bold text-orange-600"><%= length(@unassigned_members) %></p>
+          </div>
+          <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-600">Avg Team Size</p>
+            <p class="text-3xl font-bold text-purple-600">
+              <%= if length(@teams) > 0 do %>
+                <%= Float.round(Enum.sum(Enum.map(@teams, &get_team_member_count/1)) / length(@teams), 1) %>
+              <% else %>
+                0
+              <% end %>
+            </p>
+          </div>
+          <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <!-- Teams List -->
+      <div class="lg:col-span-2">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">Teams</h3>
+          </div>
+          
+          <div class="p-6">
+            <%= if length(@teams) == 0 do %>
+              <div class="text-center py-12">
+                <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+                <h4 class="text-lg font-medium text-gray-900 mb-2">No teams yet</h4>
+                <p class="text-gray-600 mb-4">Create your first team to start organizing collaboration.</p>
+                <button phx-click="show_create_team_modal"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                  Create Team
+                </button>
+              </div>
+            <% else %>
+              <div class="space-y-4">
+                <%= for team <- @teams do %>
+                  <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                    <div class="flex items-center justify-between">
+                      <div class="flex-1">
+                        <div class="flex items-center space-x-3 mb-2">
+                          <h4 class="font-semibold text-gray-900"><%= team.name %></h4>
+                          <span class={"inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full #{get_team_completion_color(team.completion_percentage)}"}>
+                            <%= team.completion_percentage %>% Complete
+                          </span>
+                        </div>
+                        
+                        <p class="text-sm text-gray-600 mb-3">
+                          <%= team.project_assignment || "No project assigned" %>
+                        </p>
+                        
+                        <div class="flex items-center space-x-4 text-sm text-gray-500">
+                          <span class="flex items-center space-x-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/>
+                            </svg>
+                            <span><%= get_team_member_count(team) %> members</span>
+                          </span>
+                          
+                          <%= if team.due_date do %>
+                            <span class="flex items-center space-x-1">
+                              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                              </svg>
+                              <span>Due <%= Calendar.strftime(team.due_date, "%b %d") %></span>
+                            </span>
+                          <% end %>
+                          
+                          <%= if team.supervisor do %>
+                            <span class="flex items-center space-x-1">
+                              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                              </svg>
+                              <span><%= team.supervisor.first_name %> <%= team.supervisor.last_name %></span>
+                            </span>
+                          <% end %>
+                        </div>
+                      </div>
+                      
+                      <div class="flex items-center space-x-2">
+                        <button phx-click="show_assignment_modal" phx-value-team-id={team.id}
+                                class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Manage Members">
+                          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                          </svg>
+                        </button>
+                        
+                        <button phx-click="delete_team" phx-value-team-id={team.id}
+                                class="p-2 text-red-600 hover:bg-red-50 rounded-lg" 
+                                title="Delete Team"
+                                data-confirm="Are you sure you want to delete this team?">
+                          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <!-- Team Members Preview -->
+                    <%= if length(team.members || []) > 0 do %>
+                      <div class="mt-3 pt-3 border-t border-gray-200">
+                        <div class="flex items-center space-x-2">
+                          <span class="text-xs text-gray-500">Members:</span>
+                          <div class="flex -space-x-2">
+                            <%= for {member, index} <- Enum.with_index(team.members) do %>
+                              <%= if index < 5 do %>
+                                <div 
+                                  class="w-6 h-6 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-xs font-semibold border-2 border-white"
+                                  title={member.first_name <> " " <> member.last_name}
+                                >
+                                  <%= String.first(member.first_name) %>
+                                </div>
+                              <% end %>
+                            <% end %>
+                            <%= if length(team.members) > 5 do %>
+                              <div class="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 text-xs font-semibold border-2 border-white">
+                                +<%= length(team.members) - 5 %>
+                              </div>
+                            <% end %>
+                          </div>
+                        </div>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
+      <!-- Unassigned Members -->
+      <div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div class="p-6 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">Unassigned Members</h3>
+          </div>
+          
+          <div class="p-6">
+            <%= if length(@unassigned_members) == 0 do %>
+              <div class="text-center py-8">
+                <svg class="w-12 h-12 text-green-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <p class="text-sm text-gray-600">All members are assigned to teams!</p>
+              </div>
+            <% else %>
+              <div class="space-y-3">
+                <%= for member <- @unassigned_members do %>
+                  <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
+                        <%= String.first(member.first_name) %>
+                      </div>
+                      <div>
+                        <p class="font-medium text-gray-900">
+                          <%= member.first_name %> <%= member.last_name %>
+                        </p>
+                        <p class="text-xs text-gray-500"><%= member.email %></p>
+                      </div>
+                    </div>
+                    
+                    <%= if length(@teams) > 0 do %>
+                      <div class="relative">
+                        <select class="text-sm border border-gray-300 rounded px-2 py-1"
+                                phx-change="quick_assign_member"
+                                phx-value-user-id={member.id}>
+                          <option value="">Assign to...</option>
+                          <%= for team <- @teams do %>
+                            <option value={team.id}><%= team.name %></option>
+                          <% end %>
+                        </select>
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Team Modal -->
+  <%= if @show_create_team_modal do %>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-xl p-6 w-full max-w-lg mx-4">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-xl font-semibold text-gray-900">Create New Team</h3>
+          <button phx-click="hide_create_team_modal" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <form phx-submit="create_team">
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Team Name *</label>
+              <input type="text" name="team[name]" required
+                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                     placeholder="Enter team name">
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Project Assignment</label>
+              <textarea name="team[project_assignment]" rows="3"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Describe the project or assignment for this team"></textarea>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+                <input type="date" name="team[due_date]"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Organization Type</label>
+                <select name="team[organization_type]"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                  <option value="academic">Academic</option>
+                  <option value="creative">Creative</option>
+                  <option value="business">Business</option>
+                  <option value="technical">Technical</option>
+                </select>
+              </div>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Supervisor</label>
+              <select name="team[supervisor_id]"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                <option value="">Select supervisor (optional)</option>
+                <option value={@current_user.id} selected><%= @current_user.first_name %> <%= @current_user.last_name %> (You)</option>
+              </select>
+            </div>
+            
+            <!-- Rating Configuration Preview -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              <h4 class="font-medium text-gray-900 mb-2">Rating Configuration</h4>
+              <div class="text-sm text-gray-600 space-y-1">
+                <p><strong>Primary Dimension:</strong> Quality (horizontal axis)</p>
+                <p><strong>Secondary Dimension:</strong> <span id="secondary-preview">Collaboration Effectiveness</span></p>
+                <p><strong>Rating Frequency:</strong> Milestone-based</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="flex space-x-3 mt-6">
+            <button type="button" phx-click="hide_create_team_modal"
+                    class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            <button type="submit"
+                    class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              Create Team
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Assignment Modal -->
+  <%= if @show_assignment_modal and @selected_team do %>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-xl p-6 w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-xl font-semibold text-gray-900">
+            Manage Team: <%= @selected_team.name %>
+          </h3>
+          <button phx-click="hide_assignment_modal" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Team Info Summary -->
+        <div class="bg-gray-50 rounded-lg p-4 mb-6">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <span class="font-medium text-gray-900">Project:</span>
+              <p class="text-gray-600"><%= @selected_team.project_assignment || "No project assigned" %></p>
+            </div>
+            <div>
+              <span class="font-medium text-gray-900">Due Date:</span>
+              <p class="text-gray-600">
+                <%= if @selected_team.due_date do %>
+                  <%= Calendar.strftime(@selected_team.due_date, "%B %d, %Y") %>
+                <% else %>
+                  Not set
+                <% end %>
+              </p>
+            </div>
+            <div>
+              <span class="font-medium text-gray-900">Completion:</span>
+              <p class="text-gray-600"><%= @selected_team.completion_percentage %>%</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Current Members -->
+          <div>
+            <h4 class="font-medium text-gray-900 mb-4">
+              Current Members (<%= length(@selected_team.members || []) %>)
+            </h4>
+            
+            <%= if length(@selected_team.members || []) == 0 do %>
+              <p class="text-gray-500 text-sm bg-gray-50 rounded-lg p-4 text-center">
+                No members assigned yet.
+              </p>
+            <% else %>
+              <div class="space-y-2 max-h-80 overflow-y-auto">
+                <%= for member <- @selected_team.members do %>
+                  <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-blue-50">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
+                        <%= String.first(member.first_name) %><%= String.first(member.last_name || "") %>
+                      </div>
+                      <div>
+                        <p class="font-medium text-gray-900">
+                          <%= member.first_name %> <%= member.last_name %>
+                        </p>
+                        <p class="text-xs text-gray-600"><%= member.email %></p>
+                        <p class="text-xs text-blue-600 font-medium">Team Member</p>
+                      </div>
+                    </div>
+                    
+                    <button phx-click="remove_member" 
+                            phx-value-user-id={member.id} 
+                            phx-value-team-id={@selected_team.id}
+                            class="text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                            title="Remove from team"
+                            data-confirm="Remove this member from the team?">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                      </svg>
+                    </button>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+
+          <!-- Available Members -->
+          <div>
+            <h4 class="font-medium text-gray-900 mb-4">
+              Available Members (<%= length(@unassigned_members) %>)
+            </h4>
+            
+            <%= if length(@unassigned_members) == 0 do %>
+              <p class="text-gray-500 text-sm bg-gray-50 rounded-lg p-4 text-center">
+                All channel members are assigned to teams.
+              </p>
+            <% else %>
+              <div class="space-y-2 max-h-80 overflow-y-auto">
+                <%= for member <- @unassigned_members do %>
+                  <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-10 h-10 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex items-center justify-center text-white font-semibold">
+                        <%= String.first(member.first_name) %><%= String.first(member.last_name || "") %>
+                      </div>
+                      <div>
+                        <p class="font-medium text-gray-900">
+                          <%= member.first_name %> <%= member.last_name %>
+                        </p>
+                        <p class="text-xs text-gray-600"><%= member.email %></p>
+                        <p class="text-xs text-orange-600 font-medium">Unassigned</p>
+                      </div>
+                    </div>
+                    
+                    <button phx-click="assign_member" 
+                            phx-value-user-id={member.id} 
+                            phx-value-team-id={@selected_team.id}
+                            phx-value-role="member"
+                            class="text-green-600 hover:bg-green-50 p-2 rounded-lg transition-colors"
+                            title="Add to team">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                      </svg>
+                    </button>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+
+        <!-- Bulk Assignment Tools -->
+        <%= if length(@unassigned_members) > 0 do %>
+          <div class="mt-6 pt-6 border-t border-gray-200">
+            <h4 class="font-medium text-gray-900 mb-4">Bulk Assignment Tools</h4>
+            
+            <div class="flex space-x-3">
+              <button phx-click="assign_all_to_team" 
+                      phx-value-team-id={@selected_team.id}
+                      class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                Assign All Unassigned to This Team
+              </button>
+              
+              <button phx-click="assign_random_subset" 
+                      phx-value-team-id={@selected_team.id}
+                      phx-value-count="3"
+                      class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm">
+                Assign Random 3 Members
+              </button>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Team Configuration -->
+        <div class="mt-6 pt-6 border-t border-gray-200">
+          <h4 class="font-medium text-gray-900 mb-4">Team Configuration</h4>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Rating Frequency</label>
+              <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <option value="milestone_based" selected>Milestone-based</option>
+                <option value="weekly">Weekly Check-ins</option>
+                <option value="bi_weekly">Bi-weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Secondary Rating Dimension</label>
+              <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <option value="collaboration_effectiveness" selected>Collaboration Effectiveness</option>
+                <option value="innovation_level">Innovation Level</option>
+                <option value="technical_execution">Technical Execution</option>
+                <option value="communication_clarity">Communication Clarity</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="mt-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Intervention Thresholds</label>
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="text-xs text-gray-600">Sentiment Deviation</label>
+                <input type="number" value="2.0" step="0.1" 
+                       class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+              </div>
+              <div>
+                <label class="text-xs text-gray-600">Collaboration Variance</label>
+                <input type="number" value="3.0" step="0.1"
+                       class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+              </div>
+              <div>
+                <label class="text-xs text-gray-600">Completion Threshold (%)</label>
+                <input type="number" value="50" min="0" max="100"
+                       class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-6 pt-6 border-t border-gray-200 flex justify-between">
+          <div class="flex space-x-3">
+            <button phx-click="save_team_config" 
+                    phx-value-team-id={@selected_team.id}
+                    class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+              Save Configuration
+            </button>
+            
+            <button phx-click="create_rating_reminders" 
+                    phx-value-team-id={@selected_team.id}
+                    class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+              Schedule Rating Reminders
+            </button>
+          </div>
+          
+          <button phx-click="hide_assignment_modal"
+                  class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Rating Configuration Help Modal -->
+  <div id="rating-help-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-full max-w-2xl mx-4">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-xl font-semibold text-gray-900">Rating System Guide</h3>
+        <button onclick="document.getElementById('rating-help-modal').classList.add('hidden')" 
+                class="text-gray-400 hover:text-gray-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="space-y-6">
+        <div>
+          <h4 class="font-medium text-gray-900 mb-2">How the Vibe Rating System Works</h4>
+          <p class="text-gray-600 text-sm">
+            Team members rate each other using an intuitive color gradient interface. The horizontal axis represents quality 
+            (red = poor, green = excellent), while the vertical axis captures a secondary dimension like collaboration effectiveness.
+          </p>
+        </div>
+        
+        <div>
+          <h4 class="font-medium text-gray-900 mb-2">Organization Types & Dimensions</h4>
+          <div class="grid grid-cols-2 gap-4 text-sm">
+            <div class="bg-blue-50 p-3 rounded-lg">
+              <p class="font-medium text-blue-900">Academic</p>
+              <p class="text-blue-700">Focus: Collaboration Effectiveness</p>
+            </div>
+            <div class="bg-green-50 p-3 rounded-lg">
+              <p class="font-medium text-green-900">Creative</p>
+              <p class="text-green-700">Focus: Innovation Level</p>
+            </div>
+            <div class="bg-purple-50 p-3 rounded-lg">
+              <p class="font-medium text-purple-900">Business</p>
+              <p class="text-purple-700">Focus: Commercial Viability</p>
+            </div>
+            <div class="bg-orange-50 p-3 rounded-lg">
+              <p class="font-medium text-orange-900">Technical</p>
+              <p class="text-orange-700">Focus: Technical Execution</p>
+            </div>
+          </div>
+        </div>
+        
+        <div>
+          <h4 class="font-medium text-gray-900 mb-2">Intervention Triggers</h4>
+          <ul class="text-sm text-gray-600 space-y-1">
+            <li>• <strong>Sentiment Deviation:</strong> When team sentiment differs significantly from class average</li>
+            <li>• <strong>Collaboration Variance:</strong> When team members rate each other very differently</li>
+            <li>• <strong>Completion Threshold:</strong> When completion rate falls below expected percentage</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Dynamic secondary dimension preview
+  document.addEventListener('DOMContentLoaded', function() {
+    const orgTypeSelect = document.querySelector('select[name="team[organization_type]"]');
+    const secondaryPreview = document.getElementById('secondary-preview');
+    
+    if (orgTypeSelect && secondaryPreview) {
+      orgTypeSelect.addEventListener('change', function() {
+        const dimensionMap = {
+          'academic': 'Collaboration Effectiveness',
+          'creative': 'Innovation Level', 
+          'business': 'Commercial Viability',
+          'technical': 'Technical Execution'
+        };
+        
+        secondaryPreview.textContent = dimensionMap[this.value] || 'Collaboration Effectiveness';
+      });
+    }
+    
+    // Auto-assign dropdown functionality
+    document.addEventListener('click', function(e) {
+      const menu = document.getElementById('auto-assign-menu');
+      if (menu && !e.target.closest('.relative')) {
+        menu.classList.add('hidden');
+      }
+    });
+  });
+</script>

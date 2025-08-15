@@ -6,6 +6,8 @@ defmodule FrestylWeb.Router do
   import FrestylWeb.UserAuth
   alias FrestylWeb.Plugs.{RoleAuth, RateLimiter}
 
+
+
   # ----------------
   # PIPELINES
   # ----------------
@@ -19,6 +21,30 @@ defmodule FrestylWeb.Router do
     plug :put_secure_browser_headers
     plug FrestylWeb.UserAuth, :fetch_current_user
   end
+
+
+    # ============================================================================
+  # DEMO ROUTES (No Auth Required - for testing only)
+  # ============================================================================
+
+  # WARNING: Remove these routes in production!
+  if Mix.env() in [:dev, :test] do
+    scope "/demo", FrestylWeb do
+      pipe_through :browser
+
+      # Vibe Rating Demo - Test the rating widget
+      live "/vibe-rating", VibeRatingDemoLive, :index
+
+      # Team Management Demo (bypass auth for demo)
+      live "/team-management/:channel_id", ChannelTeamManagementLive, :index
+
+      # Supervisor Dashboard Demo (bypass auth for demo)
+      live "/supervisor", SupervisorDashboardLive, :index
+      live "/supervisor/team/:team_id", SupervisorDashboardLive, :team_detail
+    end
+  end
+
+  ###########testing routes above
 
   pipeline :require_auth do
     plug :debug_request
@@ -144,6 +170,22 @@ defmodule FrestylWeb.Router do
     # Portfolio export endpoints
     get "/p/:slug/export", PortfolioController, :export_pdf
     get "/p/:slug/resume", PortfolioController, :export_resume
+  end
+
+  if Mix.env() in [:dev, :test] do
+    scope "/demo", FrestylWeb do
+      pipe_through :browser
+
+      # Demo landing page
+      get "/", DemoController, :index
+      post "/setup", DemoController, :setup_data
+      post "/reset", DemoController, :reset_data
+
+      # Working demo routes
+      live "/vibe-rating", VibeRatingDemoLive, :index
+      live "/supervisor/:user_id", SupervisorDashboardLive, :index
+      live "/teams/:channel_id", ChannelTeamManagementLive, :index
+    end
   end
 
 
@@ -478,7 +520,6 @@ defmodule FrestylWeb.Router do
     post "/broadcasts/:id/register", BroadcastController, :register
     get "/broadcasts/:id/join", BroadcastController, :join
   end
-
 
   scope "/admin", FrestylWeb.AdminLive, as: :admin do
     pipe_through [:browser, :require_authenticated_user, :admin]

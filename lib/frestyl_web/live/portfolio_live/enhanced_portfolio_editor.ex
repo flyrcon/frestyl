@@ -92,6 +92,43 @@ defmodule FrestylWeb.PortfolioLive.EnhancedPortfolioEditor do
     end
   end
 
+  defp clear_js_errors(socket) do
+    assign(socket, :js_errors, [])
+  end
+
+  defp clear_video_errors(socket) do
+    socket
+    |> assign(:video_error, nil)
+    |> assign(:camera_error, nil)
+  end
+
+  defp load_portfolio_data(params, _session, socket) do
+    try do
+      portfolio_id = Map.get(params, "id")
+
+      case Portfolios.get_portfolio_for_editing(portfolio_id, socket.assigns.current_user) do
+        {:ok, portfolio} ->
+          sections = Portfolios.list_portfolio_sections(portfolio.id) || []
+          customization = portfolio.customization || %{}
+
+          socket =
+            socket
+            |> assign(:portfolio, portfolio)
+            |> assign(:sections, sections)
+            |> assign(:customization, customization)
+
+          {:ok, socket}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    rescue
+      error ->
+        IO.puts("❌ Error loading portfolio data: #{inspect(error)}")
+        {:error, "Database error"}
+    end
+  end
+
   defp load_portfolio_data(portfolio_id) do
     case Portfolios.get_portfolio_with_sections(portfolio_id) do
       {:ok, %{} = portfolio_data} ->
@@ -108,6 +145,47 @@ defmodule FrestylWeb.PortfolioLive.EnhancedPortfolioEditor do
         IO.inspect(other, label: "🔧 Unexpected portfolio data structure")
         {:error, :invalid_structure}
     end
+  end
+
+    @impl true
+  def handle_event("recover_from_error", _params, socket) do
+    IO.puts("🔄 RECOVERING FROM ERROR")
+
+    socket =
+      socket
+      |> assign(:js_errors, [])
+      |> assign(:error_recovery_count, (socket.assigns[:error_recovery_count] || 0) + 1)
+      |> clear_flash()
+      |> put_flash(:info, "Interface refreshed")
+
+    {:noreply, socket}
+  end
+
+  # Helper functions
+  @impl true
+  def handle_event("js_error", %{"error" => error, "source" => source}, socket) do
+    IO.puts("❌ JavaScript error from #{source}: #{error}")
+
+    js_errors = [%{error: error, source: source, timestamp: System.system_time(:millisecond)} |
+                 (socket.assigns[:js_errors] || [])]
+
+    # Keep only last 10 errors
+    js_errors = Enum.take(js_errors, 10)
+
+    socket = assign(socket, :js_errors, js_errors)
+
+    # If too many JS errors, suggest page refresh
+    if length(js_errors) > 5 do
+      socket = put_flash(socket, :warning, "Multiple JavaScript errors detected. Please refresh the page if issues persist.")
+    end
+
+    {:noreply, socket}
+  end
+
+  defp clear_video_errors(socket) do
+    socket
+    |> assign(:video_error, nil)
+    |> assign(:camera_error, nil)
   end
 
   defp normalize_portfolio(portfolio_data) do
@@ -194,20 +272,22 @@ defmodule FrestylWeb.PortfolioLive.EnhancedPortfolioEditor do
   # Event Handlers
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    IO.puts("🎯 SWITCH TAB CALLED with tab: #{tab}")
-    IO.puts("🎯 CURRENT ACTIVE TAB: #{socket.assigns.active_tab}")
+    IO.puts("🎯 ENHANCED EDITOR TAB SWITCH: #{tab}")
 
-    # Only update if the tab is actually changing
-    if socket.assigns.active_tab != tab do
-      socket = socket
+    # Validate tab exists and user can access it
+    valid_tabs = ["sections", "design", "analytics", "settings"]
+
+    if tab in valid_tabs do
+      socket =
+        socket
         |> assign(:active_tab, tab)
-        |> assign(:tab_changed_at, System.system_time(:millisecond))  # Force re-render
+        |> assign(:last_interaction, System.system_time(:millisecond))
+        |> clear_js_errors()  # Clear any JS errors on successful interaction
 
-      IO.puts("🎯 NEW ACTIVE TAB: #{socket.assigns.active_tab}")
       {:noreply, socket}
     else
-      IO.puts("🎯 TAB UNCHANGED, NO RE-RENDER")
-      {:noreply, socket}
+      IO.puts("❌ Invalid tab: #{tab}")
+      {:noreply, put_flash(socket, :error, "Invalid tab")}
     end
   end
 
@@ -1223,36 +1303,35 @@ end
 
   @impl true
   def handle_event("toggle_section_visibility", %{"section_id" => section_id}, socket) do
-    section_id = String.to_integer(section_id)
-    IO.puts("🔄 TOGGLE SECTION VISIBILITY: #{section_id}")
+    IO.puts("🔄 TOGGLE VISIBILITY: #{section_id}")
 
-    case Enum.find(socket.assigns.sections, &(&1.id == section_id)) do
-      nil ->
-        {:noreply, put_flash(socket, :error, "Section not found")}
+    # Add safety checks
+    with {section_id_int, ""} <- Integer.parse(section_id),
+         %{} = section <- Enum.find(socket.assigns.sections || [], &(&1.id == section_id_int)),
+         {:ok, updated_section} <- Portfolios.update_portfolio_section(section, %{visible: !section.visible}) do
 
-      section ->
-        new_visibility = !section.visible
+      # Update sections list
+      updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
 
-        case Portfolios.update_portfolio_section(section, %{visible: new_visibility}) do
-          {:ok, updated_section} ->
-            updated_sections = update_section_in_list(socket.assigns.sections, updated_section)
+      # Broadcast update
+      broadcast_portfolio_update(
+        socket.assigns.portfolio.id,
+        updated_sections,
+        socket.assigns.customization,
+        :sections
+      )
 
-            # Single broadcast
-            broadcast_portfolio_update(
-              socket.assigns.portfolio.id,
-              updated_sections,
-              socket.assigns.customization,
-              :sections
-            )
+      socket =
+        socket
+        |> assign(:sections, updated_sections)
+        |> assign(:last_interaction, System.system_time(:millisecond))
+        |> put_flash(:info, "Section #{if updated_section.visible, do: "shown", else: "hidden"}")
 
-            {:noreply, socket
-              |> assign(:sections, updated_sections)
-              |> put_flash(:info, "Section #{if new_visibility, do: "shown", else: "hidden"}")}
-
-          {:error, changeset} ->
-            error_message = extract_changeset_errors(changeset) |> Enum.join(", ")
-            {:noreply, put_flash(socket, :error, "Failed to update visibility: #{error_message}")}
-        end
+      {:noreply, socket}
+    else
+      _ ->
+        IO.puts("❌ Failed to toggle section visibility")
+        {:noreply, put_flash(socket, :error, "Failed to update section")}
     end
   end
 
@@ -3540,14 +3619,25 @@ end
 
   @impl true
   def handle_event("toggle_video_intro_modal", _params, socket) do
-    current_state = Map.get(socket.assigns, :show_video_intro_modal, false)
-    new_state = !current_state
+    IO.puts("🎬 VIDEO MODAL TOGGLE")
 
-    IO.puts("🎬 VIDEO MODAL: Toggle from #{current_state} to #{new_state}")
+    try do
+      current_state = Map.get(socket.assigns, :show_video_intro_modal, false)
+      new_state = !current_state
 
-    {:noreply, assign(socket, :show_video_intro_modal, new_state)}
+      socket =
+        socket
+        |> assign(:show_video_intro_modal, new_state)
+        |> assign(:last_interaction, System.system_time(:millisecond))
+        |> clear_video_errors()  # Clear any video-related errors
+
+      {:noreply, socket}
+    rescue
+      error ->
+        IO.puts("❌ Video modal error: #{inspect(error)}")
+        {:noreply, put_flash(socket, :error, "Video feature temporarily unavailable")}
+    end
   end
-
 
   @impl true
   def handle_event("close_video_intro_modal", _params, socket) do

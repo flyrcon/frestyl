@@ -1,0 +1,150 @@
+# Demo Controller Template
+# File: lib/frestyl_web/controllers/demo_html/index.html.heex
+defmodule FrestylWeb.DemoHTML do
+  use FrestylWeb, :html
+
+  def index(assigns) do
+    ~H"""
+    <div class="demo-index min-h-screen bg-gray-50 py-12">
+      <div class="max-w-4xl mx-auto px-4">
+        <div class="text-center mb-12">
+          <h1 class="text-4xl font-bold text-gray-900 mb-4">
+            Team Collaboration Demo
+          </h1>
+          <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+            Experience the next generation of team collaboration with visual vibe ratings, 
+            real-time supervision, and intelligent intervention systems.
+          </p>
+        </div>
+
+        <!-- Demo Status -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+          <%= if @demo_info.has_data do %>
+            <div class="flex items-center text-green-600 mb-4">
+              <svg class="w-6 h-6 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-lg font-semibold">Demo Data Active</span>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div class="bg-blue-50 p-3 rounded-lg">
+                <p class="font-medium text-blue-900">Team</p>
+                <p class="text-blue-700"><%= @demo_info.team.name %></p>
+              </div>
+              <div class="bg-green-50 p-3 rounded-lg">
+                <p class="font-medium text-green-900">Members</p>
+                <p class="text-green-700"><%= length(@demo_info.users) %> users</p>
+              </div>
+              <div class="bg-purple-50 p-3 rounded-lg">
+                <p class="font-medium text-purple-900">Progress</p>
+                <p class="text-purple-700"><%= @demo_info.team.completion_percentage %>% complete</p>
+              </div>
+            </div>
+          <% else %>
+            <div class="text-center">
+              <h3 class="text-lg font-semibold text-gray-900 mb-4">Setup Required</h3>
+              <p class="text-gray-600 mb-6">Create demo data to enable all features</p>
+              
+              <button 
+                onclick="setupDemoData()"
+                class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+              >
+                🚀 Create Demo Data
+              </button>
+            </div>
+          <% end %>
+        </div>
+
+        <!-- Available Routes -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <%= for route <- @available_routes do %>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-lg transition-shadow">
+              <h3 class="text-lg font-semibold text-gray-900 mb-3">
+                <%= route.title %>
+              </h3>
+              <p class="text-gray-600 mb-4 text-sm">
+                <%= route.description %>
+              </p>
+              
+              <%= if route.status == "ready" do %>
+                <a 
+                  href="<%= route.path %>"
+                  class="inline-flex items-center px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium"
+                >
+                  Open Demo
+                  <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                  </svg>
+                </a>
+              <% else %>
+                <div class="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-500 rounded-lg text-sm font-medium cursor-not-allowed">
+                  Setup Required
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+
+        <!-- Quick Links if Data Exists -->
+        <%= if @demo_info.has_data do %>
+          <div class="mt-12 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-8">
+            <h2 class="text-2xl font-semibold text-gray-900 mb-6">Quick Access</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <a 
+                href="/demo/vibe-rating"
+                class="block p-4 bg-white rounded-lg hover:shadow-md transition-shadow"
+              >
+                <h3 class="font-medium text-gray-900">🎨 Test Vibe Rating</h3>
+                <p class="text-sm text-gray-600">Interactive color-gradient rating interface</p>
+              </a>
+              
+              <a 
+                href={"/demo/supervisor/#{@demo_info.user_id}"}
+                class="block p-4 bg-white rounded-lg hover:shadow-md transition-shadow"
+              >
+                <h3 class="font-medium text-gray-900">📊 View Dashboard</h3>
+                <p class="text-sm text-gray-600">Supervisor dashboard with team metrics</p>
+              </a>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <script>
+      async function setupDemoData() {
+        const button = event.target;
+        const originalText = button.innerHTML;
+        
+        button.innerHTML = '⏳ Creating...';
+        button.disabled = true;
+        
+        try {
+          const response = await fetch('/demo/setup', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+            }
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            // Reload page to show new routes
+            window.location.reload();
+          } else {
+            throw new Error(data.error || 'Setup failed');
+          }
+        } catch (error) {
+          alert('Setup failed: ' + error.message);
+          button.innerHTML = originalText;
+          button.disabled = false;
+        }
+      }
+    </script>
+    """
+  end
+end

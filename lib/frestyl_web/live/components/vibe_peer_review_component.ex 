@@ -1,0 +1,90 @@
+# Vibe-based Peer Review LiveView Component
+# File: lib/frestyl_web/live/components/vibe_peer_review_component.ex
+
+defmodule FrestylWeb.VibePeerReviewComponent do
+  use FrestylWeb, :live_component
+  alias Frestyl.DataCampaigns.EnhancedPeerReview
+
+  @impl true
+  def update(assigns, socket) do
+    config = EnhancedPeerReview.get_review_interface_config(
+      assigns.contribution.type,
+      assigns.campaign.type
+    )
+    
+    {:ok,
+     socket
+     |> assign(assigns)
+     |> assign(:config, config)
+     |> assign(:rating_submitted, false)}
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="vibe-peer-review bg-white rounded-xl shadow-lg p-6">
+      <%= if @rating_submitted do %>
+        <!-- Success State -->
+        <div class="text-center py-8">
+          <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-gray-900 mb-2">Review Submitted!</h3>
+          <p class="text-gray-600"><%= @config.success_message %></p>
+        </div>
+      <% else %>
+        <!-- Review Interface -->
+        <div class="mb-6">
+          <h3 class="text-lg font-semibold text-gray-900 mb-2">Peer Review</h3>
+          <p class="text-gray-600"><%= @config.review_prompt %></p>
+        </div>
+
+        <!-- Vibe Rating Widget (embedded React component) -->
+        <div id="vibe-rating-container" phx-hook="VibeRatingWidget" phx-target={@myself}
+             data-primary-dimension={@config.primary_dimension.name}
+             data-secondary-dimension={@config.secondary_dimension.name}
+             data-review-prompt={@config.review_prompt}>
+        </div>
+
+        <!-- Dimension Explanations -->
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-gray-50 rounded-lg p-4">
+            <h4 class="font-medium text-gray-900 mb-2">
+              <%= @config.primary_dimension.name %> (Horizontal)
+            </h4>
+            <p class="text-sm text-gray-600">
+              <%= @config.primary_dimension.description %>
+            </p>
+          </div>
+          
+          <div class="bg-gray-50 rounded-lg p-4">
+            <h4 class="font-medium text-gray-900 mb-2">
+              <%= @config.secondary_dimension.name %> (Vertical)
+            </h4>
+            <p class="text-sm text-gray-600">
+              <%= @config.secondary_dimension.description %>
+            </p>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  @impl true
+  def handle_event("submit_vibe_rating", rating_data, socket) do
+    case EnhancedPeerReview.submit_vibe_peer_review(
+      socket.assigns.current_user.id,
+      socket.assigns.contribution.id,
+      rating_data
+    ) do
+      {:ok, _vibe_rating} ->
+        {:noreply, assign(socket, :rating_submitted, true)}
+      
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to submit review. Please try again.")}
+    end
+  end
+end

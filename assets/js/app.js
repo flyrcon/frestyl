@@ -10,7 +10,7 @@ import { RichTextEditor } from "./hooks/rich_text_editor"
 import CollaborativeTextEditor from "./hooks/collaborative_text_editor"
 import VoiceRecorder from "./hooks/voice_recorder"
 import StoryboardManager from "./hooks/storyboard_manager"
-import FabricCanvas from "./hooks/fabric_canvas"
+import FabricCanvas from "./hooks/fabric"
 
 
 console.log("🔥 Imports loaded")

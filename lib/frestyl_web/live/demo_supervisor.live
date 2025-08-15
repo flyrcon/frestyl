@@ -1,0 +1,348 @@
+# Demo Supervisor LiveView - Simplified Version
+# File: lib/frestyl_web/live/demo_supervisor_live.ex
+
+defmodule FrestylWeb.DemoSupervisorLive do
+  use FrestylWeb, :live_view
+
+  @impl true
+  def mount(%{"user_id" => user_id}, _session, socket) do
+    # Create mock supervisor dashboard data
+    demo_data = create_mock_dashboard_data()
+    
+    socket = 
+      socket
+      |> assign(:current_user, %{id: user_id, first_name: "Demo", last_name: "Supervisor"})
+      |> assign(:dashboard_data, demo_data)
+      |> assign(:view_mode, "cards")
+      |> assign(:filter_status, "all")
+      |> assign(:sort_by, "recent_activity")
+
+    {:ok, socket}
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div class="supervisor-dashboard min-h-screen bg-gray-50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h1 class="text-3xl font-bold text-gray-900">Team Dashboard</h1>
+            <p class="text-gray-600 mt-1">
+              Manage and monitor <%= @dashboard_data.total_teams %> active teams
+            </p>
+          </div>
+          
+          <a href="/demo" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+            ← Back to Demo Home
+          </a>
+        </div>
+
+        <!-- Dashboard Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-gray-600">Total Teams</p>
+                <p class="text-3xl font-bold text-gray-900"><%= @dashboard_data.total_teams %></p>
+              </div>
+              <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-gray-600">Need Attention</p>
+                <p class="text-3xl font-bold text-red-600"><%= @dashboard_data.teams_needing_attention %></p>
+              </div>
+              <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-gray-600">Avg Completion</p>
+                <p class="text-3xl font-bold text-green-600"><%= @dashboard_data.overall_completion_avg %>%</p>
+              </div>
+              <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-gray-600">Active Sessions</p>
+                <p class="text-3xl font-bold text-purple-600">8</p>
+              </div>
+              <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team Cards Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <%= for team_card <- @dashboard_data.team_cards do %>
+            <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden">
+              
+              <!-- Card Header with Vibe Color -->
+              <div class="relative p-4 border-b border-gray-100" 
+                   style={"background: linear-gradient(135deg, #{team_card.overall_vibe}, #{team_card.overall_vibe}80)"}>
+                
+                <!-- Performance indicator -->
+                <div class="absolute top-3 right-3">
+                  <%= render_performance_badge(team_card) %>
+                </div>
+                
+                <!-- Team name and project -->
+                <div class="text-left pr-16">
+                  <h3 class="font-bold text-white text-lg mb-1 drop-shadow-sm">
+                    <%= team_card.team_name %>
+                  </h3>
+                  <p class="text-sm text-white/80 line-clamp-1">
+                    <%= team_card.project_title %>
+                  </p>
+                </div>
+                
+                <!-- Vibe trend indicator -->
+                <div class="absolute bottom-2 right-3">
+                  <%= render_vibe_trend_icon(team_card.vibe_trend) %>
+                </div>
+              </div>
+
+              <!-- Card Content -->
+              <div class="p-6">
+                <!-- Key metrics grid -->
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                  <!-- Members -->
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-gray-900">
+                      <%= team_card.member_count %>
+                    </div>
+                    <div class="text-xs text-gray-600">Members</div>
+                  </div>
+                  
+                  <!-- Completion Rate -->
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-emerald-600">
+                      <%= team_card.completion_percentage %>%
+                    </div>
+                    <div class="text-xs text-gray-600">Complete</div>
+                  </div>
+                  
+                  <!-- Total Hours -->
+                  <div class="text-center">
+                    <div class="text-2xl font-bold text-blue-600">
+                      <%= team_card.total_hours %>h
+                    </div>
+                    <div class="text-xs text-gray-600">Total Time</div>
+                  </div>
+                </div>
+
+                <!-- Team sentiment bar -->
+                <div class="mb-4">
+                  <div class="flex items-center justify-between text-sm mb-1">
+                    <span class="text-gray-600">Team Sentiment</span>
+                    <span class="font-medium"><%= round(team_card.team_sentiment_score) %>/100</span>
+                  </div>
+                  <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="h-2 rounded-full transition-all duration-300" 
+                         style={"width: #{team_card.team_sentiment_score}%; background-color: #{team_card.overall_vibe}"}></div>
+                  </div>
+                </div>
+
+                <!-- Activity summary -->
+                <div class="text-sm text-gray-600 space-y-1">
+                  <div class="flex justify-between">
+                    <span>Avg Daily Hours:</span>
+                    <span class="font-medium"><%= team_card.avg_daily_hours %>h</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span>Peer Review Avg:</span>
+                    <span class="font-medium"><%= Float.round(team_card.peer_review_avg, 1) %>/5.0</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span>Last Activity:</span>
+                    <span class="font-medium"><%= team_card.last_activity %></span>
+                  </div>
+                </div>
+
+                <!-- Alert indicators -->
+                <%= if length(team_card.needs_attention) > 0 do %>
+                  <div class="mt-4 pt-4 border-t border-gray-100">
+                    <%= render_attention_alerts(team_card.needs_attention) %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+
+        <!-- Demo Notice -->
+        <div class="mt-12 bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <h3 class="text-lg font-semibold text-blue-900 mb-2">📊 Demo Dashboard</h3>
+          <p class="text-blue-800">
+            This supervisor dashboard shows realistic team collaboration data. The color-coded sentiment scores, 
+            performance metrics, and intervention alerts demonstrate how supervisors can monitor team health in real-time.
+          </p>
+          <div class="mt-4 flex space-x-4">
+            <a href="/demo/vibe-rating" class="text-blue-600 hover:text-blue-800 font-medium">
+              → Test Vibe Rating Widget
+            </a>
+            <a href="/demo/teams/1" class="text-blue-600 hover:text-blue-800 font-medium">
+              → Manage Team Assignments
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # Helper functions that return static HTML
+  defp render_performance_badge(team_card) do
+    class = cond do
+      length(team_card.needs_attention) > 0 ->
+        "inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800"
+      team_card.team_sentiment_score > 80 ->
+        "inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800"
+      team_card.team_sentiment_score > 60 ->
+        "inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800"
+      true ->
+        "inline-flex items-center px-2.5 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800"
+    end
+    
+    text = cond do
+      length(team_card.needs_attention) > 0 -> "Needs Attention"
+      team_card.team_sentiment_score > 80 -> "High Performance"
+      team_card.team_sentiment_score > 60 -> "Good"
+      true -> "Developing"
+    end
+    
+    Phoenix.HTML.raw("<span class=\"#{class}\">#{text}</span>")
+  end
+
+  defp render_vibe_trend_icon(:improving) do
+    Phoenix.HTML.raw("""
+    <div class="text-green-400" title="Improving sentiment">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+      </svg>
+    </div>
+    """)
+  end
+
+  defp render_vibe_trend_icon(:declining) do
+    Phoenix.HTML.raw("""
+    <div class="text-red-400" title="Declining sentiment">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M14.707 12.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+      </svg>
+    </div>
+    """)
+  end
+
+  defp render_vibe_trend_icon(_) do
+    Phoenix.HTML.raw("""
+    <div class="text-blue-400" title="Stable sentiment">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
+      </svg>
+    </div>
+    """)
+  end
+
+  defp render_attention_alerts(needs_attention) do
+    alerts = %{
+      "low_team_sentiment" => %{icon: "😞", text: "Low team morale"},
+      "low_activity" => %{icon: "💤", text: "Low activity"},
+      "collaboration_variance" => %{icon: "⚠️", text: "Collaboration issues"}
+    }
+    
+    html_parts = needs_attention
+    |> Enum.take(2)
+    |> Enum.map(fn issue ->
+      alert = Map.get(alerts, issue, %{icon: "⚠️", text: issue})
+      "<div class=\"flex items-center space-x-2 text-xs text-red-600\"><span>#{alert.icon}</span><span>#{alert.text}</span></div>"
+    end)
+    |> Enum.join("\n")
+    
+    Phoenix.HTML.raw(html_parts)
+  end
+
+  # Mock data creation
+  defp create_mock_dashboard_data do
+    team_cards = [
+      %{
+        team_id: 1,
+        team_name: "Demo Team Alpha",
+        project_title: "Build a collaborative rating system",
+        member_count: 3,
+        completion_percentage: 45,
+        overall_vibe: "#22c55e",
+        vibe_trend: :improving,
+        team_sentiment_score: 80.8,
+        total_hours: 24.5,
+        avg_daily_hours: 3.2,
+        peer_review_avg: 4.1,
+        last_activity: "2 hours ago",
+        needs_attention: []
+      },
+      %{
+        team_id: 2,
+        team_name: "UX Pioneers",
+        project_title: "Design sustainability tracking app",
+        member_count: 4,
+        completion_percentage: 72,
+        overall_vibe: "#eab308",
+        vibe_trend: :stable,
+        team_sentiment_score: 65.2,
+        total_hours: 31.0,
+        avg_daily_hours: 2.8,
+        peer_review_avg: 3.4,
+        last_activity: "6 hours ago",
+        needs_attention: ["collaboration_variance"]
+      },
+      %{
+        team_id: 3,
+        team_name: "Data Detectives",
+        project_title: "Analyze enrollment trends",
+        member_count: 2,
+        completion_percentage: 28,
+        overall_vibe: "#ef4444",
+        vibe_trend: :declining,
+        team_sentiment_score: 42.1,
+        total_hours: 12.5,
+        avg_daily_hours: 1.4,
+        peer_review_avg: 2.8,
+        last_activity: "1 day ago",
+        needs_attention: ["low_team_sentiment", "low_activity"]
+      }
+    ]
+
+    %{
+      team_cards: team_cards,
+      total_teams: length(team_cards),
+      teams_needing_attention: Enum.count(team_cards, &(length(&1.needs_attention) > 0)),
+      overall_completion_avg: 48.3
+    }
+  end
+end

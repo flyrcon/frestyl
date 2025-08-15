@@ -1,0 +1,457 @@
+# Supervisor Dashboard Template
+# File: lib/frestyl_web/live/supervisor_dashboard_live.html.heex
+
+<div class="supervisor-dashboard min-h-screen bg-gray-50">
+  <%= if @show_team_detail do %>
+    <!-- Team Detail View -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- Back Button and Header -->
+      <div class="mb-8">
+        <div class="flex items-center space-x-4 mb-4">
+          <button phx-click={JS.patch(~p"/supervisor/teams")} 
+                  class="flex items-center text-blue-600 hover:text-blue-700">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to Dashboard
+          </button>
+        </div>
+        
+        <div class="flex items-center justify-between">
+          <div>
+            <h1 class="text-3xl font-bold text-gray-900"><%= @team_detail.team.name %></h1>
+            <p class="text-gray-600 mt-1"><%= @team_detail.team.project_assignment %></p>
+          </div>
+          
+          <div class="flex space-x-3">
+            <button phx-click="show_rating_config" phx-value-team-id={@team_detail.team.id}
+                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              Configure Ratings
+            </button>
+            
+            <button phx-click="export_team_data" phx-value-team-id={@team_detail.team.id} phx-value-format="csv"
+                    class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+              Export Data
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Team Detail Content -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Member Performance Cards -->
+        <div class="lg:col-span-2 space-y-6">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Team Member Performance</h3>
+            
+            <div class="space-y-4">
+              <%= for member_performance <- @team_detail.member_performances do %>
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center space-x-3">
+                      <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
+                        <%= String.first(member_performance.member.first_name) %><%= String.first(member_performance.member.last_name || "") %>
+                      </div>
+                      <div>
+                        <h4 class="font-medium text-gray-900">
+                          <%= member_performance.member.first_name %> <%= member_performance.member.last_name %>
+                        </h4>
+                        <p class="text-sm text-gray-600">
+                          <%= member_performance.participation_rate %>% participation
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <!-- Quick stats -->
+                    <div class="text-right">
+                      <div class="text-sm text-gray-600">Peer Rating</div>
+                      <div class="text-lg font-semibold text-gray-900">
+                        <%= Float.round(member_performance.avg_quality_score, 1) %>/5.0
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Performance metrics -->
+                  <div class="grid grid-cols-2 gap-4">
+                    <div>
+                      <div class="text-sm text-gray-600 mb-1">Quality Score</div>
+                      <div class="flex items-center space-x-2">
+                        <div class="flex-1 bg-gray-200 rounded-full h-2">
+                          <div class="h-2 rounded-full bg-green-500" 
+                               style={"width: #{member_performance.avg_quality_score * 20}%"}></div>
+                        </div>
+                        <span class="text-sm font-medium">
+                          <%= Float.round(member_performance.avg_quality_score, 1) %>
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div class="text-sm text-gray-600 mb-1">Collaboration</div>
+                      <div class="flex items-center space-x-2">
+                        <div class="flex-1 bg-gray-200 rounded-full h-2">
+                          <div class="h-2 rounded-full bg-blue-500" 
+                               style={"width: #{member_performance.avg_collaboration_score * 20}%"}></div>
+                        </div>
+                        <span class="text-sm font-medium">
+                          <%= Float.round(member_performance.avg_collaboration_score, 1) %>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Recent feedback count -->
+                  <div class="mt-3 text-xs text-gray-500">
+                    <%= member_performance.ratings_received_count %> ratings received, 
+                    <%= member_performance.ratings_given_count %> ratings given
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Team Summary and Actions -->
+        <div class="space-y-6">
+          <!-- Team Metrics Card -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Team Overview</h3>
+            
+            <div class="space-y-4">
+              <div class="flex justify-between">
+                <span class="text-gray-600">Completion</span>
+                <span class="font-semibold"><%= @team_detail.team.completion_percentage %>%</span>
+              </div>
+              
+              <div class="flex justify-between">
+                <span class="text-gray-600">Team Size</span>
+                <span class="font-semibold"><%= length(@team_detail.team.members) %> members</span>
+              </div>
+              
+              <div class="flex justify-between">
+                <span class="text-gray-600">Status</span>
+                <span class="font-semibold capitalize"><%= @team_detail.team.status %></span>
+              </div>
+              
+              <%= if @team_detail.team.due_date do %>
+                <div class="flex justify-between">
+                  <span class="text-gray-600">Due Date</span>
+                  <span class="font-semibold">
+                    <%= Calendar.strftime(@team_detail.team.due_date, "%b %d, %Y") %>
+                  </span>
+                </div>
+              <% end %>
+            </div>
+          </div>
+          
+          <!-- Intervention Actions -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Intervention Tools</h3>
+            
+            <div class="space-y-3">
+              <button phx-click="trigger_intervention" 
+                      phx-value-team-id={@team_detail.team.id} 
+                      phx-value-type="check_in"
+                      class="w-full flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-3.582 8-8 8a8.959 8.959 0 01-4.906-1.456L3 21l2.544-5.094A8.959 8.959 0 013 12c0-4.418 3.582-8 8-8s8 3.582 8 8z"/>
+                </svg>
+                <span>Schedule Check-in</span>
+              </button>
+              
+              <button phx-click="trigger_intervention" 
+                      phx-value-team-id={@team_detail.team.id} 
+                      phx-value-type="message"
+                      class="w-full flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-1.064M15 20.488L12 17.5 9 20.488"/>
+                </svg>
+                <span>Send Team Message</span>
+              </button>
+              
+              <button phx-click="trigger_intervention" 
+                      phx-value-team-id={@team_detail.team.id} 
+                      phx-value-type="extend_deadline"
+                      class="w-full flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                <svg class="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>Extend Deadline</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% else %>
+    <!-- Main Dashboard View -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- Dashboard Header -->
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900">Team Dashboard</h1>
+          <p class="text-gray-600 mt-1">
+            Manage and monitor <%= @dashboard_data.total_teams %> active teams
+          </p>
+        </div>
+        
+        <button phx-click="show_create_team_modal"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          <span>Create Team</span>
+        </button>
+      </div>
+
+      <!-- Dashboard Stats -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-gray-600">Total Teams</p>
+              <p class="text-3xl font-bold text-gray-900"><%= @dashboard_data.total_teams %></p>
+            </div>
+            <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-gray-600">Need Attention</p>
+              <p class="text-3xl font-bold text-red-600"><%= @dashboard_data.teams_needing_attention %></p>
+            </div>
+            <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+              <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-gray-600">Avg Completion</p>
+              <p class="text-3xl font-bold text-green-600"><%= @dashboard_data.overall_completion_avg %>%</p>
+            </div>
+            <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-gray-600">Active Sessions</p>
+              <p class="text-3xl font-bold text-purple-600">12</p>
+            </div>
+            <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters and Controls -->
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Filter</label>
+            <select phx-change="filter_teams" class="form-select rounded-lg border-gray-300">
+              <option value="all" selected={@filter_status == "all"}>All Teams</option>
+              <option value="needs_attention" selected={@filter_status == "needs_attention"}>Needs Attention</option>
+              <option value="high_performance" selected={@filter_status == "high_performance"}>High Performance</option>
+            </select>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Sort by</label>
+            <select phx-change="sort_teams" class="form-select rounded-lg border-gray-300">
+              <option value="recent_activity" selected={@sort_by == "recent_activity"}>Recent Activity</option>
+              <option value="completion_rate" selected={@sort_by == "completion_rate"}>Completion Rate</option>
+              <option value="team_sentiment" selected={@sort_by == "team_sentiment"}>Team Sentiment</option>
+              <option value="name" selected={@sort_by == "name"}>Name</option>
+            </select>
+          </div>
+        </div>
+        
+        <span class="text-sm text-gray-600">
+          <%= length(filter_teams(@dashboard_data.team_cards, @filter_status)) %> teams
+        </span>
+      </div>
+
+      <!-- Team Cards Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <%= for team_card <- sort_teams(filter_teams(@dashboard_data.team_cards, @filter_status), @sort_by) do %>
+          <div class="group bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-300 overflow-hidden cursor-pointer"
+               phx-click="view_team_details" 
+               phx-value-team-id={team_card.team_id}>
+            
+            <!-- Card Header with Vibe Color -->
+            <div class="relative p-4 border-b border-gray-100" 
+                 style={"background: linear-gradient(135deg, #{team_card.overall_vibe}, #{lighten_color(team_card.overall_vibe)})"}>
+              
+              <!-- Performance indicator -->
+              <div class="absolute top-3 right-3">
+                <%= render_performance_badge(team_card) %>
+              </div>
+              
+              <!-- Team name and project -->
+              <div class="text-left pr-16">
+                <h3 class="font-bold text-white text-lg mb-1 drop-shadow-sm">
+                  <%= team_card.team_name %>
+                </h3>
+                <p class="text-sm text-white/80 line-clamp-1">
+                  <%= team_card.project_title %>
+                </p>
+              </div>
+              
+              <!-- Vibe trend indicator -->
+              <div class="absolute bottom-2 right-3">
+                <%= render_vibe_trend_icon(team_card.vibe_trend) %>
+              </div>
+            </div>
+
+            <!-- Card Content -->
+            <div class="p-6">
+              <!-- Key metrics grid -->
+              <div class="grid grid-cols-3 gap-4 mb-6">
+                <!-- Members -->
+                <div class="text-center">
+                  <div class="text-2xl font-bold text-gray-900">
+                    <%= team_card.member_count %>
+                  </div>
+                  <div class="text-xs text-gray-600">Members</div>
+                </div>
+                
+                <!-- Completion Rate -->
+                <div class="text-center">
+                  <div class="text-2xl font-bold text-emerald-600">
+                    <%= team_card.completion_percentage %>%
+                  </div>
+                  <div class="text-xs text-gray-600">Complete</div>
+                </div>
+                
+                <!-- Total Hours -->
+                <div class="text-center">
+                  <div class="text-2xl font-bold text-blue-600">
+                    <%= team_card.total_hours %>h
+                  </div>
+                  <div class="text-xs text-gray-600">Total Time</div>
+                </div>
+              </div>
+
+              <!-- Team sentiment bar -->
+              <div class="mb-4">
+                <div class="flex items-center justify-between text-sm mb-1">
+                  <span class="text-gray-600">Team Sentiment</span>
+                  <span class="font-medium"><%= Float.round(team_card.team_sentiment_score, 0) %>/100</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div class="h-2 rounded-full transition-all duration-300" 
+                       style={"width: #{team_card.team_sentiment_score}%; background-color: #{team_card.overall_vibe}"}></div>
+                </div>
+              </div>
+
+              <!-- Activity summary -->
+              <div class="text-sm text-gray-600 space-y-1">
+                <div class="flex justify-between">
+                  <span>Avg Daily Hours:</span>
+                  <span class="font-medium"><%= team_card.avg_daily_hours %>h</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Peer Review Avg:</span>
+                  <span class="font-medium"><%= Float.round(team_card.peer_review_avg, 1) %>/5.0</span>
+                </div>
+                <div class="flex justify-between">
+                  <span>Last Activity:</span>
+                  <span class="font-medium"><%= time_ago(team_card.last_activity) %></span>
+                </div>
+              </div>
+
+              <!-- Alert indicators -->
+              <%= if length(team_card.needs_attention) > 0 do %>
+                <div class="mt-4 pt-4 border-t border-gray-100">
+                  <%= render_attention_alerts(team_card.needs_attention) %>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Create Team Modal -->
+  <%= if @show_create_team_modal do %>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-xl p-6 w-full max-w-md mx-4">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">Create New Team</h3>
+          <button phx-click="hide_create_team_modal" class="text-gray-400 hover:text-gray-600">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        
+        <form phx-submit="create_team">
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Team Name</label>
+              <input type="text" name="team[name]" required
+                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                     placeholder="Enter team name">
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Project Assignment</label>
+              <textarea name="team[project_assignment]" rows="3"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Describe the project or assignment"></textarea>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+              <input type="date" name="team[due_date]"
+                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Organization Type</label>
+              <select name="team[rating_config][organization_type]"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                <option value="academic">Academic</option>
+                <option value="creative">Creative</option>
+                <option value="business">Business</option>
+                <option value="technical">Technical</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="flex space-x-3 mt-6">
+            <button type="button" phx-click="hide_create_team_modal"
+                    class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            <button type="submit"
+                    class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              Create Team
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  <% end %>
+</div>
