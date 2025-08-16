@@ -556,6 +556,221 @@ defmodule Frestyl.Teams do
     end
   end
 
+  def get_team_detail_view(team_id) do
+    team = get_team!(team_id)
+
+    # Get team members with their ratings
+    member_performances = Enum.map(team.members || [], fn member ->
+      # Get recent ratings for this member
+      recent_ratings = list_member_ratings(team_id, member.id)
+
+      avg_quality = case recent_ratings do
+        [] -> 50.0
+        ratings ->
+          ratings
+          |> Enum.map(& &1.primary_score)
+          |> Enum.sum()
+          |> Kernel./(length(ratings))
+      end
+
+      avg_collaboration = case recent_ratings do
+        [] -> 50.0
+        ratings ->
+          ratings
+          |> Enum.map(& &1.secondary_score)
+          |> Enum.sum()
+          |> Kernel./(length(ratings))
+      end
+
+      %{
+        user: member,
+        avg_quality_score: avg_quality,
+        avg_collaboration_score: avg_collaboration,
+        recent_ratings_count: length(recent_ratings),
+        last_rating_date: get_last_rating_date(recent_ratings)
+      }
+    end)
+
+    %{
+      team: team,
+      member_performances: member_performances,
+      team_stats: calculate_team_stats(team_id),
+      recent_activity: get_recent_team_activity(team_id)
+    }
+  end
+
+  # If get_supervisor_dashboard/1 doesn't exist or is incomplete, add this:
+  def get_supervisor_dashboard(supervisor_id) do
+    teams = list_supervisor_teams(supervisor_id)
+
+    team_cards = Enum.map(teams, fn team ->
+      sentiment = calculate_team_sentiment_safe(team.id)
+
+      %{
+        id: team.id,
+        name: team.name,
+        project_assignment: team.project_assignment,
+        completion_percentage: team.completion_percentage || 0,
+        member_count: length(team.members || []),
+        team_sentiment_score: sentiment.sentiment_score || 50,
+        overall_vibe: sentiment.overall_vibe_color || "#6b7280",
+        vibe_trend: determine_vibe_trend(team.id), # Add this field
+        needs_attention: get_attention_flags(team),
+        last_activity: format_last_activity(team.updated_at),
+        avg_daily_hours: calculate_avg_daily_hours(team.id),
+        peer_review_avg: calculate_peer_review_avg(team.id)
+      }
+    end)
+
+    %{
+      total_teams: length(teams),
+      active_teams: count_active_teams(teams),
+      needs_attention: count_teams_needing_attention(team_cards),
+      high_performance: count_high_performance_teams(team_cards),
+      team_cards: team_cards,
+      recent_activity: get_recent_supervisor_activity(supervisor_id)
+    }
+  end
+
+  # Helper functions for the above
+
+
+  defp calculate_team_sentiment_safe(team_id) do
+    try do
+      calculate_team_sentiment(team_id)
+    rescue
+      _error ->
+        %{sentiment_score: 50, overall_vibe_color: "#6b7280"}
+    end
+  end
+
+  defp get_attention_flags(team) do
+    flags = []
+
+    # Add flags based on team status
+    flags = if team.completion_percentage && team.completion_percentage < 30 do
+      ["Low completion rate" | flags]
+    else
+      flags
+    end
+
+    # Add more flags based on your business logic
+    flags
+  end
+
+  defp format_last_activity(datetime) do
+    case datetime do
+      nil -> "No activity"
+      dt ->
+        diff_hours = DateTime.diff(DateTime.utc_now(), dt, :hour)
+        cond do
+          diff_hours < 1 -> "Just now"
+          diff_hours < 24 -> "#{diff_hours}h ago"
+          diff_hours < 168 -> "#{div(diff_hours, 24)}d ago"
+          true -> "Over a week ago"
+        end
+    end
+  end
+
+  defp calculate_avg_daily_hours(_team_id) do
+    # Placeholder - implement based on your activity tracking
+    Enum.random(3..8)
+  end
+
+  defp calculate_peer_review_avg(team_id) do
+    # Get average rating for team
+    case list_team_ratings(team_id) do
+      [] -> 0.0
+      ratings ->
+        ratings
+        |> Enum.map(& &1.primary_score)
+        |> Enum.sum()
+        |> Kernel./(length(ratings))
+        |> Kernel./(20) # Convert 0-100 to 0-5 scale
+    end
+  end
+
+  defp count_active_teams(teams) do
+    Enum.count(teams, fn team ->
+      team.status == "active" || is_nil(team.status)
+    end)
+  end
+
+  defp count_teams_needing_attention(team_cards) do
+    Enum.count(team_cards, fn card ->
+      length(card.needs_attention) > 0
+    end)
+  end
+
+  defp count_high_performance_teams(team_cards) do
+    Enum.count(team_cards, fn card ->
+      card.team_sentiment_score > 80
+    end)
+  end
+
+  defp get_recent_supervisor_activity(_supervisor_id) do
+    # Placeholder - implement based on your activity tracking needs
+    []
+  end
+
+  defp get_recent_team_activity(_team_id) do
+    # Placeholder - implement based on your activity tracking needs
+    []
+  end
+
+  defp list_member_ratings(team_id, user_id) do
+    from(r in VibeRating,
+      where: r.team_id == ^team_id and r.reviewee_id == ^user_id,
+      order_by: [desc: r.inserted_at],
+      limit: 10)
+    |> Repo.all()
+  end
+
+  defp get_last_rating_date([]), do: nil
+  defp get_last_rating_date([rating | _]), do: rating.inserted_at
+
+  defp calculate_team_stats(team_id) do
+    ratings = list_team_ratings(team_id)
+
+    %{
+      total_ratings: length(ratings),
+      avg_quality: calculate_avg_score(ratings, :primary_score),
+      avg_collaboration: calculate_avg_score(ratings, :secondary_score)
+    }
+  end
+
+  defp calculate_avg_score([], _field), do: 0.0
+  defp calculate_avg_score(ratings, field) do
+    ratings
+    |> Enum.map(&Map.get(&1, field, 0))
+    |> Enum.sum()
+    |> Kernel./(length(ratings))
+  end
+
+  # Add this missing function
+  defp determine_vibe_trend(team_id) do
+    # Get recent ratings to determine trend
+    recent_ratings = list_team_ratings(team_id)
+
+    case length(recent_ratings) do
+      0 -> :stable
+      count when count < 5 -> :stable
+      _ ->
+        # Compare first half vs second half of recent ratings
+        half_point = div(length(recent_ratings), 2)
+        {older_ratings, newer_ratings} = Enum.split(recent_ratings, half_point)
+
+        older_avg = calculate_avg_score(older_ratings, :primary_score)
+        newer_avg = calculate_avg_score(newer_ratings, :primary_score)
+
+        cond do
+          newer_avg > older_avg + 5 -> :improving
+          newer_avg < older_avg - 5 -> :declining
+          true -> :stable
+        end
+    end
+  end
+
   # Placeholder implementations for complex features
   defp get_team_activity_timeline(_team_id), do: []
   defp get_vibe_rating_distribution(_team_id), do: %{}

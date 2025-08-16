@@ -184,8 +184,16 @@ defmodule FrestylWeb.Router do
       # Working demo routes
       live "/vibe-rating", VibeRatingDemoLive, :index
       live "/supervisor/:user_id", SupervisorDashboardLive, :index
-      live "/teams/:channel_id", ChannelTeamManagementLive, :index
+      live "/teams/:team_id", DemoTeamManagementLive, :show
     end
+  end
+
+  # Podcast Guest Access Routes (public)
+  scope "/podcast", FrestylWeb do
+    pipe_through :browser
+
+    get "/guest/:token", PodcastController, :guest_access
+    live "/guest/:token/join", PodcastLive.GuestJoin, :join
   end
 
 
@@ -341,19 +349,14 @@ defmodule FrestylWeb.Router do
     live "/channels/:slug/sessions/:session_id", StudioLive, :show
     live "/channels/:slug/sessions/:session_id/edit", StudioLive, :edit_session
 
-    # Broadcasts routes
-    live "/channels/:slug/broadcasts", BroadcastLive.Index, :index
-    live "/channels/:slug/broadcasts/new", BroadcastLive.Index, :new
-    live "/channels/:slug/broadcasts/:id", BroadcastLive.Show, :show
-    live "/channels/:slug/broadcasts/:id/edit", BroadcastLive.Show, :edit
-    live "/channels/:slug/broadcasts/:id/manage", BroadcastLive.Manage, :show
-    live "/channels/:slug/broadcasts/:id/sound-check", BroadcastLive.SoundCheck, :show
-    live "/channels/:slug/broadcasts/:id/waiting", BroadcastLive.WaitingRoom, :show
-    live "/channels/:slug/broadcasts/:id/live", BroadcastLive.Show, :live
 
-    # Studio routes
-    live "/channels/:slug/studio", StudioLive.Index, :index
-    live "/channels/:slug/go-live", StudioLive.Broadcast, :new
+    # Content editing projects
+    live "/channels/:slug/edit", EditingLive.Index, :index
+    live "/channels/:slug/edit/new", EditingLive.New, :new
+    live "/channels/:slug/edit/:project_id", EditingLive.Studio, :studio
+    live "/channels/:slug/edit/:project_id/timeline", EditingLive.Timeline, :timeline
+    live "/channels/:slug/edit/:project_id/render", EditingLive.Render, :render
+
 
     # Content Management Routes (moved from /media to avoid conflict with SupremeDiscovery)
     live "/content/media", MediaLive.Index, :index
@@ -362,14 +365,6 @@ defmodule FrestylWeb.Router do
     live "/content/media/:id", MediaLive.Show, :show
     live "/content/media/:id/show/edit", MediaLive.Show, :edit
 
-    # Keep existing broadcast routes with slug consistency
-    live "/broadcasts/:broadcast_id/sound-check", BroadcastLive.SoundCheck, :show
-    live "/broadcasts/:broadcast_id/waiting", BroadcastLive.WaitingRoom, :show
-    live "/broadcasts/:broadcast_id/live", BroadcastLive.Show, :show
-    live "/broadcasts/:broadcast_id/manage", BroadcastLive.Manage, :show
-
-    # Streaming route
-    live "/streaming", StreamingLive.Index, :index
 
     # Chat
     live "/chat", ChatLive.Show
@@ -534,6 +529,212 @@ defmodule FrestylWeb.Router do
     live "/portfolios/:id", PortfolioLive.AdminShow, :show
     live "/portfolios/:id/moderate", PortfolioLive.AdminModerate, :moderate
 
+  end
+
+    scope "/channels/:slug", FrestylWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    # Unified session hub - handles all session types
+    live "/sessions/:id", SessionLive.Hub, :show
+    live "/sessions/:id/live", SessionLive.Hub, :live
+    live "/sessions/:id/manage", SessionLive.Hub, :manage
+
+    # Session creation with type specification
+    live "/sessions/new", SessionLive.New, :new
+    live "/sessions/new/:type", SessionLive.New, :new_typed
+
+    # Legacy broadcast routes - redirect to unified hub
+    live "/broadcasts/:id", SessionLive.Hub, :show
+    live "/broadcasts/:id/live", SessionLive.Hub, :live
+    live "/broadcasts/:id/waiting", SessionLive.Hub, :waiting
+    live "/broadcasts/:id/manage", SessionLive.Hub, :manage
+
+    # Live streaming routes - redirect to unified hub
+    live "/streaming", SessionLive.Index, :streaming
+    live "/streaming/new", SessionLive.New, :new_streaming
+    live "/streaming/:id", SessionLive.Hub, :show
+    live "/streaming/:id/live", SessionLive.Hub, :live
+
+    # Consultation/call routes
+    live "/calls", SessionLive.Index, :calls
+    live "/calls/new", SessionLive.New, :new_consultation
+    live "/calls/:id", SessionLive.Hub, :show
+    live "/calls/:id/join", SessionLive.Hub, :join
+
+    # Tutorial routes
+    live "/tutorials", SessionLive.Index, :tutorials
+    live "/tutorials/new", SessionLive.New, :new_tutorial
+    live "/tutorials/:id", SessionLive.Hub, :show
+    live "/tutorials/:id/attend", SessionLive.Hub, :attend
+
+    # Collaboration session routes
+    live "/collaborate", SessionLive.Index, :collaborate
+    live "/collaborate/new", SessionLive.New, :new_collaboration
+    live "/collaborate/:id", SessionLive.Hub, :show
+    live "/collaborate/:id/join", SessionLive.Hub, :join
+  end
+
+  # Podcast Creation Routes
+  scope "/channels/:slug", FrestylWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    # Podcast show management
+    live "/podcast", PodcastLive.Index, :index
+    live "/podcast/new", PodcastLive.New, :new
+    live "/podcast/:show_id", PodcastLive.Show, :show
+    live "/podcast/:show_id/edit", PodcastLive.Edit, :edit
+
+    # Podcast studio (unified creation interface)
+    live "/podcast/:show_id/studio", PodcastLive.Studio, :studio
+    live "/podcast/:show_id/studio/episode/:episode_id", PodcastLive.Studio, :episode
+
+    # Episode management
+    live "/podcast/:show_id/episodes/new", PodcastLive.EpisodeNew, :new
+    live "/podcast/:show_id/episodes/:episode_id/edit", PodcastLive.EpisodeEdit, :edit
+
+    # Guest management
+    live "/podcast/:show_id/guests", PodcastLive.Guests, :index
+  end
+
+  # Content Editing Routes
+  scope "/channels/:slug", FrestylWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    # Content editing projects
+    live "/edit", EditingLive.Index, :index
+    live "/edit/new", EditingLive.New, :new
+    live "/edit/:project_id", EditingLive.Studio, :studio
+    live "/edit/:project_id/timeline", EditingLive.Timeline, :timeline
+    live "/edit/:project_id/render", EditingLive.Render, :render
+
+    # Video editing specific
+    live "/video", EditingLive.Index, :video
+    live "/video/new", EditingLive.New, :new_video
+    live "/video/:project_id", EditingLive.Studio, :video_studio
+
+    # Audio editing specific
+    live "/audio", EditingLive.Index, :audio
+    live "/audio/new", EditingLive.New, :new_audio
+    live "/audio/:project_id", EditingLive.Studio, :audio_studio
+  end
+
+  # WebRTC Signaling Routes
+  scope "/api/webrtc", FrestylWeb.Api do
+    pipe_through :api
+
+    post "/sessions/:id/join", WebRTCController, :join
+    post "/sessions/:id/offer", WebRTCController, :offer
+    post "/sessions/:id/answer", WebRTCController, :answer
+    post "/sessions/:id/ice-candidate", WebRTCController, :ice_candidate
+    delete "/sessions/:id/leave", WebRTCController, :leave
+
+    # Legacy broadcast WebRTC routes
+    post "/broadcasts/:id/join", WebRTCController, :join
+    post "/broadcasts/:id/offer", WebRTCController, :offer
+    post "/broadcasts/:id/answer", WebRTCController, :answer
+    post "/broadcasts/:id/ice-candidate", WebRTCController, :ice_candidate
+    delete "/broadcasts/:id/leave", WebRTCController, :leave
+  end
+
+  # Session Management API
+  scope "/api/sessions", FrestylWeb.Api do
+    pipe_through :api
+
+    get "/:id/state", SessionController, :get_state
+    put "/:id/settings", SessionController, :update_settings
+    post "/:id/recording/start", SessionController, :start_recording
+    post "/:id/recording/stop", SessionController, :stop_recording
+    post "/:id/streaming/start", SessionController, :start_streaming
+    post "/:id/streaming/stop", SessionController, :stop_streaming
+    get "/:id/analytics", SessionController, :get_analytics
+    post "/:id/export", SessionController, :export_data
+
+    # Collaboration endpoints
+    post "/:id/collaborate/join", SessionController, :join_collaboration
+    post "/:id/collaborate/leave", SessionController, :leave_collaboration
+    post "/:id/collaborate/operation", SessionController, :collaboration_operation
+  end
+
+  # Broadcasting/Streaming API
+  scope "/api/streaming", FrestylWeb.Api do
+    pipe_through :api
+
+    get "/sessions/:id/viewers", StreamingController, :get_viewers
+    post "/sessions/:id/quality", StreamingController, :update_quality
+    get "/sessions/:id/stats", StreamingController, :get_stats
+    post "/sessions/:id/platforms", StreamingController, :configure_platforms
+  end
+
+  # Podcast Guest Access Routes (public)
+  scope "/podcast", FrestylWeb do
+    pipe_through :browser
+
+    get "/guest/:token", PodcastController, :guest_access
+    live "/guest/:token/join", PodcastLive.GuestJoin, :join
+  end
+
+  # API Routes for Podcast Analytics
+  scope "/api/podcasts", FrestylWeb.Api do
+    pipe_through :api
+
+    get "/:show_id/analytics", PodcastController, :analytics
+    get "/:show_id/episodes/:episode_id/analytics", PodcastController, :episode_analytics
+    post "/:show_id/episodes/:episode_id/track", PodcastController, :track_event
+    get "/:show_id/rss", PodcastController, :rss_feed
+
+    # Distribution endpoints
+    post "/:show_id/distribute", PodcastController, :distribute_episode
+    get "/:show_id/distribution/status", PodcastController, :distribution_status
+  end
+
+  # API Routes for Content Editing
+  scope "/api/editing", FrestylWeb.Api do
+    pipe_through :api
+
+    get "/projects/:project_id/state", EditingController, :get_project_state
+    post "/projects/:project_id/operations", EditingController, :apply_operation
+    get "/projects/:project_id/render/:job_id", EditingController, :get_render_status
+    post "/projects/:project_id/export", EditingController, :export_project
+
+    # Timeline operations
+    post "/projects/:project_id/timeline/add", EditingController, :add_to_timeline
+    put "/projects/:project_id/timeline/:entry_id", EditingController, :update_timeline_entry
+    delete "/projects/:project_id/timeline/:entry_id", EditingController, :remove_from_timeline
+
+    # Effects and processing
+    post "/projects/:project_id/effects", EditingController, :apply_effect
+    get "/projects/:project_id/effects/:effect_id/status", EditingController, :effect_status
+    delete "/projects/:project_id/effects/:effect_id", EditingController, :remove_effect
+  end
+
+  # RSS Feed Routes (public)
+  scope "/rss", FrestylWeb do
+    pipe_through :browser
+
+    get "/:show_slug", PodcastController, :rss_feed_by_slug
+  end
+
+  # Live Session Public Access (for sharing/embedding)
+  scope "/live", FrestylWeb do
+    pipe_through :browser
+
+    # Public viewing of live sessions
+    live "/:session_id", SessionLive.Public, :view
+    live "/:session_id/embed", SessionLive.Embed, :embed
+
+    # Public broadcast viewing
+    live "/broadcast/:broadcast_id", SessionLive.Public, :broadcast
+    live "/stream/:stream_id", SessionLive.Public, :stream
+  end
+
+  # Mobile-specific routes
+  scope "/m", FrestylWeb do
+    pipe_through :browser
+
+    # Mobile-optimized session interfaces
+    live "/session/:id", SessionLive.Mobile, :show
+    live "/broadcast/:id", SessionLive.Mobile, :broadcast
+    live "/call/:id", SessionLive.Mobile, :call
   end
 
 
@@ -701,6 +902,26 @@ defmodule FrestylWeb.Router do
     get "/sync/:integration_id/status", CalendarSyncController, :sync_status
   end
 
+  # API Routes for Podcast Analytics
+  scope "/api/podcasts", FrestylWeb.Api do
+    pipe_through :api
+
+    get "/:show_id/analytics", PodcastController, :analytics
+    get "/:show_id/episodes/:episode_id/analytics", PodcastController, :episode_analytics
+    post "/:show_id/episodes/:episode_id/track", PodcastController, :track_event
+    get "/:show_id/rss", PodcastController, :rss_feed
+  end
+
+  # API Routes for Content Editing
+  scope "/api/editing", FrestylWeb.Api do
+    pipe_through :api
+
+    get "/projects/:project_id/state", EditingController, :get_project_state
+    post "/projects/:project_id/operations", EditingController, :apply_operation
+    get "/projects/:project_id/render/:job_id", EditingController, :get_render_status
+    post "/projects/:project_id/export", EditingController, :export_project
+  end
+
   scope "/api/webhooks", FrestylWeb do
    pipe_through :api
 
@@ -745,6 +966,14 @@ defmodule FrestylWeb.Router do
     # Serve generated PDF files
     get "/:filename", FrestylWeb.PdfExportController, :download
   end
+
+  # RSS Feed Routes (public)
+  scope "/rss", FrestylWeb do
+    pipe_through :browser
+
+    get "/:show_slug", PodcastController, :rss_feed_by_slug
+  end
+
 
   # Uploads: Separate static route
   scope "/uploads", FrestylWeb do

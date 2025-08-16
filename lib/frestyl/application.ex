@@ -30,6 +30,21 @@ defmodule Frestyl.Application do
 
       # Audio-Text Sync Registry and Supervisor
       {Registry, keys: :unique, name: Frestyl.Studio.AudioTextSyncRegistry},
+
+
+      # Podcast & Editing Registries
+      {Registry, keys: :unique, name: Frestyl.PodcastRegistry},
+      {Registry, keys: :unique, name: Frestyl.EditingRegistry},
+
+      # Podcast Processing Supervisor
+      {DynamicSupervisor, strategy: :one_for_one, name: Frestyl.Podcasts.ProcessingSupervisor},
+
+      # Content Editing Supervisor
+      {DynamicSupervisor, strategy: :one_for_one, name: Frestyl.ContentEditing.ProjectSupervisor},
+
+      # Render Job Queue
+      {DynamicSupervisor, strategy: :one_for_one, name: Frestyl.ContentEditing.RenderSupervisor},
+
       {DynamicSupervisor, strategy: :one_for_one, name: Frestyl.Studio.AudioTextSyncSupervisor},
 
       {ChromicPDF, chromic_pdf_opts()},
